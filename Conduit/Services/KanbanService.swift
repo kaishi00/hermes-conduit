@@ -13,6 +13,21 @@ protocol DashboardJSONRequester: AnyObject {
 
 extension DashboardTicketBridge: DashboardJSONRequester {}
 
+/// A requester that can also stream a dashboard file to disk (a task's
+/// attachment), signed the way its JSON requests are.
+@MainActor
+protocol DashboardFileDownloading: AnyObject {
+    func downloadFile(
+        path: String,
+        filename: String,
+        into root: URL,
+        maxBytes: Int,
+        session: URLSession
+    ) async throws -> DashboardDownloadedFile
+}
+
+extension DashboardTicketBridge: DashboardFileDownloading {}
+
 enum KanbanServiceError: LocalizedError, Equatable {
     case invalidResponse(String)
     case emptyTaskID
@@ -143,6 +158,22 @@ final class KanbanService {
         return try await decode(
             KanbanWorkerLog.self,
             path: try withBoard(Self.namespace + "/tasks/" + (try pathComponent(id)) + "/log", slug: board, params: ["tail": String(max(1, tailBytes))])
+        )
+    }
+
+    /// Streams attachment `attachment` of a task to a new directory under
+    /// `root` (`GET /attachments/{id}`, the board drawer's download link).
+    func downloadAttachment(_ attachment: KanbanAttachment, board: String?, into root: URL) async throws -> DashboardDownloadedFile {
+        guard let downloader = requester as? any DashboardFileDownloading else {
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Couldn't open this attachment.", table: .tasks))
+        }
+        let path = try withBoard(Self.namespace + "/attachments/" + (try pathComponent(attachment.id)), slug: board)
+        return try await downloader.downloadFile(
+            path: path,
+            filename: attachment.filename,
+            into: root,
+            maxBytes: DashboardFileDownloadLimits.maxBytes,
+            session: DashboardBackgroundSession.shared
         )
     }
 
