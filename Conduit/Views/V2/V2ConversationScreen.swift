@@ -905,7 +905,7 @@ private struct V2ConnectionLine: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        if !appState.isConnected, !appState.hidesBriefReconnect {
+        if !appState.chatIsConnected, !appState.hidesBriefReconnect {
             let connecting = appState.isRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
@@ -969,13 +969,13 @@ private struct V2ConversationMenu: View {
     /// claiming Connected. The menu's own words say what is happening to
     /// anyone who opens it (#1624).
     private var statusColor: Color {
-        if appState.isConnected { return .green }
+        if appState.chatIsConnected { return .green }
         if appState.hidesBriefReconnect { return .secondary }
         return appState.isRecoveringConnection ? .orange : .red
     }
 
     private var statusWord: String {
-        if appState.isConnected { return AppLocalization.string("Connected") }
+        if appState.chatIsConnected { return AppLocalization.string("Connected") }
         return appState.isRecoveringConnection ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
     }
 
@@ -994,7 +994,7 @@ private struct V2ConversationMenu: View {
                     Label(AppLocalization.string("Refresh conversation"), systemImage: "arrow.clockwise")
                 }
                 // A New Chat on its way has nothing to refresh yet.
-                .disabled(!appState.isConnected || appState.isChatRefreshing || appState.showsPendingNewChat)
+                .disabled(!appState.chatIsConnected || appState.isChatRefreshing || appState.showsPendingNewChat)
                 Button(action: onArtifacts) {
                     Label(AppLocalization.string("Artifacts"), systemImage: "square.grid.2x2")
                 }

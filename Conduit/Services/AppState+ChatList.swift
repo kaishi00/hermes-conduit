@@ -141,7 +141,8 @@ extension AppState {
     /// shows at once (its saved copy, or its title while it opens) and opens
     /// for real once the live list lands.
     func openListedSession(_ session: SessionSummary) {
-        // Another combined dashboard's row opens through a switch to it.
+        // Another combined dashboard's row opens in place on its runtime
+        // (or through a switch to it when it isn't kept connected).
         if let dashboardID = combinedChatDashboard(session) {
             openCombinedChat(session, in: dashboardID)
             return

@@ -95,6 +95,12 @@ extension AppState {
         afterReplacingLostChat: Bool = false,
         afterResumingStoredChat: Bool = false
     ) async -> Bool {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let done = await onChatRuntime(unreachable: false, {
+            await self.sendMessage(text, attachments: attachments, context: context, queued: queued,
+                                   afterReplacingLostChat: afterReplacingLostChat, afterResumingStoredChat: afterResumingStoredChat)
+        }) { return done }
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }

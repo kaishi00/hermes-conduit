@@ -82,7 +82,7 @@ struct ComposerInputs: Equatable {
         shortPlaceholder = appState.composerShortPlaceholder
         notice = appState.composerNotice
         errorMessage = appState.errorMessage
-        isConnected = appState.isConnected
+        isConnected = appState.chatIsConnected
         hasConnection = appState.connection != nil
         lastConnectionFailure = appState.lastConnectionFailure
         showsConnectionRepair = appState.showsConnectionRepair

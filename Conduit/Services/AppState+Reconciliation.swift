@@ -49,6 +49,16 @@ extension AppState {
         botEvidence: (@MainActor () async -> Void)? = nil,
         onCatalogPublished: () -> Void = {}
     ) async -> ChatResumeSyncExecutionOutcome {
+        // The chat on screen is another combined dashboard's, opened in
+        // place, or this runs on another dashboard's runtime
+        // (AppState+FarChat.swift): the chat resumes on its own runtime,
+        // and only the dashboard on screen reads its list.
+        if !chatOnScreenIsInScope || !actingOnRuntimeOnScreen {
+            return await syncBesideFarChat(
+                using: existingReconciliationToken,
+                onCatalogPublished: onCatalogPublished
+            )
+        }
         guard chatViewportTransitionIsCurrent(
             requiredViewportTransitionGeneration
         ) else { return .superseded }

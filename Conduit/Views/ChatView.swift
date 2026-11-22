@@ -88,7 +88,7 @@ struct ChatView: View {
     /// the chat itself, and the header and the composer say Conduit is
     /// connecting.
     private var showsOfflineBanner: Bool {
-        showsOfflineCopy && !appState.isConnected && !appState.isRecoveringConnection
+        showsOfflineCopy && !appState.chatIsConnected && !appState.isRecoveringConnection
     }
 
     /// A message sent while this chat was on its way, waiting below its

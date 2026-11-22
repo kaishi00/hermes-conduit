@@ -20,6 +20,9 @@ extension AppState {
 
     /// Withdraws a queued message. It never runs.
     func cancelQueuedPrompt(_ row: QueuedPrompt) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.cancelQueuedPrompt(row) }) != nil { return }
         await queueAction(row) { client, sessionID in
             _ = try await client.cancelQueuedPrompt(sessionID, admissionID: row.admissionID)
             HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
