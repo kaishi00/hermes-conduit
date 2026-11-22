@@ -690,19 +690,40 @@ extension CrossProfilePresentationCacheTests {
         appState.botModePhase = .available
         appState.botRoster = [raiden]
         appState.sessions = [chat]
+        let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                             revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
         appState.groupChatPhase = .available
+        appState.groupRooms = [trip]
         appState.groupRoomsListed = true
         appState.pulseUnseen = 3
 
         await appState.switchDashboard(to: vps.id)
+        let tile = CombinedRoomTile(dashboardID: mac.id, kind: .hosted(trip))
+        XCTAssertFalse(appState.listsCombinedRoomTile(tile), "another dashboard's room waits for the switch")
 
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.lists, "what it showed is kept with it")
         XCTAssertEqual(kept.keptListsProfile, "default")
         XCTAssertEqual(kept.botRoster.map(\.name), ["raiden"])
-        XCTAssertTrue(appState.botRoster.isEmpty, "the dashboard switched to shows none of it")
-        XCTAssertEqual(appState.pulseUnseen, 0)
+        XCTAssertEqual(appState.pulseUnseen, 0, "the dashboard switched to shows none of it")
+        // As the other dashboard's roster would be (a first switch with no
+        // stored server identity crosses no boundary, so nothing clears it).
+        appState.botRoster = []
 
+        // The switch back takes the connection up and shows them; its
+        // sync's reads, refused here, leave them standing.
+        await appState.switchDashboard(to: mac.id)
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"], "shown on the switch back")
+
+        appState.botRoster = []
+        appState.sessions = []
+        appState.groupChatPhase = .idle
+        appState.groupRooms = []
+        appState.groupRoomsListed = false
+        appState.pulseUnseen = 0
+        XCTAssertFalse(appState.listsCombinedRoomTile(tile))
         appState.showKeptLists(of: kept)
+        XCTAssertTrue(appState.listsCombinedRoomTile(tile), "its room opens without waiting for the sync")
 
         XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
         XCTAssertEqual(appState.botModePhase, .available)

@@ -281,10 +281,28 @@ extension AppState {
     /// returns there, as this dashboard's rooms' portraits do. The mark is
     /// made once the switch has settled, since a switch clears Bot Mode's
     /// state, an open on its way included.
+    /// Whether the dashboard on screen lists the tile's room already, so
+    /// opening it needs no read: a hosted room in its rooms, a copy in its
+    /// copies with the plugin's routes known.
+    func listsCombinedRoomTile(_ tile: CombinedRoomTile) -> Bool {
+        guard activeDashboardID == tile.dashboardID else { return false }
+        switch tile.kind {
+        case .hosted(let room):
+            return groupRoomsListed && groupRooms.contains { $0.roomID == room.roomID }
+        case .copy(let copy):
+            return canReadRoomCopies && linkedRoomCopyRows.contains { $0.id == copy.id }
+        }
+    }
+
     func openCombinedRoom(_ tile: CombinedRoomTile, inBots: Bool = false) async {
         guard !refusesCombinedSwitchDuringCall() else { return }
         dismissSidebarDrawer()
-        await switchToCombinedDashboardUntilSettled(tile.dashboardID)
+        // Opens once the dashboard is connected if it still lists the room
+        // as it was left (its kept lists show at once on the switch back),
+        // rather than after the switch's sync.
+        await switchToCombinedDashboardUntilSettled(tile.dashboardID) { [weak self] in
+            self?.listsCombinedRoomTile(tile) == true
+        }
         guard !Task.isCancelled, activeDashboardID == tile.dashboardID else { return }
         let mark = inBots ? BotZoomArm.roomKey(tile.roomID) : nil
         if let mark { beginOpeningBotChat(mark) }
