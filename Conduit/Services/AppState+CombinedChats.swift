@@ -59,12 +59,17 @@ extension AppState {
         // out of the group or opened here, it goes.
         let gone = combinedDashboardChats.keys.filter { !isInCombinedGroup($0) || $0 == activeDashboardID }
         if !gone.isEmpty { combinedDashboardChats = combinedDashboardChats.filter { !gone.contains($0.key) } }
+        // Siri, Spotlight and the widgets know them too, once per pass,
+        // however it ends.
+        var wroteAny = false
+        defer { if wroteAny { publishCombinedWidgetWorkspaces() } }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             let bridge = ObjectIdentifier(runtime.bridge)
             // No profile list to be had (a reconnect lost it and the read
             // failed): the profiles it listed last, so none of them drops.
-            let profiles = await keptDashboardProfileNames(id, runtime)
+            let listed = await keptDashboardProfileNames(id, runtime)
+            let profiles = listed
                 ?? combinedDashboardChats[id].flatMap { $0.profiles.isEmpty ? nil : $0.profiles }
                 ?? [rememberedActiveProfile(for: id) ?? "default"]
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
@@ -142,6 +147,10 @@ extension AppState {
                 cronIDs: cronIDs,
                 cronAt: cronAt
             )
+            // A profile its Hermes no longer lists leaves Siri, Spotlight
+            // and the widgets too, as it leaves the strip and All.
+            if let listed { retainWidgetProfiles(Set(listed), dashboardID: id) }
+            wroteAny = true
         }
     }
 
@@ -387,6 +396,7 @@ extension AppState {
             )
         }
         needsYou.forgetOther(dashboardID, profilesOtherThan: Set(listed))
+        retainWidgetProfiles(Set(listed), dashboardID: dashboardID)
         // A visit there before the deletion left it remembered: the next
         // switch there resumes on one it lists, not on the deleted one.
         if let remembered = rememberedActiveProfile(for: dashboardID),
