@@ -1807,6 +1807,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(seen.sent.last?.1, "mac-1")
         XCTAssertEqual(seen.sent.last?.2, "Ship it")
         XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "Ship it" })
+        // The composer's send, its context captured on screen, goes there too.
+        let composed = await appState.submitComposer(text: "And the notes", context: appState.composerSubmissionContext())
+        XCTAssertTrue(composed, "a context captured on screen is the far chat's")
+        XCTAssertEqual(seen.sent.last?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(seen.sent.last?.2, "And the notes")
 
         // Its kept connection gone, nothing reaches another dashboard's.
         let sentBefore = seen.sent.count

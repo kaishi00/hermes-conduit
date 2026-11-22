@@ -1447,6 +1447,11 @@ extension AppState {
     /// meanwhile) keeps the words in the composer, to send as the next
     /// message; the command is rejected either way.
     func rejectApprovalAndSteer(messageId: String, instruction: String, shown: ApprovalActivity) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), {
+            await self.rejectApprovalAndSteer(messageId: messageId, instruction: instruction, shown: shown)
+        }) != nil { return }
         let words = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty,
               let current = messages.first(where: { $0.id == messageId })?.approval,

@@ -52,16 +52,17 @@ extension AppState {
         // The chat on screen is another combined dashboard's, opened in
         // place, or this runs on another dashboard's runtime
         // (AppState+FarChat.swift): the chat resumes on its own runtime,
-        // and only the dashboard on screen reads its list.
+        // and only the dashboard on screen reads its list. Either way a
+        // sync begun before a newer open is superseded.
+        guard chatViewportTransitionIsCurrent(
+            requiredViewportTransitionGeneration
+        ) else { return .superseded }
         if !chatOnScreenIsInScope || !actingOnRuntimeOnScreen {
             return await syncBesideFarChat(
                 using: existingReconciliationToken,
                 onCatalogPublished: onCatalogPublished
             )
         }
-        guard chatViewportTransitionIsCurrent(
-            requiredViewportTransitionGeneration
-        ) else { return .superseded }
         let purpose = beginChatResumeRecovery(purpose: purpose)
         let automaticWorkToken = purpose == .automaticReturn
             ? (existingAutomaticWorkToken ?? beginAutomaticChatResumeWork())

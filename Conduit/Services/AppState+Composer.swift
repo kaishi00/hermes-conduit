@@ -275,7 +275,12 @@ extension AppState {
     // MARK: - Composer actions
 
     func composerSubmissionContext() -> ComposerSubmissionContext {
-        ComposerSubmissionContext(
+        // Another combined dashboard's chat on screen: captured on its own
+        // runtime, where its send is checked (AppState+FarChat.swift).
+        if case .far(let runtime) = chatRuntimeRoute {
+            return act(onRuntime: runtime) { composerSubmissionContext() }
+        }
+        return ComposerSubmissionContext(
             profile: activeProfile,
             sessionID: activeSessionId,
             durableSessionID: activeSessionId.flatMap { canonicalSessionID(for: $0) },
