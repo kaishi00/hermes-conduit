@@ -111,7 +111,7 @@ extension AppState {
               let runtime = keptRuntime(dashboardID, on: session.profile ?? "default") else { return false }
         // Its list as the Chats list read it, for the open to find the row
         // (its title, its saved copy, its profile) as a row here is found.
-        seedFarChatList(runtime, from: dashboardID)
+        seedFarChatList(runtime, from: dashboardID, with: session)
         widgetLaunchCoordinator.supersede()
         act(onRuntime: runtime) {
             _ = requestOpenSession(session.id)
@@ -162,19 +162,23 @@ extension AppState {
         return runtime
     }
 
-    /// A kept runtime with no chat list of its own takes its profile's rows
-    /// from the Chats list's read of that dashboard, so the open finds the
-    /// row (its title, saved copy and profile) as it does here.
-    private func seedFarChatList(_ runtime: DashboardRuntime, from dashboardID: UUID) {
-        guard runtime.sessions.isEmpty, let read = combinedDashboardChats[dashboardID] else { return }
-        let profile = runtime.activeProfile
-        runtime.sessions = read.sessions
-            .filter { ($0.profile ?? "default") == profile }
-            .map { row in
-                var row = row
-                row.combinedDashboardID = nil
-                return row
-            }
+    /// The open finds the row (its title, saved copy and profile) in its
+    /// runtime's list as it does here: a kept runtime with no list of its
+    /// own takes its profile's rows from the Chats list's read of that
+    /// dashboard, and one whose kept list lacks the row (kept before the
+    /// chat was made) takes the row itself.
+    private func seedFarChatList(_ runtime: DashboardRuntime, from dashboardID: UUID, with session: SessionSummary) {
+        func local(_ row: SessionSummary) -> SessionSummary {
+            var row = row
+            row.combinedDashboardID = nil
+            return row
+        }
+        if runtime.sessions.isEmpty, let read = combinedDashboardChats[dashboardID] {
+            let profile = runtime.activeProfile
+            runtime.sessions = read.sessions.filter { ($0.profile ?? "default") == profile }.map(local)
+        }
+        guard !runtime.sessions.contains(where: { $0.id == session.id }) else { return }
+        runtime.sessions.insert(local(session), at: 0)
     }
 
     // MARK: - Its events and its connection

@@ -1784,7 +1784,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(seen.opened.last?.1, "mac-1")
         XCTAssertTrue(appState.runtime(for: mac.id) === kept.runtime)
         XCTAssertTrue(appState.chatIsConnected, "its own connection's")
-        XCTAssertEqual(kept.runtime.sessions.map(\.id), ["mac-1"], "its runtime holds its row as the Chats list read it")
+        XCTAssertEqual(kept.runtime.sessions.first?.id, "mac-1", "its runtime holds its row as the Chats list read it")
+        XCTAssertNil(kept.runtime.sessions.first?.combinedDashboardID, "as a row of its own")
         XCTAssertNotEqual(appState.chatResumeLastSessionReference(for: "default")?.sessionID, "mac-1",
                           "not this dashboard's selection")
         // Only its own dashboard's events reach it.
