@@ -58,6 +58,11 @@ final class AppState: ObservableObject {
             guard farChat != oldValue else { return }
             // Its runtime's changes (connected, its client) redraw the chat.
             republishRuntime(farChat.flatMap { runtime(for: $0.dashboardID) }, for: Self.farChatSurface)
+            // Messages its dashboard left waiting come back as drafts, as on
+            // a visit there.
+            if let farChat, farChat.dashboardID != oldValue?.dashboardID {
+                restorePendingSendsLeftBehind(dashboardID: farChat.dashboardID)
+            }
         }
     }
     /// Other dashboards' runtimes a surface shows (a far group chat), whose
@@ -96,7 +101,16 @@ final class AppState: ObservableObject {
         set {
             let oldValue = shownRuntime.isConnected
             shownRuntime.isConnected = newValue
-            guard actingOnRuntimeOnScreen else { return }
+            guard actingOnRuntimeOnScreen else {
+                // A far chat's waiting message goes once its own dashboard
+                // connects, checked from the screen's scope as always.
+                if oldValue != newValue, farChat?.dashboardID == activeDashboardID {
+                    RuntimeScope.$runtime.withValue(nil) {
+                        RuntimeScope.$dashboardID.withValue(nil) { schedulePendingComposerSendCheck() }
+                    }
+                }
+                return
+            }
             if isConnected {
                 if widgetAwaitingInteractiveAuthenticationDashboardID == activeDashboardID {
                     widgetAwaitingInteractiveAuthenticationDashboardID = nil

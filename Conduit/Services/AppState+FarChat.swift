@@ -50,6 +50,12 @@ extension AppState {
         return runtime(for: farChatDashboardID)
     }
 
+    /// The dashboard and profile the chat on screen's composer works for:
+    /// a far chat's own, so a message waiting for it ("Sends when
+    /// connected") is filed, sent and handed back there.
+    var composerOwnerDashboardID: UUID? { farChat?.dashboardID ?? activeDashboardID }
+    var composerOwnerProfile: String { farChat?.profile ?? activeProfile }
+
     /// Whether the chat on screen can reach Hermes: its own dashboard's
     /// connection, which for a far chat isn't the one on screen's.
     var chatIsConnected: Bool {
