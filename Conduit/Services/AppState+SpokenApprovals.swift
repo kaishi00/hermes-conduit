@@ -154,7 +154,7 @@ extension AppState {
 
     /// Answers one question of the clarify a voice call's job waits on:
     /// through its card when the chat is on screen, else straight to
-    /// Hermes; nil `answer` leaves a form's question blank. The card as it
+    /// Hermes; nil `answer` leaves the question blank. The card as it
     /// stands after; nil once Hermes stopped waiting.
     func respondToClarifyByVoice(
         _ clarify: ClarifyActivity,

@@ -1863,12 +1863,18 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertNil(settled.error)
     }
 
-    func testOnlyAFormsQuestionCanBeLeftBlank() async throws {
+    /// A question Hermes named by its id may go blank (Skip, a form's blank
+    /// field, a spoken "skip"); a legacy single-question card, whose id is
+    /// made up here, answers through a shape that takes no blank (#3080).
+    func testALegacyCardsQuestionCannotBeLeftBlank() async throws {
         let (appState, _) = makeAppState()
-        var choicesOnly = makeRelayBatchCard()
-        choicesOnly.questions.removeLast()
+        let legacy = ClarifyActivity(requestId: "conduit-push-legacy1", questions: [
+            ClarifyQuestion(id: "q-local", question: "Which environment?", choices: [ClarifyChoice(label: "staging", value: "staging")], isSyntheticID: true)
+        ])
+        XCTAssertFalse(legacy.mayLeaveBlank(legacy.questions[0]))
+        XCTAssertTrue(makeRelayBatchCard().mayLeaveBlank(makeRelayBatchCard().questions[0]))
         appState.messages = [
-            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: choicesOnly)
+            ChatMessage(id: "clarify-legacy", role: .clarify, content: "relay", timestamp: "1", clarify: legacy)
         ]
         var sent: [String] = []
         appState.relayQuestionResponder = { _, questionID, answer in
@@ -1876,11 +1882,11 @@ final class ClarifyBatchStateTests: XCTestCase {
             return .locked(remaining: nil)
         }
 
-        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: nil)
-        await appState.respondToClarifyForm(requestId: "conduit-push-batch1", answers: [:])
+        await appState.respondToClarify(requestId: "conduit-push-legacy1", answer: nil)
+        await appState.skipRemainingClarify(requestId: "conduit-push-legacy1")
 
-        XCTAssertTrue(sent.isEmpty, "Outside a form every question waits for an answer")
-        XCTAssertEqual(clarifyCard(in: appState, requestId: "conduit-push-batch1")?.questions[0].status, .pending)
+        XCTAssertTrue(sent.isEmpty, "A legacy card's question waits for an answer")
+        XCTAssertEqual(clarifyCard(in: appState, requestId: "conduit-push-legacy1")?.questions[0].status, .pending)
 
         appState.messages = [
             ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
@@ -1891,6 +1897,48 @@ final class ClarifyBatchStateTests: XCTestCase {
         let form = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
         XCTAssertTrue(form.questions[0].isSkipped, "Shown as Skipped")
         XCTAssertEqual(form.questions[1].status, .pending)
+    }
+
+    /// Any card's question can be skipped with its Skip button, and Skip
+    /// all skips every one still open: each goes empty, as a form's blank
+    /// field does, so Hermes goes on without it.
+    func testAnyQuestionCanBeSkippedAndSkipAllSkipsTheRest() async throws {
+        let (appState, _) = makeAppState()
+        var choicesOnly = makeRelayBatchCard()
+        choicesOnly.questions.removeLast()
+        choicesOnly.questions.append(ClarifyQuestion(id: "region", question: "Which region?", choices: [ClarifyChoice(label: "east", value: "east"), ClarifyChoice(label: "west", value: "west")]))
+        XCTAssertFalse(choicesOnly.isForm)
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: choicesOnly)
+        ]
+        var sent: [String] = []
+        appState.relayQuestionResponder = { _, questionID, answer in
+            sent.append("\(questionID)=\(answer)")
+            return .locked(remaining: nil)
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: nil)
+
+        XCTAssertEqual(sent, ["environment="])
+        var card = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertTrue(card.questions[0].isSkipped, "Shown as Skipped")
+        XCTAssertTrue(card.questions.dropFirst().allSatisfy { $0.status == .pending })
+
+        await appState.skipRemainingClarify(requestId: "conduit-push-batch1")
+
+        XCTAssertEqual(sent, ["environment="] + card.questions.dropFirst().map { "\($0.id)=" }, "Only the questions still open, in order")
+        card = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertTrue(card.questions.allSatisfy(\.isSkipped))
+
+        // A form with nothing filled in, which Send can't send, is declined
+        // with Skip all too.
+        appState.messages = [
+            ChatMessage(id: "clarify-form", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard(requestId: "conduit-push-form1"))
+        ]
+        sent = []
+        await appState.skipRemainingClarify(requestId: "conduit-push-form1")
+        XCTAssertEqual(sent, ["environment=", "tests=", "notes="])
+        XCTAssertTrue(try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-form1")).questions.allSatisfy(\.isSkipped))
     }
 
     // MARK: - Model helpers

@@ -21,8 +21,10 @@ extension AppState {
     /// per question (`question_id` + the gateway's authoritative `remaining`
     /// list); a `nil` questionId targets the card's single question — the
     /// shape every push-relay card and legacy gateway produces. A nil
-    /// `answer` leaves one of a form's questions blank (`isForm`), which
-    /// Hermes reads as skipped.
+    /// `answer` leaves the question blank, which Hermes reads as skipped:
+    /// its Skip button, a form's blank field or a spoken "skip", wherever
+    /// the question may go blank (`ClarifyActivity.mayLeaveBlank`), so the
+    /// user can decline instead of answering and the agent goes on.
     func respondToClarify(requestId: String, questionId: String? = nil, answer: String?) async {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
@@ -31,8 +33,7 @@ extension AppState {
         guard trimmedAnswer?.isEmpty != true,
               let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
-              !activity.isExpired,
-              trimmedAnswer != nil || activity.isForm else { return }
+              !activity.isExpired else { return }
 
         let questionIndex: Int?
         if let questionId {
@@ -44,7 +45,8 @@ extension AppState {
         }
         guard let questionIndex,
               activity.questions[questionIndex].status == .pending
-                  || activity.questions[questionIndex].status == .error else { return }
+                  || activity.questions[questionIndex].status == .error,
+              trimmedAnswer != nil || activity.mayLeaveBlank(activity.questions[questionIndex]) else { return }
 
         activity.questions[questionIndex].status = .submitting
         activity.questions[questionIndex].error = nil
@@ -78,14 +80,27 @@ extension AppState {
     /// question still open, with its answer in `answers` by qid, or left
     /// blank when it has none there, which Hermes reads as skipped.
     func respondToClarifyForm(requestId: String, answers: [String: String]) async {
+        await sendClarifyFields(requestId: requestId, answers: answers, skippingAll: false)
+    }
+
+    /// Skips every question of the card still open (its Skip all button,
+    /// a form's included): each goes blank, which Hermes reads as skipped,
+    /// so the user can dismiss the questions and the agent goes on without
+    /// them. A question that may not go blank stays open.
+    func skipRemainingClarify(requestId: String) async {
+        await sendClarifyFields(requestId: requestId, answers: [:], skippingAll: true)
+    }
+
+    private func sendClarifyFields(requestId: String, answers: [String: String], skippingAll: Bool) async {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
-        if await onChatRuntime(unreachable: (), { await self.respondToClarifyForm(requestId: requestId, answers: answers) }) != nil { return }
+        if await onChatRuntime(unreachable: (), { await self.sendClarifyFields(requestId: requestId, answers: answers, skippingAll: skippingAll) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
-              !activity.isExpired, activity.isForm else { return }
+              !activity.isExpired, activity.isForm || skippingAll else { return }
         var sending: [(question: ClarifyQuestion, answer: String)] = []
-        for questionIndex in activity.questions.indices where activity.questions[questionIndex].isAnswerable {
+        for questionIndex in activity.questions.indices where activity.questions[questionIndex].isAnswerable
+            && (!skippingAll || activity.mayLeaveBlank(activity.questions[questionIndex])) {
             activity.questions[questionIndex].status = .submitting
             activity.questions[questionIndex].error = nil
             let answer = answers[activity.questions[questionIndex].id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
