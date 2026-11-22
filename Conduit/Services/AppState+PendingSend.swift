@@ -110,6 +110,11 @@ extension AppState {
         case .live, .none:
             break
         }
+        // Another combined dashboard's chat on screen keeps its draft under
+        // its own dashboard and profile, as its sends name it.
+        if let farChat {
+            return ComposerBar.composerDraftKey(for: activeSessionId, profile: farChat.profile, dashboard: farChat.dashboardID)
+        }
         return ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile, dashboard: activeDashboardID)
     }
 

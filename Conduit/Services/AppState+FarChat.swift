@@ -99,6 +99,52 @@ extension AppState {
         }
     }
 
+    // MARK: - The composer's session state
+
+    /// The chat on screen's session state (its model, reasoning, YOLO and
+    /// context use): another combined dashboard's for a chat opened in
+    /// place there, empty while that connection is down.
+    var chatRuntimeState: RuntimeState {
+        guard farChat != nil else { return runtime }
+        return chatOnScreenRuntime?.runtime ?? RuntimeState()
+    }
+
+    /// Changes the chat on screen's session state, on its own runtime.
+    func updateChatRuntimeState(_ change: (inout RuntimeState) -> Void) {
+        guard farChat != nil else { return change(&runtime) }
+        guard let chatRuntime = chatOnScreenRuntime else { return }
+        change(&chatRuntime.runtime)
+    }
+
+    /// The chat on screen's client: another combined dashboard's kept one
+    /// for a far chat, nil while its connection is down.
+    var chatClient: HermesClient? {
+        guard farChat != nil else { return client }
+        return chatOnScreenRuntime?.client
+    }
+
+    /// The models the chat on screen's Hermes offers it, read on its own
+    /// runtime: another combined dashboard's for a far chat. Nil when it
+    /// didn't answer or its connection is down.
+    func loadChatModelProviders(sessionId: String?, refresh: Bool) async -> [ProviderInfo]? {
+        switch chatRuntimeRoute {
+        case .inScope: return await loadModelProviders(sessionId: sessionId, refresh: refresh)
+        case .far(let runtime):
+            return await actAcrossAwaits(onRuntime: runtime) { await loadModelProviders(sessionId: sessionId, refresh: refresh) }
+        case .unreachable: return nil
+        }
+    }
+
+    /// Those models as last read for the chat on screen's dashboard and
+    /// profile, kept on the phone.
+    func keptChatModelProviders() -> [ProviderInfo] {
+        switch chatRuntimeRoute {
+        case .inScope: return keptModelProviders()
+        case .far(let runtime): return act(onRuntime: runtime) { keptModelProviders() }
+        case .unreachable: return []
+        }
+    }
+
     // MARK: - Opening
 
     /// Opens another combined dashboard's Chats row in place, on that

@@ -440,7 +440,7 @@ struct ModelPickerView: View {
         .onAppear {
             // Seeded here, not after the catalog loads, so a failed catalog
             // fetch still shows the real level.
-            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+            reasoningEffort = appState.chatRuntimeState.reasoningEffort.isEmpty ? "none" : appState.chatRuntimeState.reasoningEffort
             // Seeded here, not after the catalog loads: a failed fetch would
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
@@ -448,10 +448,10 @@ struct ModelPickerView: View {
             // The models Hermes gave last, kept on the phone, with the
             // chat's model checked, before the first frame; Hermes' answer
             // follows (#1533).
-            catalog.showKept(appState.keptModelProviders())
+            catalog.showKept(appState.keptChatModelProviders())
             if switchingRow == nil {
-                selectedModel = appState.runtime.model
-                selectedProvider = appState.runtime.provider
+                selectedModel = appState.chatRuntimeState.model
+                selectedProvider = appState.chatRuntimeState.provider
             }
         }
         .task {
@@ -485,7 +485,7 @@ struct ModelPickerView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
-        .onChange(of: appState.runtime.reasoningEffort) { _, effort in
+        .onChange(of: appState.chatRuntimeState.reasoningEffort) { _, effort in
             // Follow a level changed elsewhere (another device, a chat
             // switch), but not mid-tap, so the tapped pill doesn't flicker.
             guard !isApplyingReasoning else { return }
@@ -928,7 +928,9 @@ struct ModelPickerView: View {
     /// A model missing from the list may need its provider connected first.
     @ViewBuilder
     private var addProviderRow: some View {
-        if appState.dashboardTicketBridge != nil {
+        // A provider is added on the dashboard on screen, so a chat opened in
+        // place from another combined dashboard doesn't offer it here.
+        if appState.dashboardTicketBridge != nil, appState.farChat == nil {
             Button {
                 searchFocused = false
                 addingProvider = true
@@ -1187,7 +1189,7 @@ struct ModelPickerView: View {
                 .accessibilityElement(children: .combine)
             } else {
                 Toggle("YOLO mode", isOn: Binding(
-                    get: { writingYolo ?? appState.runtime.yolo },
+                    get: { writingYolo ?? appState.chatRuntimeState.yolo },
                     set: { enabled in Task { @MainActor in await applyYolo(enabled) } }
                 ))
                 .tint(.conduitAccent)
@@ -1224,7 +1226,7 @@ struct ModelPickerView: View {
     /// a per-session YOLO toggle cannot require approvals. Lock the toggle on
     /// and explain why rather than offering a control that silently does nothing.
     private var globalYoloFloor: Bool {
-        appState.runtime.approvalsMode?.lowercased() == "off"
+        appState.chatRuntimeState.approvalsMode?.lowercased() == "off"
     }
 
     private var yoloHelpText: String {
@@ -1239,7 +1241,7 @@ struct ModelPickerView: View {
     }
 
     private var runtimeSpeed: ModelSpeed {
-        ModelSpeed(fast: appState.runtime.fast, serviceTier: appState.runtime.serviceTier)
+        ModelSpeed(fast: appState.chatRuntimeState.fast, serviceTier: appState.chatRuntimeState.serviceTier)
     }
 
     /// Whether the selected model offers Ultrafast, from the catalog row's
@@ -1273,7 +1275,7 @@ struct ModelPickerView: View {
         catalogRead += 1
         let read = catalogRead
         catalog.readStarted()
-        let loaded = await appState.loadModelProviders(sessionId: appState.activeSessionId, refresh: refresh)
+        let loaded = await appState.loadChatModelProviders(sessionId: appState.activeSessionId, refresh: refresh)
         // A read asked since has the newer answer.
         guard read == catalogRead else { return }
         guard let loaded else {
@@ -1299,15 +1301,15 @@ struct ModelPickerView: View {
         if let switchedRow, !modelPickerShouldSwitch(
             switchedRow.selection,
             lastSwitched: switchedRow,
-            runtimeModel: appState.runtime.model,
-            runtimeProvider: appState.runtime.provider
+            runtimeModel: appState.chatRuntimeState.model,
+            runtimeProvider: appState.chatRuntimeState.provider
         ) {
             selectedModel = switchedRow.selection.model
             selectedProvider = switchedRow.selection.provider
             return
         }
-        selectedModel = appState.runtime.model
-        selectedProvider = appState.runtime.provider
+        selectedModel = appState.chatRuntimeState.model
+        selectedProvider = appState.chatRuntimeState.provider
     }
 
     /// An error row appears silently; tell VoiceOver what failed.
@@ -1327,7 +1329,7 @@ struct ModelPickerView: View {
             return
         }
         // Re-picking the live level sends nothing.
-        guard ReasoningEffortLevel(runtimeEffort: appState.runtime.reasoningEffort) != level
+        guard ReasoningEffortLevel(runtimeEffort: appState.chatRuntimeState.reasoningEffort) != level
             || ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
         reasoningEffort = level.rawValue
         reasoningError = nil
@@ -1337,7 +1339,7 @@ struct ModelPickerView: View {
         let result = await appState.setReasoningEffort(level.rawValue)
         if result != .applied {
             // Back to the live level, which may have moved meanwhile.
-            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+            reasoningEffort = appState.chatRuntimeState.reasoningEffort.isEmpty ? "none" : appState.chatRuntimeState.reasoningEffort
         }
         if case .failed(let message) = result {
             reasoningError = message
@@ -1348,7 +1350,7 @@ struct ModelPickerView: View {
             isApplyingReasoning = false
             // A level picked for another chat never reaches this one.
             guard appState.activeSessionId == sessionId else {
-                reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+                reasoningEffort = appState.chatRuntimeState.reasoningEffort.isEmpty ? "none" : appState.chatRuntimeState.reasoningEffort
                 return
             }
             await applyReasoning(next)
@@ -1371,8 +1373,8 @@ struct ModelPickerView: View {
         guard confirmed || modelPickerShouldSwitch(
             selection,
             lastSwitched: switchedRow,
-            runtimeModel: appState.runtime.model,
-            runtimeProvider: appState.runtime.provider
+            runtimeModel: appState.chatRuntimeState.model,
+            runtimeProvider: appState.chatRuntimeState.provider
         ) else {
             selectedModel = selection.model
             selectedProvider = selection.provider
@@ -1380,7 +1382,7 @@ struct ModelPickerView: View {
         }
         modelError = nil
         modelNote = nil
-        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+        guard let client = appState.chatClient, let sessionId = appState.activeSessionId else {
             modelError = AppLocalization.string("Not connected to a conversation.")
             return
         }
@@ -1395,11 +1397,13 @@ struct ModelPickerView: View {
         // Another chat opened meanwhile (which also takes this sheet down):
         // what Hermes took belongs to the chat the tap started in, not to the
         // runtime the composer now shows.
-        guard appState.client === client, appState.activeSessionId == sessionId else { return }
+        guard appState.chatClient === client, appState.activeSessionId == sessionId else { return }
         switch result {
         case .switched(let model, let deferred):
-            appState.runtime.model = model
-            appState.runtime.provider = selection.provider
+            appState.updateChatRuntimeState {
+                $0.model = model
+                $0.provider = selection.provider
+            }
             switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
             // Under the catalog's own provider names, so a model reached by
             // an alias is one recent row.
@@ -1431,11 +1435,11 @@ struct ModelPickerView: View {
         let stillRunning = !modelPickerShouldSwitch(
             previous,
             lastSwitched: switchedRow,
-            runtimeModel: appState.runtime.model,
-            runtimeProvider: appState.runtime.provider
+            runtimeModel: appState.chatRuntimeState.model,
+            runtimeProvider: appState.chatRuntimeState.provider
         )
-        selectedModel = stillRunning ? previous.model : appState.runtime.model
-        selectedProvider = stillRunning ? previous.provider : appState.runtime.provider
+        selectedModel = stillRunning ? previous.model : appState.chatRuntimeState.model
+        selectedProvider = stillRunning ? previous.provider : appState.chatRuntimeState.provider
     }
 
     /// Picking a speed writes it at once; a failed write leaves the
@@ -1444,7 +1448,7 @@ struct ModelPickerView: View {
     private func applySpeed(_ new: ModelSpeed, unlocked: Bool = false) async {
         guard writingSpeed == nil, unlocked || switchingRow == nil, new != runtimeSpeed else { return }
         runSettingsError = nil
-        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+        guard let client = appState.chatClient, let sessionId = appState.activeSessionId else {
             runSettingsError = AppLocalization.string("Not connected to a conversation.")
             return
         }
@@ -1453,18 +1457,20 @@ struct ModelPickerView: View {
         do {
             try await client.setSpeed(sessionId, speed: new)
         } catch {
-            guard appState.client === client, appState.activeSessionId == sessionId else { return }
+            guard appState.chatClient === client, appState.activeSessionId == sessionId else { return }
             runSettingsError = UserFacingError.message(for: error)
             return
         }
-        guard appState.client === client, appState.activeSessionId == sessionId else { return }
-        appState.runtime.fast = new != .normal
-        appState.runtime.serviceTier = new.serviceTier
+        guard appState.chatClient === client, appState.activeSessionId == sessionId else { return }
+        appState.updateChatRuntimeState {
+            $0.fast = new != .normal
+            $0.serviceTier = new.serviceTier
+        }
     }
 
     /// Flipping YOLO writes it at once, for this conversation only.
     private func applyYolo(_ enabled: Bool) async {
-        guard writingYolo == nil, switchingRow == nil, !globalYoloFloor, enabled != appState.runtime.yolo else { return }
+        guard writingYolo == nil, switchingRow == nil, !globalYoloFloor, enabled != appState.chatRuntimeState.yolo else { return }
         runSettingsError = nil
         writingYolo = enabled
         defer { writingYolo = nil }

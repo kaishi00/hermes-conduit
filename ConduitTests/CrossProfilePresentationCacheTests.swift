@@ -1963,7 +1963,7 @@ extension CrossProfilePresentationCacheTests {
             seen.sent.append((ObjectIdentifier(client), sessionID, text))
             return .accepted
         }
-        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertTrue(kept.client === outgoing)
@@ -2029,6 +2029,27 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(composerContext.clientIdentity, kept.runtime.client.map(ObjectIdentifier.init))
         XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.isCurrentComposerSubmission(composerContext) },
                       "a context captured on screen is the far chat's")
+
+        // The composer shows and writes the far chat's own model, reasoning
+        // and YOLO, and keeps its draft under its own dashboard and profile.
+        kept.runtime.runtime.model = "mac-model"
+        appState.runtimeOnScreen.runtime.model = "vps-model"
+        XCTAssertEqual(appState.chatRuntimeState.model, "mac-model", "the far chat's")
+        XCTAssertEqual(appState.runtime.model, "vps-model", "the dashboard on screen's stays its own")
+        appState.updateChatRuntimeState { $0.provider = "mac-provider" }
+        XCTAssertEqual(kept.runtime.runtime.provider, "mac-provider")
+        XCTAssertNotEqual(appState.runtimeOnScreen.runtime.provider, "mac-provider")
+        XCTAssertTrue(appState.chatClient === outgoing, "its own connection's client")
+        XCTAssertEqual(appState.composerDraftKeyOnScreen.dashboard, mac.id, "its draft is the Mac's")
+        XCTAssertEqual(appState.composerDraftKeyOnScreen.profile, "default")
+        let framesBefore = socket.sentTexts.count
+        _ = await appState.setReasoningEffort("high")
+        XCTAssertTrue(socket.sentTexts.dropFirst(framesBefore).contains { $0.contains("reasoning") && $0.contains("mac-1") },
+                      "its reasoning goes through the kept connection, for its chat")
+        let yoloFrames = socket.sentTexts.count
+        _ = await appState.setYoloModeReportingFailure(true)
+        XCTAssertTrue(socket.sentTexts.dropFirst(yoloFrames).contains { $0.contains("mac-1") },
+                      "its YOLO goes through the kept connection too")
 
         // Its kept connection gone, nothing reaches another dashboard's.
         let sentBefore = seen.sent.count
