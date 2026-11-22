@@ -5026,11 +5026,11 @@ final class OfflineChatCacheTests: XCTestCase {
         let elsewhere = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
         let here = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
         twoHermes.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: here.id, dashboards: [elsewhere, here])
-        func shared(on dashboard: SavedDashboard) -> BackgroundChat {
+        func sharedChat(on dashboard: SavedDashboard) -> BackgroundChat {
             BackgroundChat(sessionIDs: ["shared"], durableSessionID: nil, title: "Shared", dashboardID: dashboard.id,
                            profile: twoHermes.activeProfile, isBotChat: false, rows: [], streamingText: "Half")
         }
-        twoHermes.backgroundChats = [shared(on: elsewhere), shared(on: here)]
+        twoHermes.backgroundChats = [sharedChat(on: elsewhere), sharedChat(on: here)]
         twoHermes.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-shared", durableID: "shared",
                                                                 profile: twoHermes.activeProfile, source: .resume)
         XCTAssertEqual(twoHermes.followedChatIndex(reboundTo: "rt-shared"), 1, "the dashboard in scope's")
