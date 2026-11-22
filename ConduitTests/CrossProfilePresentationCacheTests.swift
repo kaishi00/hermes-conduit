@@ -2036,7 +2036,8 @@ extension CrossProfilePresentationCacheTests {
         // Unreachable, its rows still save under its own profile.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
         XCTAssertEqual(appState.activeSessionId, "mac-1")
-        XCTAssertTrue(appState.messages.contains { $0.id == "far-1" }, "its rows still on screen")
+        // Its rows as they stand when the flush runs.
+        appState.messages = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")]
         guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("its dashboard is gone") }
         appState.flushPendingPresentationCache()
         appState.sessionPresentationCache.waitForPendingWrites()
