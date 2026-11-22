@@ -31,25 +31,25 @@ struct ContextSheet: View {
             // glow and fading under the bar; compact to fit the half sheet.
             SettingsDetailContainer(compact: true) {
                 ConduitSettingsSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", tint: .conduitAura) {
-                    SettingsMetricRow(label: AppLocalization.string("Used", table: .settings), value: AppLocalization.string("\(Int(appState.runtime.contextUsed)) tokens", table: .settings))
-                    SettingsMetricRow(label: AppLocalization.string("Capacity", table: .settings), value: AppLocalization.string("\(Int(appState.runtime.contextMax)) tokens", table: .settings))
+                    SettingsMetricRow(label: AppLocalization.string("Used", table: .settings), value: AppLocalization.string("\(Int(appState.chatRuntimeState.contextUsed)) tokens", table: .settings))
+                    SettingsMetricRow(label: AppLocalization.string("Capacity", table: .settings), value: AppLocalization.string("\(Int(appState.chatRuntimeState.contextMax)) tokens", table: .settings))
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {
                             Text("Window usage")
                                 .scaledFont(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text("\(String(Int(appState.runtime.contextPercent.rounded())))%")
+                            Text("\(String(Int(appState.chatRuntimeState.contextPercent.rounded())))%")
                                 .scaledFont(.caption.monospacedDigit().weight(.semibold))
                         }
                         ContextWindowBar(
                             segments: segments,
-                            capacity: Double(max(Int(appState.runtime.contextMax), breakdown?.contextMax ?? 0)),
-                            fallbackFraction: appState.runtime.contextPercent / 100
+                            capacity: Double(max(Int(appState.chatRuntimeState.contextMax), breakdown?.contextMax ?? 0)),
+                            fallbackFraction: appState.chatRuntimeState.contextPercent / 100
                         )
                         .accessibilityElement()
                         .accessibilityLabel(Text("Window usage"))
-                        .accessibilityValue(Text("\(String(Int(appState.runtime.contextPercent.rounded())))%"))
+                        .accessibilityValue(Text("\(String(Int(appState.chatRuntimeState.contextPercent.rounded())))%"))
                     }
                     .padding(.top, 4)
                 }

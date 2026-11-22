@@ -1963,7 +1963,7 @@ extension CrossProfilePresentationCacheTests {
             seen.sent.append((ObjectIdentifier(client), sessionID, text))
             return .accepted
         }
-        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertTrue(kept.client === outgoing)
@@ -2030,6 +2030,58 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.isCurrentComposerSubmission(composerContext) },
                       "a context captured on screen is the far chat's")
 
+        // The composer shows and writes the far chat's own model, reasoning
+        // and YOLO, and keeps its draft under its own dashboard and profile.
+        kept.runtime.runtime.model = "mac-model"
+        appState.runtimeOnScreen.runtime.model = "vps-model"
+        XCTAssertEqual(appState.chatRuntimeState.model, "mac-model", "the far chat's")
+        XCTAssertEqual(appState.runtime.model, "vps-model", "the dashboard on screen's stays its own")
+        appState.updateChatRuntimeState { $0.provider = "mac-provider" }
+        XCTAssertEqual(kept.runtime.runtime.provider, "mac-provider")
+        XCTAssertNotEqual(appState.runtimeOnScreen.runtime.provider, "mac-provider")
+        XCTAssertTrue(appState.chatClient === outgoing, "its own connection's client")
+        XCTAssertEqual(appState.composerDraftKeyOnScreen.dashboard, mac.id, "its draft is the Mac's")
+        XCTAssertEqual(appState.composerDraftKeyOnScreen.profile, "default")
+        let framesBefore = socket.refusedTexts.count
+        _ = await appState.setReasoningEffort("high")
+        XCTAssertTrue(socket.refusedTexts.dropFirst(framesBefore).contains { $0.contains("reasoning") && $0.contains("mac-1") },
+                      "its reasoning goes through the kept connection, for its chat")
+        let yoloFrames = socket.refusedTexts.count
+        _ = await appState.setYoloModeReportingFailure(true)
+        XCTAssertTrue(socket.refusedTexts.dropFirst(yoloFrames).contains { $0.contains("mac-1") },
+                      "its YOLO goes through the kept connection too")
+        // The Model sheet's catalog is read through it, and its Edit
+        // filters and Quick picks are the Mac's own.
+        let catalogFrames = socket.refusedTexts.count
+        _ = await appState.loadChatModelProviders(sessionId: "mac-1", refresh: false)
+        XCTAssertTrue(socket.refusedTexts.dropFirst(catalogFrames).contains { $0.contains("model.options") },
+                      "the catalog is the Mac's, read through its kept connection")
+        let screenVisibility = appState.modelVisibility
+        let screenPicks = appState.modelQuickPicks
+        appState.saveChatModelVisibility(ModelVisibility(hiddenProviders: ["mac-hidden"], hiddenModels: []))
+        XCTAssertEqual(appState.chatModelVisibility.hiddenProviders, ["mac-hidden"])
+        XCTAssertEqual(appState.modelVisibility, screenVisibility, "the dashboard on screen's filters are untouched")
+        appState.updateChatModelQuickPicks { $0.recordSwitch(to: ModelQuickPick(provider: "mac-provider", model: "mac-model"), from: nil) }
+        XCTAssertEqual(appState.chatModelQuickPicks.recent.first?.model, "mac-model")
+        XCTAssertEqual(appState.modelQuickPicks, screenPicks, "the dashboard on screen's Quick picks are untouched")
+        XCTAssertEqual(appState.storedModelQuickPicks()[AppState.dashboardPreferenceBucket(mac.id)]?.recent.first?.model, "mac-model",
+                       "kept under the Mac")
+        // Its draft's owner comes from the Mac's own list.
+        XCTAssertEqual(appState.composerDraftOwner(for: appState.composerDraftKeyOnScreen), "mac-1")
+        // And whether its id is another chat's now is read from that list too.
+        XCTAssertTrue(appState.composerDraftKey(appState.composerDraftKeyOnScreen, isNotChatOf: "older-chat"),
+                      "the Mac's list gives mac-1 to its own row")
+        XCTAssertFalse(appState.composerDraftKey(appState.composerDraftKeyOnScreen, isNotChatOf: "mac-1"))
+        // Once the chat is left, its stored draft is still told from the
+        // Mac's list while the Mac is kept: words that came back after it
+        // was left keep their owner and stay its chat's.
+        let farKey = appState.composerDraftKeyOnScreen
+        let farChatOwner = appState.farChat
+        appState.farChat = nil
+        XCTAssertEqual(appState.composerDraftOwner(for: farKey), "mac-1", "read from the Mac's list, not the screen's")
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(farKey, farKey))
+        appState.farChat = farChatOwner
+
         // Its kept connection gone, nothing reaches another dashboard's.
         let sentBefore = seen.sent.count
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
@@ -2037,6 +2089,15 @@ extension CrossProfilePresentationCacheTests {
         let wentAnyway = await appState.sendMessage("Again")
         XCTAssertFalse(wentAnyway)
         XCTAssertEqual(seen.sent.count, sentBefore, "never sent to the dashboard on screen")
+        let unreachableCatalog = await appState.loadChatModelProviders(sessionId: "mac-1", refresh: false)
+        XCTAssertNil(unreachableCatalog, "no catalog while its connection is down, never the screen's")
+        // Its filters and Quick picks still keep under the Mac, never the screen.
+        appState.saveChatModelVisibility(ModelVisibility(hiddenProviders: ["mac-gone"], hiddenModels: []))
+        XCTAssertEqual(appState.chatModelVisibility.hiddenProviders, ["mac-gone"])
+        XCTAssertEqual(appState.modelVisibility, screenVisibility, "the dashboard on screen's filters are untouched")
+        appState.updateChatModelQuickPicks { $0.recordSwitch(to: ModelQuickPick(provider: "mac-provider", model: "mac-later"), from: nil) }
+        XCTAssertEqual(appState.storedModelQuickPicks()[AppState.dashboardPreferenceBucket(mac.id)]?.recent.first?.model, "mac-later")
+        XCTAssertEqual(appState.modelQuickPicks, screenPicks, "the dashboard on screen's Quick picks are untouched")
         // Unreachable, its rows still save under its own profile.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
         XCTAssertEqual(appState.activeSessionId, "mac-1")

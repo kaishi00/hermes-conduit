@@ -92,7 +92,7 @@ struct ComposerInputs: Equatable {
         activeChatTakeover = appState.activeChatTakeover
         hasRoomSurface = appState.activeRoomSurface != nil
         botChatComing = appState.botChatComingOverAnother != nil
-        runtime = appState.runtime
+        runtime = appState.chatRuntimeState
         isWritingReasoningEffort = appState.isWritingReasoningEffort
         activeAgents = appState.activeAgents
         showModelPicker = appState.showModelPicker
