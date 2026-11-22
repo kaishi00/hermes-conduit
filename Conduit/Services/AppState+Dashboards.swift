@@ -809,7 +809,7 @@ extension AppState {
         // and bridge are already open, and what it showed shows at once,
         // so only the sync runs, reading it anew.
         if let kept = takeKeptDashboardRuntime(id, profile: activeProfile),
-           let reusing = keptClient(kept, on: activeProfile) {
+           let reusing = keptClient(kept, of: id, on: activeProfile) {
             presentOfflineChatIfAvailable(dashboardID: id)
             showLogin = false
             isConnecting = true
