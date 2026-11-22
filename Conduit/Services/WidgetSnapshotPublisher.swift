@@ -21,6 +21,19 @@ struct WidgetSnapshotPublisher {
         try writeIfChanged(snapshot)
     }
 
+    /// Workspaces of dashboards not on screen (the other combined ones),
+    /// written together; the current workspace stays as it is. `over`: the
+    /// snapshot as the caller just read it.
+    func publish(others: [WidgetWorkspaceSnapshot], over previous: WidgetSnapshot?, language: String) throws {
+        var workspaces = Dictionary((previous?.workspaces ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for workspace in others { workspaces[workspace.id] = workspace }
+        try writeIfChanged(WidgetSnapshot(
+            appLanguage: language,
+            currentWorkspaceID: previous?.currentWorkspaceID,
+            workspaces: Array(workspaces.values)
+        ))
+    }
+
     func remove(dashboardID: UUID) throws {
         guard let previous = store.read() else { return }
         let workspaces = previous.workspaces.filter { $0.id.dashboardID != dashboardID }

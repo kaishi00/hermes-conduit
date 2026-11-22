@@ -729,6 +729,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.runtime(for: UUID()), "none for a dashboard not kept")
         XCTAssertNil(appState.runtime(for: nil), "nor for no dashboard")
         // Acting on it reads and writes its own, and leaves the screen's.
+        XCTAssertEqual(kept.activeProfile, keptConnection.client.profile ?? "default", "its profile is its kept client's")
+        let profileOnScreen = appState.activeProfile
         var syncTask: Task<Int, Never>?
         appState.act(onRuntime: kept) {
             XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
@@ -736,10 +738,14 @@ extension CrossProfilePresentationCacheTests {
             XCTAssertEqual(appState.activeDashboardID, mac.id, "the dashboard in scope")
             XCTAssertEqual(appState.dashboardIDOnScreen, vps.id)
             appState.pulseUnseen = 5
+            appState.activeProfile = "kept-profile"
             syncTask = Task { @MainActor in appState.pulseUnseen }
         }
         let fromSyncScope = await syncTask?.value
         XCTAssertEqual(fromSyncScope, 5, "a Task made in a synchronous scope carries it on")
+        XCTAssertEqual(kept.activeProfile, "kept-profile", "a profile set in its scope is its own")
+        XCTAssertEqual(appState.activeProfile, profileOnScreen, "and the screen's stays")
+        kept.activeProfile = keptConnection.client.profile ?? "default"
         XCTAssertEqual(kept.pulseUnseen, 5)
         XCTAssertEqual(appState.pulseUnseen, 0)
         XCTAssertTrue(appState.actingOnRuntimeOnScreen)

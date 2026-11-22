@@ -122,6 +122,10 @@ final class AppState: ObservableObject {
     var isConnectingValues: AnyPublisher<Bool, Never> {
         $runtimeOnScreen.map { $0.$isConnecting }.switchToLatest().eraseToAnyPublisher()
     }
+    /// The profile on screen as it changes (as `$activeProfile` did).
+    var activeProfileValues: AnyPublisher<String, Never> {
+        $runtimeOnScreen.map { $0.$activeProfile }.switchToLatest().eraseToAnyPublisher()
+    }
     /// The dashboard on screen's Chats list rows as they change.
     var sessionsValues: AnyPublisher<[SessionSummary], Never> {
         $runtimeOnScreen.map { $0.$sessions }.switchToLatest().eraseToAnyPublisher()
@@ -210,8 +214,16 @@ final class AppState: ObservableObject {
     /// (its Artifacts in All).
     var keptGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
 
-    @Published var activeProfile: String = "default" {
-        didSet {
+    /// The profile the dashboard acted on is on: the one on screen's, or,
+    /// while another dashboard's work runs in its scope (`act(onRuntime:)`),
+    /// that dashboard's own (`DashboardRuntime.activeProfile`). What reacts
+    /// to a change on screen runs only for the one on screen.
+    var activeProfile: String {
+        get { shownRuntime.activeProfile }
+        set {
+            let oldValue = shownRuntime.activeProfile
+            shownRuntime.activeProfile = newValue
+            guard actingOnRuntimeOnScreen else { return }
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
                 // Its own saved voice jobs, if no boundary already took them.
@@ -3392,9 +3404,10 @@ final class AppState: ObservableObject {
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
         }
-        activeProfile = defaults.string(forKey: activeProfileKey)?
+        // Straight into the runtime: at launch nothing on screen reacts yet.
+        let launchProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
-        if activeProfile.isEmpty { activeProfile = "default" }
+        runtimeOnScreen.activeProfile = launchProfile.isEmpty ? "default" : launchProfile
         displayPreferences = storedDisplayPreferences(dashboardID: initialDashboardID, profile: activeProfile)
             ?? ProfileDisplayPreferences()
         // The global key is what cold launch opens (the resume state and
