@@ -102,6 +102,18 @@ extension AppState {
         return keptDashboardRuntimes[dashboardID]?.runtime
     }
 
+    /// Runs `body` on another dashboard's runtime: AppState's forwarders
+    /// read and write `runtime` meanwhile, and what reacts on screen (their
+    /// side effects) stays off unless it's the one on screen. Synchronous
+    /// only: an await inside would let other work run on that runtime, so
+    /// an async read scopes each step after its awaits again.
+    func act<T>(onRuntime runtime: DashboardRuntime, _ body: () throws -> T) rethrows -> T {
+        let previous = runtimeInScope
+        runtimeInScope = runtime
+        defer { runtimeInScope = previous }
+        return try body()
+    }
+
     /// Whether this dashboard is in the combined group.
     func isInCombinedGroup(_ id: UUID?) -> Bool {
         guard let id else { return false }

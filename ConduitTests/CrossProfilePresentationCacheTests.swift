@@ -723,6 +723,16 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(kept.isConnected)
         XCTAssertTrue(appState.runtime(for: vps.id) === appState.runtimeOnScreen, "the one on screen's own")
         XCTAssertFalse(appState.runtime(for: mac.id) === appState.runtimeOnScreen)
+        // Acting on it reads and writes its own, and leaves the screen's.
+        appState.act(onRuntime: kept) {
+            XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
+            XCTAssertFalse(appState.actingOnRuntimeOnScreen)
+            appState.pulseUnseen = 5
+        }
+        XCTAssertEqual(kept.pulseUnseen, 5)
+        XCTAssertEqual(appState.pulseUnseen, 0)
+        XCTAssertTrue(appState.actingOnRuntimeOnScreen)
+        kept.pulseUnseen = 3
         XCTAssertEqual(appState.pulseUnseen, 0, "the dashboard switched to shows none of it")
         // As the other dashboard's roster would be (a first switch with no
         // stored server identity crosses no boundary, so nothing clears it).
