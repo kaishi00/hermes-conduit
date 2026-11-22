@@ -243,6 +243,17 @@ extension SidebarLayoutTests {
         let branchMuted = ChatMutes().setting(branch, duration: .oneHour, profile: "default", dashboardID: dashboard, now: now)
         XCTAssertNotNil(branchMuted.mute(for: branch, profile: "default", now: now))
         XCTAssertNil(branchMuted.mute(for: original, profile: "default", now: now), "muting a branch leaves its parent")
+        // A compaction's tip that keeps the old id only as its lineage root
+        // finds a mute set before the compaction through the plugin's answer,
+        // which names every session the chat ran under.
+        let tip = SessionSummary(
+            id: "chat-3", alternateIds: [], title: "chat", model: "Hermes", updatedLabel: "now",
+            lastActivityAt: nil, profile: "default", source: .chat, isActive: false, isArchived: false,
+            lineageRootId: "chat-1"
+        )
+        let answered = ChatMutes().replacing([ChatMutes.Mute(ids: ["chat-1", "chat-3"], until: nil)], profile: "default",
+                                             dashboardID: dashboard)
+        XCTAssertNotNil(answered.mute(for: tip, profile: "default", now: now))
         XCTAssertEqual(ChatMutes.path(profile: "my bot"), "/api/plugins/conduit_push/notifications/muted-chats?profile=my%20bot")
 
         let read = ChatMutes.mutes(from: ["chats": [
