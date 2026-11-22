@@ -274,13 +274,6 @@ extension AppState {
         return (before, after)
     }
 
-    /// Opens another combined dashboard's group chat: the switch to its
-    /// dashboard through its kept connection, then the room there, where
-    /// you talk in it as that Hermes' own person.
-    /// `inBots`: tapped on Bots Home, so its screen opens in Bots and Back
-    /// returns there, as this dashboard's rooms' portraits do. The mark is
-    /// made once the switch has settled, since a switch clears Bot Mode's
-    /// state, an open on its way included.
     /// Whether the dashboard on screen lists the tile's room already, so
     /// opening it needs no read: a hosted room in its rooms, a copy in its
     /// copies with the plugin's routes known.
@@ -294,6 +287,14 @@ extension AppState {
         }
     }
 
+    /// Opens another combined dashboard's group chat: the switch to its
+    /// dashboard through its kept connection, then the room there, where
+    /// you talk in it as that Hermes' own person.
+    /// `inBots`: tapped on Bots Home, so its screen opens in Bots and Back
+    /// returns there, as this dashboard's rooms' portraits do. The mark is
+    /// made once the switch has connected there (and its kept lists show
+    /// the room) or settled, since a switch clears Bot Mode's state, an
+    /// open on its way included.
     func openCombinedRoom(_ tile: CombinedRoomTile, inBots: Bool = false) async {
         guard !refusesCombinedSwitchDuringCall() else { return }
         dismissSidebarDrawer()
