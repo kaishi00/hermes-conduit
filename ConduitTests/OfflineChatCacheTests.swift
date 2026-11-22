@@ -3760,6 +3760,12 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(pending.draftSessionID, "far-durable")
         XCTAssertEqual(pending.chatSessionIDs, ["far-durable", "stored-b"])
         XCTAssertTrue(appState.isOnScreen(pending))
+        // Its open id still names it while the row is recorded: a message
+        // kept under the bare id before the row came stays on screen.
+        XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
+        var keptBeforeTheRow = pending
+        keptBeforeTheRow.draftSessionID = "stored-b"
+        XCTAssertTrue(appState.isOnScreen(keptBeforeTheRow))
 
         // With no row of its own recorded, only its open id says.
         appState.pendingComposerSend = nil
