@@ -403,6 +403,17 @@ final class KanbanStore {
         return try await service.fetchTaskLog(id: id, board: loadedBoardSlug ?? effectiveBoardSlug, tailBytes: tailBytes)
     }
 
+    /// Downloads a task attachment into the preview staging folder; the
+    /// caller hands it to `MediaPreviewPresenter`, which removes it.
+    func downloadAttachment(_ attachment: KanbanAttachment) async throws -> DashboardDownloadedFile {
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
+        return try await service.downloadAttachment(
+            attachment,
+            board: loadedBoardSlug ?? effectiveBoardSlug,
+            into: MediaPreviewPresenter.shared.stagingDirectory
+        )
+    }
+
     /// Provider/model roster for the per-task override picker. Read-only
     /// auxiliary data: failures are surfaced to the caller (the picker falls
     /// back to free-text entry) but never touch board state.

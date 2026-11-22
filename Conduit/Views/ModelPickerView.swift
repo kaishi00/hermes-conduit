@@ -408,7 +408,7 @@ struct ModelPickerView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(editingVisibility ? AppLocalization.string("Done") : AppLocalization.string("Edit")) {
                         if editingVisibility {
-                            appState.saveModelVisibility(visibility)
+                            appState.saveChatModelVisibility(visibility)
                             editingVisibility = false
                         } else {
                             startEditingVisibility()
@@ -440,18 +440,18 @@ struct ModelPickerView: View {
         .onAppear {
             // Seeded here, not after the catalog loads, so a failed catalog
             // fetch still shows the real level.
-            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+            reasoningEffort = appState.chatRuntimeState.reasoningEffort.isEmpty ? "none" : appState.chatRuntimeState.reasoningEffort
             // Seeded here, not after the catalog loads: a failed fetch would
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
-            visibility = appState.modelVisibility
+            visibility = appState.chatModelVisibility
             // The models Hermes gave last, kept on the phone, with the
             // chat's model checked, before the first frame; Hermes' answer
             // follows (#1533).
-            catalog.showKept(appState.keptModelProviders())
+            catalog.showKept(appState.keptChatModelProviders())
             if switchingRow == nil {
-                selectedModel = appState.runtime.model
-                selectedProvider = appState.runtime.provider
+                selectedModel = appState.chatRuntimeState.model
+                selectedProvider = appState.chatRuntimeState.provider
             }
         }
         .task {
@@ -485,7 +485,7 @@ struct ModelPickerView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
-        .onChange(of: appState.runtime.reasoningEffort) { _, effort in
+        .onChange(of: appState.chatRuntimeState.reasoningEffort) { _, effort in
             // Follow a level changed elsewhere (another device, a chat
             // switch), but not mid-tap, so the tapped pill doesn't flicker.
             guard !isApplyingReasoning else { return }
@@ -753,8 +753,10 @@ struct ModelPickerView: View {
     private var quickPicksSection: some View {
         let providers = visibleProviders
         let current = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
-        let pinned = appState.modelQuickPicks.pinnedRows(in: providers)
-        let recent = appState.modelQuickPicks.recentRows(in: providers, excluding: current)
+        // Read once: a far chat's are decoded from what's kept.
+        let picks = appState.chatModelQuickPicks
+        let pinned = picks.pinnedRows(in: providers)
+        let recent = picks.recentRows(in: providers, excluding: current)
         if catalog.state != .ready {
             ModelPickerSection(title: AppLocalization.string("Providers", table: .settings), symbol: "server.rack", tint: .conduitAccent, flush: true) {
                 catalogStateRows
@@ -763,14 +765,14 @@ struct ModelPickerView: View {
             ModelPickerSection(title: AppLocalization.string("Quick picks", table: .settings), symbol: "pin", tint: .conduitAccent, flush: true) {
                 if !pinned.isEmpty {
                     quickPicksHeader(AppLocalization.string("Pinned"))
-                    quickPickRows(pinned)
+                    quickPickRows(pinned, picks: picks)
                 }
                 if !recent.isEmpty {
                     if !pinned.isEmpty {
                         Divider().overlay(rowStroke).padding(.leading, 16).padding(.top, 4)
                     }
                     quickPicksHeader(AppLocalization.string("Recent"))
-                    quickPickRows(recent)
+                    quickPickRows(recent, picks: picks)
                 }
                 if catalog.keptRowsFailed {
                     catalogFailedRow
@@ -796,18 +798,18 @@ struct ModelPickerView: View {
     }
 
     @ViewBuilder
-    private func quickPickRows(_ rows: [ModelSearchMatch]) -> some View {
+    private func quickPickRows(_ rows: [ModelSearchMatch], picks: ModelQuickPicks) -> some View {
         ForEach(rows) { row in
             HStack(spacing: 0) {
                 modelRow(row.model, provider: row.provider, showsProvider: true)
-                pinButton(row.model, provider: row.provider)
+                pinButton(row.model, provider: row.provider, picks: picks)
             }
         }
     }
 
     /// Pins a model to Quick picks, or unpins it.
-    private func pinButton(_ model: ModelInfo, provider: ProviderInfo) -> some View {
-        let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+    private func pinButton(_ model: ModelInfo, provider: ProviderInfo, picks: ModelQuickPicks) -> some View {
+        let pinned = picks.isPinned(model: model.id, provider: provider)
         // Several providers serve one model, so VoiceOver names both.
         let name = "\(model.id), \(provider.title)"
         return Button {
@@ -829,7 +831,7 @@ struct ModelPickerView: View {
     private func togglePin(_ model: ModelInfo, provider: ProviderInfo) {
         Haptics.selection()
         withAnimation(ConduitMotion.response) {
-            appState.updateModelQuickPicks { $0.togglePin(model: model.id, provider: provider) }
+            appState.updateChatModelQuickPicks { $0.togglePin(model: model.id, provider: provider) }
         }
     }
 
@@ -928,7 +930,9 @@ struct ModelPickerView: View {
     /// A model missing from the list may need its provider connected first.
     @ViewBuilder
     private var addProviderRow: some View {
-        if appState.dashboardTicketBridge != nil {
+        // A provider is added on the dashboard on screen, so a chat opened in
+        // place from another combined dashboard doesn't offer it here.
+        if appState.dashboardTicketBridge != nil, appState.farChat == nil {
             Button {
                 searchFocused = false
                 addingProvider = true
@@ -1119,7 +1123,7 @@ struct ModelPickerView: View {
         .disabled(modelRowsLocked)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
-            let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+            let pinned = appState.chatModelQuickPicks.isPinned(model: model.id, provider: provider)
             Button {
                 togglePin(model, provider: provider)
             } label: {
@@ -1187,7 +1191,7 @@ struct ModelPickerView: View {
                 .accessibilityElement(children: .combine)
             } else {
                 Toggle("YOLO mode", isOn: Binding(
-                    get: { writingYolo ?? appState.runtime.yolo },
+                    get: { writingYolo ?? appState.chatRuntimeState.yolo },
                     set: { enabled in Task { @MainActor in await applyYolo(enabled) } }
                 ))
                 .tint(.conduitAccent)
@@ -1224,7 +1228,7 @@ struct ModelPickerView: View {
     /// a per-session YOLO toggle cannot require approvals. Lock the toggle on
     /// and explain why rather than offering a control that silently does nothing.
     private var globalYoloFloor: Bool {
-        appState.runtime.approvalsMode?.lowercased() == "off"
+        appState.chatRuntimeState.approvalsMode?.lowercased() == "off"
     }
 
     private var yoloHelpText: String {
@@ -1239,7 +1243,7 @@ struct ModelPickerView: View {
     }
 
     private var runtimeSpeed: ModelSpeed {
-        ModelSpeed(fast: appState.runtime.fast, serviceTier: appState.runtime.serviceTier)
+        ModelSpeed(fast: appState.chatRuntimeState.fast, serviceTier: appState.chatRuntimeState.serviceTier)
     }
 
     /// Whether the selected model offers Ultrafast, from the catalog row's
@@ -1273,7 +1277,7 @@ struct ModelPickerView: View {
         catalogRead += 1
         let read = catalogRead
         catalog.readStarted()
-        let loaded = await appState.loadModelProviders(sessionId: appState.activeSessionId, refresh: refresh)
+        let loaded = await appState.loadChatModelProviders(sessionId: appState.activeSessionId, refresh: refresh)
         // A read asked since has the newer answer.
         guard read == catalogRead else { return }
         guard let loaded else {
@@ -1299,15 +1303,15 @@ struct ModelPickerView: View {
         if let switchedRow, !modelPickerShouldSwitch(
             switchedRow.selection,
             lastSwitched: switchedRow,
-            runtimeModel: appState.runtime.model,
-            runtimeProvider: appState.runtime.provider
+            runtimeModel: appState.chatRuntimeState.model,
+            runtimeProvider: appState.chatRuntimeState.provider
         ) {
             selectedModel = switchedRow.selection.model
             selectedProvider = switchedRow.selection.provider
             return
         }
-        selectedModel = appState.runtime.model
-        selectedProvider = appState.runtime.provider
+        selectedModel = appState.chatRuntimeState.model
+        selectedProvider = appState.chatRuntimeState.provider
     }
 
     /// An error row appears silently; tell VoiceOver what failed.
@@ -1327,7 +1331,7 @@ struct ModelPickerView: View {
             return
         }
         // Re-picking the live level sends nothing.
-        guard ReasoningEffortLevel(runtimeEffort: appState.runtime.reasoningEffort) != level
+        guard ReasoningEffortLevel(runtimeEffort: appState.chatRuntimeState.reasoningEffort) != level
             || ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
         reasoningEffort = level.rawValue
         reasoningError = nil
@@ -1337,7 +1341,7 @@ struct ModelPickerView: View {
         let result = await appState.setReasoningEffort(level.rawValue)
         if result != .applied {
             // Back to the live level, which may have moved meanwhile.
-            reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+            reasoningEffort = appState.chatRuntimeState.reasoningEffort.isEmpty ? "none" : appState.chatRuntimeState.reasoningEffort
         }
         if case .failed(let message) = result {
             reasoningError = message
@@ -1348,7 +1352,7 @@ struct ModelPickerView: View {
             isApplyingReasoning = false
             // A level picked for another chat never reaches this one.
             guard appState.activeSessionId == sessionId else {
-                reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+                reasoningEffort = appState.chatRuntimeState.reasoningEffort.isEmpty ? "none" : appState.chatRuntimeState.reasoningEffort
                 return
             }
             await applyReasoning(next)
@@ -1371,8 +1375,8 @@ struct ModelPickerView: View {
         guard confirmed || modelPickerShouldSwitch(
             selection,
             lastSwitched: switchedRow,
-            runtimeModel: appState.runtime.model,
-            runtimeProvider: appState.runtime.provider
+            runtimeModel: appState.chatRuntimeState.model,
+            runtimeProvider: appState.chatRuntimeState.provider
         ) else {
             selectedModel = selection.model
             selectedProvider = selection.provider
@@ -1380,7 +1384,7 @@ struct ModelPickerView: View {
         }
         modelError = nil
         modelNote = nil
-        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+        guard let client = appState.chatClient, let sessionId = appState.activeSessionId else {
             modelError = AppLocalization.string("Not connected to a conversation.")
             return
         }
@@ -1395,11 +1399,13 @@ struct ModelPickerView: View {
         // Another chat opened meanwhile (which also takes this sheet down):
         // what Hermes took belongs to the chat the tap started in, not to the
         // runtime the composer now shows.
-        guard appState.client === client, appState.activeSessionId == sessionId else { return }
+        guard appState.chatClient === client, appState.activeSessionId == sessionId else { return }
         switch result {
         case .switched(let model, let deferred):
-            appState.runtime.model = model
-            appState.runtime.provider = selection.provider
+            appState.updateChatRuntimeState {
+                $0.model = model
+                $0.provider = selection.provider
+            }
             switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
             // Under the catalog's own provider names, so a model reached by
             // an alias is one recent row.
@@ -1407,7 +1413,7 @@ struct ModelPickerView: View {
                 provider: catalog.providers.first { $0.matches(previous.provider) }?.name ?? previous.provider,
                 model: previous.model
             )
-            appState.updateModelQuickPicks {
+            appState.updateChatModelQuickPicks {
                 $0.recordSwitch(to: ModelQuickPick(provider: selection.provider, model: selection.model), from: left)
             }
             if deferred {
@@ -1431,11 +1437,11 @@ struct ModelPickerView: View {
         let stillRunning = !modelPickerShouldSwitch(
             previous,
             lastSwitched: switchedRow,
-            runtimeModel: appState.runtime.model,
-            runtimeProvider: appState.runtime.provider
+            runtimeModel: appState.chatRuntimeState.model,
+            runtimeProvider: appState.chatRuntimeState.provider
         )
-        selectedModel = stillRunning ? previous.model : appState.runtime.model
-        selectedProvider = stillRunning ? previous.provider : appState.runtime.provider
+        selectedModel = stillRunning ? previous.model : appState.chatRuntimeState.model
+        selectedProvider = stillRunning ? previous.provider : appState.chatRuntimeState.provider
     }
 
     /// Picking a speed writes it at once; a failed write leaves the
@@ -1444,7 +1450,7 @@ struct ModelPickerView: View {
     private func applySpeed(_ new: ModelSpeed, unlocked: Bool = false) async {
         guard writingSpeed == nil, unlocked || switchingRow == nil, new != runtimeSpeed else { return }
         runSettingsError = nil
-        guard let client = appState.client, let sessionId = appState.activeSessionId else {
+        guard let client = appState.chatClient, let sessionId = appState.activeSessionId else {
             runSettingsError = AppLocalization.string("Not connected to a conversation.")
             return
         }
@@ -1453,18 +1459,20 @@ struct ModelPickerView: View {
         do {
             try await client.setSpeed(sessionId, speed: new)
         } catch {
-            guard appState.client === client, appState.activeSessionId == sessionId else { return }
+            guard appState.chatClient === client, appState.activeSessionId == sessionId else { return }
             runSettingsError = UserFacingError.message(for: error)
             return
         }
-        guard appState.client === client, appState.activeSessionId == sessionId else { return }
-        appState.runtime.fast = new != .normal
-        appState.runtime.serviceTier = new.serviceTier
+        guard appState.chatClient === client, appState.activeSessionId == sessionId else { return }
+        appState.updateChatRuntimeState {
+            $0.fast = new != .normal
+            $0.serviceTier = new.serviceTier
+        }
     }
 
     /// Flipping YOLO writes it at once, for this conversation only.
     private func applyYolo(_ enabled: Bool) async {
-        guard writingYolo == nil, switchingRow == nil, !globalYoloFloor, enabled != appState.runtime.yolo else { return }
+        guard writingYolo == nil, switchingRow == nil, !globalYoloFloor, enabled != appState.chatRuntimeState.yolo else { return }
         runSettingsError = nil
         writingYolo = enabled
         defer { writingYolo = nil }

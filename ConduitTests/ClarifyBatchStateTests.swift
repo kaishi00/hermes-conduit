@@ -2251,6 +2251,9 @@ final class ClarifyFakeSocket: HermesWebSocket {
     /// their timeouts on a socket that never answers. Kept out of
     /// `sentTexts` and `onSend`.
     var refusesEveryRequest = false
+    /// The requests `refusesEveryRequest` refused, for a test about where
+    /// they went.
+    private(set) var refusedTexts: [String] = []
 
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
         if case .string(let text) = message {
@@ -2258,6 +2261,7 @@ final class ClarifyFakeSocket: HermesWebSocket {
             let method = request?["method"] as? String
             if method == "approval.respond" { sawApprovalRespond = true }
             if refusesEveryRequest, let id = request?["id"] as? Int {
+                refusedTexts.append(text)
                 completionHandler(nil)
                 deliver(String(
                     decoding: try! JSONSerialization.data(withJSONObject: [

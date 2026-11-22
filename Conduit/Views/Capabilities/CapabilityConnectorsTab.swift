@@ -248,7 +248,7 @@ enum ConnectorStyle {
         case .unknown: return nil
         case .on(let toolCount): return toolCount > 0 ? AppLocalization.string("\(toolCount) tools") : AppLocalization.string("On")
         case .needsSignIn: return AppLocalization.string("Needs sign-in")
-        case .failed: return AppLocalization.string("Error", table: .bots)
+        case .failed: return AppLocalization.string("Error")
         }
     }
 

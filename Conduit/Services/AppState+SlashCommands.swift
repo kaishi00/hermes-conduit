@@ -228,6 +228,12 @@ extension AppState {
         context: ComposerSubmissionContext? = nil
     ) async {
         let submissionContext = context ?? composerSubmissionContext()
+        // Another combined dashboard's chat on screen: run on its own
+        // runtime, where its context was captured (the context sheet's
+        // Compress Now calls this directly).
+        if await onChatRuntime(unreachable: (), { await executeSlashCommand(text, context: submissionContext) }) != nil {
+            return
+        }
         guard isCurrentComposerSubmission(submissionContext) else { return }
         guard let client,
               let sessionId = activeSessionId,
