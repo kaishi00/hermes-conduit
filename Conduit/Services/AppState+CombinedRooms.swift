@@ -578,7 +578,9 @@ extension AppState {
         let key = BotOrder.roomStorageKey(scope: Self.dashboardPreferenceBucket(dashboardID))
         let order = BotOrder(defaults: defaults, key: key, kind: .rooms)
         let dropped = order.dropping(room.roomID, onto: onto, shown: hosted)
-        guard dropped != order else { return false }
+        // What shows already: the last dropped past the end, say, with no
+        // order saved yet moves nothing and saves nothing.
+        guard dropped.arrange(hosted, name: { $0 }) != hosted else { return false }
         objectWillChange.send()
         dropped.save(to: defaults, key: key)
         return true
