@@ -5621,7 +5621,7 @@ and every Model page) · Local Live's and ElevenLabs' model fields (not
 needed: typed names already) · Text (not needed: no README, docs or Settings
 caption describes the pickers)
 
-**Desktop app:** has it: the model picker's search, each match naming its provider with its logo, ↑ ↓ and Return picking, and its typed model id as one row after the matches (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/state/models.ts` typedModelId and typedModelProviders, desktop#145, desktop#242); gap: the settings' model drop-downs (a bot's, fallbacks, scheduled jobs, memory) take only listed models.
+**Desktop app:** has it: the model picker's search, each match naming its provider with its logo, ↑ ↓ and Return picking, and its typed model id as one row after the matches (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/state/models.ts` typedModelId and typedModelProviders, desktop#145, desktop#242); the panel leaves out models hidden with Edit and a Model page marks them Hidden (desktop#305); gap: the settings' model drop-downs (a bot's, fallbacks, scheduled jobs, memory) take only listed models.
 
 **Code**
 - Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
@@ -5730,7 +5730,7 @@ reply and Pulse models, the Kanban model override and a custom endpoint's
 model (done: they open the same Model page, #1992) · Text (not needed: no
 caption describes them)
 
-**Desktop app:** has it: Pinned and Recent in the model picker and every model list (desktop#64, `desktop/src/renderer/src/state/modelQuickPicks.ts`).
+**Desktop app:** has it: Pinned and Recent in the model picker and every model list (desktop#64, `desktop/src/renderer/src/state/modelQuickPicks.ts`), leaving out models hidden with Edit (desktop#305).
 
 **Code**
 - Store: `Conduit/Models/ModelQuickPicks.swift`, `Conduit/Services/DashboardRuntime.swift` (modelQuickPicks), `Conduit/Services/AppState+Dashboards.swift` (updateModelQuickPicks)
@@ -5747,6 +5747,41 @@ caption describes them)
 - None known.
 
 **Checked:** 2026-11-21, #3004 (storage moved into DashboardRuntime.swift with #3002 and #3004, issue 828); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #1992 (every settings model picker lists the pinned and recent models on the shared Model page); 2026-11-08, #1984 (entry added)
+
+## Hiding models with Edit
+
+Edit, in the model pickers, hides the providers and models the person doesn't
+use: each provider shown or hidden, opening to its models, each shown or
+hidden, with Show all and Hide all (Eric 2026-11-22: the desktop lacked it).
+
+**Siblings:** the composer's Model sheet (done: its Edit, and the All
+providers page's, which goes back to it) · every setting's Model page (done:
+its own Edit, see One Model page for every model setting) · Quick picks (done:
+a hidden model stays kept but isn't shown, see Pinned and recent models) ·
+search (done: the sheet leaves hidden ones out, a Model page finds them marked
+Hidden, see Searching for a model) · a typed model id (done: the sheet never
+offers it on a hidden provider or as a hidden model) · Watch, CarPlay, rooms
+and the notifier (not needed: no model lists; the filters never reach Hermes) ·
+Text (done: Edit's own caption says where the filters stay)
+
+**Desktop app:** has it: Edit in the model panel and its All providers page, and on every Model page, each provider shown or hidden with Show all and Hide all, the panel's Quick picks, matches and providers leaving hidden ones out and a Model page marking them Hidden in its search and top card (`desktop/src/renderer/src/components/ModelVisibilityEditor.tsx`, `desktop/src/renderer/src/state/modelVisibility.ts`, desktop#305).
+
+**Code**
+- Editor and filters: `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.key, isHidden, visible, ModelVisibilityEditor, ModelVisibilityEditorPage)
+- Store: `Conduit/Models/Models.swift` (ModelVisibility), `Conduit/Services/AppState+Dashboards.swift` (saveModelVisibility, scopedModelVisibility)
+- Pickers: `Conduit/Views/ModelPickerView.swift` (editingVisibility, startEditingVisibility, visibleProviders), `Conduit/Views/ModelChooserPage.swift` (visibleProviders, searchResults' Hidden)
+- Tests: `ConduitTests/ModelQuickPicksTests.swift` (testHiddenModelsLeaveTheLists)
+
+**Rulings**
+- The filters stay on the device, per dashboard, and never change Hermes' configuration. A hidden model is its provider's slug and its id, so the same model from another provider stays shown.
+- Hiding a provider keeps its models' own choices for when it's shown again; a provider's count says how many of its models are shown.
+- Hidden ones leave the lists the person picks from; a setting's Model page still finds them marked Hidden, and a setting on one shows it on top marked Hidden, so a setting can still be put on one (Eric 2026-11-08, #1992).
+- With every provider hidden, the list says "All providers are hidden. Tap Edit to restore one." (the desktop says Click).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-22, #PRAPP (entry added, with desktop#305 bringing Edit to the desktop)
 
 ## One Model page for every model setting
 
@@ -5773,7 +5808,7 @@ Watch and CarPlay (not needed: no model settings) · Group Settings' router mode
 (done: the Default and Delegate model captions no longer describe two
 menus)
 
-**Desktop app:** has it (desktop#170, desktop#171): every model setting it has (a bot's Model and Workstream Model, fallback and delegate fallback models, the delegate model, helper models, a scheduled job's Model, a custom endpoint's model after Find models) is a row naming its model and provider that opens this page, its default first, search, Quick picks, every provider closed and a typed id, with the delegate's and a scheduled job's reasoning in the top card at their own levels (`desktop/src/renderer/src/components/ModelChooser.tsx`); the composer keeps its own panel (`desktop/src/renderer/src/components/ModelPicker.tsx`).
+**Desktop app:** has it (desktop#170, desktop#171): every model setting it has (a bot's Model and Workstream Model, fallback and delegate fallback models, the delegate model, helper models, a scheduled job's Model, a custom endpoint's model after Find models) is a row naming its model and provider that opens this page, its default first, search, Quick picks, every provider closed and a typed id, with the delegate's and a scheduled job's reasoning in the top card at their own levels (`desktop/src/renderer/src/components/ModelChooser.tsx`), and its own Edit, hidden models marked Hidden (desktop#305); the composer keeps its own panel (`desktop/src/renderer/src/components/ModelPicker.tsx`).
 
 **Code**
 - Page and row: `Conduit/Views/ModelChooserPage.swift` (ModelChooserPage, ModelChooserCatalog, ModelChooserReasoning, ModelChooserLinkRow.lines)
