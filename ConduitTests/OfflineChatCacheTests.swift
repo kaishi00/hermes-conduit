@@ -3641,7 +3641,9 @@ final class OfflineChatCacheTests: XCTestCase {
     /// back while another combined dashboard's chat is open in place: its
     /// words go to their own dashboard's New Chat draft, not the far chat's,
     /// also when rebuilt from their file after the dashboard was left, and
-    /// the far chat's composer doesn't say they're in it.
+    /// the far chat's composer doesn't say they're in it. Back on their own
+    /// dashboard with another of its chats open, that chat's composer takes
+    /// them and says why.
     func testAGoneChatsWaitingWordsSkipAFarChatOnScreen() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
