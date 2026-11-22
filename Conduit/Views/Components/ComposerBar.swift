@@ -203,6 +203,17 @@ struct ComposerBar: View {
         return draftKeysAreEquivalent(target, loaded, identity: identity)
     }
 
+    /// Whether the composer showing `draftDashboard`'s draft takes this
+    /// restore now: its own dashboard's or the active one's, or a far
+    /// chat's refused words (kept only in memory, so they go to its stored
+    /// draft). One kept in a file (a waiting message, a share, a dictation
+    /// retry) waits for its own dashboard.
+    static func handlesRestoreRequest(_ request: ComposerRestoreRequest, draftDashboard: UUID?, activeDashboard: UUID?) -> Bool {
+        if request.dashboardID == draftDashboard || request.dashboardID == activeDashboard { return true }
+        return request.dashboardID == request.key.dashboard && request.pending == nil
+            && request.sharedDraftID == nil && request.dictationClipID == nil
+    }
+
     static func draftKeysAreEquivalent(
         _ lhs: ComposerDraftKey,
         _ rhs: ComposerDraftKey,
@@ -2010,10 +2021,7 @@ struct ComposerBar: View {
         // restart, the store doesn't.
         let draftDashboardID = loadedDraftKey.dashboard ?? appState.activeDashboardID
         for request in appState.composerRestoreRequests
-        where request.dashboardID == draftDashboardID
-            || request.dashboardID == appState.activeDashboardID
-            || (request.dashboardID == request.key.dashboard && request.pending == nil
-                && request.sharedDraftID == nil && request.dictationClipID == nil) {
+        where Self.handlesRestoreRequest(request, draftDashboard: draftDashboardID, activeDashboard: appState.activeDashboardID) {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
                 // Only a send's own words can be the refused message: a
                 // shared draft, a dictation retry or a waiting message's

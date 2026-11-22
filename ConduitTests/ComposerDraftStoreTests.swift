@@ -238,6 +238,29 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertFalse(ComposerBar.draftKeysAreEquivalent(storedKey, unrelatedKey, identity: identity))
     }
 
+    /// A far chat's refused words go to its stored draft from any composer;
+    /// words kept in a file wait for their own dashboard (#3085 review).
+    func testARestoreForAnotherDashboardIsTakenOnlyWhenItLivesInMemory() {
+        let screen = UUID(), far = UUID(), other = UUID()
+        let farKey = ComposerBar.composerDraftKey(for: "far-1", profile: "default", dashboard: far)
+        func request(_ dashboard: UUID, key: ComposerDraftKey, share: UUID? = nil, clip: UUID? = nil) -> ComposerRestoreRequest {
+            ComposerRestoreRequest(dashboardID: dashboard, key: key, draft: ComposerDraft(text: "words", attachments: []),
+                                   focuses: false, pending: nil, sharedDraftID: share, dictationClipID: clip)
+        }
+        XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(far, key: farKey), draftDashboard: screen, activeDashboard: screen),
+                      "a far chat's refused words go to its stored draft")
+        XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(far, key: farKey, share: UUID()), draftDashboard: screen, activeDashboard: screen),
+                       "a share keeps its file until its dashboard's composer")
+        XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(far, key: farKey, clip: UUID()), draftDashboard: screen, activeDashboard: screen),
+                       "a dictation retry keeps its recording until then too")
+        XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(far, key: farKey, share: UUID()), draftDashboard: far, activeDashboard: screen),
+                      "the far chat's own composer takes it")
+        XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(screen, key: farKey, clip: UUID()), draftDashboard: far, activeDashboard: screen),
+                      "the active dashboard's, as before")
+        XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(other, key: farKey), draftDashboard: screen, activeDashboard: screen),
+                       "named for one dashboard but kept for another: left alone")
+    }
+
     func testDraftMigrationPreservesTextAndAttachmentsAcrossRuntimeAlias() {
         let store = ComposerDraftStore(capacity: 12)
         let runtimeKey = ComposerBar.composerDraftKey(

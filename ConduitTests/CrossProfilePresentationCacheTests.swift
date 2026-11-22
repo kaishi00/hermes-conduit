@@ -2079,7 +2079,8 @@ extension CrossProfilePresentationCacheTests {
         let farChatOwner = appState.farChat
         appState.farChat = nil
         XCTAssertEqual(appState.composerDraftOwner(for: farKey), "mac-1", "read from the Mac's list, not the screen's")
-        XCTAssertTrue(appState.composerDraftKeysAreSameChat(farKey, farKey))
+        XCTAssertTrue(appState.composerDraftKey(farKey, isNotChatOf: "older-chat"),
+                      "and whether its id is another chat's is the Mac's list's call too")
         appState.farChat = farChatOwner
 
         // Its kept connection gone, nothing reaches another dashboard's.
