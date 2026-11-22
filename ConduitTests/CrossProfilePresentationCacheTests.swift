@@ -2074,9 +2074,14 @@ extension CrossProfilePresentationCacheTests {
             sessionIDs: ["left-1"], durableSessionID: nil, title: "Left", dashboardID: mac.id,
             profile: "default", isBotChat: false, rows: [], streamingText: "Half"
         )]
+        // So does the far chat open there now, as it hands the socket on.
+        appState.activeSessionId = "far-open"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         let runtime = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
         let handed = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertEqual(handed.client.sessionProfile(for: "left-1"), "default", "its chats on the old profile keep it")
+        XCTAssertEqual(handed.client.sessionProfile(for: "far-open"), "default", "the far chat on its old profile keeps it")
+        appState.farChat = nil
         appState.backgroundChats = []
         XCTAssertTrue(runtime === kept.runtime, "the same runtime")
         XCTAssertFalse(handed.client === outgoing)
@@ -2090,6 +2095,26 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNotEqual(appState.activeProfile, "work")
         XCTAssertTrue(appState.keptRuntime(mac.id, on: "work") === runtime, "on its profile already, kept as it is")
         XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === handed.client)
+
+        // A far chat's deferred flush writes under its own profile, and
+        // skips once its runtime has moved to another.
+        appState.activeSessionId = "far-s"
+        appState.messages = outgoingTranscript
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        appState.schedulePresentationCacheFlush(for: "far-s")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        let farProbe = [ChatMessage(id: "a1", role: .assistant, content: "Outgoing answer", timestamp: "")]
+        let farIDs = appState.presentationCacheSessionIDs(for: "far-s")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "",
+                       "its runtime is on another profile now: nothing saved under it")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        appState.schedulePresentationCacheFlush(for: "far-s")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "ts-a1",
+                       "saved under the far chat's profile, though scheduled on screen")
+        appState.farChat = nil
 
         // The same ids on two dashboards are two chats, each followed.
         func left(_ dashboardID: UUID) -> BackgroundChat {
@@ -2106,6 +2131,16 @@ extension CrossProfilePresentationCacheTests {
         appState.besideChatIDs = ["shared"]
         XCTAssertEqual(appState.keptChat(answering: "shared")?.dashboardID, vps.id)
         appState.besideChatIDs = nil
+        // Letting go of an idle chat lets go of this dashboard's only.
+        let idleMac = left(mac.id), idleVPS = left(vps.id)
+        idleMac.state.turnState = .idle
+        idleVPS.state.turnState = .idle
+        appState.backgroundChats = [idleMac, idleVPS]
+        appState.letGoOfIdleFollowedChat(answering: ["shared"])
+        XCTAssertEqual(appState.backgroundChats.map(\.dashboardID), [mac.id], "the Mac's, under the same ids, stays")
+        appState.act(onRuntime: kept.runtime) { appState.letGoOfIdleFollowedChat(answering: ["shared"]) }
+        XCTAssertTrue(appState.backgroundChats.isEmpty, "let go in its own dashboard's scope")
+        appState.backgroundChats = both
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertFalse(onMac.isRunning, "its connection gone, its reply is followed no more")
         XCTAssertTrue(onVPS.isRunning, "the screen's dashboard's goes on")
