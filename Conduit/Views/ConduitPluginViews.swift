@@ -159,6 +159,13 @@ struct ConduitPluginSettingsDetail: View {
                     }
                 }
                 NotifierPluginUpdateStatusView()
+                // A held scan's Update Anyway says why it can't run now too (a call, a restart).
+                if update.isScanHeld, let blocker = appState.notifierPluginUpdateBlocker {
+                    Text(verbatim: blocker)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings.plugin.updateAnywayBlocker")
+                }
             }
 
             ConduitSettingsSection(title: AppLocalization.string("Update notices", table: .notifications), symbol: "bell.badge", tint: .conduitAccent) {

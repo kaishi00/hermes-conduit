@@ -358,6 +358,8 @@ final class GroupChatModelsTests: XCTestCase {
         let selected = DesktopGroupChat(key: "id:r9", name: "Council", members: [], messages: [], omitted: 0)
         let followed = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: selected.key, roomID: selected.roomIdentity, from: any(renamed)))
         XCTAssertEqual((followed["deleted"] as? [String: Any])?["id:r9"] as? Double, 4)
+        XCTAssertNil((followed["rooms"] as? [String: Any])?["name:Council"], "the followed room left the rooms")
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(followed)).isEmpty)
         // Already gone: nothing to write.
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:r1", from: nil))
