@@ -36,14 +36,21 @@ final class AppState: ObservableObject {
     /// (`runtimeOnScreenChanges`).
     @Published private(set) var runtimeOnScreen = DashboardRuntime()
     /// The runtime the app acts on: the one on screen, except while another
-    /// dashboard's answer or event applies to its own (`act(onRuntime:)`).
-    var shownRuntime: DashboardRuntime { runtimeInScope ?? runtimeOnScreen }
-    /// Another dashboard's runtime while its answer or event applies.
+    /// dashboard's answer or event applies to its own (`act(onRuntime:)`,
+    /// or `actAcrossAwaits(onRuntime:)`).
+    var shownRuntime: DashboardRuntime { runtimeInScope ?? RuntimeScope.runtime ?? runtimeOnScreen }
+    /// Another dashboard's runtime while its answer or event applies
+    /// synchronously; `RuntimeScope.runtime` holds one across awaits.
     var runtimeInScope: DashboardRuntime?
+    /// The dashboard of `runtimeInScope`.
+    var dashboardIDInScope: UUID?
     /// Whether the app acts on the dashboard on screen: what reacts on
     /// screen (the forwarders' side effects) runs only then.
-    var actingOnRuntimeOnScreen: Bool { runtimeInScope == nil || runtimeInScope === runtimeOnScreen }
+    var actingOnRuntimeOnScreen: Bool { shownRuntime === runtimeOnScreen }
     var runtimeOnScreenChanges: AnyCancellable?
+    /// Other dashboards' runtimes a surface shows (a far group chat), whose
+    /// changes publish as AppState's while it does, keyed by the surface.
+    var surfaceRuntimeChanges: [String: (runtime: ObjectIdentifier, changes: AnyCancellable)] = [:]
 
     var connection: HermesConnection? {
         get { shownRuntime.connection }
