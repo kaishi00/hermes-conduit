@@ -1357,8 +1357,8 @@ struct V2PulsePage: View {
     private func taskLink(_ card: PulseCard, task: String) -> some View {
         Button {
             // Another dashboard's Pulse: its task opens there.
-            let shown = appState.pulseShownDashboardID
-            Task { if await appState.switchForFarPulseStep(from: shown) { appState.openPulseCardTask(card) } }
+            let dashboard = appState.pulseDashboardID
+            Task { if await appState.switchForFarPulseStep(for: dashboard) { appState.openPulseCardTask(card) } }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checklist")
@@ -1379,8 +1379,8 @@ struct V2PulsePage: View {
     private func chatLink(_ card: PulseCard) -> some View {
         Button {
             // Another dashboard's Pulse: its chat opens there.
-            let shown = appState.pulseShownDashboardID
-            Task { if await appState.switchForFarPulseStep(from: shown) { appState.openPulseCardChat(card) } }
+            let dashboard = appState.pulseDashboardID
+            Task { if await appState.switchForFarPulseStep(for: dashboard) { appState.openPulseCardChat(card) } }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "bubble.left")
@@ -1695,14 +1695,13 @@ struct V2PulsePage: View {
             : bot.map { AppLocalization.string("Could not open \($0.displayLabel)'s Bot Chat.") }
                 ?? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
         let dashboard = appState.pulseDashboardID
-        let shown = appState.pulseShownDashboardID
         let client = self.client
         actingCard = card.id
         Task {
             // A newer step on another dashboard's card with the same id keeps its mark.
             defer { if appState.pulseDashboardID == dashboard, actingCard == card.id { actingCard = nil } }
             // Another dashboard's Pulse: its chat opens there.
-            guard await appState.switchForFarPulseStep(from: shown) else { return }
+            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
             let opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
             guard appState.pulseDashboardID == dashboard else { return }
             guard let opened else {
@@ -2004,14 +2003,13 @@ struct V2PulsePage: View {
         finishingCards.insert(card.id)
         keptCards.insert(card.id)
         let dashboard = appState.pulseDashboardID
-        let shown = appState.pulseShownDashboardID
         let client = self.client
         let visit = self.visit
         Task {
             defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             // Another dashboard's Pulse: this phone shares with the one on
             // screen, so the change is made there.
-            guard await appState.switchForFarPulseStep(from: shown) else { return }
+            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
             // The sharing the tap was made in: turned off before the answer
             // comes, the tap applies nothing here.
             let sharing = appState.phoneSync.sharingSession

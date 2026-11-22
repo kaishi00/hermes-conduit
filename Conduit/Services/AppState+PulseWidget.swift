@@ -178,6 +178,9 @@ extension AppState {
     private func doPulseCardFromWidget(_ id: Int, dashboardID: UUID, deadline: Date) async throws {
         guard await connectForBackgroundRun(deadline: deadline) else { throw ShortcutSendError.notConnected }
         guard activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
+        // The widget's card is the one on screen's: the page shows its Pulse
+        // again, so what the step reads (the plugin, Pulse's chat) is its.
+        if pulseShownDashboardID != nil { pulseShownDashboardID = nil }
         // Which cards take Do it depends on what the plugin serves.
         if notifierPlugin.state == .unknown { await refreshNotifierPluginStatus() }
         guard showsPulseScreen, activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
