@@ -5787,12 +5787,12 @@ Text (done: Edit's own caption says where the filters stay)
 - Hiding a provider keeps its models' own choices for when it's shown again; a provider's count says how many of its models are shown.
 - Hidden ones leave the lists the person picks from; a setting's Model page still finds them marked Hidden, and a setting on one shows it on top marked Hidden, so a setting can still be put on one (Eric 2026-11-08, #1992).
 - With every provider hidden, the list says "All providers are hidden. Tap Edit to restore one." (the desktop says Click).
-- A provider's page in Models & providers follows Edit: its Models list leaves hidden models out, keeping the profile's default so the page still shows which one runs (Eric 2026-11-22, #PRAPP).
+- A provider's page in Models & providers follows Edit: its Models list leaves hidden models out, keeping the profile's default so the page still shows which one runs (Eric 2026-11-22, #3038).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-22, #PRAPP (a provider's page in Models & providers leaves hidden models out, Eric's call on the gap #3022 recorded); 2026-11-22, #3022 (entry added, with desktop#305 bringing Edit to the desktop)
+**Checked:** 2026-11-22, #3038 (a provider's page in Models & providers leaves hidden models out, Eric's call on the gap #3022 recorded); 2026-11-22, #3022 (entry added, with desktop#305 bringing Edit to the desktop)
 
 ## One Model page for every model setting
 
