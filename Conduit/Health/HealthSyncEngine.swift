@@ -53,6 +53,9 @@ struct HealthSyncState: Codable, Equatable {
     /// (HealthBatch.voiceReaders): a change sends an upload, empty if need
     /// be, so the host learns it. Nil before one went.
     var sentVoiceReaders: [String]?
+    /// A changed voice-reader list went and its answer was lost: whether
+    /// the host has it is unknown, so the next pass sends it first.
+    var voiceReadersInDoubt: Bool?
     /// "Share with this host's other profiles" as the host last took it
     /// (every upload carries it); a change sends an upload even when
     /// nothing else is new. Nil: unknown (never sent, or a change sent
@@ -335,8 +338,10 @@ final class HealthSyncEngine: ObservableObject {
             // A voice-reader list the host has, changed since, goes first,
             // with no health read that a locked phone could stop: a revoked
             // mode reaches the host even when the rest of the pass can't run.
-            // (Unknown, nil, rides the pass's uploads and the check below.)
-            if let sent = state.sentVoiceReaders, sent != Self.voiceReaders(preferences) {
+            // A change whose answer was lost goes first too; never sent at
+            // all (nil) rides the pass's uploads and the check below.
+            if state.voiceReadersInDoubt == true
+                || state.sentVoiceReaders.map({ $0 != Self.voiceReaders(preferences) }) == true {
                 try await session.sendKeepalive()
             }
             try await session.sendRecentDays()
@@ -444,6 +449,7 @@ final class HealthSyncEngine: ObservableObject {
         // and voice readers too.
         state.sentOtherProfiles = nil
         state.sentVoiceReaders = nil
+        state.voiceReadersInDoubt = nil
     }
 
     /// Fixes how far back sharing reaches. Another choice starts the
@@ -485,7 +491,10 @@ final class HealthSyncEngine: ObservableObject {
         let readersChange = state.sentVoiceReaders != voiceReaders && state.sentVoiceReaders != nil
         guard profilesChange || readersChange else { return }
         if profilesChange { state.sentOtherProfiles = nil }
-        if readersChange { state.sentVoiceReaders = nil }
+        if readersChange {
+            state.sentVoiceReaders = nil
+            state.voiceReadersInDoubt = true
+        }
         // Saved before the upload goes, so an app closed while it waits
         // still finds the choice unknown on its next launch.
         store.save(state)
@@ -570,7 +579,10 @@ private struct Session {
                 engine.noteSending(otherProfiles: part.otherProfiles, voiceReaders: part.voiceReaders)
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
                 engine.notePosted(otherProfiles: part.otherProfiles)
-                engine.acknowledged { $0.sentVoiceReaders = part.voiceReaders }
+                engine.acknowledged {
+                    $0.sentVoiceReaders = part.voiceReaders
+                    $0.voiceReadersInDoubt = nil
+                }
                 return answer
             } catch DashboardTicketBridgeError.http(let status, _) where status == 429 {
                 // The host takes so many uploads a minute (120 per profile):

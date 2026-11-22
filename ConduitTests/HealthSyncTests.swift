@@ -221,9 +221,14 @@ extension HermesVoiceGatewayTimeoutTests {
         host.loseAnswers = true
         _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
         XCTAssertNil(readers.state.sentVoiceReaders)
+        XCTAssertEqual(readers.state.voiceReadersInDoubt, true)
+        // Even on a locked phone, before any health read.
         host.loseAnswers = false
+        source.locked = true
         _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.last?["voice_readers"] as? [String], ["grok-live"])
         XCTAssertEqual(readers.state.sentVoiceReaders, ["grok-live"])
+        XCTAssertNil(readers.state.voiceReadersInDoubt)
     }
 
     func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
