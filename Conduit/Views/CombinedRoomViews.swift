@@ -8,12 +8,24 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Another combined dashboard's group chat as a portrait among Bots Home's
-/// rooms, with its dashboard's badge, as that dashboard's bots have.
+/// rooms, with its dashboard's badge, as that dashboard's bots have. A tap
+/// opens it in place; a touch and hold has its menu, and a drag moves it
+/// among its own dashboard's rooms, as this dashboard's rooms' do.
 struct CombinedRoomPortrait: View {
     let tile: CombinedRoomTile
+    /// Asks first (the dialog is Bots Home's, not the menu's).
+    var onDisband: ((CombinedRoomTile) -> Void)? = nil
+    /// Another room's tile is over this one.
+    @State private var dropTarget = false
     @EnvironmentObject private var appState: AppState
+
+    private var isHosted: Bool {
+        if case .hosted = tile.kind { return true }
+        return false
+    }
 
     var body: some View {
         Button {
@@ -22,23 +34,47 @@ struct CombinedRoomPortrait: View {
             // it landed on Chats).
             Task { await appState.openCombinedRoom(tile, inBots: true) }
         } label: {
-            BotRoomPortraitLabel(title: tile.name, talking: talking) { size in
+            BotRoomPortraitLabel(title: tile.name, talking: appState.combinedRoomTalking(tile)) { size in
                 CombinedRoomIcon(tile: tile, size: size)
             }
             .opacity(tile.isOver ? 0.55 : 1)
+            .scaleEffect(dropTarget ? 1.06 : 1)
         }
         .buttonStyle(PressableButtonStyle())
+        .contextMenu { menu }
+        .modifier(RoomTileDrag(roomID: tile.id, enabled: isHosted) {
+            // Drawn outside the view's environment, as a bot's preview.
+            CombinedRoomIcon(tile: tile, size: 56)
+                .environmentObject(appState)
+        })
+        .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: tile.id, targeted: $dropTarget) { dragged in
+            Haptics.selection()
+            appState.dropCombinedRoom(dragged, onto: tile.id, dashboardID: tile.dashboardID)
+        })
         .accessibilityLabel(Text(verbatim: tile.name))
         .accessibilityValue(Text(verbatim: CombinedRoomText.value(tile, appState: appState)))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .accessibilityIdentifier("bots.combinedRoom.\(tile.id)")
     }
 
-    /// A copy says whether its room is talking; a hosted room's state is
-    /// read only on its own dashboard.
-    private var talking: Bool {
-        if case .copy(let copy) = tile.kind { return copy.state.working && !copy.isOver }
-        return false
+    /// Its menu, as this dashboard's rooms' less what needs this
+    /// dashboard's sheets: Group Settings, which opens it in place, and
+    /// Disband Group where its Hermes allows it.
+    @ViewBuilder
+    private var menu: some View {
+        if isHosted {
+            Button {
+                Task { await appState.openCombinedRoomSettings(tile, inBots: true) }
+            } label: {
+                Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
+            }
+            if let onDisband, appState.canDisbandCombinedRoom(tile) {
+                Divider()
+                Button(role: .destructive) { onDisband(tile) } label: {
+                    Label(AppLocalization.string("Disband Group"), systemImage: "trash")
+                }
+            }
+        }
     }
 }
 
@@ -64,13 +100,15 @@ struct CombinedRoomRosterRow: View {
     }
 }
 
-/// The room's members' faces, with its dashboard's badge.
+/// The room's group picture, else its members' faces, with its dashboard's
+/// badge.
 struct CombinedRoomIcon: View {
     let tile: CombinedRoomTile
     let size: CGFloat
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        GroupRoomIcon(picture: nil, members: tile.room.members, size: size)
+        GroupRoomIcon(picture: appState.combinedRoomPicture(tile), members: tile.room.members, size: size)
             .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: tile.room.isLinked))
             // On the other corner from the linked mark.
             .overlay(alignment: .bottomLeading) {

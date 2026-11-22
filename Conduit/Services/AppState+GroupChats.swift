@@ -292,6 +292,15 @@ extension AppState {
 
     // Group Chat RPC routing: the injectable seam first (tests), then the
     // production client call.
+    /// Just what this Hermes's groups can do, when it isn't known yet, for
+    /// another combined dashboard's room tiles (none of the room reads an
+    /// open runs). A failed read leaves it unknown for the next tick.
+    func readGroupCapabilitiesIfUnknown() async {
+        guard groupCapabilities == nil, let client, isConnected,
+              let capabilities = try? await groupsCapabilities(client), groupCapabilities == nil else { return }
+        groupCapabilities = capabilities
+    }
+
     private func groupsCapabilities(_ client: HermesClient) async throws -> GroupCapabilities {
         if let operation = groupChatOperations.capabilities { return try await operation(client) }
         return try await client.groupsCapabilities()
@@ -920,12 +929,15 @@ extension AppState {
     /// Which hosted rooms are talking now: one `groups.state` per room
     /// (its driver's `working`), the rooms updated last first. Bots Home
     /// reads it while it shows. An unanswered room keeps what it was.
-    func refreshTalkingRooms() async {
+    /// `given`: another combined dashboard's rooms as its list read them,
+    /// read on its own runtime for their tiles on Bots Home, where its own
+    /// rooms aren't listed.
+    func refreshTalkingRooms(among given: [GroupRoom]? = nil) async {
         // Bots Home and a bot's overview both ask; one read at a time.
         guard !talkingRoomsReading else { return }
         talkingRoomsReading = true
         defer { talkingRoomsReading = false }
-        guard groupChatPhase == .available, groupRoomsListed, let client, isConnected else {
+        guard given != nil || (groupChatPhase == .available && groupRoomsListed), let client, isConnected else {
             if !talkingRoomIDs.isEmpty { talkingRoomIDs = [] }
             talkingRoomMisses = [:]
             // Asked again as soon as it can answer.
@@ -933,7 +945,7 @@ extension AppState {
             return
         }
         let epoch = groupRoomEpoch
-        let rooms = groupRooms.filter { !$0.isDisbanded }
+        let rooms = (given ?? groupRooms).filter { !$0.isDisbanded }
             .sorted { $0.updatedAt > $1.updatedAt }
             .prefix(Self.talkingRoomsRead)
         var talking = Set<String>()

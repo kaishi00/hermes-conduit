@@ -210,8 +210,9 @@ extension AppState {
     }
 
     /// Fetches the pictures that changed since the last look. Runs with the
-    /// room list, so it never polls on its own.
-    func refreshGroupRoomPictures() async {
+    /// room list, so it never polls on its own. `given`: another combined
+    /// dashboard's rooms as its list read them, for their tiles.
+    func refreshGroupRoomPictures(among given: [GroupRoom]? = nil) async {
         guard canSetGroupRoomPictures, let bridge = dashboardTicketBridge else { return }
         let dashboard = activeDashboardID
         let epoch = groupRoomEpoch
@@ -221,7 +222,7 @@ extension AppState {
         guard let listed = try? await bridge.requestJSON(path: GroupRoomPictures.listPath),
               let revisions = GroupRoomPictures.revisions(from: listed),
               activeDashboardID == dashboard, groupRoomEpoch == epoch else { return }
-        let liveRooms = Set(groupRooms.map(\.roomID))
+        let liveRooms = Set((given ?? groupRooms).map(\.roomID))
         var fetched: [String: (data: Data, revision: String)] = [:]
         for (roomID, revision) in revisions
         where groupRoomPictureRevisions[roomID] != revision && liveRooms.contains(roomID) {
