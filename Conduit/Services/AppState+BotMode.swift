@@ -1788,13 +1788,15 @@ extension AppState {
             return AppLocalization.string("Connect to Hermes to manage bots.")
         }
         let failure = AppLocalization.string("Could not remove \(group.name).")
+        // The list may hold another Hermes' groups once the write returns.
+        let dashboard = activeDashboardID
         for attempt in 0..<2 {
             let outcome: BotMetaWriteOutcome
             do {
                 let current = try await client.desktopGroupProjection()
-                guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, roomID: group.roomID, from: current.snapshot) else {
+                guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, roomID: group.roomIdentity, from: current.snapshot) else {
                     // Already gone (removed elsewhere meanwhile).
-                    desktopGroupChats.removeAll { $0.isSameRoom(as: group) }
+                    if activeDashboardID == dashboard { desktopGroupChats.removeAll { $0.isSameRoom(as: group) } }
                     await refreshBotRosterAfterWrite()
                     return nil
                 }
@@ -1807,7 +1809,7 @@ extension AppState {
             if outcome == .conflict, attempt == 0 { continue }
             let removed = outcome == .persisted || outcome == .unsupported
             // Gone from the list even if the read after it fails.
-            if removed { desktopGroupChats.removeAll { $0.isSameRoom(as: group) } }
+            if removed, activeDashboardID == dashboard { desktopGroupChats.removeAll { $0.isSameRoom(as: group) } }
             await refreshBotRosterAfterWrite()
             return removed ? nil : failure
         }
