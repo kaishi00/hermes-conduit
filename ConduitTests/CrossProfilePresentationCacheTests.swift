@@ -2045,12 +2045,15 @@ extension CrossProfilePresentationCacheTests {
             sessions: [session("d-1"), session("a-1", profile: "atlas")], at: Date(),
             unreadProfiles: ["atlas"]
         )
-        let kept = AppState.combinedChats(last, keepingProfiles: ["default", "coder"], unread: ["coder"])
+        let narrowedAt = Date()
+        let kept = AppState.combinedChats(last, keepingProfiles: ["default", "coder"], unread: ["coder"], at: narrowedAt)
         XCTAssertEqual(kept.profiles, ["default", "coder"])
         XCTAssertEqual(kept.sessions.map(\.id), ["d-1"], "the deleted profile's rows go")
         XCTAssertEqual(kept.unreadProfiles, ["coder"], "its unread mark goes, the new one's comes")
         XCTAssertEqual(kept.at, .distantPast, "read anew on the next pass")
         XCTAssertEqual(kept.bridge, last.bridge)
+        // A pass started before it is stale against it, as against a switch's seed.
+        XCTAssertEqual(kept.seededAt, narrowedAt, "an older pass can't bring the old list back")
     }
 
     /// Another combined dashboard's Chats row opens in place (no-switch

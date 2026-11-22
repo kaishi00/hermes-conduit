@@ -134,7 +134,7 @@ extension AppState {
             // doesn't bring them back into the widgets, and reads the new
             // ones on the next pass.
             if !stale, !answered, let listed, let last = combinedDashboardChats[id], last.profiles != listed {
-                combinedDashboardChats[id] = Self.combinedChats(last, keepingProfiles: listed, unread: unread)
+                combinedDashboardChats[id] = Self.combinedChats(last, keepingProfiles: listed, unread: unread, at: now)
             }
             guard !stale, answered else { continue }
             // Its cron runs' ids, so it counts them as the dashboard on
@@ -459,15 +459,16 @@ extension AppState {
     /// A dashboard's kept chats narrowed to the profiles its Hermes lists
     /// now: the rows and unread marks of the rest go, `unread` joins the
     /// marks, and it's read anew on the next pass (issue 3034, #3117
-    /// review). Pure, for tests.
+    /// review). Stamped as seeded `at` the pass that narrowed it, so a pass
+    /// started before it can't bring the old list back. Pure, for tests.
     static func combinedChats(_ last: CombinedDashboardChats, keepingProfiles listed: [String],
-                              unread: Set<String>) -> CombinedDashboardChats {
+                              unread: Set<String>, at now: Date) -> CombinedDashboardChats {
         var kept = CombinedDashboardChats(
             bridge: last.bridge,
             profiles: listed,
             sessions: last.sessions.filter { row in listed.contains { profilesMatch(row.profile ?? "default", $0) } },
             at: .distantPast,
-            seededAt: last.seededAt,
+            seededAt: max(last.seededAt ?? now, now),
             cronIDs: last.cronIDs,
             cronAt: last.cronAt
         )
