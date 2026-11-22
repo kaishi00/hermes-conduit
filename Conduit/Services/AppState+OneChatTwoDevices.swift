@@ -388,6 +388,9 @@ extension AppState {
     /// A catalog read landed: the open chat's stored count, against the
     /// last one, says whether a turn the registry never saw ran in it.
     func observeOpenChatCatalog() {
+        // Another combined dashboard's chat on screen isn't in this
+        // dashboard's catalog: one id can name chats on two Hermes.
+        guard chatOnScreenIsInScope else { return }
         guard let local = openChatLocalTurn(),
               openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing else { return }
         let accepted = acceptedIdentitySessionIDs(forRequested: local.sessionID)
@@ -414,7 +417,9 @@ extension AppState {
             guard !Task.isCancelled else { return }
             let rows = self.freshActiveListSnapshot(maxAge: 5)
                 .map { self.openChatRegistryRows($0.rows, sessionID: sessionID) } ?? []
-            guard self.activeSessionId == sessionID, self.openChatSyncRead == nil,
+            // Still this dashboard's chat: another combined dashboard's
+            // under the same id isn't read from this registry.
+            guard self.activeSessionId == sessionID, self.chatOnScreenIsInScope, self.openChatSyncRead == nil,
                   self.reconciliation == nil, !self.isChatRefreshing else {
                 self.openChatSync.readCalledOff()
                 return
@@ -440,7 +445,9 @@ extension AppState {
                 }
             }
             // The chat or its turn changed since the snapshot: nothing to do.
-            guard self.activeSessionId == sessionID, self.reconciliation == nil,
+            // Another combined dashboard's chat under the same id is that
+            // dashboard's to read.
+            guard self.activeSessionId == sessionID, self.chatOnScreenIsInScope, self.reconciliation == nil,
                   self.turnState == (expectsRunning ? .running : .idle) else {
                 // New rows still unread: the next check asks again.
                 if !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }

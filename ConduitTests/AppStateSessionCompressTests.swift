@@ -2886,6 +2886,58 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(killed.first?.1, "proc_1")
     }
 
+    func testADockAnswerForAChatThatMovedToAnotherDashboardIsDropped() async throws {
+        weak var opened: AppState?
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in Self.goalSnapshot }
+            operations.runSessionControl = { _, _, _ in
+                // Meanwhile another combined dashboard's chat opens in place
+                // under the same id.
+                opened?.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+                var paused = Self.goalSnapshot
+                paused.goal?.status = "paused"
+                return (paused, "Paused.")
+            }
+        }
+        opened = harness.appState
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+
+        await harness.appState.runSessionControl(.goalPause)
+
+        XCTAssertNotEqual(harness.appState.sessionControl.snapshot.goal?.isPaused, true,
+                          "The answer was for the chat that was on screen, not this one")
+        XCTAssertNil(harness.appState.sessionControl.notice)
+        // Nor does that dashboard's word on the id reach the dock now.
+        var cleared = Self.goalSnapshot
+        cleared.goal = nil
+        harness.appState.applySessionControl(cleared, for: "composer-origin")
+        XCTAssertNotNil(harness.appState.sessionControl.snapshot.goal)
+    }
+
+    func testADockNoteForAChatThatMovedToAnotherDashboardIsDropped() async throws {
+        weak var opened: AppState?
+        var reads = 0
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                reads += 1
+                return Self.goalSnapshot
+            }
+            operations.runSessionControl = { _, _, _ in
+                opened?.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+                // No snapshot: the dock would read it again, then show the note.
+                return (nil, "Paused.")
+            }
+        }
+        opened = harness.appState
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertEqual(reads, 1)
+
+        await harness.appState.runSessionControl(.goalPause)
+
+        XCTAssertNil(harness.appState.sessionControl.notice)
+        XCTAssertEqual(reads, 1, "Nor is the moved chat's dock read from this dashboard's Hermes")
+    }
+
     func testAProcessListReadForAChatThatMovedToAnotherDashboardIsDropped() async throws {
         weak var opened: AppState?
         let harness = controlHarness { operations in
