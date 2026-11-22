@@ -1104,6 +1104,69 @@ extension CrossProfilePresentationCacheTests {
     }
 }
 
+// MARK: - A call started on another combined dashboard
+
+extension CrossProfilePresentationCacheTests {
+    /// A call starts on another combined dashboard's bot with no switch:
+    /// its start runs on that dashboard's runtime, and the call holds that
+    /// dashboard from then on (no-switch stage 2, calls and voice).
+    func testACallStartsOnAnotherCombinedDashboardWithoutASwitch() async throws {
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let appState = makeHarness(lifecycleOperations: operations) { _ in }.appState
+        let mac = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
+        let vps = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
+        let solo = SavedDashboard(id: UUID(), label: "Solo", normalizedURL: "https://127.0.0.3:1")
+        appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, vps, solo])
+        addTeardownBlock { @MainActor in appState.dropAllKeptDashboardRuntimes() }
+        let macClient = try await openClient(mac.normalizedURL)
+        let macBridge = DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        appState.keep(KeptDashboardRuntime(
+            client: macClient, bridge: macBridge, connection: macClient.connection, keptAt: Date()
+        ), for: mac.id)
+        let onScreen = try await openClient(vps.normalizedURL)
+        appState.client = onScreen
+        appState.connection = onScreen.connection
+        appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: vps.normalizedURL, dashboardID: vps.id))
+        appState.isConnected = true
+
+        // The dashboard on screen starts as usual; one outside the group
+        // isn't kept, so its start switches first.
+        let onVPS: Bool? = await appState.onFarCallDashboard(vps.id, profile: "default") { true }
+        XCTAssertNil(onVPS)
+        let onSolo: Bool? = await appState.onFarCallDashboard(solo.id, profile: "default") { true }
+        XCTAssertNil(onSolo)
+        // Mac's main profile talks in Classic voice there, which needs the
+        // chat on screen: the phone's start leaves it to a switch.
+        XCTAssertFalse(appState.openLiveCallOnFarDashboard(mac.id, profile: "default"))
+        XCTAssertNil(appState.liveCallDashboardID)
+
+        // A start on Mac reads Mac's settings and begins a call holding Mac.
+        var macPreferences = VoiceProfilePreferences()
+        macPreferences.outputMuted = true
+        let macRuntime = try XCTUnwrap(appState.runtime(for: mac.id))
+        appState.act(onRuntime: macRuntime) { appState.saveVoiceProfilePreferences(macPreferences, profile: "default") }
+        let started: Bool? = await appState.onFarCallDashboard(mac.id, profile: "default") {
+            XCTAssertEqual(appState.activeDashboardID, mac.id)
+            XCTAssertEqual(appState.activeProfile, "default")
+            XCTAssertEqual(appState.loadVoiceProfilePreferences(profile: "default"), macPreferences)
+            appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+            return true
+        }
+        XCTAssertEqual(started, true)
+        appState.minimisedLiveVoice = .gptLive
+        XCTAssertEqual(appState.dashboardIDOnScreen, vps.id, "nothing switched")
+        XCTAssertEqual(appState.liveCallDashboardID, mac.id)
+        XCTAssertEqual(appState.liveCallProfile, "default")
+        XCTAssertEqual(appState.callDashboardOffScreen, mac.id)
+        XCTAssertTrue(appState.callBridge === macBridge, "its host routes go to Mac")
+        XCTAssertEqual(appState.loadCallVoicePreferences(profile: "default"), macPreferences)
+        XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))
+        appState.minimisedLiveVoice = nil
+    }
+}
+
 // MARK: - A kept socket that drops
 
 extension CrossProfilePresentationCacheTests {

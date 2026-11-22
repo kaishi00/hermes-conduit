@@ -133,6 +133,74 @@ extension AppState {
     func endLiveCallLosingItsDashboard(_ id: UUID) {
         guard liveCallHolds(dashboard: id) else { return }
         // Each stop's hang-up hands the call's jobs back (callEndedOffItsProfile).
+        endEveryLiveCall()
+    }
+
+    // MARK: - A call started on another dashboard
+
+    /// Runs `body`, a call's start, on another combined dashboard's runtime
+    /// with no switch: its kept connection handed to `profile`
+    /// (`keptRuntime(_:on:)`), so the start reads that dashboard's voice
+    /// settings, plugin and connection, and the call it begins
+    /// (`beginVoiceCallRecording`) holds that dashboard and profile from
+    /// then on, as one that went on across a switch does. Across awaits, so
+    /// CarPlay's async starts fit too. Nil when it can't: the dashboard on
+    /// screen (start as usual), not in the combined group or not kept
+    /// connected, an edited address, or a socket that can't be handed on;
+    /// the caller then switches first, as before.
+    func onFarCallDashboard<T>(_ dashboardID: UUID, profile: String, _ body: () async -> T) async -> T? {
+        guard let runtime = farCallRuntime(dashboardID, profile: profile) else { return nil }
+        return await actAcrossAwaits(onRuntime: runtime, body)
+    }
+
+    /// Starts the phone's live call to `profile` on another combined
+    /// dashboard, with no switch, in that profile's voice mode on that
+    /// dashboard. A live call already running ends first (one audio
+    /// session), as a start on another profile replaces it. False when
+    /// it can't start there: as `onFarCallDashboard`, or the profile's
+    /// mode there is Classic voice, which talks through the chat on screen,
+    /// or Classic voice, CarPlay or the Watch is on the line; the caller
+    /// then switches first, as before.
+    @discardableResult
+    func openLiveCallOnFarDashboard(_ dashboardID: UUID, profile: String, attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
+        let profile = Self.farCallProfile(profile)
+        guard !showVoiceSheet, !voiceConversationController.hasLiveVoiceSession,
+              !isCarPlayVoiceSurfaceActive, !isWatchVoiceCallActive,
+              pendingHermesCall == nil, hermesCallOpenTask == nil,
+              let runtime = farCallRuntime(dashboardID, profile: profile),
+              let engine = act(onRuntime: runtime, { configuredLiveVoiceEngine(profile: profile) })
+        else { return false }
+        if isLiveCallUp { endEveryLiveCall() }
+        // The kept socket may have gone with the call it carried.
+        guard let runtime = farCallRuntime(dashboardID, profile: profile) else { return false }
+        return act(onRuntime: runtime) {
+            switch engine {
+            case .geminiLive: return openGeminiLiveConversation(attachingTo: thread)
+            case .qwenLive: return openQwenLiveConversation(attachingTo: thread)
+            case .gptLive: return openGPTLiveConversation(attachingTo: thread)
+            case .grokLive: return openGrokLiveConversation(attachingTo: thread)
+            case .localLive: return openLocalLiveConversation(attachingTo: thread)
+            }
+        }
+    }
+
+    /// The kept runtime a call on another combined dashboard starts on.
+    private func farCallRuntime(_ dashboardID: UUID, profile: String) -> DashboardRuntime? {
+        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
+              savedDashboardRegistry.dashboard(with: dashboardID)?.pendingURL == nil
+        else { return nil }
+        return keptRuntime(dashboardID, on: Self.farCallProfile(profile))
+    }
+
+    /// The profile a far start names, as its settings and kept client key
+    /// it: trimmed, and the main profile for none.
+    private static func farCallProfile(_ profile: String) -> String {
+        let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        return profile.isEmpty ? "default" : profile
+    }
+
+    /// Hangs up whichever live call runs; each stop hands its jobs back.
+    private func endEveryLiveCall() {
         stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
