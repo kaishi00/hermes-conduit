@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import UIKit
 
 /// Another combined dashboard's group chats: the rooms its Hermes hosts
 /// and its copies of rooms another Hermes hosts, as last read.
@@ -469,6 +470,130 @@ extension AppState {
                 return
             }
             await openRoomCopy(found)
+        }
+    }
+}
+
+// MARK: - Another dashboard's room tiles on Bots Home
+
+extension AppState {
+    /// Another dashboard's hosted room's runtime, kept beside the one on
+    /// screen, for what its tile draws and does.
+    private func keptRuntime(of tile: CombinedRoomTile) -> DashboardRuntime? {
+        guard let runtime = runtime(for: tile.dashboardID), runtime !== runtimeOnScreen else { return nil }
+        return runtime
+    }
+
+    /// Whether another dashboard's group chat is talking now: a copy says
+    /// so itself, a hosted room as its own runtime last read it
+    /// (`refreshCombinedRoomTilesIfDue`).
+    func combinedRoomTalking(_ tile: CombinedRoomTile) -> Bool {
+        switch tile.kind {
+        case .copy(let copy):
+            return copy.state.working && !copy.isOver
+        case .hosted(let room):
+            return keptRuntime(of: tile)?.talkingRoomIDs.contains(room.roomID) == true
+        }
+    }
+
+    /// Another dashboard's hosted room's group picture, as its own runtime
+    /// holds it: what this phone kept from its last visit, adopted on its
+    /// first read, then what its plugin lists. Read straight from that
+    /// runtime, never an open room's that shares the id, and never the
+    /// kept copy once its plugin has answered (a removed picture stays gone).
+    func combinedRoomPicture(_ tile: CombinedRoomTile) -> UIImage? {
+        guard case .hosted(let room) = tile.kind, let runtime = keptRuntime(of: tile),
+              let data = runtime.groupRoomPictureData[room.roomID] else { return nil }
+        return GroupRoomPictureImages.image(from: data)
+    }
+
+    /// Whether another dashboard's hosted room can be disbanded from its
+    /// tile: its Hermes said it can, as read on its own runtime.
+    func canDisbandCombinedRoom(_ tile: CombinedRoomTile) -> Bool {
+        guard case .hosted = tile.kind, let runtime = keptRuntime(of: tile) else { return false }
+        return runtime.groupCapabilities?.supports("groups.disband") == true
+    }
+
+    /// Disbands another dashboard's hosted room on its own runtime, then
+    /// reads that dashboard's rooms again. The failure, if any, for Bots
+    /// Home's notice.
+    func disbandCombinedRoom(_ tile: CombinedRoomTile) async -> String? {
+        guard case .hosted(let room) = tile.kind, let runtime = keptRuntime(of: tile) else { return nil }
+        let failure = await actAcrossAwaits(onRuntime: runtime) { await disbandGroupRoom(room.roomID) }
+        await readOtherCombinedDashboardsRooms(force: true)
+        return failure
+    }
+
+    /// Asks for another dashboard's room's Group Settings, then opens it in
+    /// place, where its screen shows them once its Hermes has read them.
+    func openCombinedRoomSettings(_ tile: CombinedRoomTile, inBots: Bool = false) async {
+        let request = GroupSettingsRequest(roomID: tile.roomID)
+        groupSettingsOnOpen = request
+        await openCombinedRoom(tile, inBots: inBots)
+        // An open that failed leaves no request behind for a later open.
+        if activeRoomSurface?.room.roomID != tile.roomID, groupSettingsOnOpen == request { groupSettingsOnOpen = nil }
+    }
+
+    /// Another dashboard's room's tile dropped on `target`'s, of the same
+    /// dashboard (nil: past its last), whose place it takes in that
+    /// dashboard's room order, kept on this phone as its tiles read it. A
+    /// tile of another dashboard, or this one's, moves nothing: each
+    /// dashboard's rooms keep their place among the group's.
+    func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) {
+        let tiles = otherCombinedDashboardsRoomTiles.filter { $0.dashboardID == dashboardID }
+        let hosted = tiles.compactMap { tile -> String? in
+            if case .hosted(let room) = tile.kind { return room.roomID }
+            return nil
+        }
+        guard let movedTile = tiles.first(where: { $0.id == moved }), case .hosted(let room) = movedTile.kind else { return }
+        var onto: String?
+        if let target {
+            guard let targetTile = tiles.first(where: { $0.id == target }) else { return }
+            // A copy follows the rooms: dropped on one, it goes past the last.
+            if case .hosted(let targetRoom) = targetTile.kind { onto = targetRoom.roomID }
+        }
+        let key = BotOrder.roomStorageKey(scope: Self.dashboardPreferenceBucket(dashboardID))
+        let order = BotOrder(defaults: defaults, key: key, kind: .rooms)
+        let dropped = order.dropping(room.roomID, onto: onto, shown: hosted)
+        guard dropped != order else { return }
+        objectWillChange.send()
+        dropped.save(to: defaults, key: key)
+    }
+
+    /// The other combined dashboards' hosted rooms on Bots Home, read on
+    /// their own runtimes through their kept connections on Bots Home's
+    /// talking tick: which are talking, and the pictures that changed.
+    /// Each at most once per `every`, as the one on screen's.
+    func refreshCombinedRoomTilesIfDue(every: Duration) async {
+        let interval = Double(every.components.seconds) - 1
+        var hosted: [UUID: [GroupRoom]] = [:]
+        for tile in otherCombinedDashboardsRoomTiles {
+            if case .hosted(let room) = tile.kind { hosted[tile.dashboardID, default: []].append(room) }
+        }
+        for (id, rooms) in hosted.sorted(by: { $0.key.uuidString < $1.key.uuidString }) {
+            guard !Task.isCancelled, let kept = keptDashboardRuntimes[id], kept.runtime.isConnected else { continue }
+            let runtime = kept.runtime
+            if let at = runtime.talkingRoomsReadAt, Date().timeIntervalSince(at) < interval { continue }
+            let firstRead = runtime.talkingRoomsReadAt == nil
+            runtime.talkingRoomsReadAt = Date()
+            await readKeptPluginStatusIfUnknown(id)
+            guard keptDashboardRuntimes[id]?.runtime === runtime else { continue }
+            let talking = runtime.talkingRoomIDs, pictures = runtime.groupRoomPictureData, capabilities = runtime.groupCapabilities
+            await actAcrossAwaits(onRuntime: runtime) {
+                await refreshTalkingRooms(among: rooms)
+                // What this phone kept from its last visit, once, then what
+                // changed: a picture its plugin no longer lists isn't adopted
+                // again on the next tick.
+                if firstRead, !groupRoomsListed { adoptKeptGroupRoomPictures() }
+                await refreshGroupRoomPictures(among: rooms)
+                // Whether its Hermes can disband them, for the tiles' menus:
+                // just the capabilities, not the room reads an open does.
+                await readGroupCapabilitiesIfUnknown()
+            }
+            // Its runtime isn't the screen's: say its tiles changed.
+            if runtime.talkingRoomIDs != talking || runtime.groupRoomPictureData != pictures || runtime.groupCapabilities != capabilities {
+                objectWillChange.send()
+            }
         }
     }
 }

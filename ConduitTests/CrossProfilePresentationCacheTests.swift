@@ -2049,6 +2049,14 @@ extension CrossProfilePresentationCacheTests {
         let savedAs = appState.presentationCacheSessionIDs(for: "mac-1")
         XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: savedAs).first?.timestamp, "ts-f1",
                        "saved under the far chat's profile (as \(savedAs))")
+        // So do a deferred flush's, its connection having dropped while it
+        // was parked.
+        appState.messages = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f2")]
+        appState.schedulePresentationCacheFlush(for: "mac-1")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: savedAs).first?.timestamp, "ts-f2",
+                       "a deferred flush saves under the far chat's profile too")
         // A switch makes the chat on screen that dashboard's, as before.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         var registry = appState.savedDashboardRegistry
@@ -2074,9 +2082,14 @@ extension CrossProfilePresentationCacheTests {
             sessionIDs: ["left-1"], durableSessionID: nil, title: "Left", dashboardID: mac.id,
             profile: "default", isBotChat: false, rows: [], streamingText: "Half"
         )]
+        // So does the far chat open there now, as it hands the socket on.
+        appState.activeSessionId = "far-open"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         let runtime = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
         let handed = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertEqual(handed.client.sessionProfile(for: "left-1"), "default", "its chats on the old profile keep it")
+        XCTAssertEqual(handed.client.sessionProfile(for: "far-open"), "default", "the far chat on its old profile keeps it")
+        appState.farChat = nil
         appState.backgroundChats = []
         XCTAssertTrue(runtime === kept.runtime, "the same runtime")
         XCTAssertFalse(handed.client === outgoing)
@@ -2090,6 +2103,39 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNotEqual(appState.activeProfile, "work")
         XCTAssertTrue(appState.keptRuntime(mac.id, on: "work") === runtime, "on its profile already, kept as it is")
         XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === handed.client)
+
+        // A far chat's deferred flush writes under its own profile, and
+        // skips once its runtime has moved to another.
+        appState.activeSessionId = "far-s"
+        appState.messages = outgoingTranscript
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        appState.schedulePresentationCacheFlush(for: "far-s")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        let farProbe = [ChatMessage(id: "a1", role: .assistant, content: "Outgoing answer", timestamp: "")]
+        let farIDs = appState.presentationCacheSessionIDs(for: "far-s")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "",
+                       "its runtime is on another profile now: nothing saved under it")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        appState.schedulePresentationCacheFlush(for: "far-s")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "ts-a1",
+                       "saved under the far chat's profile, though scheduled on screen")
+        // Scheduled for a chat on the runtime's profile, and run once the
+        // chat open there is on another: skipped, though the runtime's
+        // profile is still the one it was scheduled on.
+        appState.activeSessionId = "far-p"
+        appState.messages = outgoingTranscript
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        appState.schedulePresentationCacheFlush(for: "far-p")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        let movedIDs = appState.presentationCacheSessionIDs(for: "far-p")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: movedIDs).first?.timestamp, "",
+                       "the chat open there is on another profile: nothing saved under the runtime's")
+        appState.farChat = nil
 
         // The same ids on two dashboards are two chats, each followed.
         func left(_ dashboardID: UUID) -> BackgroundChat {
@@ -2106,6 +2152,16 @@ extension CrossProfilePresentationCacheTests {
         appState.besideChatIDs = ["shared"]
         XCTAssertEqual(appState.keptChat(answering: "shared")?.dashboardID, vps.id)
         appState.besideChatIDs = nil
+        // Letting go of an idle chat lets go of this dashboard's only.
+        let idleMac = left(mac.id), idleVPS = left(vps.id)
+        idleMac.state.turnState = .idle
+        idleVPS.state.turnState = .idle
+        appState.backgroundChats = [idleMac, idleVPS]
+        appState.letGoOfIdleFollowedChat(answering: ["shared"])
+        XCTAssertEqual(appState.backgroundChats.map(\.dashboardID), [mac.id], "the Mac's, under the same ids, stays")
+        appState.act(onRuntime: kept.runtime) { appState.letGoOfIdleFollowedChat(answering: ["shared"]) }
+        XCTAssertTrue(appState.backgroundChats.isEmpty, "let go in its own dashboard's scope")
+        appState.backgroundChats = both
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertFalse(onMac.isRunning, "its connection gone, its reply is followed no more")
         XCTAssertTrue(onVPS.isRunning, "the screen's dashboard's goes on")
@@ -2705,6 +2761,72 @@ extension CrossProfilePresentationCacheTests {
         appState.dropKeptDashboardRuntime(mac.id)
         XCTAssertNil(appState.activeRoomSurface)
         XCTAssertNil(appState.farRoomRuntime)
+    }
+
+    /// Another combined dashboard's room tiles on Bots Home: which are
+    /// talking, read on its own runtime through its kept connection; a drag
+    /// moves one among its own dashboard's rooms, and nothing else's.
+    func testAKeptDashboardsRoomTilesTalkAndMoveAmongTheirOwn() async throws {
+        final class Calls { var states: [String: [ObjectIdentifier]] = [:]; var capabilities: [ObjectIdentifier] = [] }
+        let calls = Calls()
+        func room(_ id: String) -> GroupRoom {
+            GroupRoom(roomID: id, name: id.capitalized, members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                      revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
+        }
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { client in
+                calls.capabilities.append(ObjectIdentifier(client))
+                return GroupCapabilities(protocolVersion: 1, driverReady: true, authorityGatewayID: "gw", features: [],
+                                         methods: GroupWire.requiredMethods.union(["groups.disband"]), maxLogLimit: 500)
+            },
+            state: { client, roomID in
+                calls.states[roomID, default: []].append(ObjectIdentifier(client))
+                let working = roomID == "trip"
+                return (room(roomID), GroupDriverStatus(running: working, working: working, blocked: false,
+                                                        counts: [:], pendingActions: []))
+            }
+        )
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "fresh-ticket" }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations, groups: groups)
+        await appState.switchDashboard(to: vps.id)
+        appState.keptDashboardRoomsReader = { _ in [room("trip"), room("plans")] }
+        appState.keptDashboardJSONReader = { _, path in
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [String]()] }
+            throw URLError(.badURL)
+        }
+        await appState.readOtherCombinedDashboardsRooms()
+        func hosted() -> [String] { appState.otherCombinedDashboardsRoomTiles.map(\.roomID) }
+        XCTAssertEqual(hosted(), ["trip", "plans"])
+        let tiles = appState.otherCombinedDashboardsRoomTiles
+        XCTAssertFalse(tiles.contains { appState.combinedRoomTalking($0) }, "nothing read yet")
+        // Kept quietly, none of its rooms opened: what its groups can do unknown.
+        appState.keptDashboardRuntimes[mac.id]?.runtime.groupCapabilities = nil
+        XCTAssertFalse(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes hasn't said it can yet")
+        let screensReads = calls.capabilities.count
+
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
+        XCTAssertEqual(Set(calls.states["trip"] ?? []), [ObjectIdentifier(outgoing)], "read through the kept connection")
+        XCTAssertEqual(tiles.filter { appState.combinedRoomTalking($0) }.map(\.roomID), ["trip"])
+        XCTAssertTrue(appState.talkingRoomIDs.isEmpty, "the screen's rooms are its own")
+        XCTAssertNil(appState.combinedRoomPicture(tiles[0]), "no picture kept or served")
+        XCTAssertEqual(Array(calls.capabilities.dropFirst(screensReads)), [ObjectIdentifier(outgoing)],
+                       "what its groups can do, read through the kept connection")
+        XCTAssertTrue(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes said it can")
+        // Within the tick, not read again.
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
+        XCTAssertEqual(calls.states["trip"]?.count, 1)
+
+        // A drag takes the place of a room of its own dashboard, kept for it.
+        appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id)
+        XCTAssertEqual(hosted(), ["plans", "trip"])
+        // This dashboard's room, or one named for another dashboard, moves nothing.
+        appState.dropCombinedRoom("plans", onto: tiles[1].id, dashboardID: mac.id)
+        appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id)
+        XCTAssertEqual(hosted(), ["plans", "trip"])
+        XCTAssertTrue(appState.groupRoomOrder.isEmpty, "the screen's order untouched")
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(1))
+        XCTAssertEqual(calls.capabilities.count, screensReads + 1, "known: not read again on a later tick")
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its
