@@ -2912,12 +2912,18 @@ final class AppStateSessionCompressTests: XCTestCase {
         var listed = 0
         var killed = 0
         var branched = 0
+        var controlled = 0
         let harness = controlHarness { operations in
             operations.listBackgroundProcesses = { _, _ in
                 listed += 1
                 return []
             }
             operations.killBackgroundProcess = { _, _, _ in killed += 1 }
+            operations.readSessionControl = { _, _ in Self.goalSnapshot }
+            operations.runSessionControl = { _, _, _ in
+                controlled += 1
+                return (nil, nil)
+            }
             operations.branchSession = { _, _, _, _, _ in
                 branched += 1
                 throw URLError(.cancelled)
@@ -2925,6 +2931,8 @@ final class AppStateSessionCompressTests: XCTestCase {
         }
         let appState = harness.appState
         appState.isConnected = true
+        // The goal dock shows the chat's goal, read before its connection dropped.
+        await appState.refreshSessionControl(for: "composer-origin")
         appState.messages = [
             ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1", rowId: 1),
             ChatMessage(id: "a1", role: .assistant, content: "Hello", timestamp: "2", rowId: 2)
@@ -2943,6 +2951,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         }
         await appState.react(to: "a1", with: "❤️")
         await appState.branchFromAssistantMessage("a1")
+        await appState.runSessionControl(.goalPause)
         let processes = await appState.loadBackgroundProcesses()
         let failure = await appState.killBackgroundProcess(
             BackgroundProcess(id: "proc_1", command: "npm run dev", pid: 4242, uptimeSeconds: 90, output: "")
@@ -2951,6 +2960,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(reacted, 0)
         XCTAssertEqual(appState.messages[1].reactions, [])
         XCTAssertEqual(branched, 0)
+        XCTAssertEqual(controlled, 0, "The goal dock's Pause never reaches the dashboard on screen")
         XCTAssertNil(processes)
         XCTAssertEqual(failure, AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat))
         XCTAssertEqual(listed, 0)

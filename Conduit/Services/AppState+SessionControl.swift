@@ -56,6 +56,9 @@ extension AppState {
     /// Hermes' answer replaces what the dock shows; a refusal says why
     /// under it.
     func runSessionControl(_ action: SessionControlAction) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.runSessionControl(action) }) != nil { return }
         guard let client, let sessionID = sessionControl.sessionID,
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
         // Hermes counts criteria by place: one picked from a list that
@@ -143,9 +146,11 @@ extension AppState {
     func killBackgroundProcess(_ process: BackgroundProcess) async -> String? {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
-        if let routed = await onChatRuntime(unreachable: Optional(AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)), {
-            await self.killBackgroundProcess(process)
-        }) { return routed }
+        switch chatRuntimeRoute {
+        case .inScope: break
+        case .far(let runtime): return await actAcrossAwaits(onRuntime: runtime) { await killBackgroundProcess(process) }
+        case .unreachable: return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
+        }
         guard let client, let sessionID = backgroundProcessSessionID else {
             return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
         }

@@ -36,6 +36,7 @@ extension AppState {
             .map(\.sessionId))
         shownChat.delegateAgentSeenAt = shownChat.delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
         for sessionID in sessionIDs {
+            guard activeSessionId == openChat, chatOnScreenIsInScope else { return }
             guard let roster = try? await client.subagentRoster(sessionId: sessionID),
                   self.client === client, activeSessionId == openChat, chatOnScreenIsInScope else { continue }
             let liveIDs = Set(roster.map(\.id))
