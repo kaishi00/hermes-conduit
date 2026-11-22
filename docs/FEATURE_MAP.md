@@ -10408,7 +10408,7 @@ board a 200-character preview)
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
 
 **Rulings**
-- A run's summary or error and a comment show four lines on the task screen as plain words (Markdown markers and blank lines left out), an activity row's detail two; each opens whole from a chevron. An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #104, Michel couldn't review a "review requested" run's summary on his phone).
+- A run's summary or error and a comment show four lines on the task screen as plain words (Markdown markers and blank lines left out), an activity row's detail two; each opens whole from a chevron when there's more than the row shows (a short crash message shown whole doesn't open). An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #104, Michel couldn't review a "review requested" run's summary on his phone).
 - Run summaries and comments render as Markdown in the sheet; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #104).
 - An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files (2026-11-22, #104).
 

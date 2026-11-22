@@ -1199,7 +1199,7 @@ struct KanbanTaskDetailView: View {
         if let runs = detail?.runs, !runs.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Runs (\(runs.count))", table: .tasks), symbol: "terminal", tint: .orange) {
                 ForEach(runs) { run in
-                    if let text = KanbanFullTextFormatter.runText(run) {
+                    if KanbanFullTextFormatter.runHasMoreToRead(run), let text = KanbanFullTextFormatter.runText(run) {
                         Button {
                             fullText = KanbanFullText(
                                 title: KanbanRunPresentation.outcomeLabel(run),

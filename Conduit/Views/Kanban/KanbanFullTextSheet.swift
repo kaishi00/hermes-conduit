@@ -95,6 +95,22 @@ enum KanbanFullTextFormatter {
         return parts.joined(separator: "\n\n")
     }
 
+    /// Whether a run row hides something worth a tap: text past what its
+    /// four lines hold, both an error and a summary (the row shows only the
+    /// error), or metadata. A short crash message already shown whole
+    /// doesn't open.
+    static func runHasMoreToRead(_ run: KanbanRun) -> Bool {
+        let error = run.error.flatMap { $0.isEmpty ? nil : $0 }
+        let summary = run.summary.flatMap { $0.isEmpty ? nil : $0 }
+        guard let shown = error ?? summary else { return false }
+        if error != nil, summary != nil { return true }
+        if let metadata = run.metadata, !isEmptyContainer(metadata) { return true }
+        return shown.count > rowPreviewCharacters || shown.components(separatedBy: .newlines).count > 4
+    }
+
+    /// Roughly what four caption lines hold on an iPhone.
+    static let rowPreviewCharacters = 160
+
     /// Every payload entry of an activity event, whole: short values first
     /// as `key: value` (who, what, how big), then long text such as a
     /// worker's `summary`, then nested values as indented JSON. Nil when

@@ -795,6 +795,14 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertTrue(text.contains("\"pr\" : 3100"), text)
     }
 
+    func testOnlyRunsWithMoreToReadOpen() {
+        XCTAssertFalse(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["error": "worker crashed: exit 137"])))
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["summary": String(repeating: "verified ", count: 30)])))
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["error": "boom", "summary": "partial"])))
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["summary": "ok", "metadata": ["pr": 1]])))
+        XCTAssertFalse(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: [:])))
+    }
+
     func testRunWithNothingToReadHasNoFullText() {
         XCTAssertNil(KanbanFullTextFormatter.runText(makeRun(fields: ["metadata": ["a": 1]])))
     }
