@@ -2293,7 +2293,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.isOpenChat(wait))
         var own = wait
         own.dashboardID = nil
-        XCTAssertFalse(appState.isOpenChat(own), "the screen's own room of that id isn't the one open")
+        // The screen's own room of that id is the one open only when both
+        // dashboards are one Hermes saved twice (issue 2631).
+        let hermes = appState.combinedHermesGroups
+        let oneHermes = hermes[mac.id] != nil && hermes[mac.id] == hermes[vps.id]
+        XCTAssertEqual(appState.isOpenChat(own), oneHermes)
 
         // Its connection let go, the room has nothing to act on and closes.
         appState.dropKeptDashboardRuntime(mac.id)
