@@ -71,8 +71,10 @@ extension AppState {
         }
         // The open's own answer can be false for an open that a later read
         // of the same chat took over (the chat still came up), so the chat
-        // on screen decides too.
-        let opened = await open.value || farChatIsShown(session, in: dashboardID)
+        // on screen decides too, unless this open itself failed: a failed
+        // resume leaves the chat selected without its rows.
+        let answered = await open.value
+        let opened = answered || (attempt.refused == nil && farChatIsShown(session, in: dashboardID))
         if opened {
             discardNotificationRouteFailure(for: target)
             return .opened
@@ -94,9 +96,10 @@ extension AppState {
             return .failed
         }
         // Said when the retries run out with no chat opened, as the
-        // switch's open does (publishNotificationRouteFailure).
+        // switch's open does (publishNotificationRouteFailure), on the
+        // transition the open itself began.
         notificationRouteFailure = NotificationRouteFailure(
-            target: target, message: message, transition: viewportTransitionGeneration, roomEpoch: groupRoomEpoch
+            target: target, message: message, transition: chatViewportTransitionGeneration, roomEpoch: groupRoomEpoch
         )
         return .retry
     }
