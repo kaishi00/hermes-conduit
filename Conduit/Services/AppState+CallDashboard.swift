@@ -66,9 +66,11 @@ extension AppState {
     /// A fresh one each time, so nothing `body` writes into it outlives the
     /// call (issue 3045). Synchronous, as `act(onRuntime:)`: only what
     /// `body` does before it returns is on the call's runtime. A Task it
-    /// starts runs later, may still write the throwaway empty runtime it
-    /// captured, and reads whatever is current then, so work that must
-    /// reach the call's runtime is done in `body` itself (#3143).
+    /// starts keeps the scope it was made in (`RuntimeScope` is task-local):
+    /// off its dashboard, its reads and writes go on to that runtime, the
+    /// throwaway empty one included, not the one current when it runs. So
+    /// work that must reach the call's runtime is done in `body` itself
+    /// (#3143).
     func onCallRuntime<T>(_ body: () throws -> T) rethrows -> T {
         guard callDashboardOffScreen != nil else { return try body() }
         return try act(onRuntime: callRuntimeOffScreen ?? DashboardRuntime(), body)

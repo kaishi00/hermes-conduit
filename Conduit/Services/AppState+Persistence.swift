@@ -186,7 +186,10 @@ extension AppState {
     /// id. Never the scroll identity's aliases or a reconciliation's ids:
     /// a new chat, or one opened from another, keeps the previous chat's
     /// ids there, and that chat's calls would show in this one.
-    func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
+    /// `includingCronRuns` false leaves the Cron rows out: another
+    /// dashboard's chat, whose rows are its own while the Cron rows are the
+    /// screen's (3141's review).
+    func chatOwnSessionIDs(for sessionId: String, includingCronRuns: Bool = true) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
         let durable = confirmedDurableSessionID(forRuntime: sessionId)
@@ -201,9 +204,9 @@ extension AppState {
         // A few entries: the header asks by the open id and by its row's.
         // Another dashboard's scope reads its own rows: the cache follows
         // only the screen's list.
-        let cacheable = actingOnRuntimeOnScreen
+        let cacheable = actingOnRuntimeOnScreen && includingCronRuns
         if cacheable, let cached = chatOwnSessionIDsCache[key] { return cached }
-        let ids = Self.ownSessionIDs(for: seeds, in: [sessions, cronSessions].joined())
+        let ids = Self.ownSessionIDs(for: seeds, in: [sessions, includingCronRuns ? cronSessions : []].joined())
         guard cacheable else { return ids }
         if chatOwnSessionIDsCache.count >= 8 { chatOwnSessionIDsCache.removeAll() }
         chatOwnSessionIDsCache[key] = ids
@@ -267,7 +270,7 @@ extension AppState {
         guard let sessionId = activeChatRowSessionID else { return nil }
         return activeChatSessionSummary(
             sessionId: sessionId,
-            ownIDs: chatOwnSessionIDs(for: sessionId),
+            ownIDs: chatOwnSessionIDs(for: sessionId, includingCronRuns: includingCronRuns),
             durable: conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile),
             includingCronRuns: includingCronRuns
         )

@@ -896,6 +896,9 @@ extension AppState {
               let activity = messages[index].clarify,
               !activity.isExpired else { return }
         settleClarifyCard(at: index, activity, reason: "resolved")
+        // As a send told it was answered elsewhere: the question's copy on
+        // the Needs you list is this card's (notifier#965).
+        if let settled = messages[index].clarify { keepQuestionCopiesOut(answeredOn: settled) }
     }
 
     private func settleClarifyCard(at index: Int, _ activity: ClarifyActivity, reason: String?) {

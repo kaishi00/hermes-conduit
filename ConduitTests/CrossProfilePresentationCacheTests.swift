@@ -1746,6 +1746,24 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertTrue(counts.reads[readsBefore...].contains { $0.contains("profile=atlas") }, "atlas read on the last list")
         XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id, "its row stays")
+        // Kept anew while a read that then fails was out: the list that
+        // switch seeded wins over the one the read started from (#3143).
+        let keptBefore = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { bridge, path in
+            guard path == "/api/profiles" else { return try await reader(bridge, path) }
+            await MainActor.run {
+                appState.keptDashboardRuntimes[mac.id] = KeptDashboardRuntime(
+                    client: keptBefore.client, bridge: keptBefore.bridge, connection: keptBefore.connection,
+                    keptAt: keptBefore.keptAt.addingTimeInterval(1), runtime: keptBefore.runtime
+                )
+                appState.keptDashboardProfiles[mac.id] = (read.bridge, ["default", "atlas", "seeded"], Date())
+            }
+            throw URLError(.timedOut)
+        }
+        let afterKeptAnew = await appState.keptDashboardProfileNames(mac.id, keptBefore, fresh: true)
+        XCTAssertEqual(afterKeptAnew, ["default", "atlas", "seeded"], "the seeded list, not the last one")
+        appState.keptDashboardRuntimes[mac.id] = keptBefore
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, Date())
         appState.keptDashboardJSONReader = reader
 
         // A room wait whose read was out while the two dashboards turned
@@ -2130,6 +2148,16 @@ extension CrossProfilePresentationCacheTests {
             XCTAssertTrue(titles.contains("Release prep"), "its scope reads its own rows")
             XCTAssertFalse(titles.contains("VPS notes"), "not the screen's cache")
         }
+        // Nor do its ids grow through the screen's cron run: a run whose
+        // stored id names another chat would make that chat the far row's.
+        var run = SessionSummary(id: "mac-1", alternateIds: [], title: "Nightly run", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .cron, isActive: false, isArchived: false, lineageRootId: nil)
+        run.storedSessionId = "vps-stored"
+        appState.cronSessions = [run]
+        appState.act(onRuntime: kept.runtime) {
+            XCTAssertFalse(appState.chatOwnSessionIDs(for: "mac-1", includingCronRuns: false).contains("vps-stored"))
+        }
+        XCTAssertTrue(appState.chatOwnSessionIDs(for: "mac-1").contains("vps-stored"), "the screen's own lookup keeps its cron runs")
     }
 
     /// A far chat's Artifacts, checklists and cards are its own

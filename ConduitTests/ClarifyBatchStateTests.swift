@@ -443,8 +443,15 @@ final class ClarifyBatchStateTests: XCTestCase {
         final class Gate {
             var entered = false
             var continuation: CheckedContinuation<Void, Never>?
+            func release() {
+                continuation?.resume()
+                continuation = nil
+            }
         }
         let gate = Gate()
+        // A failed assert before the release still lets the second send
+        // finish (#3146's review).
+        defer { gate.release() }
         let appState = try await makeClarifySendState { appState, requestId, questionId in
             if questionId == "tests" {
                 gate.entered = true
@@ -466,7 +473,7 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertFalse(waiting.isExpired, "A send still on its way keeps the card open")
         XCTAssertEqual(waiting.questions.map(\.status), [.submitting, .submitting, .pending])
 
-        gate.continuation?.resume()
+        gate.release()
         await second.value
 
         let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
