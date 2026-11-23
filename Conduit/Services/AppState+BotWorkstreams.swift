@@ -416,12 +416,15 @@ extension AppState {
     /// Whether the host's plugin serves Edit Bot > Work.
     var servesBotWorkSettings: Bool { notifierPlugin.reports(BotWorkSettingsClient.capability) }
 
+    /// Made on the runtime in scope, and its requests stay on that
+    /// runtime's bridge, as `botWorkClient`'s do.
     func botWorkSettingsClient(profile: String) -> BotWorkSettingsClient {
-        BotWorkSettingsClient(
+        let runtime = shownRuntime
+        return BotWorkSettingsClient(
             profile: profile,
             parameter: notifierPlugin.dashboardProfileParameter,
-            request: { [weak self] path, method, body in
-                guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            request: { [weak runtime] path, method, body in
+                guard let bridge = runtime?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
                 return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 30_000)
             }
         )
@@ -462,12 +465,25 @@ extension AppState {
     private func setBotWork(_ snapshot: BotWorkSnapshot) {
         whileKeepingTitle { botWork.set(snapshot) }
         // An open workstream's chat shows its checklist as its Tasks line.
+        refreshOpenChatsWorkPlan()
+    }
+
+    /// Whether the bots' work in scope is the chat on screen's dashboard's:
+    /// only then can the open chat be one of its workstreams. Another
+    /// combined dashboard's roster read (its own runtime in scope) leaves
+    /// the open chat's title and Tasks line alone.
+    var botWorkIsTheChatOnScreens: Bool { chatOnScreenIsInScope }
+
+    /// `refreshWorkPlan` when the work in scope is the open chat's.
+    private func refreshOpenChatsWorkPlan() {
+        guard botWorkIsTheChatOnScreens else { return }
         refreshWorkPlan()
     }
 
     /// Runs a change to the bots' work and tells the chat screen when the
     /// open chat's task title changed with it.
     private func whileKeepingTitle(_ change: () -> Void) {
+        guard botWorkIsTheChatOnScreens else { return change() }
         let before = activeWorkstream?.item.shownTitle
         let stoppable = workstreamStoppedByComposer != nil
         change()
@@ -544,7 +560,7 @@ extension AppState {
                     botWork.replace(updated, profile: profile, reopened: action == .reopen)
                     botWork.fileResolved(updated, profile: profile)
                 }
-                refreshWorkPlan()
+                refreshOpenChatsWorkPlan()
             }
             Haptics.success()
             // The buttons free up now; the list is read again behind them.

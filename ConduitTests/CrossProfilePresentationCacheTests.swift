@@ -2791,8 +2791,8 @@ extension CrossProfilePresentationCacheTests {
 
     /// Each bot's work is its own dashboard's: with a kept dashboard's
     /// runtime in scope (its roster read, a far Bot Chat's Work panel) it's
-    /// that runtime's store, never the one on screen's, and a client made
-    /// there reaches that runtime's bridge.
+    /// that runtime's store, never the one on screen's. Its reads leave the
+    /// open chat's title and Tasks line alone unless that chat is its own.
     func testAKeptDashboardsBotWorkIsItsOwn() async throws {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
@@ -2805,6 +2805,16 @@ extension CrossProfilePresentationCacheTests {
         let scoped = await appState.actAcrossAwaits(onRuntime: kept.runtime) { appState.botWork }
         XCTAssertTrue(scoped === far, "across awaits too")
         XCTAssertTrue(appState.act(onRuntime: appState.runtimeOnScreen) { appState.botWork } === appState.screenBotWork)
+
+        // Only the open chat's dashboard's work touches its Tasks line.
+        XCTAssertTrue(appState.botWorkIsTheChatOnScreens, "the one on screen's chat")
+        XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.botWorkIsTheChatOnScreens },
+                       "a kept dashboard's read isn't the open chat's")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.botWorkIsTheChatOnScreens },
+                      "a far chat open there is its own")
+        XCTAssertFalse(appState.botWorkIsTheChatOnScreens, "and isn't the one on screen's")
+        appState.farChat = nil
     }
 
     /// A far chat on another profile takes the kept socket on a client of
