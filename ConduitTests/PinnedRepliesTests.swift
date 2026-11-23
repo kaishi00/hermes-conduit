@@ -929,4 +929,31 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertEqual(appState.pinnedRepliesByDashboard[first.uuidString]?["default"]?.count, 1)
     }
 
+    /// A delete clears a waiting reveal only when the reveal's own pin went:
+    /// another dashboard's or profile's chat under the same id leaves it.
+    @MainActor
+    func testADeleteClearsOnlyTheRevealOfAPinItDropped() throws {
+        let appState = makeAppState(freshDefaults())
+        let leftBucket = UUID().uuidString
+        let leftPin = PinnedReply(sessionID: "chat-1", message: reply("a", "Left plan", rowId: 7), chatTitle: "Plans")
+        appState.setPinnedReplies([leftPin], of: PinnedReplyOwner(dashboard: leftBucket, profile: "default"))
+        appState.activeSessionId = "chat-1"
+        let answer = reply("b", "Screen plan", rowId: 8)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        let pinned = try XCTUnwrap(appState.activePinnedReplies.first)
+        appState.showPinnedReply(pinned)
+        XCTAssertNotNil(appState.pendingPinnedReplyReveal)
+
+        appState.dropPinnedReplies(forDeleted: row("chat-1"), profile: "default", dashboard: leftBucket)
+        XCTAssertEqual(appState.pendingPinnedReplyReveal?.pin.id, pinned.id, "another dashboard's delete leaves it")
+        appState.setPinnedReplies([leftPin], of: PinnedReplyOwner(dashboard: leftBucket, profile: "helper"))
+        appState.forgetPinnedReplies(profile: "helper", dashboard: leftBucket)
+        XCTAssertEqual(appState.pendingPinnedReplyReveal?.pin.id, pinned.id, "and so does another profile's")
+
+        appState.dropPinnedReplies(forDeleted: row("chat-1"))
+        XCTAssertTrue(appState.activePinnedReplies.isEmpty)
+        XCTAssertNil(appState.pendingPinnedReplyReveal, "its own chat's delete clears it")
+    }
+
 }
