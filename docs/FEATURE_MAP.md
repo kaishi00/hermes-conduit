@@ -8083,7 +8083,7 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 
 ## Pairing a computer
 
-Conduit for Windows and Mac (hermes-conduit-desktop) signs in by scanning its
+Conduit for desktop on Mac, Windows and Linux (hermes-conduit-desktop) signs in by scanning its
 QR code with the phone: the phone sends that computer its Hermes sign-ins,
 sealed to the computer's key, through a one-time inbox on the rooms mailbox,
 and both screens show the same four words before the computer signs in.
