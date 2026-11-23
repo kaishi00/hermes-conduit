@@ -176,15 +176,25 @@ struct RichCard: Identifiable, Equatable, Hashable {
 
     /// The cards a finished `conduit_show` call showed: its answer's
     /// `cards` (normalized by the plugin, checked again here), or, for an
-    /// answer that doesn't carry them, its arguments' when it succeeded.
+    /// answer that doesn't carry them, its arguments' when it succeeded or
+    /// when the row carries no answer at all.
     static func cards(for tool: ToolActivity, schema: RichCardSchema? = .bundled) -> [RichCard] {
         guard tool.name.lowercased() == toolName, tool.status == .complete else { return [] }
         let answer = jsonObject(tool.output)
         if let given = answer?["cards"] {
             return cards(raw: given, schema: schema)
         }
-        guard (answer?["ok"] as? Bool) == true else { return [] }
+        guard (answer?["ok"] as? Bool) == true || keptNoAnswer(tool) else { return [] }
         return cards(raw: jsonObject(tool.input)?["cards"], schema: schema)
+    }
+
+    /// Whether a finished row carries no answer: Hermes' resume projection
+    /// lists a tool call with its arguments and without its result, so a
+    /// chat rebuilt from a resume (after a history read the route refused,
+    /// such as one by the chat's runtime id) has only the arguments to draw
+    /// the board from. A live or stored call always has its answer.
+    static func keptNoAnswer(_ tool: ToolActivity) -> Bool {
+        (tool.output ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Whether a transcript row is a `conduit_show` call that showed a

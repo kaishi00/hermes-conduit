@@ -6495,12 +6495,20 @@ enum MessageNormalizer {
                     // context preview but deliberately omits its raw output.
                     // Preserve that as input instead of mislabeling it as an
                     // output after a reload.
-                    let preview = content.isEmpty ? extractToolContext(obj) : nil
                     // Its compact row names Tool Search's wrapper, with the
                     // wrapper's envelope as `args`.
                     let shownName = ToolSearchBridge.isWrapper(name)
                         ? ToolSearchBridge.underlyingCall((obj["args"] ?? obj["arguments"])?.anyValue)?.name ?? name
                         : name
+                    // A conduit_show row keeps its arguments whole: its
+                    // board is drawn from them when the row carries no
+                    // answer, so a chat rebuilt from a resume (which a read
+                    // the history route refused sends it through) keeps its
+                    // cards instead of losing every one on the next turn.
+                    let showArgs: String? = shownName.lowercased() == RichCard.toolName
+                        ? (obj["args"] ?? obj["arguments"]).flatMap { $0.objectValue == nil ? nil : $0.descriptiveStringValue }
+                        : nil
+                    let preview = content.isEmpty ? (showArgs ?? extractToolContext(obj)) : nil
                     let m = ChatMessage(
                         id: id, role: .tool, content: "", timestamp: extractTimestamp(obj),
                         author: extractAuthor(obj), reasoning: nil,

@@ -1886,6 +1886,49 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertNil(messages[0].tool?.output)
     }
 
+    /// A chat rebuilt from a resume carrying the transcript (after the
+    /// history route refused a read by the chat's runtime id) lists a
+    /// conduit_show call with its arguments and no answer: the board is
+    /// drawn from them, so the cards don't leave the chat on the next turn.
+    func testCompactResumeConduitShowRowKeepsItsBoard() throws {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "role": .string("tool"),
+                "name": .string("conduit_show"),
+                "context": .string("Kick block links"),
+                "args": .object([
+                    "title": .string("Kick block links"),
+                    "cards": .array([
+                        .object([
+                            "type": .string("callout"),
+                            "title": .string("Tip"),
+                            "callout": .object(["text": .string("Put the pedal on a mat."), "tone": .string("tip")])
+                        ])
+                    ])
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 1)
+        let tool = try XCTUnwrap(messages[0].tool)
+        XCTAssertEqual(tool.name, "conduit_show")
+        XCTAssertNil(tool.output)
+        XCTAssertTrue(RichCard.hasCards(messages[0]), "the board comes back from the call's arguments")
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
+    }
+
+    /// A finished show that failed keeps its answer, so its arguments never
+    /// draw a board.
+    func testAFailedConduitShowAnswerDrawsNoBoardFromItsArguments() {
+        let tool = ToolActivity(
+            id: "t1", name: "conduit_show",
+            input: #"{"cards": [{"type": "callout", "callout": {"text": "Hi"}}]}"#,
+            output: #"{"ok": false, "error": "typed_chat"}"#,
+            status: .complete
+        )
+        XCTAssertNil(RichBoard.board(for: tool, schema: .bundled))
+    }
+
     func testEmptyExternalMetadataDoesNotCreatePhantomAssistantHeader() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
