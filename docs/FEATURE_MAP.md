@@ -1388,7 +1388,7 @@ CarPlay, Classic, the Watch's relay and the iPhone's jobs for a Watch call)
 · the chat an unattached call took · `docs/VOICE_BACKGROUND_JOBS.md` · the
 notifier's README
 
-**Desktop app:** has it (desktop#93, desktop#180): the Sources filter's Voice and Voice Jobs read the plugin's tags, Voice lists every chat a call was kept with, a call's row names its engine and a job's the chat it came from, the rows the plugin archived for voice are listed again, voice jobs send the phone's job prompt and a Classic call's fresh chat is tagged and archived as the call ends (`desktop/src/renderer/src/state/voiceList.ts`), call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); a job nests under the call or chat it came from, with the phone's summary line, open nests kept on the computer, the open chat's parents opened and a closed nest's unread on its parent, flat under a search or a filter (`desktop/src/renderer/src/state/chatNesting.ts`, desktop#180). A call kept with a chat is stored in that chat, with no row to nest.
+**Desktop app:** has it (desktop#93, desktop#180): the Sources filter's Voice and Voice Jobs read the plugin's tags, Voice lists every chat a call was kept with, a call's row names its engine and a job's the chat it came from, the rows the plugin archived for voice are listed again, voice jobs send the phone's job prompt and a Classic call's fresh chat is tagged and archived as the call ends (`desktop/src/renderer/src/state/voiceList.ts`), call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); a job nests under the call or chat it came from, with the phone's summary line, open nests kept on the computer, the open chat's parents opened and a closed nest's unread on its parent, flat under a search or a filter (`desktop/src/renderer/src/state/chatNesting.ts`, desktop#180). A call kept with a chat is stored in that chat, with no row to nest. Archived leaves out voice rows already in Chats, after reading fresh tags; older voice rows not loaded in Chats remain reachable there (desktop#410).
 
 **Code**
 - Filing and listing: `Conduit/Services/AppState+Voice.swift` (sessionCategory, refreshVoiceSessionTags), `Conduit/Services/AppState+Persistence.swift` (voiceCallChatFilter, adoptHostChatCalls), `Conduit/Services/AppState+SessionCatalog.swift` (isArchivedVoiceChat), `Conduit/Voice/VoiceHistory.swift` (VoiceSessionTag, VoiceHostChatCall, VoiceCallChatLinks adopt and chatIDs)
@@ -6948,7 +6948,7 @@ chat's row on the iPad and Mac (same view) · unread dots (another profile's
 replies) · a project's page, which gathers the same profiles' chats in its
 folder (Whose project page) · VoiceOver · README.md
 
-**Desktop app:** partly: the Chats list's profile column picks one profile or every one (desktop#269), and All can group by profile, from the Filter menu or Show in All: a section per profile in the roster's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover beside the column's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); a section's pins reorder among themselves by dragging and Move Earlier or Later (desktop#121).
+**Desktop app:** partly: the Chats list's profile column picks one profile or every one (desktop#269), and All can group by profile, from the Filter menu or Show in All: a section per profile in the roster's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover beside the column's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); a section's pins reorder among themselves by dragging and Move Earlier or Later (desktop#121). A row's Archive runs on its own profile, and Filter › Archived lists and restores this dashboard's archived chats (desktop#410).
 
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
@@ -7217,7 +7217,7 @@ context menu Delete · pinned replies' Unpin (acts at once, no confirmation) ·
 the iPad and Mac list beside the open chat (same views) · text: no Settings
 caption or doc describes it
 
-**Desktop app:** has it: Delete in the row menus (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19).
+**Desktop app:** has it: Delete in the row menus (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19), and a confirmed permanent Delete in Archived (desktop#410).
 
 **Code**
 - V2 rows: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions and V2SessionTrailingSwipes, which holds the Delete swipe; projectRow's swipe actions, the Delete alerts)
