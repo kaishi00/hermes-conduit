@@ -439,7 +439,10 @@ extension AppState {
     /// names their profile for them.
     func noteFollowedChatProfiles(of dashboardID: UUID, on next: HermesClient) {
         if let farChat, farChat.dashboardID == dashboardID {
-            next.noteSessionProfile(farChat.profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
+            // A far Bot Chat's requests name its bot's profile, as its open
+            // scoped them, not the workspace profile it opened on.
+            let profile = activeSessionId.flatMap(botConversationProfile(for:)) ?? farChat.profile
+            next.noteSessionProfile(profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
         }
         for chat in backgroundChats where chat.dashboardID == dashboardID {
             next.noteSessionProfile(chat.profile, for: chat.sessionIDs.map(Optional.some))

@@ -855,15 +855,29 @@ extension AppState {
     /// pictures), never the dashboard on screen's.
     var conversationAgentIdentity: ConversationAgentIdentity {
         guard chatOnScreenIsInScope else {
-            // Its runtime gone: the name its own dashboard's bots give that
-            // profile (Bots Home's read), else the profile's own, never the
-            // dashboard on screen's name for it.
-            let profile = composerOwnerProfile
-            let farName = farChat.flatMap { combinedDashboardBots[$0.dashboardID]?.bots }?
-                .first { $0.name.caseInsensitiveCompare(profile) == .orderedSame }?.displayLabel
-            return onChatRuntimeValue(unreachable: ConversationAgentIdentity.workspace(
-                name: farName ?? profile, photoURL: nil, profile: profile
-            )) { conversationAgentIdentity }
+            // Its runtime gone: its bot (a far Bot Chat's, from the Bot Chat
+            // registry) or its profile, named and faced by its own
+            // dashboard's bots as Bots Home read them, else the profile's
+            // own name, never the dashboard on screen's for it.
+            let botProfile = activeSessionId.flatMap(botConversationProfile(for:))
+            let profile = botProfile ?? composerOwnerProfile
+            let farBot = farChat.flatMap { combinedDashboardBots[$0.dashboardID]?.bots }?
+                .first { $0.name.caseInsensitiveCompare(profile) == .orderedSame }
+            let unreachable: ConversationAgentIdentity
+            if botProfile != nil {
+                unreachable = ConversationAgentIdentity(
+                    name: farBot?.displayLabel ?? profile,
+                    photoURL: nil,
+                    botFace: farBot.map { bot in
+                        ConversationAgentIdentity.BotFace(
+                            name: bot.name, colorString: bot.shownColor, image: nil, starterFace: bot.starterFace
+                        )
+                    }
+                )
+            } else {
+                unreachable = ConversationAgentIdentity.workspace(name: farBot?.displayLabel ?? profile, photoURL: nil, profile: profile)
+            }
+            return onChatRuntimeValue(unreachable: unreachable) { conversationAgentIdentity }
         }
         guard let botProfile = activeBotChatProfile else {
             return ConversationAgentIdentity.workspace(

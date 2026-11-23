@@ -2582,6 +2582,17 @@ extension CrossProfilePresentationCacheTests {
                                      isArchived: false, lineageRootId: nil)
         unnamed.combinedDashboardID = mac.id
         XCTAssertNil(appState.openFarBotChatInPlace(unnamed, in: mac.id))
+        // A far tap's key is the same for the same bot on that dashboard,
+        // so a second tap joins the first's open.
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.botChatFlightKey("Atlas") },
+                       appState.act(onRuntime: kept.runtime) { appState.botChatFlightKey("atlas ") })
+
+        // Its socket handed to a client on another profile (a far call, a
+        // far chat on another profile), its requests still name its bot's.
+        _ = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
+        let handed = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertEqual(handed.client.profile, "work")
+        XCTAssertEqual(handed.client.sessionProfile(for: "atlas-chat"), "atlas", "its bot's profile, not the workspace's")
     }
 
     /// A far chat on another profile takes the kept socket on a client of
