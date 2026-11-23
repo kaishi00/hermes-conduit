@@ -310,7 +310,8 @@ private struct ArtifactsList: View {
         return Set(ArtifactPinsClient.items(sources: ownSources, saved: savedRows).map(\.id))
     }
 
-    private var offersSaved: Bool { appState.supportsArtifactPins }
+    /// Saved reads this dashboard's pins: a far chat's list has none to show.
+    private var offersSaved: Bool { hostIsOnScreen && appState.supportsArtifactPins }
     private var nextBefore: ArtifactFeed.Cursor? { feed?.nextCursor }
 
     var body: some View {
@@ -420,7 +421,7 @@ private struct ArtifactsList: View {
                     // Kept rows show it before the plugin has answered
                     // (offline, just launched); Save itself waits for it.
                     if option == .all, offersSaved || savedOnly
-                        || savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
+                        || hostIsOnScreen && savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
                         let count = savedIDs.count
                         chip(Text("Saved") + Text(verbatim: count == 0 ? "" : " \(count)"),
                              isOn: savedOnly) {
