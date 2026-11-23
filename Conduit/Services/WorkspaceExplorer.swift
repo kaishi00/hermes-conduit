@@ -270,7 +270,11 @@ final class WorkspaceExplorer: ObservableObject {
                 failure = tooLarge
                 continue
             }
-            guard scope == startedScope, far == startedFar else { break }
+            guard scope == startedScope, far == startedFar else {
+                // Said, so the files left unsent don't pass for uploaded.
+                failure = AppLocalization.string("The other files weren't uploaded, since the folder changed.", table: .chat)
+                break
+            }
             sent = true
             // A failure that came after the host went (a far chat's
             // dashboard dropped) is still this file's: `change` answers nil
