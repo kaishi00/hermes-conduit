@@ -34,10 +34,8 @@ extension AppState {
                 }
                 if owner != activeDashboardID {
                     if let kept = keptDashboardRuntimes[owner], kept.client.isConnected,
-                       kept.runtime.botWork.workstreamSessionIDs.contains(id)
-                           || kept.runtime.botWork.workstream(forSession: [id]) != nil,
-                       let prof = notificationProfileID(profile)
-                           ?? kept.runtime.botWork.workstream(forSession: [id])?.profile {
+                       let workstreamProfile = kept.runtime.botWork.workstreamProfile(forSession: [id]) {
+                        let prof = notificationProfileID(profile) ?? workstreamProfile
                         _ = openFarWorkstreamInPlace(id, profile: prof, in: owner)
                         return
                     }

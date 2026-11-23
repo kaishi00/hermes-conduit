@@ -439,7 +439,8 @@ final class NeedsYouStore: ObservableObject {
 
     /// A question the user just answered here leaves at once, so the asking
     /// chat's card moves on to the next even when the read behind it fails.
-    /// Only on the dashboard these were read on.
+    /// Drops it from the dashboard it belongs to (screen `items` or kept
+    /// `otherDashboards`) and its twins.
     func dropAnsweredQuestion(_ questionID: String, profile: String, dashboardID: UUID?,
                               alsoOn twins: Set<UUID> = [], now: Date = Date()) {
         let waitID = "asked-\(questionID)"

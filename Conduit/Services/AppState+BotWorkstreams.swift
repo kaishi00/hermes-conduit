@@ -765,11 +765,11 @@ extension AppState {
     @discardableResult
     func openFarWorkstreamInPlace(_ sessionID: String, profile: String, in dashboardID: UUID) -> Task<Bool, Never>? {
         guard !sessionID.isEmpty, dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID) else { return nil }
-        ensureKeptPluginReport(for: dashboardID)
         guard let runtime = keptRuntime(dashboardID, on: profile) else {
             errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
             return nil
         }
+        ensureKeptPluginReport(for: dashboardID)
         widgetLaunchCoordinator.supersede()
         errorMessage = nil
         let task = act(onRuntime: runtime) {

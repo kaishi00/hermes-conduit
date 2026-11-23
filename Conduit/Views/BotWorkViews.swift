@@ -241,7 +241,7 @@ struct BotWorkTitleStatus: View {
     let onOpenPanel: () -> Void
 
     var body: some View {
-        if let profile = farDashboardID.map({ appState.farBotChatProfile(in: $0) }) ?? appState.chatBotChatProfile {
+        if let profile = appState.chatBotChatProfile {
             BotWorkTitleLine(work: work, profile: profile, farDashboardID: farDashboardID, isPanelOpen: isPanelOpen, onOpen: onOpenPanel)
         } else if let workstream = appState.activeWorkstream {
             WorkstreamTitleLine(work: work, profile: workstream.profile, item: workstream.item, farDashboardID: farDashboardID)
@@ -1721,7 +1721,7 @@ struct BotWorkHeader: View {
     static let unmatchedInterval: UInt64 = 3_000_000_000
 
     var body: some View {
-        if farDashboardID.map({ appState.farBotChatProfile(in: $0) }) ?? appState.chatBotChatProfile != nil {
+        if appState.chatBotChatProfile != nil {
             // Its work shows under the title.
             EmptyView()
         } else if let workstream = appState.activeWorkstream {

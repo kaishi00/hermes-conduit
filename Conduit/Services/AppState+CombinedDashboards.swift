@@ -370,7 +370,7 @@ extension AppState {
     func readKeptPluginReport(_ kept: KeptDashboardRuntime, for id: UUID) {
         Task { @MainActor [weak self] in
             guard let self, let response = try? await self.readKeptDashboardJSON(kept.bridge, path: NotifierPluginStatus.path),
-                  self.keptDashboardRuntimes[id]?.client === kept.client else { return }
+                  self.keptDashboardRuntimes[id]?.bridge === kept.bridge else { return }
             let state = NotifierPluginStatus.state(from: response)
             guard state != .unknown else { return }
             kept.runtime.notifierPlugin.state = state
