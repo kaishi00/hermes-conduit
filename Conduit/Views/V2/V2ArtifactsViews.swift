@@ -1003,6 +1003,7 @@ private struct ArtifactsList: View {
         let token = UUID()
         openToken = token
         let resolver = resolver(for: item)
+        let key = currentKey
         openTask = Task { @MainActor in
             // A cancelled open unwinding late leaves a newer open's spinner,
             // also one of the same item on another dashboard.
@@ -1013,7 +1014,8 @@ private struct ArtifactsList: View {
                 }
             }
             if item.kind == .page {
-                guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
+                guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled,
+                      stillOwns(key) else { return }
                 guard let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
                     openFailed(item)
                     return
@@ -1021,8 +1023,17 @@ private struct ArtifactsList: View {
                 page = OpenPage(name: item.name, html: html)
                 return
             }
-            await presentAsFile(item, path: path, resolver: resolver)
+            await presentAsFile(item, path: path, resolver: resolver, key: key)
         }
+    }
+
+    /// Whether the list still shows what an open began on: held while
+    /// hidden (audit 1722), the list doesn't reload, and so doesn't cancel
+    /// an open, when the dashboard or profile changes behind it. A file
+    /// read for the one before isn't presented.
+    private func stillOwns(_ key: ArtifactsListKey) -> Bool {
+        let now = currentKey
+        return now.showsRows(of: key) && now.profile == key.profile
     }
 
     /// The reader for a Markdown artifact: `MarkdownText`, the same view the
@@ -1033,6 +1044,7 @@ private struct ArtifactsList: View {
         let token = UUID()
         openToken = token
         let resolver = resolver(for: item)
+        let key = currentKey
         openTask = Task { @MainActor in
             defer {
                 if openToken == token {
@@ -1043,10 +1055,10 @@ private struct ArtifactsList: View {
             guard let text = await MarkdownArtifact.load(
                 path: path, knownSize: item.size, dataURL: { await resolver.dataURL(for: $0) }
             ) else {
-                await presentAsFile(item, path: path, resolver: resolver)
+                await presentAsFile(item, path: path, resolver: resolver, key: key)
                 return
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stillOwns(key) else { return }
             // A file the user sent is the user's text, not Hermes': its
             // `MEDIA:` lines stay text and fetch nothing, as in their message.
             let trusted = item.source != .attached
@@ -1072,6 +1084,7 @@ private struct ArtifactsList: View {
         let token = UUID()
         openToken = token
         let resolver = resolver(for: item)
+        let key = currentKey
         openTask = Task { @MainActor in
             defer {
                 if openToken == token {
@@ -1081,6 +1094,10 @@ private struct ArtifactsList: View {
             }
             switch await resolver.file(for: path) {
             case .downloaded(let download):
+                guard stillOwns(key) else {
+                    MediaPreviewPresenter.removeDirectory(download.directory)
+                    return
+                }
                 if MediaPreviewPresenter.shared.presentSaveToFiles(downloaded: download) { return }
             case .tooLarge:
                 openFailed(item, tooLarge: true)
@@ -1090,7 +1107,7 @@ private struct ArtifactsList: View {
             }
             guard !Task.isCancelled else { return }
             let dataURL = await resolver.dataURL(for: path)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stillOwns(key) else { return }
             if let dataURL, await MediaPreviewPresenter.shared.presentSaveToFiles(dataURL: dataURL, filename: item.name) {
                 return
             }
@@ -1104,11 +1121,11 @@ private struct ArtifactsList: View {
     /// the share sheet for active content). The fallback for a Markdown
     /// file that isn't readable text, and the path every other file takes.
     private func presentAsFile(_ item: ArtifactItem, path: String,
-                               resolver: GatewayMediaDataURLResolver) async {
+                               resolver: GatewayMediaDataURLResolver, key: ArtifactsListKey) async {
         guard !Task.isCancelled else { return }
         switch await resolver.file(for: path) {
         case .downloaded(let download):
-            guard !Task.isCancelled else {
+            guard !Task.isCancelled, stillOwns(key) else {
                 MediaPreviewPresenter.removeDirectory(download.directory)
                 return
             }
@@ -1122,7 +1139,7 @@ private struct ArtifactsList: View {
         // A cancelled download reads as unavailable; no fallback for a
         // list that has gone.
         guard !Task.isCancelled else { return }
-        guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled else { return }
+        guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled, stillOwns(key) else { return }
         guard await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: item.name) else {
             openFailed(item)
             return

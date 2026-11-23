@@ -171,6 +171,26 @@ class SheetEnvironmentTests(unittest.TestCase):
         """
         self.assertEqual(problems(wrapper, child, direct), [], "a wrapper directly in the sheet")
 
+        # What the wrapper injects only into a sheet of its own provides
+        # nothing to the content it's handed.
+        sheet_only = wrapper.replace(
+            "var body: some View { content.environmentObject(updates) }",
+            """@State private var shown = false
+            var body: some View {
+                content.environmentObject(updates)
+                    .sheet(isPresented: $shown) { Text("").environmentObject(KanbanStore()) }
+            }""")
+        store_child = """
+        struct StoreChild: View {
+            @EnvironmentObject private var store: KanbanStore
+            var body: some View { Text("") }
+        }
+        """
+        store_sheet = direct.replace("HeldChild()", "StoreChild()")
+        found = problems(sheet_only, store_child, store_sheet)
+        self.assertEqual(len(found), 1)
+        self.assertIn("needs KanbanStore", found[0])
+
     def test_view_that_reads_and_passes_on_an_object_still_needs_it(self):
         # KanbanTaskDetailView's shape: it reads the store and injects it
         # into a NavigationLink destination; its sheet still has to hand it

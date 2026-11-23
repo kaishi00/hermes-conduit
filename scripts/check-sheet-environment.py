@@ -136,7 +136,9 @@ class Index:
             for m in VIEW_DECL.finditer(text):
                 if "<" not in text[m.start():m.end()] or not re.search(r"\bView\b", m.group(2)):
                     continue
-                body = text[m.start():block_end(text, m.end() - 1)]
+                # Only what it injects around its content: its own sheets'
+                # injections reach those sheets alone.
+                body = without_presentations(text[m.start():block_end(text, m.end() - 1)])
                 if not re.search(r"\bcontent\s*(?:\(\s*\))?\s*\.environmentObject\(", body):
                     continue
                 found = self.injected_types(body, m.group(1))
