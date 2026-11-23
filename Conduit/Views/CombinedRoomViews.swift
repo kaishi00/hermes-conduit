@@ -47,8 +47,11 @@ struct CombinedRoomPortrait: View {
         .buttonStyle(PressableButtonStyle())
         .contextMenu { menu }
         .modifier(RoomTileDrag(roomID: tile.id, enabled: isHosted) {
-            // Drawn outside the view's environment, as a bot's preview.
+            // Drawn outside the view's environment, as a bot's preview:
+            // the icon reads the tab's updates, so they're handed in too
+            // (shown, as Bots Home is while a tile is dragged).
             CombinedRoomIcon(tile: tile, size: 56)
+                .environmentObject(updates)
                 .environmentObject(appState)
         })
         .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: tile.id, targeted: $dropTarget) { dragged in
