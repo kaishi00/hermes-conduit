@@ -173,6 +173,16 @@ extension AppState {
         AppLocalization.string("Connect to Hermes to chat with bots.")
     }
 
+    /// The key a Bot Chat's open flight is kept under: its bot's name, and
+    /// on another combined dashboard's runtime (a far Bot Chat opening in
+    /// place) that dashboard too, so a bot of the same name on two
+    /// dashboards never joins the other's open.
+    func botChatFlightKey(_ name: String) -> String {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard shownRuntime !== runtimeOnScreen, let dashboard = dashboardID(of: shownRuntime) else { return key }
+        return "\(dashboard.uuidString)#\(key)"
+    }
+
     /// `openBotChat`, saying whether a failed open was superseded. An open
     /// that brings no navigation of its own (a tap, a link, a new bot)
     /// begins one before Hermes' lookup, not after it: a newer tap then
@@ -187,7 +197,7 @@ extension AppState {
             errorMessage = Self.connectToChatWithBotsMessage
             return .failed
         }
-        let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let flightKey = botChatFlightKey(bot.name)
         // A flight whose navigation a newer one took over will stand down:
         // a tap on its bot now opens on its own.
         if let flight = botChatOpenFlights[flightKey],

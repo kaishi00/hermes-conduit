@@ -2547,7 +2547,15 @@ extension CrossProfilePresentationCacheTests {
                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
                                canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
                                lastActive: nil, lastPreview: nil)
-        kept.runtime.botRoster = [atlas]
+        // Named by Bots Home's read of that dashboard only: its runtime has
+        // no roster yet (never visited).
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        XCTAssertTrue(kept.runtime.botRoster.isEmpty, "no roster of its own")
+        // Its open is kept apart from a same-named bot's on screen.
+        XCTAssertNotEqual(appState.act(onRuntime: kept.runtime) { appState.botChatFlightKey("Atlas") },
+                          appState.botChatFlightKey("Atlas"))
         var row = SessionSummary(id: "atlas-chat", alternateIds: [], title: BotMode.canonicalChatTitle, model: "Hermes",
                                  updatedLabel: "now", profile: "atlas", source: .chat, isActive: false, isArchived: false,
                                  lineageRootId: nil)
@@ -2566,6 +2574,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(seen.opened.last?.1, "atlas-chat")
         XCTAssertEqual(seen.opened.last?.2, "atlas", "in its bot's profile")
         XCTAssertEqual(appState.conversationAgentIdentity.name, "Atlas", "it presents its own bot")
+        XCTAssertEqual(appState.conversationAgentIdentity.botFace?.name, "atlas", "with its face, from Bots Home's read")
 
         // One no bot of its names (a title is all it has) still switches.
         var unnamed = SessionSummary(id: "other-chat", alternateIds: [], title: BotMode.canonicalChatTitle, model: "Hermes",
