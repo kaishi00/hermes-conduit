@@ -1583,23 +1583,8 @@ extension AppState {
         if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
             pendingNeedsYouReveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
         }
-        let notificationAttemptID = UUID()
-        activeNotificationOpenAttemptID = notificationAttemptID
-        isOpeningNotificationSession = true
-        // Whether the held failure's screen still showed as this attempt began:
-        // a chat the user opened since makes it no longer the route's to say.
-        let heldFailureWasCurrent = notificationRouteFailure.map {
-            chatViewportTransitionIsCurrent(generation: $0.transition)
-        } ?? false
-        let transitionGeneration = beginExplicitChatViewportTransition()
-        noteNotificationRouteAttempt(for: target, transition: transitionGeneration, heldWasCurrent: heldFailureWasCurrent)
-        defer {
-            // Ends with no transcript of its own laid out (a profile switch
-            // it lent the transition to marks a replacement but replaces no
-            // transcript): the viewport is released, not left frozen.
-            finishChatViewportTransitionIfNoTranscriptReplacement(generation: transitionGeneration)
-            finishNotificationOpenAttempt(id: notificationAttemptID)
-        }
+        let (notificationAttemptID, transitionGeneration) = beginNotificationOpenAttempt(for: target)
+        defer { endNotificationOpenAttempt(id: notificationAttemptID, transitionGeneration: transitionGeneration) }
         guard notificationOpenAttemptIsCurrent(
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
@@ -2221,6 +2206,32 @@ extension AppState {
     func discardNotificationRouteFailure(for target: ConduitNotificationTarget) {
         guard let failure = notificationRouteFailure, failure.target == target else { return }
         notificationRouteFailure = nil
+    }
+
+    /// A tapped push's or chat link's open attempt begins: it owns the
+    /// open from here (a newer tap's replaces it) and the chat viewport's
+    /// transition, which a far Bot Chat's open in place lends its open too.
+    func beginNotificationOpenAttempt(for target: ConduitNotificationTarget) -> (id: UUID, transition: UInt64) {
+        let id = UUID()
+        activeNotificationOpenAttemptID = id
+        isOpeningNotificationSession = true
+        // Whether the held failure's screen still showed as this attempt began:
+        // a chat the user opened since makes it no longer the route's to say.
+        let heldFailureWasCurrent = notificationRouteFailure.map {
+            chatViewportTransitionIsCurrent(generation: $0.transition)
+        } ?? false
+        let transitionGeneration = beginExplicitChatViewportTransition()
+        noteNotificationRouteAttempt(for: target, transition: transitionGeneration, heldWasCurrent: heldFailureWasCurrent)
+        return (id, transitionGeneration)
+    }
+
+    /// The attempt `beginNotificationOpenAttempt` began ends.
+    func endNotificationOpenAttempt(id: UUID, transitionGeneration: UInt64) {
+        // Ends with no transcript of its own laid out (a profile switch
+        // it lent the transition to marks a replacement but replaces no
+        // transcript): the viewport is released, not left frozen.
+        finishChatViewportTransitionIfNoTranscriptReplacement(generation: transitionGeneration)
+        finishNotificationOpenAttempt(id: id)
     }
 
     private func finishNotificationOpenAttempt(id: UUID) {
