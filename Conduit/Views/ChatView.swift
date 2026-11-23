@@ -194,7 +194,8 @@ struct ChatView: View {
             rowsOnTheirWay: scroller.targets.isEmpty && !appState.chatRowsOnScreen.isEmpty,
             showsSavedCopy: showsOfflineCopy,
             hasSavedCopy: appState.offlineChatPresentation != nil,
-            savedCopyIsOpening: appState.offlineChatPresentation?.isPickedChat == true && !showsOfflineBanner
+            savedCopyIsOpening: appState.offlineChatPresentation?.isPickedChat == true && !showsOfflineBanner,
+            chatIsOpening: appState.liveChatIsOnItsWay
         )
     }
 
@@ -619,6 +620,12 @@ struct ChatView: View {
             transcriptTopBackfillControl(isLoading: isLoading)
         case .savedCopyStatus(let isOpening):
             savedCopyStatus(isOpening: isOpening)
+        case .opening:
+            // Keyed by the chat drawn: a chat opened straight from another
+            // that showed this line too starts its grace and slow note over.
+            ChatOpeningStatus()
+                .id(drawnConversation)
+                .padding(.top, 60)
         case .empty:
             // Room under the card as over it: the cell clips its row at the
             // top and bottom (TranscriptCell's rowContainer), and the glass
@@ -951,9 +958,8 @@ struct ChatView: View {
     @ViewBuilder
     private func savedCopyStatus(isOpening: Bool) -> some View {
         if isOpening {
-            ProgressView("Opening conversation…")
-                .scaledFont(.subheadline)
-                .foregroundStyle(.secondary)
+            ChatOpeningStatus()
+                .id(drawnConversation)
                 .padding(.top, 60)
         } else {
             Text("No saved copy of this conversation")
@@ -5545,6 +5551,55 @@ struct StreamingBubble: View {
 }
 
 // MARK: - Empty State
+
+/// "Opening conversation…" while Hermes sends a chat Conduit has nothing
+/// to draw for yet (issue 3148), and over a chat picked in the saved list
+/// while Conduit connects. It waits out `ResyncGrace.duration`, so a quick
+/// open doesn't flash it, and after `slowAfter` says the connection is
+/// slow, rather than leaving a spinner with no word on why. Its height
+/// stays the same throughout: the scroller measures the row once.
+struct ChatOpeningStatus: View {
+    /// The row's height: the line and the slow note under it.
+    static let height: CGFloat = 64
+    static let slowAfter: Duration = .seconds(6)
+
+    private enum Stage { case waiting, opening, slow }
+    @State private var stage = Stage.waiting
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Opening conversation…")
+                    .scaledFont(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Still loading. This can take a moment on a slow connection.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .opacity(stage == .slow ? 1 : 0)
+                .accessibilityHidden(stage != .slow)
+        }
+        .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .top)
+        .padding(.horizontal, 24)
+        .opacity(stage == .waiting ? 0 : 1)
+        .animation(.easeOut(duration: 0.2), value: stage)
+        .accessibilityElement(children: .combine)
+        .accessibilityHidden(stage == .waiting)
+        .accessibilityIdentifier("chat-opening-status")
+        .task {
+            try? await Task.sleep(for: ResyncGrace.duration)
+            guard !Task.isCancelled else { return }
+            stage = .opening
+            AccessibilityNotification.Announcement(AppLocalization.string("Opening conversation…")).post()
+            try? await Task.sleep(for: Self.slowAfter - ResyncGrace.duration)
+            guard !Task.isCancelled else { return }
+            stage = .slow
+        }
+    }
+}
 
 /// A New Chat Hermes hasn't created yet, drawn as the live transcript draws
 /// an empty chat, so the real one takes its place without a jump.

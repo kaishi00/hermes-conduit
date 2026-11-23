@@ -145442,6 +145442,88 @@
         }
       }
     },
+    "Still loading. This can take a moment on a slow connection." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird noch geladen. Bei einer langsamen Verbindung kann das einen Moment dauern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todavía cargando. Con una conexión lenta puede tardar un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chargement en cours. Avec une connexion lente, cela peut prendre un moment."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masih memuat. Ini bisa memakan waktu sebentar pada koneksi yang lambat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caricamento in corso. Con una connessione lenta può volerci un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込み中です。接続が遅いと少し時間がかかることがあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 불러오는 중입니다. 연결이 느리면 잠시 걸릴 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nadal wczytywanie. Przy wolnym połączeniu może to chwilę potrwać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda carregando. Em uma conexão lenta, isso pode levar um momento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё ещё загружается. При медленном соединении это может занять немного времени."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hâlâ yükleniyor. Yavaş bir bağlantıda bu biraz sürebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在加载。网络较慢时可能需要一点时间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在載入。網路較慢時可能需要一點時間。"
+          }
+        }
+      }
+    },
     "Still taking a message back. Try again in a moment." : {
       "localizations" : {
         "de" : {

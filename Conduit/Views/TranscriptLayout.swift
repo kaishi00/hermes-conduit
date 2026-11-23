@@ -474,6 +474,8 @@ final class TranscriptLayout: UICollectionViewLayout {
         switch row.kind {
         case .loadEarlier, .savedCopyStatus, .thinking, .working, .awaitingAgents, .streaming:
             return rowGap + 44
+        case .opening:
+            return rowGap + 60 + ChatOpeningStatus.height
         case .empty:
             return rowGap + 320
         case .pendingSend(let pending):
