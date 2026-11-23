@@ -105,6 +105,18 @@ extension AppState {
         }
     }
 
+    /// A value read for the chat on screen, in its own runtime's scope:
+    /// what it goes by and whose host serves it (its Artifacts, its
+    /// checklists, its cards). `unreachable` when its dashboard isn't
+    /// connected.
+    func onChatRuntimeValue<T>(unreachable: T, _ body: () -> T) -> T {
+        switch chatRuntimeRoute {
+        case .inScope: return body()
+        case .far(let runtime): return act(onRuntime: runtime, body)
+        case .unreachable: return unreachable
+        }
+    }
+
     // MARK: - Its title menu
 
     /// The chat on screen's row, which its title menu acts on. A far
