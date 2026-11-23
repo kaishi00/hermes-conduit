@@ -20,29 +20,93 @@ struct V2BesideChatPane: View {
     /// What its window opened as, where this draws a chat window and not
     /// the pane.
     var windowKey: String?
-    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
-    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        // Read once per publish; the pane redraws when they change, not with
+        // every AppState publish (issue 1722). Its rows follow their own
+        // chat's notice.
+        V2BesideChatPaneContent(
+            chat: chat,
+            windowKey: windowKey,
+            inputs: V2BesideChatPaneInputs(appState: appState, chat: chat),
+            appState: appState
+        )
+        .equatable()
+    }
+}
+
+/// What the pane or a chat window shows from AppState, read once per
+/// publish.
+struct V2BesideChatPaneInputs: Equatable {
+    /// Ignored by the chat's own equality, so read here.
+    var title: String
+    /// The backdrop's glow, the chat's profile's color. Drawn here rather
+    /// than by `V2Backdrop`, which observes AppState itself.
+    var glowTint: Color?
+    /// The chat's notice and media resolver, compared by instance.
+    @IdentityEquatable var live: BesideChatLive.Chat
+    @IdentityEquatable var gatewayResolver: GatewayMediaDataURLResolver
+    var canMoveToWindow: Bool
+    /// Whether the box takes a message but for the chat's turn, which the
+    /// box reads from the notice (`keptChatTakesMessages`).
+    var takesMessages: Bool
+
+    @MainActor
+    init(appState: AppState, chat: BackgroundChat) {
+        title = chat.title
+        glowTint = appState.profileGlowTint(chat.profile)
+        live = appState.besideChatLive.notice(for: chat)
+        gatewayResolver = appState.gatewayMediaResolver(for: chat.profile)
+        canMoveToWindow = appState.canMoveBesideChatToWindow
+        takesMessages = appState.keptChatTakesMessages(chat)
+    }
+}
+
+/// The pane itself, behind `.equatable()`: AppState is held for its
+/// actions only, never observed here.
+private struct V2BesideChatPaneContent: View, Equatable {
+    var chat: BackgroundChat
+    var windowKey: String?
+    var inputs: V2BesideChatPaneInputs
+    @IdentityEquatable var appState: AppState
 
     var body: some View {
         ZStack {
-            V2Backdrop(drifts: false, glowProfile: chat.profile)
+            // V2Backdrop's, still: a pane or window never drifts.
+            ConduitBackdrop(drifts: false, glowTint: inputs.glowTint)
             VStack(spacing: 0) {
-                header
-                V2BesideChatRows(
-                    live: appState.besideChatLive.notice(for: chat),
-                    chat: chat,
-                    gatewayResolver: appState.gatewayMediaResolver(for: chat.profile)
+                V2BesideChatPaneHeader(
+                    title: inputs.title,
+                    windowKey: windowKey,
+                    canMoveToWindow: inputs.canMoveToWindow,
+                    appState: appState
                 )
+                V2BesideChatRows(live: inputs.live, chat: chat, gatewayResolver: inputs.gatewayResolver)
                 // Its draft is this chat's: Swap empties the box.
-                V2KeptChatComposer(live: appState.besideChatLive.notice(for: chat), chat: chat)
+                V2KeptChatComposer(live: inputs.live, chat: chat, takesMessages: inputs.takesMessages, appState: appState)
                     .id(chat.sessionIDs)
             }
         }
     }
+}
+
+/// The pane's title and buttons, or a chat window's.
+private struct V2BesideChatPaneHeader: View {
+    let title: String
+    let windowKey: String?
+    let canMoveToWindow: Bool
+    /// Held for the buttons, not observed.
+    let appState: AppState
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        header
+    }
 
     private var header: some View {
         HStack(spacing: 4) {
-            Text(verbatim: chat.title)
+            Text(verbatim: title)
                 .scaledFont(.headline)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -75,7 +139,7 @@ struct V2BesideChatPane: View {
 
     @ViewBuilder
     private var paneButtons: some View {
-        if supportsMultipleWindows, appState.canMoveBesideChatToWindow {
+        if supportsMultipleWindows, canMoveToWindow {
             Button {
                 Haptics.selection()
                 if let key = appState.moveBesideChatToWindow() {
@@ -115,15 +179,19 @@ struct V2BesideChatPane: View {
 /// chat's own session while it's between turns. Attachments, commands and
 /// answers to cards stay with the chat's own column (Swap).
 private struct V2KeptChatComposer: View {
-    @EnvironmentObject private var appState: AppState
+    /// Moves as its chat's turn starts and ends, which `canSend` reads.
     @ObservedObject var live: BesideChatLive.Chat
     let chat: BackgroundChat
+    /// `keptChatTakesMessages`, read by the pane.
+    let takesMessages: Bool
+    /// Held for the send, not observed.
+    let appState: AppState
     @State private var draft = ""
     @State private var sending = false
     @State private var failed = false
 
     private var canSend: Bool {
-        !sending && appState.canSendInKeptChat(chat)
+        !sending && takesMessages && !chat.isRunning
             && draft.contains(where: { !$0.isWhitespace })
     }
 

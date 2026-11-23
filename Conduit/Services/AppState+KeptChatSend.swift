@@ -17,7 +17,14 @@ extension AppState {
     /// Whether `chat` takes a message here now: connected, on the profile
     /// on screen, and between turns.
     func canSendInKeptChat(_ chat: BackgroundChat) -> Bool {
-        isConnected && client != nil && !chat.isRunning
+        keptChatTakesMessages(chat) && !chat.isRunning
+    }
+
+    /// `canSendInKeptChat` but for its turn: what AppState's publishes
+    /// change. The box reads the turn from its chat's own notice, which
+    /// moves as the turn starts and ends without publishing AppState.
+    func keptChatTakesMessages(_ chat: BackgroundChat) -> Bool {
+        isConnected && client != nil
             && chat.dashboardID == activeDashboardID && chat.profile == activeProfile
             && keptChatIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } == true
     }

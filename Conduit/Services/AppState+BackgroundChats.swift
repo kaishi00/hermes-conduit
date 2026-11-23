@@ -613,6 +613,12 @@ extension AppState {
             // The chat on screen saves its own copy, once its open lands.
             let wasRunning = chat.isRunning
             act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
+            // A chat window still drawing it while its open lands (Open in
+            // Main Window) reads its turn from the notice: a turn ending
+            // now, or an open that fails, leaves its box current (#3180).
+            if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true {
+                besideChatLive.moved(chat)
+            }
             // Still showing the followed copy while its open is in flight:
             // the screen has recorded nothing newer, and a leave before the
             // open lands keeps nothing of the screen's, so the copy's

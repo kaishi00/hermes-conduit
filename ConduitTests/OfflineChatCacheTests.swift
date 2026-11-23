@@ -4594,8 +4594,15 @@ final class OfflineChatCacheTests: XCTestCase {
         state.setActiveSessionState(id: "b")
         let kept = try XCTUnwrap(state.besideChat)
         XCTAssertTrue(state.canSendInKeptChat(kept))
+        // The pane reads what it shows from AppState once per publish and
+        // redraws only when that changes (issue 1722).
+        let shown = V2BesideChatPaneInputs(appState: state, chat: kept)
+        XCTAssertTrue(shown.takesMessages)
+        state.sessions.append(session("c"))
+        XCTAssertEqual(V2BesideChatPaneInputs(appState: state, chat: kept), shown, "a publish that changes nothing it shows")
 
         let notice = state.besideChatLive.notice(for: kept)
+        XCTAssertTrue(shown.live === notice)
         let before = notice.revision
         let went = await state.sendInKeptChat(kept, text: "  Quick one  ")
         XCTAssertTrue(went)
@@ -4603,8 +4610,10 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(sent.prompts.map(\.text), ["Quick one"])
         XCTAssertEqual(kept.state.messages.last?.content, "Quick one")
         XCTAssertTrue(kept.isRunning)
-        XCTAssertGreaterThan(notice.revision, before)
+        XCTAssertGreaterThan(notice.revision, before, "the box reads the turn from the notice")
         XCTAssertFalse(state.canSendInKeptChat(kept), "Not while its turn runs")
+        XCTAssertTrue(state.keptChatTakesMessages(kept), "the turn is the box's to read, not the pane's")
+        XCTAssertEqual(V2BesideChatPaneInputs(appState: state, chat: kept), shown)
 
         // A send that fails with no word from Hermes comes off.
         kept.state.messages.append(ChatMessage(id: "r1", role: .assistant, content: "Sure", timestamp: "2"))
@@ -4663,6 +4672,10 @@ final class OfflineChatCacheTests: XCTestCase {
         state.handleDisconnectForTesting()
         XCTAssertFalse(kept.isRunning)
         XCTAssertTrue(kept.state.messages.contains { $0.content == "Third" })
+        // Offline, the box takes nothing: the pane redraws for that.
+        state.isConnected = false
+        XCTAssertFalse(V2BesideChatPaneInputs(appState: state, chat: kept).takesMessages)
+        XCTAssertNotEqual(V2BesideChatPaneInputs(appState: state, chat: kept), shown)
         state.besideChatIDs = nil
     }
 
