@@ -64,6 +64,34 @@ extension ChatTypographyTests {
         XCTAssertNil(ChatView.runningToolName(in: [earlier, user]))
     }
 
+    /// The working line's lookup is kept until the transcript changes or
+    /// the turn starts or ends (audit 1722).
+    @MainActor
+    func testWorkingLineLookupFollowsTheTranscriptAndTheTurn() {
+        let defaults = makeScratchDefaults("ChatTurnScanCacheTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        func tool(_ id: String, _ status: ToolActivity.Status) -> ChatMessage {
+            ChatMessage(id: id, role: .tool, content: "", timestamp: "2026-11-23T03:00:00Z",
+                        tool: ToolActivity(id: id, name: "terminal", input: nil, output: nil, status: status))
+        }
+        let user = ChatMessage(id: "u", role: .user, content: "Hi", timestamp: "2026-11-23T03:00:00Z")
+        let cache = ChatTurnScanCache()
+        state.messages = [user, tool("t1", .running)]
+        XCTAssertNil(cache.scan(state).tool, "no turn running: nothing looked up")
+        state.setRunning(true)
+        XCTAssertEqual(cache.scan(state).tool?.id, "t1", "the turn started: looked up")
+        state.messages = [user, tool("t1", .complete)]
+        XCTAssertNil(cache.scan(state).tool, "the transcript changed: looked up again")
+        state.messages.append(tool("t2", .running))
+        XCTAssertEqual(cache.scan(state).tool?.id, "t2")
+        state.setRunning(false)
+        XCTAssertNil(cache.scan(state).tool, "the turn ended")
+    }
+
     func testStepSubjectFallsBackToOutputWhenInputIsEmpty() {
         let tool = ToolActivity(id: "t", name: "terminal", input: "", output: "done\nmore", status: .complete)
         XCTAssertEqual(
