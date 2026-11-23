@@ -3464,6 +3464,8 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-1" } }
         let outcome = await open.value
         XCTAssertEqual(outcome, .opened, "the route waits on the far open")
+        XCTAssertNil(appState.errorMessage, "the far open's error")
+        XCTAssertEqual(appState.messages.map(\.id), ["far-1"], "its rows are up")
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
@@ -3525,15 +3527,6 @@ extension CrossProfilePresentationCacheTests {
 
         script.error = nil
         // Listed again (a refusal may drop the row, as the switch's does).
-        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
-            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
-        )
-        // Diagnostic (issue 3057 PR): the same open with its Pulse chat
-        // known only as remembered here.
-        let remembered = await appState.openFarNotificationInPlace(target, in: mac.id)
-        print("FAR-DIAG remembered outcome=\(String(describing: remembered)) active=\(appState.activeSessionId ?? "nil") far=\(String(describing: appState.farChatDashboardID)) messages=\(appState.messages.map(\.id)) error=\(appState.errorMessage ?? "nil")")
-        appState.pulseRememberedHomes[mac.id.uuidString] = nil
-        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: ObjectIdentifier(kept.bridge), unseen: 0, at: Date())
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
         )
