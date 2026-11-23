@@ -25,16 +25,89 @@ extension AppState {
         return botStoreProfile(forSessionIDs: ids.isEmpty ? [sessionID] : ids) ?? activeProfile
     }
 
-    func workspaceFilesClient(profile: String) -> WorkspaceFilesClient {
+    // MARK: - Another combined dashboard's chat
+
+    /// The dashboard a Folder tab for `far`'s chat reads, when it isn't the
+    /// one on screen: another combined dashboard's, whose chat is open in
+    /// place. Nil for the dashboard on screen's chat.
+    func workspaceFarDashboardID(_ far: FarChatOwner?) -> UUID? {
+        guard let id = far?.dashboardID, id != dashboardIDOnScreen else { return nil }
+        return id
+    }
+
+    /// The bridge a Folder tab's request goes through: the dashboard's in
+    /// scope, or a far chat's own dashboard's kept one (nil once that
+    /// dropped), whichever dashboard is in scope when it's asked.
+    func workspaceBridge(farDashboard id: UUID?) -> DashboardTicketBridge? {
+        guard let id else { return dashboardTicketBridge }
+        guard id != dashboardIDOnScreen else { return runtimeOnScreen.dashboardTicketBridge }
+        return keptDashboardRuntimes[id]?.bridge
+    }
+
+    /// The plugin a Folder tab asks: a far chat's own dashboard's.
+    func workspacePlugin(_ far: FarChatOwner?) -> NotifierPluginStatus {
+        guard let id = workspaceFarDashboardID(far) else { return notifierPlugin }
+        return runtime(for: id)?.notifierPlugin ?? NotifierPluginStatus()
+    }
+
+    /// `supportsWorkspaceFiles` for a far chat's own dashboard.
+    func supportsWorkspaceFiles(far: FarChatOwner?) -> Bool {
+        workspacePlugin(far).reports(WorkspaceFilesClient.capability)
+    }
+
+    /// Whether a Folder tab's host can be reached: a far chat's own
+    /// dashboard's kept connection.
+    func workspaceIsConnected(_ far: FarChatOwner?) -> Bool {
+        guard let id = workspaceFarDashboardID(far) else { return isConnected }
+        return runtime(for: id)?.isConnected ?? false
+    }
+
+    /// `workspaceProfile` for a far chat: the profile its files are in on
+    /// its own dashboard (its Bot Chat's bot there), read in that
+    /// dashboard's scope; its profile there while that isn't connected.
+    func workspaceProfile(far: FarChatOwner?) -> String {
+        guard let far, let id = workspaceFarDashboardID(far) else { return workspaceProfile }
+        guard let runtime = runtime(for: id) else { return far.profile }
+        return act(onRuntime: runtime) { workspaceProfile }
+    }
+
+    /// Whose Folder tab answers stand: the dashboard on screen's visit, or a
+    /// far chat's own dashboard's kept connection while it's kept.
+    func workspaceRuntimeOwner(_ far: FarChatOwner?) -> DashboardRuntimeOwner? {
+        guard let id = workspaceFarDashboardID(far) else { return currentDashboardRuntimeOwner() }
+        return workspaceBridge(farDashboard: id).map {
+            DashboardRuntimeOwner(dashboardID: id, bridge: $0, switchGeneration: dashboardSwitchGeneration)
+        }
+    }
+
+    /// Whether an answer asked under `owner` still belongs to its Folder
+    /// tab: the dashboard on screen's visit, or that dashboard's kept
+    /// connection, still kept and not come on screen since.
+    func ownsWorkspaceRuntime(_ owner: DashboardRuntimeOwner) -> Bool {
+        guard let id = owner.dashboardID, id != dashboardIDOnScreen else { return ownsDashboardRuntime(owner) }
+        return keptDashboardRuntimes[id]?.bridge === owner.bridge
+    }
+
+    /// Where a Folder tab's listings are kept: on the dashboard on screen.
+    /// A far chat's folder isn't kept here, as its Artifacts aren't.
+    func workspaceAnswers(profile: String, far: FarChatOwner?) -> KeptAnswers {
+        guard workspaceFarDashboardID(far) != nil else { return screenAnswers(profile: profile) }
+        return KeptAnswers(kept: { _ in nil }, keep: { _, _, read in try await read() })
+    }
+
+    func workspaceFilesClient(profile: String, far: FarChatOwner? = nil) -> WorkspaceFilesClient {
+        // A far chat's requests go through its own dashboard's kept
+        // connection, whatever is in scope when they're asked.
+        let farID = workspaceFarDashboardID(far)
         // An encoded body goes only to the dashboard the client was made on:
         // one switched to while it was encoded isn't sent the file.
-        let startedOn = dashboardTicketBridge
+        let startedOn = workspaceBridge(farDashboard: farID)
         return WorkspaceFilesClient(profile: profile, request: { [weak self] path, method, body in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = self?.workspaceBridge(farDashboard: farID) else { throw DashboardTicketBridgeError.notReady }
             // A search walks the whole folder.
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 45_000)
         }, sendEncoded: { [weak self] path, body in
-            guard let bridge = startedOn, self?.dashboardTicketBridge === bridge else {
+            guard let bridge = startedOn, self?.workspaceBridge(farDashboard: farID) === bridge else {
                 throw DashboardTicketBridgeError.notReady
             }
             // An upload carries the file (up to 25 MB): longer for a bigger
@@ -53,21 +126,32 @@ extension AppState {
         return cwd.isEmpty ? nil : cwd
     }
 
+    /// `chatWorkspaceFolder` for a far chat: as its own dashboard's runtime
+    /// has it.
+    func chatWorkspaceFolder(far: FarChatOwner?) -> String? {
+        guard let id = workspaceFarDashboardID(far) else { return chatWorkspaceFolder }
+        let cwd = runtime(for: id)?.runtime.cwd.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return cwd.isEmpty ? nil : cwd
+    }
+
     /// The folders the Folder tab can open: the chat's own (with `chat`),
     /// then each project's, then the ones opened with Open Folder…, once each.
-    func workspaceRoots(includingChat chat: Bool) -> [WorkspaceRoot] {
+    /// A far chat's are its own dashboard's: its folder and the ones opened
+    /// for it there, with no projects, which are the bot on screen's.
+    func workspaceRoots(includingChat chat: Bool, far: FarChatOwner? = nil) -> [WorkspaceRoot] {
         var roots: [WorkspaceRoot] = []
         var seen = Set<String>()
-        if chat, let folder = chatWorkspaceFolder {
+        let farID = workspaceFarDashboardID(far)
+        if chat, let folder = chatWorkspaceFolder(far: far) {
             roots.append(WorkspaceRoot(path: folder, title: AppLocalization.string("This chat's folder", table: .chat), kind: .chat))
             seen.insert(Self.normalizedWorkspacePath(folder))
         }
-        for project in projects {
+        for project in farID == nil ? projects : [] {
             guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty,
                   seen.insert(Self.normalizedWorkspacePath(path)).inserted else { continue }
             roots.append(WorkspaceRoot(path: path, title: project.title, kind: .project))
         }
-        for path in openedWorkspaceFolders(profile: workspaceProfile)
+        for path in openedWorkspaceFolders(profile: workspaceProfile(far: far), far: far)
         where seen.insert(Self.normalizedWorkspacePath(path)).inserted {
             // A Windows host's paths use backslashes; a POSIX name may hold one.
             let name = Self.workspaceName(path)
@@ -128,10 +212,11 @@ extension AppState {
 
     /// A path a reply named, made absolute: a relative one is in the open
     /// chat's working folder, as Hermes wrote it there.
-    func absoluteWorkspacePath(_ path: String) -> String {
+    /// A far chat's is in its folder on its own dashboard.
+    func absoluteWorkspacePath(_ path: String, far: FarChatOwner? = nil) -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         if Self.isAbsoluteWorkspacePath(trimmed) { return trimmed }
-        guard let folder = chatWorkspaceFolder else { return trimmed }
+        guard let folder = chatWorkspaceFolder(far: far) else { return trimmed }
         var relative = trimmed
         while relative.hasPrefix("./") { relative.removeFirst(2) }
         let separator = folder.hasSuffix("/") || folder.hasSuffix("\\") ? "" : "/"
@@ -146,10 +231,11 @@ extension AppState {
     /// chat's folder: the folder is unset, or the agent worked elsewhere. The
     /// plugin finds where the chat's own tool calls had it (issue 1809), and
     /// says so plainly when the host has no such file.
+    ///
+    /// A far chat's (another combined dashboard's, open in place) is looked
+    /// up and shown on its own dashboard, through its kept connection.
     func revealWorkspaceFile(_ path: String, line: Int? = nil) {
-        // A far chat (another combined dashboard's, open in place) has no
-        // Folder tab here: the folder it reads is the dashboard on screen's.
-        guard chatOnScreenIsInScope else { return }
+        let far = farChat
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // A later tap wins over a lookup still running for an earlier one.
@@ -159,13 +245,13 @@ extension AppState {
         // opens the projects' folders as before.
         let ids = activeChatArtifactSessionIDs
         guard !Self.isAbsoluteWorkspacePath(trimmed), !ids.isEmpty,
-              notifierPlugin.reports(WorkspaceFilesClient.resolveCapability),
-              let owner = currentDashboardRuntimeOwner() else {
+              workspacePlugin(far).reports(WorkspaceFilesClient.resolveCapability),
+              let owner = workspaceRuntimeOwner(far) else {
             clearWorkspaceLookupNotice()
-            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(trimmed), line: line)
+            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(trimmed, far: far), line: line)
             return
         }
-        let client = workspaceFilesClient(profile: workspaceProfile)
+        let client = workspaceFilesClient(profile: workspaceProfile(far: far), far: far)
         let session = activeSessionId
         Task { @MainActor [weak self] in
             let answer: Result<String?, Error>
@@ -174,9 +260,9 @@ extension AppState {
             } catch {
                 answer = .failure(error)
             }
-            guard let self, self.workspaceRevealGeneration == generation, self.ownsDashboardRuntime(owner),
-                  self.activeSessionId == session else { return }
-            self.showWorkspaceLookup(answer, for: trimmed, line: line)
+            guard let self, self.workspaceRevealGeneration == generation, self.ownsWorkspaceRuntime(owner),
+                  self.activeSessionId == session, self.farChat == far else { return }
+            self.showWorkspaceLookup(answer, for: trimmed, line: line, far: far)
         }
     }
 
@@ -184,7 +270,7 @@ extension AppState {
     /// that the host has none (said above the composer, which shows while
     /// the chat is open and connected), or, when the lookup itself failed,
     /// the chat's folder as before.
-    func showWorkspaceLookup(_ answer: Result<String?, Error>, for path: String, line: Int?) {
+    func showWorkspaceLookup(_ answer: Result<String?, Error>, for path: String, line: Int?, far: FarChatOwner? = nil) {
         // An earlier tap's "isn't on the server" goes once a later one
         // answers; any other notice stays.
         clearWorkspaceLookupNotice()
@@ -194,7 +280,7 @@ extension AppState {
         case .success(nil):
             // A relative name splits as the chat's folder does: a POSIX
             // host's name may hold a backslash.
-            let windowsHost = chatWorkspaceFolder.map { !($0.hasPrefix("/") || $0.hasPrefix("~")) } ?? false
+            let windowsHost = chatWorkspaceFolder(far: far).map { !($0.hasPrefix("/") || $0.hasPrefix("~")) } ?? false
             let name = Self.isAbsoluteWorkspacePath(path) || windowsHost
                 ? Self.workspaceName(path)
                 : Self.workspaceName("/" + path)
@@ -208,7 +294,7 @@ extension AppState {
             composerNoticeSystemImage = "questionmark.folder"
             workspaceLookupNotice = notice
         case .failure:
-            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(path), line: line)
+            workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(path, far: far), line: line)
         }
     }
 
@@ -243,8 +329,8 @@ extension AppState {
     ]
 
     /// A text file's first part, for the Folder tab's viewer.
-    func readWorkspaceText(_ path: String, profile: String) async throws -> WorkspaceFilePreview {
-        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+    func readWorkspaceText(_ path: String, profile: String, far: FarChatOwner? = nil) async throws -> WorkspaceFilePreview {
+        guard let bridge = workspaceBridge(farDashboard: workspaceFarDashboardID(far)) else { throw DashboardTicketBridgeError.notReady }
         guard let encoded = DashboardPath.encodedQueryComponent(path) else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded.", table: .chat))
         }
@@ -263,8 +349,8 @@ extension AppState {
 
     /// A folder's entries through Hermes' own listing, for a plugin without
     /// the workspace routes: names only, no sizes or dates.
-    func workspaceDirectoryEntries(at path: String, profile: String) async throws -> [WorkspaceEntry] {
-        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+    func workspaceDirectoryEntries(at path: String, profile: String, far: FarChatOwner? = nil) async throws -> [WorkspaceEntry] {
+        guard let bridge = workspaceBridge(farDashboard: workspaceFarDashboardID(far)) else { throw DashboardTicketBridgeError.notReady }
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded.", table: .chat))
         }

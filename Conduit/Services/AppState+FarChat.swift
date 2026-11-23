@@ -154,6 +154,24 @@ extension AppState {
         }
     }
 
+    // MARK: - Its folder
+
+    /// Whether the chat on screen's folder can be moved (the Folder tab's
+    /// Work Here in This Chat): on its own dashboard for a far chat.
+    var canMoveChatOnScreenFolder: Bool {
+        onChatRuntimeValue(unreachable: false) { canMoveOpenChatFolder }
+    }
+
+    /// Moves the chat on screen's folder there, on its own dashboard's
+    /// runtime for a far chat.
+    func moveChatOnScreenFolder(to folder: String) async -> ChatFolderMoveResult {
+        let unreachable = ChatFolderMoveResult.failed(AppLocalization.string("Reconnect to Hermes to move this conversation."))
+        if let routed = await onChatRuntime(unreachable: unreachable, { await moveOpenChatFolder(to: folder, reloadsProjects: false) }) {
+            return routed
+        }
+        return await moveOpenChatFolder(to: folder)
+    }
+
     // MARK: - Its title menu
 
     /// The chat on screen's row, which its title menu acts on. A far
