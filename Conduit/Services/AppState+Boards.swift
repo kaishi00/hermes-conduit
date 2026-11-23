@@ -116,8 +116,12 @@ extension AppState {
         if old == new { return true }
         guard let lhs = RichCardActionContext.parts(old), let rhs = RichCardActionContext.parts(new),
               lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
-        return composerDraftKeysAreSameChat(ComposerDraftKey(dashboard: activeDashboardID, profile: lhs.profile, sessionID: lhs.sessionID),
-                                            ComposerDraftKey(dashboard: activeDashboardID, profile: rhs.profile, sessionID: rhs.sessionID))
+        // Read on the chat's own dashboard: a far chat's ids are its rows'.
+        // (richCardChat names it as `activeDashboardID` reads in its scope.)
+        let farID = farChatDashboardID
+        let dashboard = farID != nil && String(describing: farID) == lhs.dashboard ? farID : activeDashboardID
+        return composerDraftKeysAreSameChat(ComposerDraftKey(dashboard: dashboard, profile: lhs.profile, sessionID: lhs.sessionID),
+                                            ComposerDraftKey(dashboard: dashboard, profile: rhs.profile, sessionID: rhs.sessionID))
     }
 
     /// The bridge a chat's checklists go through, taken when each read or

@@ -247,6 +247,17 @@ private struct ArtifactsList: View {
                          query: query.trimmingCharacters(in: .whitespacesAndNewlines), showMissing: showMissing)
     }
 
+    /// The plugin the feed is read through: a far chat's own dashboard's.
+    private var hostPlugin: NotifierPluginStatus { appState.artifactsHost(for: scope).plugin }
+    private var hostIsConnected: Bool { appState.artifactsHost(for: scope).isConnected }
+    private var hostServes: Bool { hostPlugin.reports(ArtifactsClient.capability) }
+    /// Whether the feed's host is the one on screen's, whose status this
+    /// list may ask for again.
+    private var hostIsOnScreen: Bool {
+        guard case .chat(_, let far?) = scope else { return true }
+        return far.dashboardID == appState.activeDashboardID
+    }
+
     /// The dashboards whose artifacts the list can show, the one on screen
     /// first (nil), when All reaches other combined dashboards too.
     private var dashboardChoices: [UUID?] {
@@ -298,10 +309,10 @@ private struct ArtifactsList: View {
     var body: some View {
         list
         .modifier(ArtifactsListChrome(inPanel: inPanel, query: $query, showMissing: $showMissing,
-                                      offersMissing: appState.supportsArtifacts))
+                                      offersMissing: hostServes))
         // Before the first frame, so nothing comes or goes when Hermes answers.
         .onAppear { showKept(currentKey) }
-        .task(id: Reading(key: currentKey, served: appState.supportsArtifacts)) {
+        .task(id: Reading(key: currentKey, served: hostServes)) {
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -425,7 +436,7 @@ private struct ArtifactsList: View {
                         }
                     }
                 }
-                if inPanel, appState.supportsArtifacts {
+                if inPanel, hostServes {
                     Button {
                         Haptics.selection()
                         showMissing.toggle()
@@ -486,13 +497,13 @@ private struct ArtifactsList: View {
         // nothing can load yet.
         if savedOnly {
             savedContent
-        } else if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
+        } else if !hostPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
                 title: Text(PluginUpdateAsk.title(AppLocalization.string("Update the Conduit plugin"))),
                 detail: Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it.", table: .chat))),
                 symbol: "arrow.down.circle"
             )
-        } else if items.isEmpty, loadedKey != currentKey, !appState.supportsArtifacts, !appState.isConnected,
+        } else if items.isEmpty, loadedKey != currentKey, !hostServes, !hostIsConnected,
                   !appState.isRecoveringConnection {
             // Nothing kept or loaded: a list kept empty says so below.
             unavailable(
@@ -1140,7 +1151,7 @@ private struct ArtifactsList: View {
         // failed as Conduit connected): asked again here, as Settings ›
         // Conduit plugin asks on every visit, so the list isn't left on
         // its loader until the next connect.
-        if !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
+        if hostIsOnScreen, !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
             isLoading = true
             await appState.refreshNotifierPluginStatusOnce()
             guard ticket == generation else { return }
@@ -1150,7 +1161,7 @@ private struct ArtifactsList: View {
                 loadedKey = key
             }
         }
-        guard appState.supportsArtifacts else {
+        guard hostServes else {
             isLoading = false
             return
         }
@@ -1199,7 +1210,7 @@ private struct ArtifactsList: View {
     /// opens, of every kind and unsearched, and only when the list's own
     /// store (the first) kept its page.
     private func showKept(_ key: ArtifactsListKey) {
-        guard loadedKey != key, appState.notifierPlugin.mayServe(ArtifactsClient.capability) else { return }
+        guard loadedKey != key, hostPlugin.mayServe(ArtifactsClient.capability) else { return }
         let pages = key.sources.map { keptPage($0, for: key) }
         guard let first = pages.first, first != nil else { return }
         feed = ArtifactFeed(sources: key.sources, pages: pages)

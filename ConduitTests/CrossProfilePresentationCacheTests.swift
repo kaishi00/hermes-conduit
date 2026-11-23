@@ -2164,6 +2164,9 @@ extension CrossProfilePresentationCacheTests {
                        [ArtifactSource(profile: "default", sessionIDs: ids, dashboardID: mac.id)],
                        "its artifacts are read through its own dashboard's kept connection")
         XCTAssertEqual(appState.artifactSources(for: .chat(ids)).first?.dashboardID, nil, "a chat of the screen's reads here")
+        let host = appState.artifactsHost(for: .chat(ids, far: far))
+        XCTAssertEqual(host.isConnected, kept.runtime.isConnected, "its feed waits on its own dashboard's connection")
+        XCTAssertEqual(host.plugin, kept.runtime.notifierPlugin, "and asks its own dashboard's plugin")
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")

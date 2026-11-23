@@ -45,6 +45,17 @@ extension AppState {
         notifierPlugin.reports(ArtifactsClient.capability)
     }
 
+    /// The plugin a list's feed is read through, and whether its dashboard
+    /// is connected: a far chat's own dashboard's (another combined
+    /// dashboard's chat open in place), else the one on screen's.
+    func artifactsHost(for scope: ArtifactScope) -> (plugin: NotifierPluginStatus, isConnected: Bool) {
+        if case .chat(_, let far?) = scope, far.dashboardID != activeDashboardID {
+            guard let runtime = runtime(for: far.dashboardID) else { return (NotifierPluginStatus(), false) }
+            return (runtime.notifierPlugin, runtime.isConnected)
+        }
+        return (notifierPlugin, isConnected)
+    }
+
     var artifactsClient: ArtifactsClient {
         ArtifactsClient(request: { [weak self] path in
             guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }

@@ -336,6 +336,12 @@ struct V2ConversationScreen: View {
             // the Bot Chat opens again without it, on any window.
             workPanelOpen = false
         }
+        // The same id opened on another combined dashboard: the panel reads
+        // that chat's artifacts, not the one it was opened beside.
+        .onChange(of: appState.farChat) { _, far in
+            sidePanelIDs = appState.activeChatArtifactSessionIDs
+            sidePanelFar = far
+        }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
         }
