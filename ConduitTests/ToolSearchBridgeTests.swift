@@ -121,7 +121,12 @@ extension MessageNormalizerTests {
         ])
 
         XCTAssertEqual(messages.first?.tool?.name, "conduit_show")
-        XCTAssertEqual(messages.first?.tool?.input, "conduit_show")
+        // The show's own arguments, not the envelope: a resume's row draws
+        // its board from them.
+        let input = messages.first?.tool?.input.flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        XCTAssertEqual(input?["title"] as? String, "Dinner")
+        XCTAssertNil(input?["calls"])
     }
 
     func testToolSearchBridgeResolvesOnlyASingleConcreteTool() {
