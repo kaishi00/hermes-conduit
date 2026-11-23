@@ -271,7 +271,7 @@ struct RichBoard: Equatable {
         let markdown = (answer?["markdown"] as? String).map(RichCardSchema.cleanMarkdown)
             .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         let cards = RichCard.cards(for: tool, schema: schema)
-        let given = (answer?["cards"] as? [Any])?.count
+        let given = (RichCardSchema.unwrappedCards(answer?["cards"]) as? [Any])?.count
             ?? (((answer?["ok"] as? Bool) == true || RichCard.keptNoAnswer(tool))
                 ? (RichCard.argumentCards(tool) as? [Any])?.count : nil)
             ?? 0
