@@ -954,6 +954,14 @@ final class PinnedRepliesTests: XCTestCase {
         appState.dropPinnedReplies(forDeleted: row("chat-1"))
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
         XCTAssertNil(appState.pendingPinnedReplyReveal, "its own chat's delete clears it")
+
+        // Another profile's delete on this dashboard: the rows on hand are
+        // the profile in use's, so an alternate id can't be told unshared.
+        let here = AppState.dashboardPreferenceBucket(appState.activeDashboardID)
+        let helperPin = PinnedReply(sessionID: "alt-1", message: reply("c", "Helper plan", rowId: 9), chatTitle: "Helper")
+        appState.setPinnedReplies([helperPin], of: PinnedReplyOwner(dashboard: here, profile: "helper"))
+        appState.dropPinnedReplies(forDeleted: row("chat-9", alternates: ["alt-1"]), profile: "helper")
+        XCTAssertEqual(appState.pinnedReplies(of: PinnedReplyOwner(dashboard: here, profile: "helper")).map(\.id), [helperPin.id])
     }
 
 }
