@@ -763,6 +763,8 @@ extension AppState {
                 removeSavedCopies(ofDeleted: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+            // And a call in it goes on in a new chat, as above (issue 1797).
+            voiceBackgroundJobSupervisor.noteChatDeleted(Set(session.nestingIDs))
             return false
         } catch {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }

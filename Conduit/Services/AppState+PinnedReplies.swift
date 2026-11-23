@@ -199,10 +199,12 @@ extension AppState {
         // Its own ids, and an alternate one only while no other row lists
         // it: a pin made before the chat was listed may still be kept under
         // that runtime id, and another chat may share one. Another
-        // dashboard's rows aren't on hand to tell, so its alternates stay.
+        // dashboard's or profile's rows aren't on hand to tell, so its
+        // alternates stay.
         let own = [session.id] + [session.storedSessionId].compactMap { $0 }
         let unshared: [String]
-        if bucket == inScope {
+        if bucket == inScope,
+           (profile ?? activeProfile).caseInsensitiveCompare(activeProfile) == .orderedSame {
             let others = (sessions + cronSessions).filter { $0.id != session.id }
             unshared = session.alternateIds.filter { id in
                 !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }

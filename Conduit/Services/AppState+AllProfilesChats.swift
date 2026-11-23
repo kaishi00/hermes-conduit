@@ -310,6 +310,8 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+            // And a call in it goes on in a new chat, as above (issue 1797).
+            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
             return false
         } catch {
             guard ownsDashboardRuntime(owner) else { return false }
