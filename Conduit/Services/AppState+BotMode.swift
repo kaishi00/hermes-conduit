@@ -741,7 +741,13 @@ extension AppState {
     /// (`BotProfile.isKeptCopy`).
     var shownBotRoster: [BotProfile] {
         guard botRoster.isEmpty, !botRosterAnswered else { return orderedBots(botRoster) }
-        return orderedBots(keptBotRoster()?.bots ?? [])
+        if let kept = keptBotRoster()?.bots, !kept.isEmpty { return orderedBots(kept) }
+        // Another combined dashboard's runtime with no roster of its own
+        // yet (a far Bot Chat opened in place, never visited): its bots as
+        // Bots Home read them, so its chat wears its bot's face.
+        guard shownRuntime !== runtimeOnScreen, let dashboard = dashboardID(of: shownRuntime),
+              let bots = combinedDashboardBots[dashboard]?.bots else { return [] }
+        return orderedBots(bots)
     }
 
     /// Desktop's group chats, from the roster or its kept copy, as the bots.

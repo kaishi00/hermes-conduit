@@ -296,13 +296,73 @@ extension AppState {
     // MARK: - Opening
 
     /// Opens another combined dashboard's Chats row in place, on that
-    /// dashboard's runtime through its kept connection, with no switch.
-    /// False when it can't (not kept connected, or its socket can't be
-    /// handed to a client on the row's profile) or it's a bot's Bot Chat,
-    /// whose bot comes from that dashboard's own sync: the caller switches
-    /// as before.
+    /// dashboard's runtime through its kept connection, with no switch: a
+    /// bot's Bot Chat too, once that dashboard's bots name it
+    /// (openFarBotChatInPlace). False when it can't (not kept connected, its
+    /// socket can't be handed to a client on the row's profile, or a Bot
+    /// Chat only its title tells, whose bot isn't read yet): the caller
+    /// switches as before.
     func openFarChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
-        startFarChatOpen(session, in: dashboardID) != nil
+        if isFarBotChat(session, in: dashboardID) { return openFarBotChatInPlace(session, in: dashboardID) != nil }
+        return startFarChatOpen(session, in: dashboardID) != nil
+    }
+
+    /// The bot whose Bot Chat another combined dashboard's row is, by its
+    /// bots as its kept runtime or Bots Home read them: by the row's ids or
+    /// the lineage root a compacted Bot Chat keeps. The kept runtime's own
+    /// copy first, as its open looks the bot up there.
+    func farBot(for session: SessionSummary, in dashboardID: UUID) -> BotProfile? {
+        var ids = Set(SessionContentSearch.identities(of: session))
+        if let root = session.lineageRootId.flatMap(ChatScrollIdentityNormalization.sessionID) { ids.insert(root) }
+        return farBot(named: ids, in: dashboardID)
+    }
+
+    /// The bot of another combined dashboard whose canonical Bot Chat one
+    /// of `ids` is, by its kept runtime's bots, then Bots Home's read of
+    /// them (kept when its connection drops).
+    func farBot(named ids: Set<String>, in dashboardID: UUID) -> BotProfile? {
+        let roster = (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+            + (combinedDashboardBots[dashboardID]?.bots ?? [])
+        return roster.first { bot in
+            // Its canonical id or the id Hermes resolved it to, as
+            // isFarBotChat tells the row.
+            [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
+                .compactMap { $0.flatMap(ChatScrollIdentityNormalization.sessionID) }
+                .contains(where: ids.contains)
+        }
+    }
+
+    /// The bot profile the chat on screen belongs to on another combined
+    /// dashboard: by that dashboard's own Bot Chat registry (its runtime's,
+    /// whatever runs in scope), else, with its runtime let go (its
+    /// connection dropped), by Bots Home's read of its bots naming the
+    /// chat's ids. Nil for an ordinary chat.
+    func farBotChatProfile(in dashboardID: UUID) -> String? {
+        let open = activeSessionId.flatMap(ChatScrollIdentityNormalization.sessionID)
+        if let open, let profile = keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles[open] { return profile }
+        let ids = Set(([open] + (offlineChatIdentities() ?? []).map(Optional.some))
+            .compactMap { $0.flatMap(ChatScrollIdentityNormalization.sessionID) })
+        return ids.isEmpty ? nil : farBot(named: ids, in: dashboardID)?.name
+    }
+
+    /// Opens another combined dashboard's Bot Chat in place, as a Bot Chat
+    /// opens on screen (its bot's lookup, then its chat in the bot's
+    /// profile), on that dashboard's runtime through its kept connection
+    /// and across its awaits, with no switch. Its client stays the kept
+    /// one's: a Bot Chat rides its bot's profile on any client, as on
+    /// screen. Nil when it can't: not kept connected, or no bot of its
+    /// names the row.
+    @discardableResult
+    func openFarBotChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Task<Bool, Never>? {
+        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
+              let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected,
+              let bot = farBot(for: session, in: dashboardID) else { return nil }
+        let runtime = kept.runtime
+        widgetLaunchCoordinator.supersede()
+        return Task { @MainActor [weak self] in
+            guard let self else { return false }
+            return await self.actAcrossAwaits(onRuntime: runtime) { await self.openBotChat(for: bot) }
+        }
     }
 
     /// The open `openFarChatInPlace` starts, for a caller that waits on it
@@ -405,7 +465,10 @@ extension AppState {
     /// names their profile for them.
     func noteFollowedChatProfiles(of dashboardID: UUID, on next: HermesClient) {
         if let farChat, farChat.dashboardID == dashboardID {
-            next.noteSessionProfile(farChat.profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
+            // A far Bot Chat's requests name its bot's profile, as its open
+            // scoped them, not the workspace profile it opened on.
+            let profile = farBotChatProfile(in: dashboardID) ?? farChat.profile
+            next.noteSessionProfile(profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
         }
         for chat in backgroundChats where chat.dashboardID == dashboardID {
             next.noteSessionProfile(chat.profile, for: chat.sessionIDs.map(Optional.some))

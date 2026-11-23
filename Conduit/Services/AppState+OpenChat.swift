@@ -173,6 +173,16 @@ extension AppState {
         AppLocalization.string("Connect to Hermes to chat with bots.")
     }
 
+    /// The key a Bot Chat's open flight is kept under: its bot's name, and
+    /// on another combined dashboard's runtime (a far Bot Chat opening in
+    /// place) that dashboard too, so a bot of the same name on two
+    /// dashboards never joins the other's open.
+    func botChatFlightKey(_ name: String) -> String {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard shownRuntime !== runtimeOnScreen, let dashboard = dashboardID(of: shownRuntime) else { return key }
+        return "\(dashboard.uuidString)#\(key)"
+    }
+
     /// `openBotChat`, saying whether a failed open was superseded. An open
     /// that brings no navigation of its own (a tap, a link, a new bot)
     /// begins one before Hermes' lookup, not after it: a newer tap then
@@ -187,7 +197,7 @@ extension AppState {
             errorMessage = Self.connectToChatWithBotsMessage
             return .failed
         }
-        let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let flightKey = botChatFlightKey(bot.name)
         // A flight whose navigation a newer one took over will stand down:
         // a tap on its bot now opens on its own.
         if let flight = botChatOpenFlights[flightKey],
@@ -825,8 +835,14 @@ extension AppState {
     /// owning bot's profile inside a Bot Chat, else the active workspace
     /// profile. The working line's glow tint follows this, so a Bot Chat
     /// breathes in the bot's color, not the workspace's.
+    /// Another combined dashboard's chat open in place: its own bot or
+    /// profile, read on its runtime.
     var conversationIdentityProfile: String {
-        activeBotChatProfile ?? activeProfile
+        guard chatOnScreenIsInScope else {
+            let unreachable = farChat.flatMap { farBotChatProfile(in: $0.dashboardID) } ?? composerOwnerProfile
+            return onChatRuntimeValue(unreachable: unreachable) { conversationIdentityProfile }
+        }
+        return activeBotChatProfile ?? activeProfile
     }
 
     /// The agent identity the open conversation presents — the owning bot
@@ -837,7 +853,35 @@ extension AppState {
     /// renders THIS, so a Bot Chat never presents the workspace's (the
     /// default profile's) name and picture instead of the bot the user is
     /// talking to.
+    /// Another combined dashboard's chat open in place presents its own
+    /// bot or profile, read on its runtime (its roster, its names and
+    /// pictures), never the dashboard on screen's.
     var conversationAgentIdentity: ConversationAgentIdentity {
+        guard chatOnScreenIsInScope else {
+            // Its runtime gone: its bot (a far Bot Chat's, from its own
+            // dashboard's Bot Chat registry) or its profile, named and faced by its own
+            // dashboard's bots as Bots Home read them, else the profile's
+            // own name, never the dashboard on screen's for it.
+            let botProfile = farChat.flatMap { farBotChatProfile(in: $0.dashboardID) }
+            let profile = botProfile ?? composerOwnerProfile
+            let farBot = farChat.flatMap { combinedDashboardBots[$0.dashboardID]?.bots }?
+                .first { $0.name.caseInsensitiveCompare(profile) == .orderedSame }
+            let unreachable: ConversationAgentIdentity
+            if botProfile != nil {
+                unreachable = ConversationAgentIdentity(
+                    name: farBot?.displayLabel ?? profile,
+                    photoURL: nil,
+                    botFace: farBot.map { bot in
+                        ConversationAgentIdentity.BotFace(
+                            name: bot.name, colorString: bot.shownColor, image: nil, starterFace: bot.starterFace
+                        )
+                    }
+                )
+            } else {
+                unreachable = ConversationAgentIdentity.workspace(name: farBot?.displayLabel ?? profile, photoURL: nil, profile: profile)
+            }
+            return onChatRuntimeValue(unreachable: unreachable) { conversationAgentIdentity }
+        }
         guard let botProfile = activeBotChatProfile else {
             return ConversationAgentIdentity.workspace(
                 name: profileDisplayName(activeProfile),
