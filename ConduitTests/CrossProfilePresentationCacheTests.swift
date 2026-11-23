@@ -2815,6 +2815,25 @@ extension CrossProfilePresentationCacheTests {
                       "a far chat open there is its own")
         XCTAssertFalse(appState.botWorkIsTheChatOnScreens, "and isn't the one on screen's")
         appState.farChat = nil
+
+        // A far chat that's a workstream's finds it in its own dashboard's
+        // store, from any scope; the one on screen's never has it.
+        let work = try XCTUnwrap(BotWorkSnapshot(response: [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+            "counts": ["working": 1, "needs_you": 0, "ready": 0, "waiting": 0],
+            "work": [["ref": "W1", "kind": "workstream", "status": "running", "title": "Login bug",
+                      "session_id": "far-w1", "closed": false, "actions": ["send", "stop"]]],
+        ], profile: "atlas"))
+        kept.runtime.botWork.set(work)
+        appState.activeSessionId = "far-w1"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertEqual(appState.activeWorkstream?.item.ref, "W1", "read on its own dashboard")
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.activeWorkstream?.item.ref }, "W1")
+        XCTAssertNotNil(appState.workstreamStoppedByComposer, "its Stop reaches it")
+        XCTAssertNil(appState.screenBotWork.workstream(forSession: ["far-w1"]))
+        appState.farChat = nil
+        XCTAssertNil(appState.activeWorkstream, "the one on screen's chat of that id isn't it")
+        appState.activeSessionId = nil
     }
 
     /// A far chat on another profile takes the kept socket on a client of

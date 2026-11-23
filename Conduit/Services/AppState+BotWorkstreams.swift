@@ -726,10 +726,20 @@ extension AppState {
     }
 
     /// The bot whose work the open chat is, and the workstream: the bar
-    /// over a workstream's chat.
+    /// over a workstream's chat. Read on the chat's own dashboard, so a
+    /// far chat finds its workstream in that dashboard's store, whichever
+    /// runtime is in scope; none while its connection is gone.
     var activeWorkstream: (profile: String, item: BotWorkItem)? {
         guard let id = activeSessionId, !id.isEmpty, activeRoomSurface == nil else { return nil }
-        return botWork.workstream(forSession: chatOwnSessionIDs(for: id).union([id]))
+        return chatOnScreenWorkstream(forSession: [id])
+    }
+
+    /// The workstream of the chat on screen whose ids these are, read on
+    /// that chat's own dashboard's store (`onChatRuntimeValue`).
+    func chatOnScreenWorkstream(forSession ids: Set<String>) -> (profile: String, item: BotWorkItem)? {
+        onChatRuntimeValue(unreachable: nil) {
+            botWork.workstream(forSession: ids.reduce(into: ids) { $0.formUnion(chatOwnSessionIDs(for: $1)) })
+        }
     }
 
     /// The open workstream when the composer's Stop stops it: its turn runs
