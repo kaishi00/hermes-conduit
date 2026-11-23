@@ -442,9 +442,24 @@ final class NeedsYouStore: ObservableObject {
     /// Only on the dashboard these were read on.
     func dropAnsweredQuestion(_ questionID: String, profile: String, dashboardID: UUID?,
                               alsoOn twins: Set<UUID> = [], now: Date = Date()) {
-        guard dashboardID == self.dashboardID else { return }
         let waitID = "asked-\(questionID)"
         func answered(_ item: NeedsYouItem) -> Bool { item.waitID == waitID && AppState.profilesMatch(item.profile, profile) }
+        if let dashboardID, dashboardID != self.dashboardID {
+            answeredQuestions.removeAll { now.timeIntervalSince($0.at) >= Self.answeredQuestionHold }
+            answeredQuestions.append((waitID, profile, now, Set([Optional(dashboardID)]).union(twins.map { Optional($0) })))
+            for id in Set([dashboardID]).union(twins) {
+                if id == self.dashboardID {
+                    let kept = items.filter { !answered($0) }
+                    if kept != items { items = kept }
+                } else if let listed = otherDashboards[id] {
+                    let kept = listed.filter { !answered($0) }
+                    if kept != listed { otherDashboards[id] = kept.isEmpty ? nil : kept }
+                }
+            }
+            dropBannerNoLongerListed()
+            return
+        }
+        guard dashboardID == self.dashboardID else { return }
         // A read already out when it was answered can't bring it back for
         // a while: the read after the answer lists it no more (issue 2980).
         answeredQuestions.removeAll { now.timeIntervalSince($0.at) >= Self.answeredQuestionHold }

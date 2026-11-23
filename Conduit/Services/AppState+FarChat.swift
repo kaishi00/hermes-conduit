@@ -100,6 +100,41 @@ extension AppState {
         return chatOnScreenRuntime?.isConnected ?? false
     }
 
+    /// The bots' work for the chat on screen: this dashboard's store when
+    /// local, or the far chat's own dashboard's store (an empty inert store
+    /// while that kept connection is gone, never the screen's).
+    var chatBotWork: BotWorkStore {
+        guard farChatDashboardID != nil else { return screenBotWork }
+        return chatOnScreenRuntime?.botWork ?? emptyBotWork
+    }
+
+    /// Whether the chat on screen's dashboard serves bot workstreams.
+    var chatServesBotWorkstreams: Bool {
+        onChatRuntimeValue(unreachable: false) { servesBotWorkstreams }
+    }
+
+    /// The bot profile the chat on screen belongs to, when it's a Bot Chat:
+    /// on screen or on its own kept dashboard.
+    var chatBotChatProfile: String? {
+        guard let farDashboardID else { return activeBotChatProfile }
+        return farBotChatProfile(in: farDashboardID)
+    }
+
+    /// A far bot's saved avatar URL as its own dashboard knows it.
+    func farAvatarURL(for profile: String, on dashboardID: UUID) -> URL? {
+        if let url = combinedDashboardBots[dashboardID]?.avatars[profile] { return url }
+        return profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)[profile]
+    }
+
+    /// Runs an async action on the chat on screen's own runtime (the screen
+    /// runtime when local, or the far runtime when kept); does nothing when a
+    /// far chat's kept connection dropped.
+    func actOnChatRuntime(_ body: @escaping @MainActor () async -> Void) async {
+        if await onChatRuntime(unreachable: (), { await body() }) == nil {
+            await body()
+        }
+    }
+
     /// Records whose chat is on screen as the open chat changes: the
     /// dashboard in scope (another combined dashboard's when its open ran
     /// on that runtime).
@@ -363,6 +398,7 @@ extension AppState {
     @discardableResult
     func openFarBotChatInPlace(of bot: BotProfile, in dashboardID: UUID) -> Task<Bool, Never>? {
         guard let runtime = farBotChatRuntime(in: dashboardID) else { return nil }
+        ensureKeptPluginReport(for: dashboardID)
         widgetLaunchCoordinator.supersede()
         return Task { @MainActor [weak self] in
             guard let self else { return false }

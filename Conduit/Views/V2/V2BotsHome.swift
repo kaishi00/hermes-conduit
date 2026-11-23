@@ -1820,6 +1820,9 @@ struct BotOverviewSheet: View {
     /// The plugin's waits, which the header's chat counts include.
     @ObservedObject var needsYou: NeedsYouStore
     let profile: String
+    /// Another combined dashboard when opened from a far Bot Chat; nil for
+    /// the dashboard on screen's bot.
+    var farDashboardID: UUID? = nil
     /// Edit Bot, for a bot that can be edited here; nil hides it.
     var onEdit: ((BotProfile) -> Void)?
     /// Its Bot Chat: opens it from Bots Home, closes the sheet over it.
@@ -1839,19 +1842,30 @@ struct BotOverviewSheet: View {
     @State private var screenTarget: BotScreenTarget?
 
     private var bot: BotProfile? {
-        appState.shownBotRoster.first { AppState.profilesMatch($0.name, profile) }
+        let roster = farDashboardID.map { appState.farBotRoster(in: $0) } ?? appState.shownBotRoster
+        return roster.first { AppState.profilesMatch($0.name, profile) }
     }
 
     private var botName: String {
-        bot?.displayLabel ?? work.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+        bot?.displayLabel ?? work.snapshot(profile)?.botName
+            ?? farDashboardID.map { appState.farBotName(profile, on: $0) }
+            ?? appState.profileDisplayName(profile)
     }
 
     /// Work shows where the plugin keeps a bot's work; elsewhere the
     /// overview is its chat and its artifacts.
-    private var showsWork: Bool { appState.servesBotWorkstreams }
+    private var showsWork: Bool {
+        farDashboardID.map {
+            appState.runtime(for: $0)?.notifierPlugin.reports(BotWorkstreamsClient.capability) ?? false
+        } ?? appState.servesBotWorkstreams
+    }
 
     private var headerStatus: BotPortraitStatus {
         let snapshot = showsWork ? work.snapshot(profile) : nil
+        if let farDashboardID {
+            let waits = bot.map { appState.combinedBotChatWaits($0, in: farDashboardID).count } ?? 0
+            return .of(snapshot, chats: waits > 0 ? BotLiveChats(waiting: waits) : nil)
+        }
         return .of(snapshot,
                    talkingIn: appState.talkingRooms(of: profile).map(\.name),
                    chats: appState.botLiveChats(profile, leavingOut: snapshot?.knownSessionIDs ?? []))
@@ -1890,9 +1904,9 @@ struct BotOverviewSheet: View {
                 }
                 switch shown {
                 case .work:
-                    BotWorkPanel(work: work, profile: profile, onClose: onClose, showsHeader: false, onWillOpen: onWillOpenWork)
+                    BotWorkPanel(work: work, profile: profile, farDashboardID: farDashboardID, onClose: onClose, showsHeader: false, onWillOpen: onWillOpenWork)
                 case .artifacts:
-                    BotArtifactsList(profile: profile, willShowInChat: onClose)
+                    BotArtifactsList(profile: profile, farDashboardID: farDashboardID, willShowInChat: onClose)
                 }
             }
             // Settings' backdrop, as every sheet (see Sheets in Settings' look).
@@ -1905,7 +1919,7 @@ struct BotOverviewSheet: View {
         // header's "In <room>" doesn't go stale (a read already running
         // from Bots Home this round is shared).
         .task(id: scenePhase == .active) {
-            guard scenePhase == .active else { return }
+            guard scenePhase == .active, farDashboardID == nil else { return }
             while !Task.isCancelled {
                 await appState.refreshTalkingRoomsIfDue(every: BotsTalkingRoomsReader.every)
                 try? await Task.sleep(for: BotsTalkingRoomsReader.every)
@@ -1914,7 +1928,7 @@ struct BotOverviewSheet: View {
         // The header's chats, as its portrait's on Bots Home, which this
         // covers (its reads stop then); opened from a Bot Chat too.
         .task(id: "\(scenePhase == .active)|\(appState.isConnected)|\(profile)") {
-            guard scenePhase == .active, appState.isConnected else { return }
+            guard scenePhase == .active, farDashboardID == nil, appState.isConnected else { return }
             await appState.runBotsHomeLiveStatus(bots: [profile], key: "overview")
         }
         // A workstream opened from its list shows its own chat.
@@ -1927,30 +1941,65 @@ struct BotOverviewSheet: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        let animates = scenePhase == .active && !reduceMotion && !devicePower.isLowPowerModeEnabled
+        return HStack(spacing: 12) {
             Group {
                 if let bot {
-                    // The same life as its portrait on Bots Home, its
-                    // moving picture included.
-                    BotMonogramView(bot: bot, size: 52, animates: true)
+                    if let farDashboardID {
+                        let url = appState.farAvatarURL(for: bot.name, on: farDashboardID)
+                        let playback: AnimatedAvatarPlayback? = {
+                            guard animates, let url, ProfileAvatarImageCache.isAnimated(at: url) else { return nil }
+                            return .file(url, revision: ProfileAvatarImageCache.revision(of: url))
+                        }()
+                        let glows = appState.combinedDashboardBots[farDashboardID]?.glows ?? [:]
+                        BotAvatarView(
+                            name: bot.name,
+                            label: bot.displayLabel,
+                            colorString: bot.shownColor,
+                            image: url.flatMap { ProfileAvatarImageCache.image(at: $0) },
+                            size: 52,
+                            playback: playback,
+                            face: bot.faceLook
+                        )
                         .modifier(BotPortraitMotion(
                             status: headerStatus,
-                            color: appState.botColor(bot),
+                            color: AppState.botColor(bot, glow: glows[bot.name]),
                             highlighted: false,
-                            animates: scenePhase == .active && !reduceMotion
-                                && !devicePower.isLowPowerModeEnabled,
+                            animates: animates,
                             finishedAt: nil,
                             askerColor: { () -> Color? in
                                 guard case .helping = headerStatus,
-                                      let asker = headerStatus.otherBot(in: appState.shownBotRoster) else { return nil }
-                                return appState.botColor(asker)
+                                      let asker = headerStatus.otherBot(in: appState.farBotRoster(in: farDashboardID)) else { return nil }
+                                return AppState.botColor(asker, glow: glows[asker.name])
                             }()
                         ))
+                    } else {
+                        // The same life as its portrait on Bots Home, its
+                        // moving picture included.
+                        BotMonogramView(bot: bot, size: 52, animates: true)
+                            .modifier(BotPortraitMotion(
+                                status: headerStatus,
+                                color: appState.botColor(bot),
+                                highlighted: false,
+                                animates: animates,
+                                finishedAt: nil,
+                                askerColor: { () -> Color? in
+                                    guard case .helping = headerStatus,
+                                          let asker = headerStatus.otherBot(in: appState.shownBotRoster) else { return nil }
+                                    return appState.botColor(asker)
+                                }()
+                            ))
+                    }
                 } else {
-                    ProfileAvatarView(profile: profile, displayName: botName,
-                                      url: appState.profileAvatarURL(for: profile), size: 52,
-                                      animates: true)
-                        .clipShape(Circle())
+                    ProfileAvatarView(
+                        profile: profile,
+                        displayName: botName,
+                        url: farDashboardID.map { appState.farAvatarURL(for: profile, on: $0) }
+                            ?? appState.profileAvatarURL(for: profile),
+                        size: 52,
+                        animates: true
+                    )
+                    .clipShape(Circle())
                 }
             }
             .accessibilityHidden(true)
@@ -1971,7 +2020,10 @@ struct BotOverviewSheet: View {
                 // What its chats do, as its portrait counts them (its
                 // workstreams' are in the line above), in words for
                 // VoiceOver too, which skips the portrait.
-                if let chats = appState.botLiveChats(profile, leavingOut: (showsWork ? work.snapshot(profile)?.knownSessionIDs : nil) ?? []),
+                let liveChats: BotLiveChats? = farDashboardID.map { farID in
+                    bot.map { BotLiveChats(waiting: appState.combinedBotChatWaits($0, in: farID).count) }
+                } ?? appState.botLiveChats(profile, leavingOut: (showsWork ? work.snapshot(profile)?.knownSessionIDs : nil) ?? [])
+                if let chats = liveChats,
                    chats.waiting + chats.working > 0 {
                     let parts = [
                         chats.waiting > 0 ? BotPortraitStatus.needsYou(chats.waiting).title : nil,
@@ -1988,7 +2040,7 @@ struct BotOverviewSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 // Where it talks now, as its portrait's pill says.
-                let rooms = appState.talkingRooms(of: profile).map(\.name)
+                let rooms = farDashboardID == nil ? appState.talkingRooms(of: profile).map(\.name) : []
                 if !rooms.isEmpty {
                     let inRooms = BotPortraitStatus.inRooms(rooms)
                     Label {
@@ -2003,9 +2055,9 @@ struct BotOverviewSheet: View {
             }
             Spacer(minLength: 4)
             // Its screen (Bot Screen), once its host said it can have one.
-            BotScreenButton(support: appState.botScreens, profile: profile, open: {
+            BotScreenButton(support: appState.botScreenSupport(for: farDashboardID), profile: profile, open: {
                 Haptics.light()
-                screenTarget = BotScreenTarget(profile: profile, botName: botName)
+                screenTarget = BotScreenTarget(profile: profile, botName: botName, dashboardID: farDashboardID)
             }, title: AppLocalization.string("\(botName)'s Screen", table: .bots), iconOnly: true)
             if let bot, let onEdit {
                 Button {

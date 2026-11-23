@@ -459,6 +459,7 @@ extension AppState {
         if case .reported(_, let capabilities) = state {
             combinedDashboardPluginCapabilities[id] = (ObjectIdentifier(kept.bridge), capabilities)
         }
+        if farChatDashboardID == id { objectWillChange.send() }
     }
 
     /// Opens the tile's room on its dashboard, the one acted on (in place,

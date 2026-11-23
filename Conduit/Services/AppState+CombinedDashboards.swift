@@ -357,13 +357,16 @@ extension AppState {
             guard let self, let client else { return }
             self.handleKeptDashboardEvent(event, from: id, client: client)
         }
+        kept.runtime.botWork.onWorkstreamsChanged = { [weak self] in
+            guard let self, self.farChatDashboardID == id else { return }
+            self.objectWillChange.send()
+        }
         clearCombinedDashboardTrouble(id)
     }
 
     /// Reads what a kept dashboard's plugin serves into its own runtime,
-    /// with none of the screen's follow-on syncs: only what a live call
-    /// going on through it asks (`servesLocationVoice`). A failed read, or
-    /// one that finds the connection let go or replaced, keeps nothing.
+    /// with none of the screen's follow-on syncs. A failed read, or one
+    /// that finds the connection let go or replaced, keeps nothing.
     func readKeptPluginReport(_ kept: KeptDashboardRuntime, for id: UUID) {
         Task { @MainActor [weak self] in
             guard let self, let response = try? await self.readKeptDashboardJSON(kept.bridge, path: NotifierPluginStatus.path),
@@ -372,6 +375,24 @@ extension AppState {
             guard state != .unknown else { return }
             kept.runtime.notifierPlugin.state = state
             kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
+            if case .reported(_, let capabilities) = state {
+                self.combinedDashboardPluginCapabilities[id] = (ObjectIdentifier(kept.bridge), capabilities)
+                self.noteDashboardHermesName(id, NotifierPluginStatus.hermesName(from: response))
+            }
+            if self.farChatDashboardID == id { self.objectWillChange.send() }
+        }
+    }
+
+    /// Ensures a kept runtime knows what its plugin serves (from cached
+    /// capabilities on the same bridge, or by reading its report).
+    func ensureKeptPluginReport(for id: UUID) {
+        guard let kept = keptDashboardRuntimes[id], case .unknown = kept.runtime.notifierPlugin.state else { return }
+        if let known = combinedDashboardPluginCapabilities[id],
+           known.bridge == ObjectIdentifier(kept.bridge) {
+            kept.runtime.notifierPlugin.state = .reported(version: nil, capabilities: known.capabilities)
+            if farChatDashboardID == id { objectWillChange.send() }
+        } else {
+            readKeptPluginReport(kept, for: id)
         }
     }
 

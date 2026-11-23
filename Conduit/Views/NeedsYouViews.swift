@@ -378,15 +378,15 @@ struct ChatAskedQuestionBar: View {
                         .foregroundStyle(.secondary)
                 } else {
                     BotQuestionAnswerButtons(question: question) { given in
-                        Task { await appState.answerBotQuestion(question, profile: item.profile, with: given) }
+                        Task { await appState.actOnChatRuntime { await appState.answerBotQuestion(question, profile: item.profile, with: given) } }
                     }
-                    .disabled(acting || !appState.isConnected)
+                    .disabled(acting || !appState.chatIsConnected)
                 }
                 if question.canDismiss {
                     BotQuestionDismissButton {
-                        Task { await appState.answerBotQuestion(question, profile: item.profile, with: .dismiss) }
+                        Task { await appState.actOnChatRuntime { await appState.answerBotQuestion(question, profile: item.profile, with: .dismiss) } }
                     }
-                    .disabled(acting || !appState.isConnected)
+                    .disabled(acting || !appState.chatIsConnected)
                 }
                 if let refusal = botWork.refusal(item.profile, ref: question.id) {
                     Text(refusal)
