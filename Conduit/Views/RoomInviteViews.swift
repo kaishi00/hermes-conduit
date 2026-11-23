@@ -19,7 +19,10 @@ private let roomInvitesLogger = Logger(subsystem: "com.milim.relay", category: "
 struct RoomInviteRosterRow: View {
     let invite: RoomInvite
     let onOpen: () -> Void
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         let line = RoomInviteText.rowLine(for: invite)

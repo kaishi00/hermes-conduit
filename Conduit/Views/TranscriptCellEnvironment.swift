@@ -71,6 +71,9 @@ struct TranscriptCellEnvironment: Equatable {
     var groupMemberTints: [String: CustomAccentColor]
     var readsOpenRoomRuntime: Bool
     var groupRoomLooks: RoomLooks
+    /// A tab's held updates (Bots Home's), for a bot's face; nil under a
+    /// chat, whose faces follow AppState. No row's size hangs on it.
+    @OptionalIdentityEquatable var v2ShownUpdates: V2ShownUpdates?
     var conduitAccent: ConduitAccent
     var settingsGlowTint: Color?
     // SwiftUI's that the chat or the app sets (traits carry the rest)
@@ -117,6 +120,7 @@ struct TranscriptCellEnvironment: Equatable {
         groupMemberTints = values.groupMemberTints
         readsOpenRoomRuntime = values.readsOpenRoomRuntime
         groupRoomLooks = values.groupRoomLooks
+        v2ShownUpdates = values.v2ShownUpdates
         conduitAccent = values.conduitAccent
         settingsGlowTint = values.settingsGlowTint
         locale = values.locale
@@ -155,6 +159,7 @@ struct TranscriptCellEnvironment: Equatable {
         same.settingsGlowTint = settingsGlowTint
         same.groupMemberTints = groupMemberTints
         same.readsOpenRoomRuntime = readsOpenRoomRuntime
+        same.v2ShownUpdates = v2ShownUpdates
         return self == same
     }
 
@@ -254,6 +259,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.groupMemberTints, values.groupMemberTints)
             .environment(\.readsOpenRoomRuntime, values.readsOpenRoomRuntime)
             .environment(\.groupRoomLooks, values.groupRoomLooks)
+            .environment(\.v2ShownUpdates, values.v2ShownUpdates)
             .environment(\.conduitAccent, values.conduitAccent)
             .environment(\.settingsGlowTint, values.settingsGlowTint)
     }

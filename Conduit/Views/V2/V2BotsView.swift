@@ -37,6 +37,11 @@ struct V2BotsView: View {
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
     }
 
+    /// What shows Bots Home: its tab, and nothing pushed over it.
+    private var visibility: V2ListVisibility {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+    }
+
     private var canCreate: Bool {
         appState.botModePhase == .available && appState.isConnected
     }
@@ -78,8 +83,16 @@ struct V2BotsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.bots.title)
         .environmentObject(updates)
-        .onChange(of: shell.isTabActive, initial: true) { _, shown in
-            updates.isShown = shown
+        .environment(\.v2ShownUpdates, updates)
+        // Another tab or a chat pushed over Bots Home holds its updates
+        // back, as the Chats list (audit 1722).
+        .onChange(of: visibility, initial: true) { was, now in
+            updates.follow(now, from: was)
+        }
+        // Beside an open chat, a streamed reply's bursts draw once, as
+        // the Chats list's do.
+        .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+            updates.coalesces = beside
         }
     }
 }
