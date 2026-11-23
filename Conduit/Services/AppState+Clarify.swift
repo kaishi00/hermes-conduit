@@ -187,8 +187,17 @@ extension AppState {
         // with nothing sending it.
         var fenced = false
         defer {
+            // Hermes said it was answered elsewhere while this send was out:
+            // a fenced-off send settles it so rather than offer it again.
+            let resolved = resolvedInFlightClarifyRequests.contains(requestId)
             endClarifySubmission(requestId)
-            if fenced { rearmStaleClarifyQuestions(requestId: requestId, questionIds: [question.id]) }
+            if fenced {
+                if resolved {
+                    settleClarifyRequestAnsweredElsewhere(requestId: requestId)
+                } else {
+                    rearmStaleClarifyQuestions(requestId: requestId, questionIds: [question.id])
+                }
+            }
         }
         // Plugin-minted clarify ids are answered through the relay's decision
         // loop (the gateway's own clarify id never reached this device); the

@@ -743,8 +743,10 @@ extension NotificationE2ETests {
                                         keys: LocationKeyStore.memory())
         var config = LocationFixtures.config(background: true)
         config.setVoiceRead("grok-live", allowed: true)
+        // Its config saves go nowhere: never the app group's real file.
         let controller = LocationSharingController(engine: engine, config: config, unsent: LocationUnsent(),
-                                                   writeStoredUnsent: { _ in true }, dropMarker: .memory())
+                                                   writeStoredUnsent: { _ in true }, writeStoredConfig: { _ in true },
+                                                   dropMarker: .memory())
         let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
         final class Script { var ingests = 0; var change: Task<Void, Never>? }
         let script = Script()
