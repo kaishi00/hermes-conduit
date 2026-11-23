@@ -85,7 +85,9 @@ extension AppState {
     /// connection, still kept and not come on screen since.
     func ownsWorkspaceRuntime(_ owner: DashboardRuntimeOwner) -> Bool {
         guard let id = owner.dashboardID, id != dashboardIDOnScreen else { return ownsDashboardRuntime(owner) }
-        return keptDashboardRuntimes[id]?.bridge === owner.bridge
+        // A switch ends every answer asked before it: one asked on the
+        // dashboard switched away from, whose bridge stays kept, too.
+        return owner.switchGeneration == dashboardSwitchGeneration && keptDashboardRuntimes[id]?.bridge === owner.bridge
     }
 
     /// Where a Folder tab's listings are kept: on the dashboard on screen.

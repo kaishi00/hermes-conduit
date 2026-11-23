@@ -249,6 +249,10 @@ final class WorkspaceExplorer: ObservableObject {
     func upload(_ urls: [URL], into folder: String) async -> String? {
         var failure: String?
         var sent = false
+        // The folder and host the files were picked for: a file read after
+        // the tab moved to another folder or chat's host isn't sent there.
+        let startedScope = scope
+        let startedFar = far
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -266,6 +270,7 @@ final class WorkspaceExplorer: ObservableObject {
                 failure = tooLarge
                 continue
             }
+            guard scope == startedScope, far == startedFar else { break }
             sent = true
             if let error = await change(refreshing: false, { client, root in
                 try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
@@ -533,7 +538,10 @@ final class WorkspaceExplorer: ObservableObject {
     /// it doesn't need (issue 1964). `view` takes it up for the same file.
     /// A read left behind (its tap replaced, or the file never opened) is
     /// no use after this: a later open reads the file again.
-    private var prefetchedText: (path: String, profile: String, dashboard: UUID?, at: Date, read: Task<WorkspaceFilePreview, Error>)?
+    /// With the connection it read on, which an open takes it up only
+    /// while that's still the folder's host's.
+    private var prefetchedText: (path: String, profile: String, dashboard: UUID?, owner: AppState.DashboardRuntimeOwner?,
+                                 at: Date, read: Task<WorkspaceFilePreview, Error>)?
     static let prefetchedTextLifetime: TimeInterval = 30
 
     /// The dashboard whose host the tab reads: a far chat's own.
@@ -554,7 +562,7 @@ final class WorkspaceExplorer: ObservableObject {
             kept.read.cancel()
         }
         let far = self.far
-        prefetchedText = (path, profile, hostDashboardID, Date(), Task {
+        prefetchedText = (path, profile, hostDashboardID, appState.workspaceRuntimeOwner(far), Date(), Task {
             try await appState.readWorkspaceText(path, profile: profile, far: far)
         })
     }
@@ -565,7 +573,7 @@ final class WorkspaceExplorer: ObservableObject {
         guard Self.prefetchedTextFits(
             path: kept.path, profile: kept.profile, dashboard: kept.dashboard, readAt: kept.at,
             openingPath: path, profile: profile, dashboard: hostDashboardID, now: Date()
-        ) else {
+        ), kept.owner.map({ appState?.ownsWorkspaceRuntime($0) ?? false }) ?? true else {
             kept.read.cancel()
             return nil
         }
