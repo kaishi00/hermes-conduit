@@ -13,6 +13,13 @@
 
 import Foundation
 
+/// Whose pins: a dashboard (its preference bucket) and one of its profiles.
+/// Two combined dashboards can each have a profile of the same name.
+struct PinnedReplyOwner: Equatable, Hashable {
+    let dashboard: String
+    let profile: String
+}
+
 /// One pinned reply. Saved with enough of the reply to show it in the bar
 /// and the overview before its chat is open, and to find it again after
 /// the transcript reloads.

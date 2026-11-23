@@ -1193,6 +1193,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         await appState.openChatCatalogCheck?.value
         await appState.openChatSyncRead?.value
 
+        XCTAssertNil(appState.openChatCatalogCheck, "No check starts: this dashboard's registry isn't asked either")
         XCTAssertEqual(server.transcriptReads, readsAtOpen, "That chat is its own dashboard's to read")
         XCTAssertEqual(appState.messages.map(\.content), ["Question"])
         box.client.disconnect()

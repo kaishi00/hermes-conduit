@@ -749,7 +749,10 @@ extension AppState {
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
-        clearPinnedReplies()
+        // Pinned replies are kept per dashboard, like the stars: the one
+        // left keeps its own for the return. A server outside the saved
+        // dashboards shares one bucket, so a new one starts with none.
+        if dashboardID == nil { clearPinnedReplies(inDashboard: nil) }
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
