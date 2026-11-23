@@ -655,7 +655,9 @@ extension AppState {
                 return false
             }
             let activeClient = client
-            let runtimeRenameExpected = activeClient != nil
+            // The open chat only when it's this dashboard's: another
+            // dashboard's chat on screen can share an id with this row.
+            let runtimeRenameExpected = activeClient != nil && chatOnScreenIsInScope
                 && activeSessionId.map { knownIDs.contains($0) } == true
             operations = SessionRenameOperation.Operations(
                 renameRuntime: activeClient.map { client in
@@ -688,7 +690,7 @@ extension AppState {
         do {
             guard let result = try await SessionRenameOperation.perform(
                 session: session,
-                activeSessionID: activeSessionId,
+                activeSessionID: chatOnScreenIsInScope ? activeSessionId : nil,
                 title: trimmedTitle,
                 operations: operations
             ), profile == activeProfile else { return false }
