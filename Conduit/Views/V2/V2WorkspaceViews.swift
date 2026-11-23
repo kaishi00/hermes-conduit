@@ -1472,7 +1472,6 @@ struct WorkspaceFileSheet: View {
         // another, the saved text isn't put on its file of the same path.
         let startedScope = explorer.scope
         let startedFar = explorer.far
-        let owner = explorer.runtimeOwner()
         let error = await explorer.change { client, root in
             saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : edited.readAt)
             took = true
@@ -1489,12 +1488,14 @@ struct WorkspaceFileSheet: View {
             failure = AppLocalization.string("Couldn't save the file. Try again.")
             return
         }
-        guard explorer.scope == startedScope, explorer.far == startedFar, owner.map(explorer.owns) ?? true else {
+        guard explorer.scope == startedScope, explorer.far == startedFar else {
             // Text typed while the save ran stays a draft: the host took
             // only what was sent.
             if drafts[file.path]?.text == text { drafts[file.path] = nil }
             return
         }
+        // Still this folder's file, even if its connection dropped as the
+        // save landed: the tab shows what the host took.
         explorer.saved(saved ?? file, text: text)
         if let typed = drafts[file.path]?.text, typed != text {
             // Typed while the save ran: kept as changes on the saved file.
