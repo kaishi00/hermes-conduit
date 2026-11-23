@@ -199,8 +199,12 @@ extension AppState {
             cronSessionsRevision: cronSessionsRevision
         )
         // A few entries: the header asks by the open id and by its row's.
-        if let cached = chatOwnSessionIDsCache[key] { return cached }
+        // Another dashboard's scope reads its own rows: the cache follows
+        // only the screen's list.
+        let cacheable = actingOnRuntimeOnScreen
+        if cacheable, let cached = chatOwnSessionIDsCache[key] { return cached }
         let ids = Self.ownSessionIDs(for: seeds, in: [sessions, cronSessions].joined())
+        guard cacheable else { return ids }
         if chatOwnSessionIDsCache.count >= 8 { chatOwnSessionIDsCache.removeAll() }
         chatOwnSessionIDsCache[key] = ids
         return ids
@@ -238,9 +242,10 @@ extension AppState {
             ownIDs: ownIDs,
             durable: durable
         )
-        if let cached = activeChatSessionSummaryCache, cached.key == key { return cached.row }
+        let cacheable = actingOnRuntimeOnScreen
+        if cacheable, let cached = activeChatSessionSummaryCache, cached.key == key { return cached.row }
         let row = activeChatSessionSummary(sessionId: sessionId, ownIDs: ownIDs, durable: durable)
-        activeChatSessionSummaryCache = (key, row)
+        if cacheable { activeChatSessionSummaryCache = (key, row) }
         return row
     }
 

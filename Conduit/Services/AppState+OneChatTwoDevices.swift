@@ -1013,7 +1013,9 @@ extension AppState {
     }
 
     func sessionMatchesActiveSession(_ session: SessionSummary) -> Bool {
-        guard let activeSessionId else { return false }
+        // Only a row of the dashboard whose chat is on screen: another
+        // dashboard's chat can share its id.
+        guard let activeSessionId, chatOnScreenIsInScope else { return false }
         return Set([session.id] + session.alternateIds).contains(activeSessionId)
     }
 
