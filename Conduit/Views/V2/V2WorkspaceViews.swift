@@ -1472,7 +1472,6 @@ struct WorkspaceFileSheet: View {
         // another, the saved text isn't put on its file of the same path.
         let startedScope = explorer.scope
         let startedFar = explorer.far
-        let owner = explorer.runtimeOwner()
         let error = await explorer.change { client, root in
             saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : edited.readAt)
             took = true
@@ -1498,8 +1497,6 @@ struct WorkspaceFileSheet: View {
         // Still this folder's file, even if its connection dropped as the
         // save landed: the tab shows what the host took.
         explorer.saved(saved ?? file, text: text)
-        // `change` played no success for it then, its host being gone.
-        if let owner, !explorer.owns(owner) { Haptics.success() }
         if let typed = drafts[file.path]?.text, typed != text {
             // Typed while the save ran: kept as changes on the saved file.
             drafts[file.path] = Draft(text: typed, original: text, readAt: saved?.modified)
