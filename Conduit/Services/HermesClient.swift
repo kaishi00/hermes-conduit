@@ -6495,12 +6495,28 @@ enum MessageNormalizer {
                     // context preview but deliberately omits its raw output.
                     // Preserve that as input instead of mislabeling it as an
                     // output after a reload.
-                    let preview = content.isEmpty ? extractToolContext(obj) : nil
                     // Its compact row names Tool Search's wrapper, with the
                     // wrapper's envelope as `args`.
-                    let shownName = ToolSearchBridge.isWrapper(name)
-                        ? ToolSearchBridge.underlyingCall((obj["args"] ?? obj["arguments"])?.anyValue)?.name ?? name
-                        : name
+                    let rowArgs = obj["args"] ?? obj["arguments"]
+                    let wrapped = ToolSearchBridge.isWrapper(name)
+                        ? ToolSearchBridge.underlyingCall(rowArgs?.anyValue)
+                        : nil
+                    let shownName = wrapped?.name ?? name
+                    // A conduit_show row keeps its arguments whole (the
+                    // show's own, inside Tool Search's envelope): its board
+                    // is drawn from them when the row carries no answer, so
+                    // a chat rebuilt from a resume (which a read the history
+                    // route refused sends it through) keeps its cards
+                    // instead of losing every one on the next turn.
+                    // Arguments with no cards (a template by name, a
+                    // `from_work` show) draw nothing, so the row keeps its
+                    // short context preview.
+                    let showArgs: String? = shownName.lowercased() != RichCard.toolName ? nil
+                        : RichCard.argumentsWithCards(ToolSearchBridge.isWrapper(name)
+                            ? wrapped?.arguments
+                            : (ToolSearchBridge.argumentsText(rowArgs?.anyValue) ?? nil))
+                    let answerless = content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    let preview = answerless ? (showArgs ?? extractToolContext(obj)) : nil
                     let m = ChatMessage(
                         id: id, role: .tool, content: "", timestamp: extractTimestamp(obj),
                         author: extractAuthor(obj), reasoning: nil,
@@ -6508,7 +6524,7 @@ enum MessageNormalizer {
                             id: callId.isEmpty ? nil : callId,
                             name: shownName,
                             input: preview,
-                            output: content.isEmpty ? nil : content,
+                            output: answerless ? nil : content,
                             status: .complete
                         )
                     )

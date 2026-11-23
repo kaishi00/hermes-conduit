@@ -176,15 +176,41 @@ struct RichCard: Identifiable, Equatable, Hashable {
 
     /// The cards a finished `conduit_show` call showed: its answer's
     /// `cards` (normalized by the plugin, checked again here), or, for an
-    /// answer that doesn't carry them, its arguments' when it succeeded.
+    /// answer that doesn't carry them, its arguments' when it succeeded or
+    /// when the row carries no answer at all.
     static func cards(for tool: ToolActivity, schema: RichCardSchema? = .bundled) -> [RichCard] {
         guard tool.name.lowercased() == toolName, tool.status == .complete else { return [] }
         let answer = jsonObject(tool.output)
         if let given = answer?["cards"] {
             return cards(raw: given, schema: schema)
         }
-        guard (answer?["ok"] as? Bool) == true else { return [] }
-        return cards(raw: jsonObject(tool.input)?["cards"], schema: schema)
+        guard (answer?["ok"] as? Bool) == true || keptNoAnswer(tool) else { return [] }
+        return cards(raw: argumentCards(tool), schema: schema)
+    }
+
+    /// Whether a finished row carries no answer. Hermes' resume projection
+    /// lists a tool call with its arguments and without its result, so a
+    /// chat rebuilt from a resume (after a history read the route refused,
+    /// such as one by the chat's runtime id) has only the arguments to draw
+    /// the board from. A stored call whose result row was never written
+    /// (Hermes stopped mid-call) and a live call that finished with no
+    /// result read the same way: the arguments are what the model asked
+    /// to show. A failed answer is an answer, and draws nothing.
+    static func keptNoAnswer(_ tool: ToolActivity) -> Bool {
+        (tool.output ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The cards in a call's arguments, opened as conduit_show opens them
+    /// (a `{"cards": ...}` wrapper, an extra list, a JSON string), since
+    /// with no answer nothing has normalized them yet.
+    static func argumentCards(_ tool: ToolActivity) -> Any? {
+        RichCardSchema.unwrappedCards(jsonObject(tool.input)?["cards"])
+    }
+
+    /// A conduit_show call's arguments, kept only when they carry cards.
+    static func argumentsWithCards(_ text: String?) -> String? {
+        guard let text, let object = jsonObject(text), object["cards"] != nil else { return nil }
+        return text
     }
 
     /// Whether a transcript row is a `conduit_show` call that showed a

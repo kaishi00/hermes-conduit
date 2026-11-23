@@ -106,7 +106,7 @@ extension MessageNormalizerTests {
         XCTAssertEqual(tools.map(\.name), ["web_search"])
     }
 
-    func testCompactResumeRowShowsTheDeferredTool() {
+    func testCompactResumeRowShowsTheDeferredTool() throws {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
                 "role": .string("tool"),
@@ -115,13 +115,48 @@ extension MessageNormalizerTests {
                 "context": .string("conduit_show"),
                 "args": .object(["calls": .array([.object([
                     "name": .string("conduit_show"),
-                    "arguments": .object(["title": .string("Dinner")])
+                    "arguments": .object([
+                        "title": .string("Dinner"),
+                        "cards": .array([.object([
+                            "type": .string("callout"),
+                            "callout": .object(["text": .string("Table at eight.")])
+                        ])])
+                    ])
+                ])])])
+            ])
+        ])
+
+        let tool = try XCTUnwrap(messages.first?.tool)
+        XCTAssertEqual(tool.name, "conduit_show")
+        // The show's own arguments, not the envelope: a resume's row draws
+        // its board from them.
+        let input = tool.input.flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        XCTAssertEqual(input?["title"] as? String, "Dinner")
+        XCTAssertNil(input?["calls"])
+        XCTAssertTrue(RichCard.hasCards(messages[0]))
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
+    }
+
+    /// A resume's show with no cards in its arguments (a template by name,
+    /// a `from_work` show) draws nothing, so its row keeps the short
+    /// context preview rather than the raw arguments.
+    func testCompactResumeShowWithoutCardsKeepsItsPreview() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "role": .string("tool"),
+                "name": .string("tool_call"),
+                "context": .string("conduit_show"),
+                "args": .object(["calls": .array([.object([
+                    "name": .string("conduit_show"),
+                    "arguments": .object(["from_work": .string("ws-1")])
                 ])])])
             ])
         ])
 
         XCTAssertEqual(messages.first?.tool?.name, "conduit_show")
         XCTAssertEqual(messages.first?.tool?.input, "conduit_show")
+        XCTAssertFalse(RichCard.hasCards(messages[0]))
     }
 
     func testToolSearchBridgeResolvesOnlyASingleConcreteTool() {

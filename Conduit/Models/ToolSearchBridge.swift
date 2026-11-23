@@ -63,8 +63,9 @@ enum ToolSearchBridge {
 
     /// A call's arguments as JSON text, `.some(nil)` when it took none.
     /// Nil for arguments Hermes refuses (not a JSON object), so a refused
-    /// call keeps the wrapper.
-    private static func argumentsText(_ value: Any?) -> String?? {
+    /// call keeps the wrapper. A resume's compact conduit_show row reads
+    /// its own arguments through this too (MessageNormalizer).
+    static func argumentsText(_ value: Any?) -> String?? {
         guard let value, !(value is NSNull) else { return .some(nil) }
         switch value {
         case let text as String:
