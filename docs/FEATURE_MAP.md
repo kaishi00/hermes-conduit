@@ -5022,7 +5022,7 @@ dashboards screen · the switch's captions in 13 languages · the embedded
 browser sign-in (AuthWebView, a different flow) · the bot MCP sign-in
 browser (separate)
 
-**Desktop app:** partly: native PKCE sign-in opens the system browser and receives the loopback callback (desktop issue #404); the iOS Private sign-in page switch is not offered. Browser sign-in cannot send proxy headers.
+**Desktop app:** partly: native PKCE sign-in opens the system browser and receives the loopback callback (desktop#409); the iOS Private sign-in page switch is not offered. Browser sign-in cannot send proxy headers.
 
 **Code**
 - Browser and setting: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController, NativeOAuthLoginModel.run)
@@ -5105,7 +5105,7 @@ the certificate check (each invalidates a session of its own, in a defer) ·
 location's host pass (a copy of the access token, taken again on each
 rotation; see Maps lookups)
 
-**Desktop app:** has native OAuth code exchange, encrypted grant storage, refresh, bearer requests and socket tickets (desktop issue #404).
+**Desktop app:** has native OAuth code exchange, encrypted grant storage, refresh, bearer requests and socket tickets (desktop#409).
 
 **Code**
 - `Conduit/Services/NativeOAuth.swift` (NativeOAuthAPIClient: invalidate, bytes(for:), tokenRequest, requestJSON; NativeOAuthSession: invalidate, refresh, requestJSON)
