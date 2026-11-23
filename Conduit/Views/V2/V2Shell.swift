@@ -299,6 +299,14 @@ final class V2ShownUpdates: ObservableObject {
                 // Covered again before it drew: the next showing draws.
                 revealTask?.cancel()
                 revealTask = nil
+                // A burst's draw still waiting goes with it, so shown again
+                // the list draws at once, not when that wait runs out.
+                if drawScheduled {
+                    drawTask?.cancel()
+                    drawTask = nil
+                    drawScheduled = false
+                    missedUpdate = true
+                }
             }
             guard isShown, !oldValue else { return }
             // Shown by a pop, it waits out the slide even with nothing
@@ -394,6 +402,7 @@ final class V2ShownUpdates: ObservableObject {
     var coalescingDelay: TimeInterval = 0.5
     private var missedUpdate = false
     private var drawScheduled = false
+    private var drawTask: Task<Void, Never>?
     private var subscription: AnyCancellable?
     private var defaultsSubscription: AnyCancellable?
     /// The list's saved settings, read through here rather than
@@ -440,10 +449,12 @@ final class V2ShownUpdates: ObservableObject {
         guard !drawScheduled else { return }
         drawScheduled = true
         let delay = coalescingDelay
-        Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .seconds(delay)) } catch { self?.drawScheduled = false; return }
-            guard let self else { return }
+        drawTask = Task { @MainActor [weak self] in
+            // Cancelled only when covered, which has already taken it off.
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self, !Task.isCancelled else { return }
             drawScheduled = false
+            drawTask = nil
             // Covered meanwhile, it waits for the list to show again (and
             // shown again, for the slide in); scrolling, for the scroll to
             // rest.
