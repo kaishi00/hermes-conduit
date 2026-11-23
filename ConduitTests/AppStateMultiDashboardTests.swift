@@ -2015,6 +2015,10 @@ extension AppStateMultiDashboardTests {
             ["ok": true, "items": [["session_id": "mac-1", "message_id": 2], ["session_id": "mac-2", "message_id": 1]]],
             route: artifactsPage, dashboardID: mac, profile: appState.activeProfile
         )
+        // A call in the chat (issue 3141): it lets go of the deleted chat
+        // even though Hermes answered after the switch.
+        let callChat = VoiceThreadTarget(runtimeSessionID: "mac-1", storedSessionID: nil, title: "On the Mac")
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(callChat)
         let delete = Task { await appState.deleteSession(self.macSession("mac-1")) }
         try await held.answer()
         try await held.waitForRequests(2)
@@ -2024,6 +2028,8 @@ extension AppStateMultiDashboardTests {
         let deleted = await delete.value
 
         XCTAssertFalse(deleted, "the delete's result belongs to the Mac, not the dashboard now showing")
+        XCTAssertTrue(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat), "the call's supervisor knows its chat is gone")
+        XCTAssertNil(appState.voiceBackgroundJobSupervisor.liveThread, "and the call let go of it")
         XCTAssertNil(appState.pinSyncNotice)
         XCTAssertNil(store.loadTranscript("mac-1", dashboardID: mac, profile: "default"), "the Mac's saved copy of the deleted chat still goes (#1040)")
         XCTAssertNil(store.load(dashboardID: mac, profile: "default")?.lastSessionID)

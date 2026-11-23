@@ -832,7 +832,7 @@ struct BotQuestionDismissButton: View {
             Text(AppLocalization.string("Dismiss question", table: .bots))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 36)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

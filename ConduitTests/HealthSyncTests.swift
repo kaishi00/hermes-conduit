@@ -240,6 +240,41 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.batches.last?["voice_readers"] as? [String], ["grok-live"])
         XCTAssertEqual(readers.state.sentVoiceReaders, ["grok-live"])
         XCTAssertNil(readers.state.voiceReadersInDoubt)
+
+        // A new store on the host, or a new key, starts its copy over: what
+        // it was sent is forgotten, and the next upload's lost answer leaves
+        // the list in doubt.
+        source.locked = false
+        host.generation = "g2"
+        host.loseAnswers = true
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(readers.state.sentVoiceReaders, "A new store forgets what the old one had")
+        XCTAssertEqual(readers.state.voiceReadersInDoubt, true)
+        host.loseAnswers = false
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(readers.state.sentVoiceReaders, ["grok-live"])
+        host.forgetKey()
+        host.loseAnswers = true
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(readers.state.sentVoiceReaders, "A new key forgets it too")
+        XCTAssertEqual(readers.state.voiceReadersInDoubt, true)
+        host.loseAnswers = false
+
+        // The very first upload carrying the list, its answer lost: in doubt
+        // as well, so the next pass sends it first, even on a locked phone.
+        let firstSource = FakeHealthSource()
+        let first = makeHealthEngine(source: firstSource)
+        voice.voiceReaders = ["gpt-live"]
+        host.loseAnswers = true
+        _ = await first.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(first.state.sentVoiceReaders)
+        XCTAssertEqual(first.state.voiceReadersInDoubt, true, "A first send whose answer was lost is unknown")
+        host.loseAnswers = false
+        firstSource.locked = true
+        _ = await first.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.last?["voice_readers"] as? [String], ["gpt-live"])
+        XCTAssertEqual(first.state.sentVoiceReaders, ["gpt-live"])
+        XCTAssertNil(first.state.voiceReadersInDoubt)
     }
 
     func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
@@ -738,6 +773,8 @@ private final class FakeHealthHost {
     var loseAnswers = false
     /// Runs as each upload arrives, before it's taken.
     var onIngest: (() -> Void)?
+    /// The host's store: a new one starts the phone's copy over.
+    var generation = "g1"
 
     func forgetKey() {
         session = nil
@@ -747,7 +784,7 @@ private final class FakeHealthHost {
     func handle(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
         let base = HealthSyncEngine.base
         if path.hasPrefix("\(base)/status") {
-            var answer: [String: Any] = ["generation": "g1"]
+            var answer: [String: Any] = ["generation": generation]
             if let kid { answer["device"] = ["kid": kid] }
             return answer
         }
@@ -761,7 +798,7 @@ private final class FakeHealthHost {
             let info = HealthSyncCrypto.ingestInfo + Data("\n\(deviceID)\n".utf8) + devicePublic + hostPublic
             session = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: HealthSyncCrypto.salt, sharedInfo: info, outputByteCount: 32)
             self.kid = kid
-            return ["host_public_key": NotificationE2E.base64URL(hostPublic), "kid": kid, "generation": "g1"]
+            return ["host_public_key": NotificationE2E.base64URL(hostPublic), "kid": kid, "generation": generation]
         }
         if path == "\(base)/ingest" {
             if let ingestError { throw ingestError }

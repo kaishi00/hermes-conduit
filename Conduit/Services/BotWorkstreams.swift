@@ -464,7 +464,11 @@ struct BotWorkCoordination: Equatable {
 
     /// What the bot asked the user and still waits on, oldest first: the
     /// Work panel shows them above the work, each answered on its card, or,
-    /// one to answer in words, in its chat.
+    /// one to answer in words, in its chat. Dismiss is drawn only beside an
+    /// answer: the plugin (0.195.0+) offers "dismiss" only alongside "answer"
+    /// or an answer in words, so a dismiss-only question never comes, and
+    /// listing one would draw answer buttons Hermes refuses (issue 3131).
+    /// NeedsYouItem.init?(question:) filters the same way.
     var openQuestions: [Item] {
         items.filter { $0.canAnswer || ($0.answersInWords && $0.status == "open") }.sorted { $0.at < $1.at }
     }

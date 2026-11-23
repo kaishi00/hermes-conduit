@@ -281,6 +281,11 @@ extension AppState {
                 // The chat's runtime is gone (reaped, or re-opened elsewhere),
                 // as the approval card reads it: nothing waits on this answer.
                 applyClarifyResponseOutcome(.ended, requestId: requestId, questionId: question.id, answer: wireAnswer)
+            } else if resolvedInFlightClarifyRequests.contains(requestId) {
+                // Hermes reported the request answered elsewhere while this
+                // send was on its way: nothing waits on it any more, so the
+                // card says so rather than offer the question again (3131).
+                settleClarifyRequestAnsweredElsewhere(requestId: requestId)
             } else if let unsent = error as? HermesClient.AnswerNotSent {
                 // Never sent: why Hermes couldn't be reached, and the
                 // question can be answered again.
@@ -310,6 +315,7 @@ extension AppState {
             liveClarifySubmissions[requestId] = count - 1
         } else {
             liveClarifySubmissions.removeValue(forKey: requestId)
+            resolvedInFlightClarifyRequests.remove(requestId)
             // The last send settled: what a fenced-off one left waiting on
             // it goes back to answerable now.
             if staleClarifyQuestionIds[requestId] != nil {
@@ -827,11 +833,32 @@ extension AppState {
         // `resolved` is an answer, never an expiry: one this device sent
         // (being sent, or every question answered here) keeps its card as it
         // is; otherwise it was answered elsewhere (issue 3105).
-        if reason == "resolved",
-           activity.questions.contains(where: { $0.status == .submitting })
-            || activity.questions.allSatisfy({ $0.status == .answered }) {
-            return
+        if reason == "resolved" {
+            if activity.questions.contains(where: { $0.status == .submitting }) {
+                // The send settles it; a failure then reads as answered
+                // elsewhere, not as an answer to retry (issue 3131).
+                if liveClarifySubmissions[requestId] != nil {
+                    resolvedInFlightClarifyRequests.insert(requestId)
+                }
+                return
+            }
+            if activity.questions.allSatisfy({ $0.status == .answered }) { return }
         }
+        settleClarifyCard(at: index, activity, reason: reason)
+    }
+
+    /// A request Hermes reported `resolved` while this device's answer was
+    /// on its way, whose send then failed: its open questions read as
+    /// answered elsewhere (issue 3131).
+    private func settleClarifyRequestAnsweredElsewhere(requestId: String) {
+        guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+              let activity = messages[index].clarify,
+              !activity.isExpired else { return }
+        settleClarifyCard(at: index, activity, reason: "resolved")
+    }
+
+    private func settleClarifyCard(at index: Int, _ activity: ClarifyActivity, reason: String?) {
+        var activity = activity
         activity.isExpired = true
         for questionIndex in activity.questions.indices
         where activity.questions[questionIndex].status != .answered {
@@ -1764,6 +1791,11 @@ extension AppState {
                 // elsewhere), so nothing waits on this answer any more.
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            } else if resolvedInFlightClarifyRequests.contains(requestId) {
+                // Hermes reported the request answered elsewhere while this
+                // send was on its way: nothing waits on it any more, so the
+                // card says so rather than offer the question again (3131).
+                settleClarifyRequestAnsweredElsewhere(requestId: requestId)
             } else if let unsent = error as? HermesClient.AnswerNotSent {
                 // Never sent: why Hermes couldn't be reached, and the card
                 // can be answered again.

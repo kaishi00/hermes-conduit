@@ -157830,84 +157830,84 @@
         }
       }
     },
-    "The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call." : {
+    "The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. Local Live says a short fixed line instead. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Sprachmodell begrüßt dich, sobald ein Anruf verbunden ist, damit du weißt, dass er live ist. Lass die Begrüßung leer, damit es eigene Worte wählt. GPT-Live benötigt dafür ein aktuelles Hermes-Notifier-Plug-in. Gilt ab dem nächsten Anruf."
+            "value" : "Das Sprachmodell begrüßt dich, sobald ein Anruf verbunden ist, damit du weißt, dass er live ist. Lass die Begrüßung leer, damit es eigene Worte wählt. Local Live sagt stattdessen einen kurzen festen Satz. GPT-Live benötigt dafür ein aktuelles Hermes-Notifier-Plug-in. Gilt ab dem nächsten Anruf."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El modelo de voz te saluda en cuanto se conecta una llamada, para que sepas que está activa. Deja el saludo vacío para que use sus propias palabras. GPT-Live necesita un plugin de notificaciones de Hermes actualizado para esto. Se aplica a la próxima llamada."
+            "value" : "El modelo de voz te saluda en cuanto se conecta una llamada, para que sepas que está activa. Deja el saludo vacío para que use sus propias palabras. Local Live dice en su lugar una frase fija y corta. GPT-Live necesita un plugin de notificaciones de Hermes actualizado para esto. Se aplica a la próxima llamada."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le modèle vocal vous salue dès qu'un appel se connecte, pour que vous sachiez qu'il est en direct. Laissez la salutation vide pour qu'il la formule lui-même. GPT-Live nécessite pour cela un plugin de notification Hermes à jour. S'applique au prochain appel."
+            "value" : "Le modèle vocal vous salue dès qu'un appel se connecte, pour que vous sachiez qu'il est en direct. Laissez la salutation vide pour qu'il la formule lui-même. Local Live dit plutôt une courte phrase fixe. GPT-Live nécessite pour cela un plugin de notification Hermes à jour. S'applique au prochain appel."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Model suara menyapa Anda begitu panggilan terhubung, sehingga Anda tahu panggilan sudah aktif. Kosongkan sapaan agar model menyapa dengan kata-katanya sendiri. GPT-Live memerlukan plugin notifier Hermes versi terbaru untuk ini. Berlaku mulai panggilan berikutnya."
+            "value" : "Model suara menyapa Anda begitu panggilan terhubung, sehingga Anda tahu panggilan sudah aktif. Kosongkan sapaan agar model menyapa dengan kata-katanya sendiri. Local Live mengucapkan kalimat singkat yang tetap sebagai gantinya. GPT-Live memerlukan plugin notifier Hermes versi terbaru untuk ini. Berlaku mulai panggilan berikutnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il modello vocale ti saluta appena si connette una chiamata, così sai che è attiva. Lascia vuoto il saluto per uno con parole sue. Per questo GPT-Live richiede un plugin di notifica di Hermes aggiornato. Vale dalla prossima chiamata."
+            "value" : "Il modello vocale ti saluta appena si connette una chiamata, così sai che è attiva. Lascia vuoto il saluto per uno con parole sue. Local Live dice invece una breve frase fissa. Per questo GPT-Live richiede un plugin di notifica di Hermes aggiornato. Vale dalla prossima chiamata."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通話がつながるとすぐに音声モデルがあいさつするので、通話が始まったことがわかります。あいさつを空欄にすると、モデルが自分の言葉であいさつします。GPT-Liveでこの機能を使うには、最新のHermes通知プラグインが必要です。次の通話から適用されます。"
+            "value" : "通話がつながるとすぐに音声モデルがあいさつするので、通話が始まったことがわかります。あいさつを空欄にすると、モデルが自分の言葉であいさつします。Local Liveでは、代わりに短い決まったあいさつを言います。GPT-Liveでこの機能を使うには、最新のHermes通知プラグインが必要です。次の通話から適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "통화가 연결되자마자 음성 모델이 인사하므로 통화가 시작된 것을 알 수 있어요. 인사말을 비워 두면 모델이 직접 인사해요. GPT-Live에서 사용하려면 최신 Hermes 알림 플러그인이 필요해요. 다음 통화부터 적용돼요."
+            "value" : "통화가 연결되자마자 음성 모델이 인사하므로 통화가 시작된 것을 알 수 있어요. 인사말을 비워 두면 모델이 직접 인사해요. Local Live는 대신 짧은 고정 인사말을 말해요. GPT-Live에서 사용하려면 최신 Hermes 알림 플러그인이 필요해요. 다음 통화부터 적용돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Model głosowy wita Cię zaraz po nawiązaniu połączenia, więc wiesz, że już działa. Pozostaw powitanie puste, aby model przywitał się własnymi słowami. GPT-Live wymaga do tego aktualnej wtyczki powiadomień Hermes. Obowiązuje od następnego połączenia."
+            "value" : "Model głosowy wita Cię zaraz po nawiązaniu połączenia, więc wiesz, że już działa. Pozostaw powitanie puste, aby model przywitał się własnymi słowami. Local Live mówi zamiast tego krótkie, stałe zdanie. GPT-Live wymaga do tego aktualnej wtyczki powiadomień Hermes. Obowiązuje od następnego połączenia."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O modelo de voz cumprimenta você assim que a chamada conecta, para você saber que ela está ativa. Deixe a saudação vazia para que ele use as próprias palavras. O GPT-Live precisa de um plugin notificador do Hermes atualizado para isso. Vale a partir da próxima chamada."
+            "value" : "O modelo de voz cumprimenta você assim que a chamada conecta, para você saber que ela está ativa. Deixe a saudação vazia para que ele use as próprias palavras. O Local Live diz uma frase curta e fixa no lugar. O GPT-Live precisa de um plugin notificador do Hermes atualizado para isso. Vale a partir da próxima chamada."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Голосовая модель приветствует вас, как только звонок подключится, — так вы поймёте, что связь установлена. Оставьте приветствие пустым, чтобы модель поздоровалась своими словами. Для GPT-Live нужна актуальная версия плагина уведомлений Hermes. Действует со следующего звонка."
+            "value" : "Голосовая модель приветствует вас, как только звонок подключится, — так вы поймёте, что связь установлена. Оставьте приветствие пустым, чтобы модель поздоровалась своими словами. Local Live вместо этого произносит короткую фиксированную фразу. Для GPT-Live нужна актуальная версия плагина уведомлений Hermes. Действует со следующего звонка."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ses modeli, arama bağlanır bağlanmaz sizi selamlar; böylece aramanın canlı olduğunu anlarsınız. Kendi sözleriyle selamlaması için selamlamayı boş bırakın. GPT-Live'ın bunun için güncel bir Hermes bildirim eklentisine ihtiyacı var. Sonraki aramada geçerli olur."
+            "value" : "Ses modeli, arama bağlanır bağlanmaz sizi selamlar; böylece aramanın canlı olduğunu anlarsınız. Kendi sözleriyle selamlaması için selamlamayı boş bırakın. Local Live bunun yerine kısa, sabit bir cümle söyler. GPT-Live'ın bunun için güncel bir Hermes bildirim eklentisine ihtiyacı var. Sonraki aramada geçerli olur."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通话一接通，语音模型就会向你问候，让你知道已经连上。问候语留空则由模型用自己的话问候。GPT-Live 需要最新版的 Hermes notifier 插件。下次通话生效。"
+            "value" : "通话一接通，语音模型就会向你问候，让你知道已经连上。问候语留空则由模型用自己的话问候。Local Live 则会说一句简短的固定问候语。GPT-Live 需要最新版的 Hermes notifier 插件。下次通话生效。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通話一接通，語音模型就會向你打招呼，讓你知道已經連上。問候語留空，模型就會用自己的話問候。GPT-Live 需要最新版的 Hermes 通知外掛程式才能使用此功能。下次通話起生效。"
+            "value" : "通話一接通，語音模型就會向你打招呼，讓你知道已經連上。問候語留空，模型就會用自己的話問候。Local Live 則會說一句簡短的固定問候語。GPT-Live 需要最新版的 Hermes 通知外掛程式才能使用此功能。下次通話起生效。"
           }
         }
       }
