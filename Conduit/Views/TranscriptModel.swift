@@ -305,6 +305,12 @@ struct TranscriptModel {
         guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
         return true
     }
+    /// The same, its row loading or not: the held-page loop reads it right
+    /// after a page, before the rows drop the loading state (#3143).
+    var drawsOnlyLoadEarlierRow: Bool {
+        guard rows.count == 1, case .loadEarlier = rows[0].kind else { return false }
+        return true
+    }
     /// The chat's rows left out because an earlier row has their id. Ids
     /// are unique in practice; the trace names any that aren't.
     private(set) var repeatedIDs: [String] = []

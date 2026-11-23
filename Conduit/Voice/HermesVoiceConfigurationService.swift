@@ -478,8 +478,14 @@ final class HermesVoiceConfigurationService: ObservableObject {
         // Clearing REMOVES the override key: Hermes reads provider keys
         // like `config.get(key, default)`, which applies the default only
         // when the key is ABSENT, so a stored "" would be used verbatim.
+        // A speech server value is the exception: the plugin reads "" as
+        // unset, and Hermes' PUT merges what it's sent over the file, so a
+        // removed key would keep its old value ("Remove key" left the key,
+        // app issue 3153).
         let clears = stored.isEmpty
-        if clears {
+        if clears, key.hasPrefix(Self.speechServerPrefix) {
+            Self.setNested("", in: &config, dottedKey: key)
+        } else if clears {
             Self.removeNested(in: &config, dottedKey: key)
         } else {
             Self.setNested(stored, in: &config, dottedKey: key)
@@ -530,24 +536,31 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
+    /// Every speech server value the plugin reads: cleared as "" or false,
+    /// never removed (see saveSpeechServer).
+    static let speechServerPrefix = "voice.speech_server."
+
     /// Has the plugin run every turn on the speech server
-    /// (`voice.speech_server.drive_turns`), written as a Boolean; off
-    /// removes the setting, which is its default.
+    /// (`voice.speech_server.drive_turns`), written as a Boolean, false
+    /// when off.
     func saveSpeechServerDrivesTurns(_ enabled: Bool) async -> Bool {
         await saveSpeechServer(names: [:], drivesTurns: enabled)
     }
 
     /// Has the speech server's own model answer Live > Local calls
-    /// (`voice.speech_server.own_model`), written as a Boolean; off removes
-    /// the setting, which is its default.
+    /// (`voice.speech_server.own_model`), written as a Boolean, false when
+    /// off.
     func saveSpeechServerOwnModel(_ enabled: Bool) async -> Bool {
         await saveSpeechServer(names: [:], drivesTurns: nil, ownModel: enabled)
     }
 
     /// The speech server's names (`model`, `voice`, `transcription_model`
-    /// under voice.speech_server; an empty one is removed) and, when given,
-    /// the Hermes answers and own model switches, in one GET→PUT: a picked
-    /// preset lands whole or not at all.
+    /// under voice.speech_server; an emptied one saved as "") and, when
+    /// given, the Hermes answers and own model switches, in one GET→PUT: a
+    /// picked preset lands whole or not at all. Nothing is removed: Hermes'
+    /// PUT merges what it's sent over the file, so a key left out keeps its
+    /// old value, and Hermes answers couldn't be turned off (app issue
+    /// 3153). The plugin reads "" and false as unset.
     func saveSpeechServer(names: [String: String], drivesTurns: Bool?, ownModel: Bool? = nil) async -> Bool {
         await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
             let key = "voice.speech_server"
@@ -559,13 +572,13 @@ final class HermesVoiceConfigurationService: ObservableObject {
             var server = voice["speech_server"] as? [String: Any] ?? [:]
             for (name, value) in names {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                server[name] = trimmed.isEmpty ? nil : trimmed
+                server[name] = trimmed
             }
             if let drivesTurns {
-                server["drive_turns"] = drivesTurns ? true : nil
+                server["drive_turns"] = drivesTurns
             }
             if let ownModel {
-                server["own_model"] = ownModel ? true : nil
+                server["own_model"] = ownModel
             }
             voice["speech_server"] = server
             config["voice"] = voice

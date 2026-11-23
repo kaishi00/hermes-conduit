@@ -247,6 +247,13 @@ final class PhoneSyncEngine: ObservableObject {
     /// What the state file holds (or is about to): a pass that changed
     /// nothing writes nothing.
     private var saved: PhoneSyncState?
+    /// A new frame's cleared hash that didn't reach disk: no upload goes
+    /// until it does, even though the hash in memory already reads cleared
+    /// (#3143).
+    private var frameClearUnsaved = false
+    /// The state couldn't be written before an upload that needed it on
+    /// disk: the pass ends unfinished and the next one tries again.
+    private struct StateNotWritten: Error {}
     private let writer = PhoneSyncStateWriter()
     /// Changes being applied right now, so an exchange that lands meanwhile
     /// doesn't hand the same one out again. In memory: it covers races in
@@ -391,9 +398,13 @@ final class PhoneSyncEngine: ObservableObject {
 
     /// Writes the state before going on, for a change an app closed in the
     /// next moment must still find on its next launch.
-    private func persistNow() {
-        guard state != saved else { return }
-        if writer.saveNow(state, to: store) { saved = state }
+    /// True once it is on disk.
+    @discardableResult
+    private func persistNow() -> Bool {
+        guard state != saved else { return true }
+        guard writer.saveNow(state, to: store) else { return false }
+        saved = state
+        return true
     }
 
     @discardableResult
@@ -487,6 +498,9 @@ final class PhoneSyncEngine: ObservableObject {
             return .unfinished
         } catch is DeadlineReached {
             // Out of the time iOS gave: the next pass carries on.
+            return .unfinished
+        } catch is StateNotWritten {
+            // The next pass, with the state writable, carries on.
             return .unfinished
         } catch let error as DashboardTicketBridgeError {
             switch error {
@@ -752,10 +766,18 @@ final class PhoneSyncEngine: ObservableObject {
             // even if its answer doesn't: until one is answered, what the
             // host has is unknown, so turning a choice back still sends.
             // Written before the upload goes, so an app closed while it
-            // waits still finds the frame unknown on its next launch.
-            if frame != state.frameHash, state.frameHash != nil {
+            // waits still finds the frame unknown on its next launch. A
+            // hash already cleared in memory (forgetSent) whose last write
+            // didn't land (`saved` nil) is written first too.
+            if frame != state.frameHash, state.frameHash != nil || frameClearUnsaved || saved == nil {
                 state.frameHash = nil
-                persistNow()
+                // Not on disk (still locked, or full): nothing goes until
+                // it is, or a host that takes it is unknown to a relaunch.
+                guard persistNow() else {
+                    frameClearUnsaved = true
+                    throw StateNotWritten()
+                }
+                frameClearUnsaved = false
             }
             for var part in parts {
                 // Photos turned off (or its access taken away) while this

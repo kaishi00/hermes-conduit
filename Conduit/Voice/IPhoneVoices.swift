@@ -203,9 +203,13 @@ enum IPhoneVoices {
     }
 
     /// iOS's own default voice for `language`, if it has one.
-    static func systemDefault(for language: String) -> String? {
-        AVSpeechSynthesisVoice(language: language)?.identifier
+    @MainActor static func systemDefault(for language: String) -> String? {
+        systemVoice(language)?.identifier
     }
+
+    /// iOS's own voice for a language; tests swap it, since the
+    /// simulator's speech service can take minutes to answer.
+    @MainActor static var systemVoice: (String) -> AVSpeechSynthesisVoice? = { AVSpeechSynthesisVoice(language: $0) }
 
     @MainActor static func option(for language: String) -> IPhoneVoiceOption? {
         pick(
@@ -222,6 +226,6 @@ enum IPhoneVoices {
         if let option = option(for: language), let voice = AVSpeechSynthesisVoice(identifier: option.id) {
             return voice
         }
-        return AVSpeechSynthesisVoice(language: language)
+        return systemVoice(language)
     }
 }

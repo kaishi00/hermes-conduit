@@ -129,9 +129,9 @@ extension AppState {
     var chatOnScreenSessionSummary: SessionSummary? {
         guard farChat != nil else { return activeChatSessionSummary }
         switch chatRuntimeRoute {
-        case .inScope: return uncachedActiveChatSessionSummary
+        case .inScope: return uncachedActiveChatSessionSummary()
         case .far(let runtime):
-            guard var row = act(onRuntime: runtime, { uncachedActiveChatSessionSummary }) else { return nil }
+            guard var row = act(onRuntime: runtime, { uncachedActiveChatSessionSummary(includingCronRuns: false) }) else { return nil }
             row.combinedDashboardID = farChatDashboardID
             return row
         case .unreachable: return nil
