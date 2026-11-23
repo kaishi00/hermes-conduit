@@ -273,7 +273,7 @@ struct RichBoard: Equatable {
         let cards = RichCard.cards(for: tool, schema: schema)
         let given = (answer?["cards"] as? [Any])?.count
             ?? (((answer?["ok"] as? Bool) == true || RichCard.keptNoAnswer(tool))
-                ? (RichBoard.jsonObject(tool.input)?["cards"] as? [Any])?.count : nil)
+                ? (RichCard.argumentCards(tool) as? [Any])?.count : nil)
             ?? 0
         // No cards given is no board: a Markdown-only show, or an answer
         // whose Markdown Hermes was told to put in its reply (not_conduit,

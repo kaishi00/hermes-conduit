@@ -6508,10 +6508,15 @@ enum MessageNormalizer {
                     // a chat rebuilt from a resume (which a read the history
                     // route refused sends it through) keeps its cards
                     // instead of losing every one on the next turn.
+                    // Arguments with no cards (a template by name, a
+                    // `from_work` show) draw nothing, so the row keeps its
+                    // short context preview.
                     let showArgs: String? = shownName.lowercased() != RichCard.toolName ? nil
-                        : ToolSearchBridge.isWrapper(name) ? wrapped?.arguments
-                        : rowArgs.flatMap { $0.objectValue == nil ? nil : $0.descriptiveStringValue }
-                    let preview = content.isEmpty ? (showArgs ?? extractToolContext(obj)) : nil
+                        : RichCard.argumentsWithCards(ToolSearchBridge.isWrapper(name)
+                            ? wrapped?.arguments
+                            : (ToolSearchBridge.argumentsText(rowArgs?.anyValue) ?? nil))
+                    let answerless = content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    let preview = answerless ? (showArgs ?? extractToolContext(obj)) : nil
                     let m = ChatMessage(
                         id: id, role: .tool, content: "", timestamp: extractTimestamp(obj),
                         author: extractAuthor(obj), reasoning: nil,
@@ -6519,7 +6524,7 @@ enum MessageNormalizer {
                             id: callId.isEmpty ? nil : callId,
                             name: shownName,
                             input: preview,
-                            output: content.isEmpty ? nil : content,
+                            output: answerless ? nil : content,
                             status: .complete
                         )
                     )

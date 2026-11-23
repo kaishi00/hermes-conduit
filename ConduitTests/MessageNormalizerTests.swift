@@ -1917,6 +1917,26 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
     }
 
+    /// A resume's row whose arguments came as a JSON string, with the
+    /// cards wrapped as the model sent them, still draws its board: the
+    /// arguments are parsed and the cards opened as conduit_show opens them.
+    func testCompactResumeShowWithStringArgumentsAndWrappedCardsKeepsItsBoard() throws {
+        let args = #"{"title": "Plan", "cards": {"cards": [[{"type": "callout", "callout": {"text": "Bring water."}}]]}}"#
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "role": .string("tool"),
+                "name": .string("conduit_show"),
+                "context": .string("Plan"),
+                "args": .string(args)
+            ])
+        ])
+
+        let tool = try XCTUnwrap(messages.first?.tool)
+        XCTAssertNil(tool.output)
+        XCTAssertTrue(RichCard.hasCards(messages[0]))
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
+    }
+
     /// A finished show that failed keeps its answer, so its arguments never
     /// draw a board.
     func testAFailedConduitShowAnswerDrawsNoBoardFromItsArguments() {
