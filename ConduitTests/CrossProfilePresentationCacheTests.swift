@@ -2530,7 +2530,7 @@ extension CrossProfilePresentationCacheTests {
         operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.findBotChat = { client, name in
             seen.looked.append((ObjectIdentifier(client), name))
-            return [BotChatLookupRow(id: "atlas-chat")]
+            return [BotChatLookupRow(id: "atlas-chat", title: BotMode.canonicalChatTitle)]
         }
         operations.openSessionWithProfile = { client, sessionID, _, profile in
             seen.opened.append((ObjectIdentifier(client), sessionID, profile))
