@@ -5555,7 +5555,8 @@ struct StreamingBubble: View {
 /// "Opening conversation…" while Hermes sends a chat Conduit has nothing
 /// to draw for yet (issue 3148), and over a chat picked in the saved list
 /// while Conduit connects. It waits out `ResyncGrace.duration`, so a quick
-/// open doesn't flash it, and after `slowAfter` says the connection is
+/// open doesn't flash it (unless it takes over from the notification pill,
+/// see `skipsGrace`), and after `slowAfter` says the connection is
 /// slow, rather than leaving a spinner with no word on why. Its height
 /// stays the same throughout: the scroller measures the row once.
 struct ChatOpeningStatus: View {
