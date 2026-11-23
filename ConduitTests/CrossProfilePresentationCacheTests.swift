@@ -2755,9 +2755,20 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.openWidgetChatInPlace(byName), "by its link's bot")
         await waitUntil { seen.looked.count > looksBeforeName }
         XCTAssertEqual(seen.looked.last?.1, "atlas")
-        // Its Pulse chat goes on to the Pulse screen, as its push does.
+        // A chat's link to its Pulse chat goes on to the Pulse screen, as
+        // its push does; a bot's link still opens its Bot Chat, as the
+        // switch's launch would.
         appState.pulseRememberedHomes[mac.id.uuidString] = "atlas-chat"
-        XCTAssertFalse(appState.openWidgetChatInPlace(widget), "its Pulse chat isn't opened as a Bot Chat")
+        let chatLink = try XCTUnwrap(WidgetLaunchLink(
+            action: .resume,
+            workspace: WidgetWorkspaceID(dashboardID: mac.id, profile: "default"),
+            reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil,
+                                                   botLabel: nil, sessionID: "atlas-chat", isUnverified: false)
+        ))
+        XCTAssertFalse(appState.openWidgetChatInPlace(chatLink), "a chat's link to its Pulse chat isn't a Bot Chat's")
+        let looksBeforePulse = seen.looked.count
+        XCTAssertTrue(appState.openWidgetChatInPlace(widget), "a bot's link opens its Bot Chat")
+        await waitUntil { seen.looked.count > looksBeforePulse }
         appState.pulseRememberedHomes[mac.id.uuidString] = nil
 
         // A registry naming a bot by another case picks the exact name.

@@ -244,9 +244,11 @@ extension AppState {
         let byName = reference.kind == .bot
             ? reference.botName.flatMap { Self.linkedBot(named: $0, in: farBotRoster(in: workspace.dashboardID)) }
             : nil
-        // Its Pulse chat opens on the Pulse screen, as a push's does.
+        // A chat's link to its Pulse chat goes on to the Pulse screen, as a
+        // push's does; a bot's link opens its Bot Chat, as the switch's
+        // launch would (openWidgetConversation).
         let isPulse = id.map { farPulseHomes(in: workspace.dashboardID).contains($0) } ?? false
-        if !isPulse, let bot = byID ?? byName {
+        if !(isPulse && reference.kind == .dashboard), let bot = byID ?? byName {
             let open = openFarBotChatInPlace(of: bot, in: workspace.dashboardID)
             if open != nil { errorMessage = nil }
             return open != nil
