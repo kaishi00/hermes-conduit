@@ -334,15 +334,17 @@ extension AppState {
 
     /// The bot profile the chat on screen belongs to on another combined
     /// dashboard: by that dashboard's own Bot Chat registry (its runtime's,
-    /// whatever runs in scope), else, with its runtime let go (its
-    /// connection dropped), by Bots Home's read of its bots naming the
-    /// chat's ids. Nil for an ordinary chat.
+    /// whatever runs in scope), else by that dashboard's bots (its kept
+    /// roster, else Bots Home's read) naming the chat's open id alone. Nil
+    /// for an ordinary chat.
     func farBotChatProfile(in dashboardID: UUID) -> String? {
-        let open = activeSessionId.flatMap(ChatScrollIdentityNormalization.sessionID)
-        if let open, let profile = keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles[open] { return profile }
-        let ids = Set(([open] + (offlineChatIdentities() ?? []).map(Optional.some))
-            .compactMap { $0.flatMap(ChatScrollIdentityNormalization.sessionID) })
-        return ids.isEmpty ? nil : farBot(named: ids, in: dashboardID)?.name
+        guard let open = activeSessionId.flatMap(ChatScrollIdentityNormalization.sessionID) else { return nil }
+        if let profile = keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles[open] { return profile }
+        // Its runtime let go, or a replacement one (a reconnect) whose
+        // registry hasn't heard of it yet: that dashboard's own bots naming
+        // the far chat's own open id (farChat owns it while set), never ids
+        // the dashboard on screen holds.
+        return farBot(named: [open], in: dashboardID)?.name
     }
 
     /// Opens another combined dashboard's Bot Chat in place, as a Bot Chat
