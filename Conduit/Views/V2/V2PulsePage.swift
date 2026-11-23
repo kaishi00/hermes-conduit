@@ -124,54 +124,85 @@ struct PulseMessageMark: View {
 }
 
 /// Pulse, mounted the way the Chats list and Bots Home are: the shell's
-/// own redraws skip it, and its page follows the gate's updates.
+/// own redraws skip it, and its page follows the gate's updates. `root`:
+/// the tab's root (or the split list's), which the shell's path says is
+/// covered; otherwise a pushed route.
 struct V2PulsePageGate: View, Equatable {
     @IdentityEquatable var appState: AppState
+    var root = true
 
     var body: some View {
-        V2PulsePageHost(appState: appState)
+        V2PulsePageHost(appState: appState, root: root)
     }
 }
 
 /// Holds AppState's changes back while the page isn't on screen: another
 /// tab selected over it, or a chat pushed over it. Shown again, it draws
-/// once with what it missed (audit 1722). Its reads already waited for it
-/// to show (`isVisible`).
+/// once with what it missed, after a pop's slide (audit 1722). Beside a
+/// chat, a streamed reply's bursts draw once, as the Chats list's do.
 struct V2PulsePageHost: View {
     @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
+    private let root: Bool
     @State private var mounted = false
-    /// Gone once already: the next appearance is a chat popping off it.
+    /// A pushed route gone once already: the next appearance is a chat
+    /// popping off it.
     @State private var wasCovered = false
 
-    init(appState: AppState) {
-        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    init(appState: AppState, root: Bool) {
+        self.root = root
+        _updates = StateObject(wrappedValue: Self.makeUpdates(appState, root: root))
     }
 
     var body: some View {
         V2PulsePage()
             .environmentObject(updates)
+            // The root follows the shell's path, as the Chats list: born
+            // under a restored chat it starts held, and that chat's pop
+            // waits out the slide.
+            .onChange(of: Self.visibility(in: shell), initial: true) { was, now in
+                guard root else { return }
+                updates.follow(now, from: was)
+            }
+            // A pushed route follows its own appearance: the shell's path
+            // can't say what sits above it.
             .onAppear {
                 mounted = true
-                // Uncovered by a pop, it draws once the pop has slid, as
-                // the Chats list does; first shown, at once.
+                guard !root else { return }
                 updates.revealDelay = Self.revealDelay(uncoveredByPop: wasCovered)
                 updates.isShown = Self.isShown(mounted: true, in: shell)
             }
             .onDisappear {
                 mounted = false
+                guard !root else { return }
                 wasCovered = true
                 updates.isShown = false
             }
             .onChange(of: shell.isTabActive) { _, _ in
+                guard !root else { return }
                 // A tab switch slides nothing: it draws at once.
                 updates.revealDelay = 0
                 updates.isShown = Self.isShown(mounted: mounted, in: shell)
             }
+            .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+                updates.coalesces = beside
+            }
     }
 
-    /// On screen: mounted and not under a chat pushed over it (its
-    /// `onDisappear`), in the tab that shows.
+    /// A pushed route starts held until it appears: one restored under a
+    /// chat never draws until that chat pops.
+    static func makeUpdates(_ appState: AppState, root: Bool) -> V2ShownUpdates {
+        let updates = V2ShownUpdates(appState)
+        if !root { updates.isShown = false }
+        return updates
+    }
+
+    static func visibility(in shell: V2ShellContext) -> V2ListVisibility {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+    }
+
+    /// A pushed route on screen: mounted and not under a chat pushed over
+    /// it (its `onDisappear`), in the tab that shows.
     static func isShown(mounted: Bool, in shell: V2ShellContext) -> Bool {
         V2PulsePage.isVisible(shown: mounted, in: shell)
     }

@@ -365,6 +365,20 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: true), V2ShownUpdates.popSlide,
                        "a chat popping off it: it draws once the pop has slid")
         XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: false), 0)
+
+        // A pushed route starts held: restored under a chat, it never drew.
+        XCTAssertFalse(V2PulsePageHost.makeUpdates(state, root: false).isShown)
+        // The root follows the shell's path: born under a restored chat it
+        // starts held, and that chat's pop waits out the slide.
+        let root = V2PulsePageHost.makeUpdates(state, root: true)
+        shell.values.isRootCovered = true
+        let launched = V2PulsePageHost.visibility(in: shell)
+        root.follow(launched, from: launched)
+        XCTAssertFalse(root.isShown, "a page born under a chat counted as shown")
+        shell.values.isRootCovered = false
+        root.follow(V2PulsePageHost.visibility(in: shell), from: launched)
+        XCTAssertTrue(root.isShown)
+        XCTAssertEqual(root.revealDelay, V2ShownUpdates.popSlide, "the restored chat's pop drew at finger lift")
     }
 
     /// A project page is covered by a chat pushed over it, not by one

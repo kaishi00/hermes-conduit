@@ -1377,7 +1377,7 @@ struct V2Shell: View {
                     .navigationDestination(for: V2Route.self) { route in
                         Group {
                             if route == .pulse {
-                                tabBarClearance(V2PulsePageGate(appState: appState).equatable())
+                                tabBarClearance(V2PulsePageGate(appState: appState, root: false).equatable())
                             } else {
                                 destination(route)
                             }
@@ -1481,7 +1481,7 @@ struct V2Shell: View {
         case .pulse:
             // Full screen on a phone, as a chat is: its reply box sits where
             // the tabs were. Split, the list column keeps the bar (`splitColumns`).
-            V2PulsePageGate(appState: appState).equatable()
+            V2PulsePageGate(appState: appState, root: false).equatable()
         }
     }
 
