@@ -56,6 +56,14 @@ extension AppState {
         return (notifierPlugin, isConnected)
     }
 
+    /// Whether a list's feed is the dashboard on screen's: only then does
+    /// it offer Saved (pins are that dashboard's) or ask for its plugin's
+    /// status again.
+    func artifactsHostIsOnScreen(_ scope: ArtifactScope) -> Bool {
+        guard case .chat(_, let far?) = scope else { return true }
+        return far.dashboardID == activeDashboardID
+    }
+
     var artifactsClient: ArtifactsClient {
         ArtifactsClient(request: { [weak self] path in
             guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }

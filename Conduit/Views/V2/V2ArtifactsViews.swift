@@ -260,10 +260,7 @@ private struct ArtifactsList: View {
     private var hostServes: Bool { hostPlugin.reports(ArtifactsClient.capability) }
     /// Whether the feed's host is the one on screen's, whose status this
     /// list may ask for again.
-    private var hostIsOnScreen: Bool {
-        guard case .chat(_, let far?) = scope else { return true }
-        return far.dashboardID == appState.activeDashboardID
-    }
+    private var hostIsOnScreen: Bool { appState.artifactsHostIsOnScreen(scope) }
 
     /// The dashboards whose artifacts the list can show, the one on screen
     /// first (nil), when All reaches other combined dashboards too.
