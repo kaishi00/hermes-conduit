@@ -31,6 +31,15 @@ struct RichChecklistContext {
         "\(profile)\u{1E}\(sessionIDs.joined(separator: "\u{1D}"))"
     }
 
+    /// The profile part of a chat's key: a far chat's (another combined
+    /// dashboard's) carries its dashboard too, so two dashboards' chats with
+    /// the same profile and an id in common never share ticks on the phone
+    /// (carryOver merges only within one profile part).
+    static func keyProfile(_ profile: String, far dashboardID: UUID?) -> String {
+        guard let dashboardID else { return profile }
+        return "\(profile)\u{1C}\(dashboardID.uuidString)"
+    }
+
     /// A chat scope's profile and ids; nil for any other scope.
     static func parts(of scope: String) -> (profile: String, sessionIDs: Set<String>)? {
         let halves = scope.split(separator: "\u{1E}", maxSplits: 1, omittingEmptySubsequences: false)

@@ -2170,6 +2170,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
+        let farScope = RichChecklistContext.scope(profile: RichChecklistContext.keyProfile("default", far: mac.id), sessionIDs: ids)
+        let screenScope = RichChecklistContext.scope(profile: RichChecklistContext.keyProfile("default", far: nil), sessionIDs: ids)
+        XCTAssertEqual(screenScope, RichChecklistContext.scope(profile: "default", sessionIDs: ids), "a chat of the screen's keeps its key")
+        XCTAssertNotEqual(RichChecklistContext.parts(of: farScope)?.profile, RichChecklistContext.parts(of: screenScope)?.profile,
+                          "its ticks on the phone never merge with the screen's chat under the same id")
+        if let scope = appState.richChecklistContext?.scope { XCTAssertEqual(scope, farScope) }
         XCTAssertFalse(appState.richCardChat?.contains(vps.id.uuidString) == true)
 
         // Its connection dropped: nothing reads or sends for it.
