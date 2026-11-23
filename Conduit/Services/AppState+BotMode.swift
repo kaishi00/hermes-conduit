@@ -1894,6 +1894,11 @@ extension AppState {
                 method: "DELETE",
                 timeoutMilliseconds: 30_000
             )
+        } catch DashboardTicketBridgeError.answeredAfterSwitch {
+            // Hermes deleted it, but the screen moved to another dashboard
+            // meanwhile: what was kept for it on its own dashboard still
+            // goes below, and the screen's state is left alone (the bridge
+            // check after that stops there).
         } catch {
             return AppLocalization.string("Could not delete \(bot.displayLabel): \(UserFacingError.message(for: error))")
         }
