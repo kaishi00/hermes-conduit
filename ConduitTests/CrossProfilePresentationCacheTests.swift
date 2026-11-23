@@ -2120,6 +2120,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(menuRow.title, "Release prep")
         XCTAssertEqual(menuRow.combinedDashboardID, mac.id)
         XCTAssertEqual(appState.activeChatSessionSummary?.title, "VPS notes", "the screen's row stays the screen's")
+        // The screen's cron run under the same id doesn't join the far
+        // row's lookup, which would leave it ambiguous (#3141).
+        appState.cronSessions = [SessionSummary(id: "mac-1", alternateIds: [], title: "Nightly run", model: "Hermes", updatedLabel: "now",
+                                                profile: "default", source: .cron, isActive: false, isArchived: false, lineageRootId: nil)]
+        XCTAssertEqual(appState.chatOnScreenSessionSummary?.title, "Release prep", "a cron run on the screen's dashboard isn't the far chat's")
         appState.act(onRuntime: kept.runtime) {
             let titles = appState.activeProfileSessions.map(\.title)
             XCTAssertTrue(titles.contains("Release prep"), "its scope reads its own rows")

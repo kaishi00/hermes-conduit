@@ -4505,6 +4505,10 @@ final class AppState: ObservableObject {
     /// the card settles as answered elsewhere rather than offer the question
     /// again (issue 3131). Cleared when the request's last send settles.
     var resolvedInFlightClarifyRequests = Set<String>()
+    /// Requests whose card settles as answered elsewhere when their last
+    /// send ends, with the dashboard and profile whose card it is: a send
+    /// refused after `resolved` (3131).
+    var clarifySettlesOnLastSend = [String: ClarifySendOwner]()
     /// Questions a fenced-off send left marked sending while another send of
     /// their request was still on its way, by request id: they go back to
     /// answerable once the request's last send settles (#2636's review).
