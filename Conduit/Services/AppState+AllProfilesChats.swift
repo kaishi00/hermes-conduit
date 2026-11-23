@@ -309,6 +309,7 @@ extension AppState {
             if let dashboardID {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
+            dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             return false
         } catch {
             guard ownsDashboardRuntime(owner) else { return false }
