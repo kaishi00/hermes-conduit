@@ -131,6 +131,12 @@ struct BotRosterView: View {
         // so its id is kept for a retry.
         .onChange(of: shell.isTabActive) { _, active in
             if !active, !creatingNewRoom { newRoom.clear() }
+            // Hidden, it draws none of AppState's changes, so a sign-out
+            // and sign-in to the same dashboard leaves rosterRefreshKey as
+            // it was and groups unprobed: shown again, it probes them.
+            if active, appState.isConnected, appState.groupChatPhase == .idle {
+                Task { await appState.refreshGroupChatSupport() }
+            }
         }
         .onChange(of: canStartRoomHere) { _, can in
             if !can, !creatingNewRoom { newRoom.clear() }
