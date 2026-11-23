@@ -157,11 +157,11 @@ extension AppState {
 
     /// Whether a card may read on `dashboard`, another combined dashboard
     /// than the one on screen: the far chat's or group room's open in
-    /// place, or a live call's that goes on there (its cards and saved
-    /// transcript).
+    /// place, the Pulse page's while it shows that dashboard's chip, or a
+    /// live call's that goes on there (its cards and saved transcript).
     func richCardMayReadOffScreen(_ dashboard: UUID) -> Bool {
         dashboard == farChatDashboardID || dashboard == callDashboardOffScreen
-            || dashboard == activeRoomSurface?.dashboardID
+            || dashboard == activeRoomSurface?.dashboardID || (pulseRuntime != nil && dashboard == pulseShownDashboardID)
     }
 
     /// The bridge a card's read goes through: `dashboard`'s, the chat's or

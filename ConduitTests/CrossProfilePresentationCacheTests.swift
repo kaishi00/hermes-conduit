@@ -2300,6 +2300,16 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: nil) === appState.dashboardTicketBridge,
                       "a card outside a chat reads the screen's")
         XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: UUID()), "nor a dashboard not open here")
+        // With its chat closed, only a surface showing its dashboard reads
+        // there: the Pulse page on its chip.
+        let farChatOwner = appState.farChat
+        appState.farChat = nil
+        XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id), "nothing of it is open")
+        appState.pulseShownDashboardID = mac.id
+        XCTAssertTrue(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id) === kept.bridge,
+                      "its Pulse shown in place reads its cards on its own Hermes")
+        appState.pulseShownDashboardID = nil
+        appState.farChat = farChatOwner
 
         // Its connection dropped: nothing reads or sends for it.
         appState.keptDashboardRuntimes[mac.id] = nil

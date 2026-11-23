@@ -296,9 +296,10 @@ extension EnvironmentValues {
 
     /// The dashboard whose Hermes kept the cards: where a diff card reads
     /// its long diff and a review card its rounds. A chat's rows set it to
-    /// the chat's own dashboard (AppState.richCardHostDashboard), a call's
+    /// the chat's own dashboard (AppState.richCardHostDashboard), a room's
+    /// rows to the room's, the Pulse page to the Pulse it shows, a call's
     /// cards to the call's (voiceCallDashboardID). Nil, where nothing sets
-    /// it (the Pulse screen), reads the one on screen.
+    /// it, reads the one on screen.
     var richCardHostDashboard: UUID? {
         get { self[RichCardHostDashboardKey.self] }
         set { self[RichCardHostDashboardKey.self] = newValue }
