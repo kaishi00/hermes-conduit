@@ -182,7 +182,9 @@ struct RichCard: Identifiable, Equatable, Hashable {
         guard tool.name.lowercased() == toolName, tool.status == .complete else { return [] }
         let answer = jsonObject(tool.output)
         if let given = answer?["cards"] {
-            return cards(raw: given, schema: schema)
+            // Opened as the board counts them (RichBoard's given), so a
+            // wrapped answer draws its cards rather than only its Markdown.
+            return cards(raw: RichCardSchema.unwrappedCards(given), schema: schema)
         }
         guard (answer?["ok"] as? Bool) == true || keptNoAnswer(tool) else { return [] }
         return cards(raw: argumentCards(tool), schema: schema)

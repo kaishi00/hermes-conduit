@@ -1974,6 +1974,17 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(RichCard.hasCards(messages[0]))
     }
 
+    /// An answer whose cards came wrapped draws them, as the board counts
+    /// them, instead of falling back to its Markdown.
+    func testAWrappedConduitShowAnswerDrawsItsCards() {
+        let tool = ToolActivity(
+            id: "t1", name: "conduit_show", input: nil,
+            output: #"{"ok": true, "markdown": "Hi", "cards": {"cards": [{"type": "callout", "callout": {"text": "Hi"}}]}}"#,
+            status: .complete
+        )
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
+    }
+
     /// A finished show that failed keeps its answer, so its arguments never
     /// draw a board.
     func testAFailedConduitShowAnswerDrawsNoBoardFromItsArguments() {
