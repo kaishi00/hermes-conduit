@@ -6,7 +6,7 @@
 //  the selected passage, Pin in a reply's long-press menu (#1147), the
 //  bar over the open chat that cycles through its pins, and the overview
 //  of every pin, from the Chats list or from the bar on this chat's pins
-//  (#1267), which opens a chat at the reply and labels pins. Pins stay on this device, per profile; Hermes has no
+//  (#1267), which opens a chat at the reply and labels pins. Pins stay on this device, per dashboard and profile; Hermes has no
 //  pinned message of its own to share them with.
 //
 
@@ -189,31 +189,43 @@ extension AppState {
         return title.isEmpty ? pin.chatTitle : title
     }
 
-    /// A deleted chat's pinned replies go with it, under the profile it was
-    /// deleted in (the screen may have moved to another one since).
-    func dropPinnedReplies(forDeleted session: SessionSummary, profile: String? = nil) {
+    /// A deleted chat's pinned replies go with it, under the dashboard and
+    /// profile it was deleted in (the screen may have moved to another one
+    /// since). `dashboard` is the dashboard's preference bucket, captured
+    /// before the delete's await; nil is the dashboard in scope.
+    func dropPinnedReplies(forDeleted session: SessionSummary, profile: String? = nil, dashboard: String? = nil) {
+        let inScope = Self.dashboardPreferenceBucket(activeDashboardID)
+        let bucket = dashboard ?? inScope
         // Its own ids, and an alternate one only while no other row lists
         // it: a pin made before the chat was listed may still be kept under
-        // that runtime id, and another chat may share one.
+        // that runtime id, and another chat may share one. Another
+        // dashboard's rows aren't on hand to tell, so its alternates stay.
         let own = [session.id] + [session.storedSessionId].compactMap { $0 }
-        let others = (sessions + cronSessions).filter { $0.id != session.id }
-        let unshared = session.alternateIds.filter { id in
-            !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
+        let unshared: [String]
+        if bucket == inScope {
+            let others = (sessions + cronSessions).filter { $0.id != session.id }
+            unshared = session.alternateIds.filter { id in
+                !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
+            }
+        } else {
+            unshared = []
         }
         let ids = Set(own + unshared)
-        let profile = profile ?? activeProfile
-        let stored = pinnedRepliesByProfile[profile] ?? []
+        let owner = PinnedReplyOwner(dashboard: bucket, profile: profile ?? activeProfile)
+        let stored = pinnedReplies(of: owner)
         let remaining = stored.filter { pin in
             if ids.contains(pin.sessionID) { return false }
             // A runtime id Hermes confirmed as this chat's, in the profile
             // it was deleted in.
-            guard let durable = confirmedDurableSessionID(forRuntime: pin.sessionID, profile: profile)
+            guard bucket == inScope,
+                  let durable = confirmedDurableSessionID(forRuntime: pin.sessionID, profile: owner.profile)
             else { return true }
             return !ids.contains(durable)
         }
         guard remaining.count != stored.count else { return }
-        pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
-        if profile == activeProfile, let reveal = pendingPinnedReplyReveal,
+        setPinnedReplies(remaining, of: owner)
+        if let reveal = pendingPinnedReplyReveal,
+           stored.contains(where: { $0.id == reveal.pin.id }),
            !remaining.contains(where: { $0.id == reveal.pin.id }) {
             pendingPinnedReplyReveal = nil
         }
@@ -221,11 +233,15 @@ extension AppState {
     }
 
     /// A deleted profile's pinned replies go with it, so a profile given the
-    /// same name later starts with none.
-    func forgetPinnedReplies(profile: String) {
-        guard pinnedRepliesByProfile[profile] != nil else { return }
-        pinnedRepliesByProfile.removeValue(forKey: profile)
-        if profile == activeProfile { pendingPinnedReplyReveal = nil }
+    /// same name later starts with none. `dashboard` as for a deleted chat.
+    func forgetPinnedReplies(profile: String, dashboard: String? = nil) {
+        let owner = PinnedReplyOwner(dashboard: dashboard ?? Self.dashboardPreferenceBucket(activeDashboardID), profile: profile)
+        let stored = pinnedReplies(of: owner)
+        guard !stored.isEmpty else { return }
+        setPinnedReplies([], of: owner)
+        if let reveal = pendingPinnedReplyReveal, stored.contains(where: { $0.id == reveal.pin.id }) {
+            pendingPinnedReplyReveal = nil
+        }
         persistPinnedReplies()
     }
 

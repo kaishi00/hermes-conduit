@@ -892,4 +892,41 @@ final class PinnedRepliesTests: XCTestCase {
                        "the dashboard left keeps its pins for the return")
     }
 
+
+    /// A chat or bot deleted on one dashboard drops its pins there, even
+    /// after the screen moved to another dashboard whose chat shares the id.
+    /// One dashboard's sign-out or new host drops only its own pins, and
+    /// pins kept before any dashboard was saved go to the first one.
+    @MainActor
+    func testPinsGoOnlyFromTheDashboardTheyWereDroppedOn() {
+        let appState = makeAppState(freshDefaults())
+        let left = UUID()
+        let leftBucket = left.uuidString
+        let pin = PinnedReply(sessionID: "chat-1", message: reply("a", "Left plan", rowId: 7), chatTitle: "Plans")
+        appState.setPinnedReplies([pin], of: PinnedReplyOwner(dashboard: leftBucket, profile: "default"))
+        appState.activeSessionId = "chat-1"
+        let answer = reply("b", "Screen plan", rowId: 8)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+
+        appState.dropPinnedReplies(forDeleted: row("chat-1"), profile: "default", dashboard: leftBucket)
+        XCTAssertNil(appState.pinnedRepliesByDashboard[leftBucket])
+        XCTAssertEqual(appState.activePinnedReplies.count, 1, "the screen's chat under the same id keeps its pin")
+
+        appState.setPinnedReplies([pin], of: PinnedReplyOwner(dashboard: leftBucket, profile: "helper"))
+        appState.forgetPinnedReplies(profile: "helper", dashboard: leftBucket)
+        XCTAssertNil(appState.pinnedRepliesByDashboard[leftBucket])
+
+        appState.setPinnedReplies([pin], of: PinnedReplyOwner(dashboard: leftBucket, profile: "default"))
+        appState.clearPinnedReplies(inDashboard: left)
+        XCTAssertNil(appState.pinnedRepliesByDashboard[leftBucket])
+        XCTAssertEqual(appState.activePinnedReplies.count, 1, "another dashboard's sign-out leaves these")
+
+        let first = UUID()
+        appState.adoptUnscopedPinnedReplies(into: first)
+        XCTAssertNil(appState.pinnedRepliesByDashboard[AppState.dashboardPreferenceBucket(nil)])
+        XCTAssertEqual(appState.pinnedRepliesByDashboard[first.uuidString]?["default"]?.count, 1)
+    }
+
 }

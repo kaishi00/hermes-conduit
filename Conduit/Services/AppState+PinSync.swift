@@ -94,7 +94,7 @@ extension AppState {
         let stored = pinnedReplies(of: owner)
         guard !stored.isEmpty else { return ([], []) }
         let key = OpenChatPinnedRepliesKey(
-            profile: "\(owner.dashboard)|\(owner.profile)",
+            owner: owner,
             active: active,
             stored: stored,
             transcriptRevision: chatTranscriptRevision,

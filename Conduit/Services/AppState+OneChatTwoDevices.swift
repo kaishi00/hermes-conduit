@@ -736,7 +736,7 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             // Its pinned replies go too, under the profile it was deleted in.
-            dropPinnedReplies(forDeleted: session, profile: profile)
+            dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // A call in it goes on in a new chat (issue 1797).
             voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
@@ -758,10 +758,11 @@ extension AppState {
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {
             // Hermes deleted it after the screen moved to another dashboard:
-            // only the old dashboard's saved copy follows (#1040).
+            // only the old dashboard's saved copy and pins follow (#1040).
             if let dashboardID {
                 removeSavedCopies(ofDeleted: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
             }
+            dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             return false
         } catch {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
