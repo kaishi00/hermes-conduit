@@ -168,11 +168,19 @@ extension AppState {
         return act(onRuntime: runtime) { notifierPlugin.reports(capability) ? dashboardTicketBridge : nil }
     }
 
+    /// A far chat's plugin may not have said what it keeps yet (opening
+    /// the chat doesn't ask): asked once before its cards' reads are gated.
+    func readFarCardHostStatus(_ dashboard: UUID?) async {
+        guard let dashboard, dashboard != activeDashboardID, dashboard == farChatDashboardID else { return }
+        await readKeptPluginStatusIfUnknown(dashboard)
+    }
+
     /// A diff card reads the whole of a long diff from its chat's Hermes,
     /// the one whose plugin kept it; an id from another Hermes is answered
     /// as gone there.
     func installRichDiffReader() {
         RichDiffLoader.shared.read = { [weak self] path, dashboard in
+            await self?.readFarCardHostStatus(dashboard)
             guard let bridge = self?.richCardReadBridge(capability: RichDiffLoader.capability, on: dashboard) else {
                 throw RichDiffLoader.LoadError.notConnected
             }
@@ -185,6 +193,7 @@ extension AppState {
     /// gone there.
     func installRichReviewReader() {
         RichReviewLoader.shared.read = { [weak self] path, dashboard in
+            await self?.readFarCardHostStatus(dashboard)
             guard let bridge = self?.richCardReadBridge(capability: RichReviewLoader.capability, on: dashboard) else {
                 throw RichReviewLoader.LoadError.notConnected
             }
