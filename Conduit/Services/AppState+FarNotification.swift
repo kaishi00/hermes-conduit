@@ -196,9 +196,7 @@ extension AppState {
     /// Another combined dashboard's Bot Chats, by its bots as Bots Home or
     /// its kept runtime read them.
     func farBotChatIDs(in dashboardID: UUID) -> Set<String> {
-        let roster = (combinedDashboardBots[dashboardID]?.bots ?? [])
-            + (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
-        return Set(roster.compactMap(\.canonicalSessionID))
+        Set(farBotRoster(in: dashboardID).compactMap(\.canonicalSessionID))
     }
 
     /// Another combined dashboard's Pulse chat, as any of its feed read
@@ -241,12 +239,16 @@ extension AppState {
         // one) opens in place too, as its Chats row does: by the bot its
         // bots name for the chat's id, else by the link's bot. One that
         // fails says so in its open, as on screen.
-        let byID = ChatScrollIdentityNormalization.sessionID(reference.sessionID)
-            .flatMap { farBot(named: [$0], in: workspace.dashboardID) }
+        let id = ChatScrollIdentityNormalization.sessionID(reference.sessionID)
+        let byID = id.flatMap { farBot(named: [$0], in: workspace.dashboardID) }
         let byName = reference.kind == .bot
             ? reference.botName.flatMap { Self.linkedBot(named: $0, in: farBotRoster(in: workspace.dashboardID)) }
             : nil
-        if let bot = byID ?? byName {
+        // A chat's link to its Pulse chat goes on to the Pulse screen, as a
+        // push's does; a bot's link opens its Bot Chat, as the switch's
+        // launch would (openWidgetConversation).
+        let isPulse = id.map { farPulseHomes(in: workspace.dashboardID).contains($0) } ?? false
+        if !(isPulse && reference.kind == .dashboard), let bot = byID ?? byName {
             let open = openFarBotChatInPlace(of: bot, in: workspace.dashboardID)
             if open != nil { errorMessage = nil }
             return open != nil
