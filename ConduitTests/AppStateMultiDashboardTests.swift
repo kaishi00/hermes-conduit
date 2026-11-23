@@ -2305,13 +2305,19 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
         let failure = await upload.value
 
-        XCTAssertEqual(held.sent.dropFirst(2).map(\.path), [
-            "/api/plugins/conduit_push/workspace/upload",
+        let paths = held.sent.dropFirst(2).map(\.path)
+        XCTAssertEqual(paths.count, 5)
+        XCTAssertEqual(paths.first, "/api/plugins/conduit_push/workspace/upload")
+        // The reopened folder's two reads go out together, in either order.
+        XCTAssertEqual(paths.dropFirst().prefix(2).sorted(), [
             "/api/plugins/conduit_push/workspace/list",
             "/api/plugins/conduit_push/workspace/recent",
+        ])
+        XCTAssertEqual(Array(paths.suffix(2)), [
             "/api/plugins/conduit_push/workspace/list",
             "/api/plugins/conduit_push/workspace/recent",
-        ], "the second file isn't sent")
+        ], "the folder read once after the sent file")
+        XCTAssertEqual(paths.filter { $0.hasSuffix("/workspace/upload") }.count, 1, "the second file isn't sent")
         XCTAssertEqual(failure, [
             AppLocalization.string("This file couldn't be opened.", table: .chat),
             AppLocalization.string("The remaining files weren't uploaded, since the folder or connection changed.", table: .chat),

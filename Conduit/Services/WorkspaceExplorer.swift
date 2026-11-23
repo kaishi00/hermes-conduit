@@ -245,7 +245,8 @@ final class WorkspaceExplorer: ObservableObject {
     /// once after the last (issue 2355), whatever came back: a file the
     /// host stopped waiting on (504) may still have landed (notifier issue
     /// 834). Returns the last failure to show: a file too large, one that
-    /// couldn't be opened, or a refusal.
+    /// couldn't be opened, or a refusal, followed by a stop line when the
+    /// tab moved to another folder or host before every file was sent.
     func upload(_ urls: [URL], into folder: String) async -> String? {
         var failure: String?
         var sent = false
@@ -256,7 +257,17 @@ final class WorkspaceExplorer: ObservableObject {
         // A folder opened and left again meanwhile counts as a move too,
         // though the folder and host are the same again.
         let startedGeneration = generation
+        // Said once the tab moved, so the files left unsent don't pass for
+        // uploaded, after any earlier file's own failure.
+        func moved() -> Bool { generation != startedGeneration || scope != startedScope || far != startedFar }
+        func stop() {
+            let stopped = AppLocalization.string("The remaining files weren't uploaded, since the folder or connection changed.", table: .chat)
+            failure = failure.map { "\($0)\n\(stopped)" } ?? stopped
+        }
         for url in urls {
+            // Before the file is read at all: a file too large or unreadable
+            // past the move would otherwise hide the stop.
+            if moved() { stop(); break }
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
@@ -273,13 +284,8 @@ final class WorkspaceExplorer: ObservableObject {
                 failure = tooLarge
                 continue
             }
-            guard generation == startedGeneration, scope == startedScope, far == startedFar else {
-                // Said, so the files left unsent don't pass for uploaded,
-                // after any earlier file's own failure.
-                let stopped = AppLocalization.string("The remaining files weren't uploaded, since the folder or connection changed.", table: .chat)
-                failure = failure.map { "\($0)\n\(stopped)" } ?? stopped
-                break
-            }
+            // And again after the read, which awaited.
+            if moved() { stop(); break }
             sent = true
             // A failure that came after the host went (a far chat's
             // dashboard dropped) is still this file's: `change` answers nil
