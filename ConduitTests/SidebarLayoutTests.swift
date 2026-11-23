@@ -551,11 +551,20 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(memo.category("a") { lookups += 1; return .cron }, .voice)
         XCTAssertEqual(lookups, 1)
 
+        var counts = 0
+        let count: () -> [SessionStatusFilter: Int] = { counts += 1; return [.unread: 2] }
+        XCTAssertEqual(memo.statusCounts("all", count)[.unread], 2)
+        _ = memo.statusCounts("all", count)
+        _ = memo.statusCounts("cron", count)
+        XCTAssertEqual(counts, 2, "every status counted once per source a render")
+
         memo.reset()
         _ = memo.sourceRows(nil, walk)
         _ = memo.category("a") { lookups += 1; return .cron }
+        _ = memo.statusCounts("all", count)
         XCTAssertEqual(walks, 5)
         XCTAssertEqual(lookups, 2)
+        XCTAssertEqual(counts, 3)
     }
 
     /// An equal key reuses the tree; a change to any member rebuilds it.
