@@ -154,15 +154,18 @@ extension AppState {
     /// folded: on a case-sensitive host that is a different profile. A call
     /// keeps opening as it did before, by the chat's ids alone. A decision
     /// the push carries is recorded for the bot's chat before it opens.
+    /// `owner` is the bot another combined dashboard's bots name, for its
+    /// push opened in place on its runtime (openFarBotChatNotification).
     func routeBotOwnedNotification(
         _ target: ConduitNotificationTarget,
         notifiedProfile: String,
         rowIDs: Set<String> = [],
         canonicalProfile: String? = nil,
+        owner: BotProfile? = nil,
         attemptID: UUID,
         transitionGeneration: UInt64
     ) async -> NotificationOpenOutcome {
-        guard let bot = botOwningNotificationTarget(target, rowIDs: rowIDs, canonicalProfile: canonicalProfile),
+        guard let bot = owner ?? botOwningNotificationTarget(target, rowIDs: rowIDs, canonicalProfile: canonicalProfile),
               target.call != nil || !Self.namesProfileOnlyWithCaseFolded(notifiedProfile, bot: bot) else {
             refuseBotOwnedRouting(for: notifiedProfile)
             return .failed

@@ -2642,7 +2642,10 @@ extension CrossProfilePresentationCacheTests {
         // bot names doesn't make an ordinary far chat that bot's.
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its open id, by Bots Home's read")
-        var screenRow = SessionSummary(id: "atlas-chat", alternateIds: [], title: "Screen chat", model: "Hermes",
+        // The screen's row carries the far chat's open id with the far bot's
+        // canonical id as an alias, so a lookup through the screen's ids
+        // would name the bot.
+        var screenRow = SessionSummary(id: "plain-far-chat", alternateIds: ["atlas-chat"], title: "Screen chat", model: "Hermes",
                                        updatedLabel: "now", profile: "default", source: .chat, isActive: false,
                                        isArchived: false, lineageRootId: nil)
         screenRow.combinedDashboardID = nil
@@ -2651,6 +2654,96 @@ extension CrossProfilePresentationCacheTests {
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         XCTAssertNil(appState.farBotChatProfile(in: mac.id), "an id the screen holds never names it")
         appState.farChat = nil
+    }
+
+    /// A Bot Chat's push, chat link or widget tap of a kept dashboard opens
+    /// it in place, as its Chats row does: its bot's lookup and open through
+    /// the kept connection, in its bot's profile, with no switch. A call's
+    /// or a room's push, its Pulse chat's, and one for a dashboard no
+    /// longer kept connected still switch.
+    func testAKeptDashboardsBotChatPushLinkAndWidgetOpenInPlace() async throws {
+        final class Seen { var looked: [(ObjectIdentifier, String)] = []; var opened: [(ObjectIdentifier, String, String?)] = [] }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { client, name in
+            seen.looked.append((ObjectIdentifier(client), name))
+            return [BotChatLookupRow(id: "atlas-chat", title: BotMode.canonicalChatTitle)]
+        }
+        operations.openSessionWithProfile = { client, sessionID, _, profile in
+            seen.opened.append((ObjectIdentifier(client), sessionID, profile))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "atlas-p1", role: .assistant, content: "Atlas here", timestamp: "ts-p1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        let push = ConduitNotificationTarget(profile: "atlas", sessionId: "atlas-chat", dashboardID: mac.id, type: "reply")
+
+        // Which pushes are a far Bot Chat's.
+        XCTAssertEqual(appState.farBotChatPushed(push, in: mac.id)?.name, "atlas", "its bots name it")
+        let room = ConduitNotificationTarget(profile: "atlas", sessionId: "atlas-chat", dashboardID: mac.id,
+                                             type: "reply", roomID: "room-1")
+        XCTAssertNil(appState.farBotChatPushed(room, in: mac.id), "a room's push opens the room")
+        let tip = ConduitNotificationTarget(profile: "atlas", sessionId: "atlas-tip", dashboardID: mac.id, type: "reply")
+        XCTAssertNil(appState.farBotChatPushed(tip, in: mac.id), "an id nothing of that dashboard's names")
+        kept.runtime.botChatSessionProfiles["atlas-tip"] = "atlas"
+        XCTAssertEqual(appState.farBotChatPushed(tip, in: mac.id)?.name, "atlas", "its registry names a newer id")
+        kept.runtime.botChatSessionProfiles["atlas-tip"] = nil
+        appState.pulseRememberedHomes[mac.id.uuidString] = "atlas-chat"
+        XCTAssertNil(appState.farBotChatPushed(push, in: mac.id), "its Pulse chat's push opens on Pulse")
+        appState.pulseRememberedHomes[mac.id.uuidString] = nil
+
+        // A push opens it in place, waited on.
+        let outcome = await appState.openFarNotificationInPlace(push, in: mac.id)
+        XCTAssertEqual(outcome, .opened)
+        XCTAssertEqual(appState.activeSessionId, "atlas-chat")
+        XCTAssertTrue(appState.messages.contains { $0.id == "atlas-p1" }, "its rows are up")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(seen.looked.last?.0, ObjectIdentifier(outgoing), "its bot looked up through the kept connection")
+        XCTAssertEqual(seen.looked.last?.1, "atlas")
+        XCTAssertEqual(seen.opened.last?.2, "atlas", "in its bot's profile")
+        XCTAssertEqual(appState.conversationAgentIdentity.name, "Atlas", "it presents its own bot")
+        XCTAssertNil(appState.activeNotificationOpenAttemptID, "its attempt ended")
+
+        // A chat link takes the same route.
+        let looksBeforeLink = seen.looked.count
+        let link = ConduitNotificationTarget(profile: "atlas", sessionId: "atlas-chat", dashboardID: mac.id,
+                                             type: nil, isChatLink: true)
+        let linked = await appState.openFarNotificationInPlace(link, in: mac.id)
+        XCTAssertEqual(linked, .opened)
+        XCTAssertGreaterThan(seen.looked.count, looksBeforeLink, "its bot's lookup ran again")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+
+        // So does a widget's or Siri's tap on it.
+        let widget = try XCTUnwrap(WidgetLaunchLink(
+            action: .resume,
+            workspace: WidgetWorkspaceID(dashboardID: mac.id, profile: "default"),
+            reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "atlas", botName: "atlas",
+                                                   botLabel: "Atlas", sessionID: "atlas-chat", isUnverified: false)
+        ))
+        let looksBeforeWidget = seen.looked.count
+        XCTAssertTrue(appState.openWidgetChatInPlace(widget), "it opens in place")
+        await waitUntil { seen.looked.count > looksBeforeWidget }
+        XCTAssertEqual(seen.looked.last?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+
+        // Its connection let go, a push switches as before.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        let dropped = await appState.openFarNotificationInPlace(push, in: mac.id)
+        XCTAssertNil(dropped, "not kept connected: it switches")
+        XCTAssertFalse(appState.openWidgetChatInPlace(widget), "not kept connected: it switches")
     }
 
     /// A far chat on another profile takes the kept socket on a client of

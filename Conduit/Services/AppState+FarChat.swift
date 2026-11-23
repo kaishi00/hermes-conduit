@@ -356,15 +356,28 @@ extension AppState {
     /// names the row.
     @discardableResult
     func openFarBotChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Task<Bool, Never>? {
-        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
-              let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected,
-              let bot = farBot(for: session, in: dashboardID) else { return nil }
-        let runtime = kept.runtime
+        guard let bot = farBot(for: session, in: dashboardID) else { return nil }
+        return openFarBotChatInPlace(of: bot, in: dashboardID)
+    }
+
+    /// Opens `bot`'s Bot Chat on another combined dashboard in place, as
+    /// above: a widget's or Siri's tap on it names the chat by its id alone.
+    @discardableResult
+    func openFarBotChatInPlace(of bot: BotProfile, in dashboardID: UUID) -> Task<Bool, Never>? {
+        guard let runtime = farBotChatRuntime(in: dashboardID) else { return nil }
         widgetLaunchCoordinator.supersede()
         return Task { @MainActor [weak self] in
             guard let self else { return false }
             return await self.actAcrossAwaits(onRuntime: runtime) { await self.openBotChat(for: bot) }
         }
+    }
+
+    /// Another combined dashboard's kept runtime a Bot Chat of its opens on
+    /// in place: kept connected, not the dashboard on screen.
+    func farBotChatRuntime(in dashboardID: UUID) -> DashboardRuntime? {
+        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
+              let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected else { return nil }
+        return kept.runtime
     }
 
     /// The open `openFarChatInPlace` starts, for a caller that waits on it
