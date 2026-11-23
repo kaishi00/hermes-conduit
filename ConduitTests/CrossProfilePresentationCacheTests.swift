@@ -2235,6 +2235,32 @@ extension CrossProfilePresentationCacheTests {
         kept.runtime.botRoster = []
         _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
         XCTAssertEqual(appState.farBotName("default", on: mac.id), "Mac main", "its main bot by its dashboard's saved name")
+        // Its Folder tab is its own dashboard's folders, read through that
+        // dashboard's kept connection as its profile there.
+        XCTAssertEqual(appState.workspaceFarDashboardID(far), mac.id)
+        XCTAssertNil(appState.workspaceFarDashboardID(nil))
+        XCTAssertTrue(appState.workspaceBridge(farDashboard: mac.id) === kept.bridge, "its files are read on its own Hermes")
+        XCTAssertEqual(appState.workspacePlugin(far), kept.runtime.notifierPlugin, "and its own dashboard's plugin is asked")
+        XCTAssertEqual(appState.workspaceIsConnected(far), kept.runtime.isConnected)
+        XCTAssertEqual(appState.workspaceProfile(far: far), "default")
+        kept.runtime.runtime.cwd = "/mac/app"
+        appState.runtime.cwd = "/vps/app"
+        XCTAssertEqual(appState.chatWorkspaceFolder(far: far), "/mac/app", "its folder as its own dashboard has it")
+        XCTAssertEqual(appState.workspaceRoots(includingChat: true, far: far).first?.path, "/mac/app")
+        XCTAssertFalse(appState.workspaceRoots(includingChat: true, far: far).contains { $0.kind == .project },
+                       "the projects are the bot on screen's")
+        XCTAssertEqual(appState.absoluteWorkspacePath("docs/a.md", far: far), "/mac/app/docs/a.md", "a path its reply named is in its folder")
+        XCTAssertEqual(appState.absoluteWorkspacePath("docs/a.md"), "/vps/app/docs/a.md")
+        XCTAssertEqual(appState.projectFolderPickerRoot(far: far), "/mac/app")
+        appState.rememberOpenedWorkspaceFolder("/mac/notes", profile: "default", far: far)
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: "default", far: far), ["/mac/notes"], "a folder opened for it is kept for its dashboard")
+        XCTAssertFalse(appState.openedWorkspaceFolders(profile: "default").contains("/mac/notes"), "not the screen's")
+        appState.forgetOpenedWorkspaceFolder("/mac/notes", profile: "default", far: far)
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: "default", far: far), [])
+        let folderOwner = try XCTUnwrap(appState.workspaceRuntimeOwner(far))
+        XCTAssertEqual(folderOwner.dashboardID, mac.id)
+        XCTAssertTrue(folderOwner.bridge === kept.bridge)
+        XCTAssertTrue(appState.ownsWorkspaceRuntime(folderOwner), "its answers stand while its connection is kept")
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
@@ -2254,6 +2280,9 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.richCardChat)
         XCTAssertThrowsError(try appState.richChecklistBridge(for: mac.id))
         XCTAssertNil(appState.botScreenClient(for: mac.id), "nor drives its screen")
+        XCTAssertNil(appState.workspaceBridge(farDashboard: mac.id), "nor reads its folder")
+        XCTAssertFalse(appState.ownsWorkspaceRuntime(folderOwner), "and a folder answer still out is dropped")
+        XCTAssertFalse(appState.workspaceIsConnected(far))
     }
 
     func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {

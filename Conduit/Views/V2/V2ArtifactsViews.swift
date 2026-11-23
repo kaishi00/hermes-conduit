@@ -89,9 +89,8 @@ struct ChatArtifactsContent: View {
     @EnvironmentObject private var appState: AppState
     /// Read once: the open chat's ids when it opened.
     let sessionIDs: [String]
-    /// Another combined dashboard's chat open in place: its artifacts are
-    /// read on its own dashboard. Its Folder tab isn't offered: the folder
-    /// and projects it reads are the dashboard on screen's.
+    /// Another combined dashboard's chat open in place: its artifacts and
+    /// its folder are read on its own dashboard.
     var far: FarChatOwner? = nil
     @Binding var tab: ArtifactsTab
     /// Beside the chat rather than in a sheet of its own: no navigation bar
@@ -101,12 +100,10 @@ struct ChatArtifactsContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if far == nil {
-                ArtifactsTabPicker(tab: $tab)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-            }
-            switch far == nil ? tab : .made {
+            ArtifactsTabPicker(tab: $tab)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            switch tab {
             case .made:
                 if sessionIDs.isEmpty {
                     ContentUnavailableView {
@@ -119,7 +116,7 @@ struct ChatArtifactsContent: View {
                     ArtifactsList(scope: .chat(sessionIDs, far: far), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
                 }
             case .folder:
-                WorkspaceFolderView(includesChat: true, handlesReveals: true)
+                WorkspaceFolderView(includesChat: true, handlesReveals: true, far: far)
             }
         }
     }
@@ -150,7 +147,7 @@ struct ChatArtifactsSheet: View {
                 dismiss()
                 appState.showArtifactInChat(item, chatIsOpen: true)
             }
-            .navigationTitle(tab == .made || far != nil ? Text("In This Chat") : Text("Folder"))
+            .navigationTitle(tab == .made ? Text("In This Chat") : Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

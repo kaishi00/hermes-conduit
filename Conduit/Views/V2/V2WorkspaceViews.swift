@@ -58,6 +58,9 @@ struct WorkspaceFolderView: View {
     /// Whether this tab shows the files replies' paths name. Only the open
     /// chat's tab does, so a page elsewhere doesn't take them.
     var handlesReveals = false
+    /// Another combined dashboard's chat open in place: its own dashboard's
+    /// folders, read through that dashboard's kept connection.
+    var far: FarChatOwner? = nil
 
     @State private var rootPath: String?
     @State private var query = ""
@@ -95,7 +98,7 @@ struct WorkspaceFolderView: View {
         var entry: WorkspaceEntry?
     }
 
-    private var roots: [WorkspaceRoot] { appState.workspaceRoots(includingChat: includesChat) }
+    private var roots: [WorkspaceRoot] { appState.workspaceRoots(includingChat: includesChat, far: far) }
 
     private var root: WorkspaceRoot? {
         roots.first { $0.path == rootPath } ?? roots.first
@@ -127,13 +130,14 @@ struct WorkspaceFolderView: View {
     private var changes: Changes {
         Changes(
             tools: appState.workspaceChanges,
-            routes: appState.supportsWorkspaceFiles,
-            mayServe: appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability)
+            routes: appState.supportsWorkspaceFiles(far: far),
+            mayServe: appState.workspacePlugin(far).mayServe(WorkspaceFilesClient.capability)
         )
     }
 
     private var key: Key {
-        Key(dashboard: appState.activeDashboardID, profile: appState.workspaceProfile, root: root?.path)
+        Key(dashboard: appState.workspaceFarDashboardID(far) ?? appState.activeDashboardID,
+            profile: appState.workspaceProfile(far: far), root: root?.path)
     }
 
     var body: some View {
@@ -152,9 +156,9 @@ struct WorkspaceFolderView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .refreshable { await explorer.refresh() }
-        .task { explorer.attach(appState) }
+        .task { explorer.attach(appState, far: far) }
         .task(id: key) {
-            explorer.attach(appState)
+            explorer.attach(appState, far: far)
             openToken = nil
             opening = nil
             // Another dashboard, profile or folder: the old one's file goes.
@@ -245,9 +249,9 @@ struct WorkspaceFolderView: View {
             Text(verbatim: failure ?? "")
         }
         .sheet(isPresented: $showsFolderPicker) {
-            ProjectFolderPickerSheet(rootPath: root?.path ?? appState.projectFolderPickerRoot,
-                                     profile: appState.workspaceProfile) { folder in
-                appState.rememberOpenedWorkspaceFolder(folder, profile: appState.workspaceProfile)
+            ProjectFolderPickerSheet(rootPath: root?.path ?? appState.projectFolderPickerRoot(far: far),
+                                     profile: appState.workspaceProfile(far: far), far: far) { folder in
+                appState.rememberOpenedWorkspaceFolder(folder, profile: appState.workspaceProfile(far: far), far: far)
                 rootPath = folder
             }
             .presentationDetents([.medium, .large])
@@ -298,11 +302,11 @@ struct WorkspaceFolderView: View {
                     }
                     // The chat works here from now on (Hermes Desktop's
                     // folder chip), for a folder that isn't already its own.
-                    if includesChat, let root, root.kind != .chat, appState.canMoveOpenChatFolder {
+                    if includesChat, let root, root.kind != .chat, appState.canMoveChatOnScreenFolder {
                         Button {
                             let picked = rootPath
                             Task {
-                                switch await appState.moveOpenChatFolder(to: root.path) {
+                                switch await appState.moveChatOnScreenFolder(to: root.path) {
                                 case .moved:
                                     Haptics.selection()
                                     // Only if the reader hasn't picked another folder meanwhile.
@@ -319,7 +323,7 @@ struct WorkspaceFolderView: View {
                     }
                     if let root, root.kind == .opened {
                         Button {
-                            appState.forgetOpenedWorkspaceFolder(root.path, profile: appState.workspaceProfile)
+                            appState.forgetOpenedWorkspaceFolder(root.path, profile: appState.workspaceProfile(far: far), far: far)
                             rootPath = nil
                         } label: {
                             Label(AppLocalization.string("Remove from List", table: .chat), systemImage: "minus.circle")
@@ -458,7 +462,7 @@ struct WorkspaceFolderView: View {
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 8)
             // Not while the plugin hasn't said (offline, just connected).
-            } else if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+            } else if !explorer.canChange, !appState.workspacePlugin(far).mayServe(WorkspaceFilesClient.capability) {
                 Label {
                     Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.", table: .chat)))
                 } icon: {
@@ -470,7 +474,7 @@ struct WorkspaceFolderView: View {
             }
             // Kept ones show until the plugin says it doesn't serve them.
             if !explorer.recent.isEmpty, explorer.pluginOff == nil,
-               appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+               appState.workspacePlugin(far).mayServe(WorkspaceFilesClient.capability) {
                 recentSection
             }
             let rows = explorer.rows()
@@ -974,7 +978,12 @@ struct WorkspaceFolderView: View {
     }
 
     private var resolver: GatewayMediaDataURLResolver {
-        appState.gatewayMediaResolver(for: explorer.scope?.profile ?? appState.workspaceProfile)
+        let profile = explorer.scope?.profile ?? appState.workspaceProfile(far: far)
+        // A far chat's files come through its own dashboard's kept connection.
+        if let id = appState.workspaceFarDashboardID(far) {
+            return appState.keptGatewayMediaResolver(dashboardID: id, profile: profile)
+        }
+        return appState.gatewayMediaResolver(for: profile)
     }
 
     /// A path a reply named: the chat's own folder when it's there, and the
@@ -988,14 +997,14 @@ struct WorkspaceFolderView: View {
         let name = AppState.workspaceName(reveal.path)
         let kind = WorkspaceFileKind(name: name)
         if kind == .text || kind == .markdown, !(name as NSString).pathExtension.isEmpty {
-            let profile = holder == nil ? (explorer.scope?.profile ?? appState.workspaceProfile) : appState.workspaceProfile
+            let profile = holder == nil ? (explorer.scope?.profile ?? appState.workspaceProfile(far: far)) : appState.workspaceProfile(far: far)
             explorer.prefetchText(reveal.path, profile: profile)
         }
         if let holder {
             if root?.path != holder.path { rootPath = holder.path }
             // Also when the picker already names it but the explorer hasn't
             // opened it yet (the first appearance); opening it again is free.
-            await explorer.open(root: holder.path, profile: appState.workspaceProfile)
+            await explorer.open(root: holder.path, profile: appState.workspaceProfile(far: far))
         }
         query = ""
         let entry = await explorer.reveal(reveal.path)
@@ -1455,8 +1464,18 @@ struct WorkspaceFileSheet: View {
         saving = true
         defer { saving = false }
         var saved: WorkspaceEntry?
+        // Whether the host took the save: `change` answers nil too for a
+        // failure that came after its folder's host went (a far chat's
+        // dashboard dropped), and the draft stays then.
+        var took = false
+        // The folder and host the save writes to: once the tab shows
+        // another, the saved text isn't put on its file of the same path.
+        let startedScope = explorer.scope
+        let startedFar = explorer.far
+        let owner = explorer.runtimeOwner()
         let error = await explorer.change { client, root in
             saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : edited.readAt)
+            took = true
         }
         if let error {
             if case DashboardTicketBridgeError.http(status: 409, _) = error {
@@ -1464,6 +1483,16 @@ struct WorkspaceFileSheet: View {
             } else {
                 failure = UserFacingError.message(for: error)
             }
+            return
+        }
+        guard took else {
+            failure = AppLocalization.string("Couldn't save the file. Try again.")
+            return
+        }
+        guard explorer.scope == startedScope, explorer.far == startedFar, owner.map(explorer.owns) ?? true else {
+            // Text typed while the save ran stays a draft: the host took
+            // only what was sent.
+            if drafts[file.path]?.text == text { drafts[file.path] = nil }
             return
         }
         explorer.saved(saved ?? file, text: text)
@@ -1605,13 +1634,14 @@ struct WorkspaceMoveSheet: View {
         defer { loading = false }
         let asked = current
         let scope = explorer.scope
-        let owner = appState.currentDashboardRuntimeOwner()
+        let owner = explorer.runtimeOwner()
         // Another folder asked for since, or another server or profile.
         let isCurrent = {
-            asked == current && scope == explorer.scope && (owner.map(appState.ownsDashboardRuntime) ?? true)
+            asked == current && scope == explorer.scope && (owner.map(explorer.owns) ?? true)
         }
         do {
-            let listing = try await appState.workspaceFilesClient(profile: profile).list(root: root, path: asked)
+            guard let client = explorer.filesClient(profile: profile) else { return }
+            let listing = try await client.list(root: root, path: asked)
             guard isCurrent() else { return }
             folders = listing.entries.filter(\.isDirectory)
         } catch {

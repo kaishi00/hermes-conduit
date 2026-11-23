@@ -2219,6 +2219,9 @@ struct ProjectFolderPickerSheet: View {
     let rootPath: String
     /// Whose folders: the profile in use when nil.
     var profile: String? = nil
+    /// Another combined dashboard's chat open in place: its own dashboard's
+    /// folders, through that dashboard's kept connection.
+    var far: FarChatOwner? = nil
     let onChoose: (String) -> Void
     @State private var currentPath = ""
     @State private var entries: [WorkspaceEntry] = []
@@ -2281,7 +2284,7 @@ struct ProjectFolderPickerSheet: View {
                             }
                             .foregroundStyle(.primary)
                         }
-                        if appState.supportsWorkspaceFiles, !currentPath.isEmpty {
+                        if appState.supportsWorkspaceFiles(far: far), !currentPath.isEmpty {
                             Button {
                                 newFolderName = ""
                                 asksFolderName = true
@@ -2331,7 +2334,7 @@ struct ProjectFolderPickerSheet: View {
         errorMessage = nil
         do {
             let listed = if let profile {
-                try await appState.workspaceDirectoryEntries(at: path, profile: profile)
+                try await appState.workspaceDirectoryEntries(at: path, profile: profile, far: far)
             } else {
                 try await appState.workspaceDirectoryEntries(at: path)
             }
@@ -2366,7 +2369,7 @@ struct ProjectFolderPickerSheet: View {
         let folder = currentPath
         let asked = opened
         do {
-            if let made = try await appState.makeProjectFolder(named: name, in: folder, profile: profile) {
+            if let made = try await appState.makeProjectFolder(named: name, in: folder, profile: profile, far: far) {
                 await open(made)
             }
         } catch {
