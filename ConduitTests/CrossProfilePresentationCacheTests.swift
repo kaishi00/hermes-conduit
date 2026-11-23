@@ -2089,6 +2089,42 @@ extension CrossProfilePresentationCacheTests {
     /// stage 2): no switch, the chat read and sent through that dashboard's
     /// kept connection on its own runtime, the dashboard on screen's
     /// events and selection left alone.
+    /// A far chat's title menu reads its row from its own dashboard's
+    /// list, not the screen's row under the same id, and names that
+    /// dashboard so its Rename and Delete run there.
+    func testAFarChatsTitleMenuReadsItsOwnDashboardsRow() async throws {
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.openSession = { _, sessionID, _ in
+            SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = SessionSummary(id: "mac-1", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        appState.openCombinedChat(row, in: mac.id)
+        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        // The screen's own chat under the same id.
+        appState.sessions = [SessionSummary(id: "mac-1", alternateIds: [], title: "VPS notes", model: "Hermes", updatedLabel: "now",
+                                            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
+
+        let menuRow = try XCTUnwrap(appState.chatOnScreenSessionSummary)
+        XCTAssertEqual(menuRow.title, "Release prep")
+        XCTAssertEqual(menuRow.combinedDashboardID, mac.id)
+        XCTAssertEqual(appState.activeChatSessionSummary?.title, "VPS notes", "the screen's row stays the screen's")
+        appState.act(onRuntime: kept.runtime) {
+            XCTAssertEqual(appState.activeProfileSessions.map(\.title), ["Release prep"], "its scope reads its own rows, not the screen's cache")
+        }
+    }
+
     func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {
         final class Seen { var opened: [(ObjectIdentifier, String)] = []; var sent: [(ObjectIdentifier, String, String)] = [] }
         let seen = Seen()

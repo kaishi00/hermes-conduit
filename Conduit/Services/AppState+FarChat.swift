@@ -111,7 +111,9 @@ extension AppState {
     /// chat's comes from its own runtime's list, read in that scope (this
     /// dashboard's rows can share its id), and names its dashboard, so
     /// Rename and Delete run there even if the screen moves on before the
-    /// user confirms. Nil while that dashboard isn't connected.
+    /// user confirms. Nil while that dashboard isn't connected. Uncached:
+    /// the screen's cache follows only the screen's list, and a far chat's
+    /// list is short (the rows its open and the Chats list's read seeded).
     var chatOnScreenSessionSummary: SessionSummary? {
         guard farChat != nil else { return activeChatSessionSummary }
         switch chatRuntimeRoute {
