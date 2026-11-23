@@ -372,6 +372,8 @@ extension AppState {
     /// one while it's fresh, else nothing. Each is kept only while every
     /// read it was fetched under (`fetchedReads`, `previousReads`) is still
     /// on (`reads`), so a read turned off meanwhile keeps nothing it gave.
+    /// A read turned off and back on during the fetch passes: it's on again
+    /// when the call uses what came, which is what the check is for.
     static func keptHostContext(_ fetched: String?, fetchedReads: Set<String>, previous: String,
                                 previousReads: Set<String>, fetchedAt: Date?, now: Date,
                                 reads: Set<String>) -> String {

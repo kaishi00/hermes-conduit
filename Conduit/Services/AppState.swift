@@ -4500,6 +4500,11 @@ final class AppState: ObservableObject {
     /// chat keeps a `.submitting` question whose answer is still on its way,
     /// relay answers included, instead of reading it as lost (issue 2571).
     var liveClarifySubmissions = [String: Int]()
+    /// Clarify requests Hermes reported `resolved` while this device was
+    /// still sending an answer: the send owns the card, and if it then fails
+    /// the card settles as answered elsewhere rather than offer the question
+    /// again (issue 3131). Cleared when the request's last send settles.
+    var resolvedInFlightClarifyRequests = Set<String>()
     /// Questions a fenced-off send left marked sending while another send of
     /// their request was still on its way, by request id: they go back to
     /// answerable once the request's last send settles (#2636's review).

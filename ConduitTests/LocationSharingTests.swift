@@ -732,6 +732,51 @@ extension NotificationE2ETests {
         XCTAssertEqual(controller.unsentSpotEntryCount, 0, "Nothing left: a second forget changes nothing")
     }
 
+    /// A voice mode's read switched while the sharing choices are on their
+    /// way keeps them pending: the host has the old list, so a next send
+    /// that fails still leaves the new one to go (#3119's review, issue 3124).
+    @MainActor
+    func testAVoiceReaderChangedWhileTheChoicesSendStaysPending() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        var config = LocationFixtures.config(background: true)
+        config.setVoiceRead("grok-live", allowed: true)
+        // Its config saves go nowhere: never the app group's real file.
+        let controller = LocationSharingController(engine: engine, config: config, unsent: LocationUnsent(),
+                                                   writeStoredUnsent: { _ in true }, writeStoredConfig: { _ in true },
+                                                   dropMarker: .memory())
+        let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
+        final class Script { var ingests = 0; var change: Task<Void, Never>? }
+        let script = Script()
+        let request: LocationSyncEngine.Request = { path, _, body in
+            if path.hasSuffix("/key") {
+                let devicePublic = try XCTUnwrap((body?["public_key"] as? String).flatMap(NotificationE2E.base64URLDecoded))
+                return [
+                    "host_public_key": NotificationE2E.base64URL(hostPrivate.publicKey.rawRepresentation),
+                    "kid": LocationCrypto.keyID(devicePublic: devicePublic, hostPublic: hostPrivate.publicKey.rawRepresentation),
+                ]
+            }
+            guard path.hasSuffix("/ingest") else { return ["ok": true] }
+            script.ingests += 1
+            if script.ingests == 1 {
+                // Switched off while this batch, carrying it on, is out.
+                script.change = Task { @MainActor in await controller.setVoiceRead(.grokLive, allowed: false) }
+                for _ in 0..<20 { await Task.yield() }
+                return ["ok": true]
+            }
+            throw URLError(.notConnectedToInternet)
+        }
+        controller.requestProvider = { _ in request }
+
+        _ = await controller.flush(settingsOnly: true)
+        await script.change?.value
+        XCTAssertEqual(script.ingests, 2, "The change went again, and failed")
+        XCTAssertFalse(controller.allowsVoiceRead(.grokLive))
+        XCTAssertTrue(controller.config.settingsPending, "The host still has the old list")
+    }
+
     /// Sign Out of the bound dashboard drops what wasn't sent yet, so the
     /// next sign-in there doesn't send it under another account; another
     /// dashboard's Sign Out keeps it (issue 2482).

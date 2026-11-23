@@ -723,6 +723,8 @@ extension AppState {
         let owner = currentDashboardRuntimeOwner()
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
+        // One set for the success path and a delete answered after a switch.
+        let deletedSessionIDs = Set(session.nestingIDs)
         do {
             if let widgetSessionMutationRequestOverride {
                 try await sendSessionMutation(session.id, body: nil, profile: profile, using: widgetSessionMutationRequestOverride)
@@ -732,7 +734,6 @@ extension AppState {
                 showSessionMutationNotice(AppLocalization.string("Reconnect to Hermes to change this conversation."))
                 return false
             }
-            let deletedSessionIDs = Set(session.nestingIDs)
             // Hermes deleted it: its saved copy leaves the phone even if the
             // screen has since moved to another dashboard or profile, or a
             // later visit there would open to it (#1040).
@@ -764,11 +765,11 @@ extension AppState {
             // Hermes deleted it after the screen moved to another dashboard:
             // only the old dashboard's saved copy and pins follow (#1040).
             if let dashboardID {
-                removeSavedCopies(ofDeleted: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
+                removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // And a call in it goes on in a new chat, as above (issue 1797).
-            voiceBackgroundJobSupervisor.noteChatDeleted(Set(session.nestingIDs))
+            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
             return false
         } catch {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }

@@ -370,6 +370,66 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertNil(answered.error)
     }
 
+    func testResolvedWhileAnAnswerIsSendingSettlesAsAnsweredElsewhereWhenTheSendFails() async throws {
+        // Issue 3131: `resolved` lands while this device's answer is on its
+        // way. The send owns the card until it ends; a generic failure then
+        // reads as answered elsewhere, not as an answer to send again.
+        final class Box { weak var appState: AppState? }
+        let box = Box()
+        var sawSubmitting = false
+        var operations = ChatResumeLifecycleOperations.live
+        operations.respondToClarification = { _, requestId, _, _, _, _ in
+            let appState = try XCTUnwrap(box.appState)
+            appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: requestId, reason: "resolved"))
+            let card = try XCTUnwrap(appState.messages.last(where: { $0.clarify?.requestId == requestId })?.clarify)
+            sawSubmitting = card.questions.first?.status == .submitting && !card.isExpired
+            throw RpcError(code: 5000, message: "internal error")
+        }
+        let defaults = makeScratchDefaults("ClarifyBatchStateTests")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        box.appState = appState
+        appState.activeSessionId = "stored-a"
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+
+        await appState.respondToClarify(requestId: "req-batch", questionId: "environment", answer: "staging")
+
+        XCTAssertTrue(sawSubmitting, "The send in flight owns the card while it is on its way")
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertTrue(settled.isExpired)
+        XCTAssertEqual(settled.questions.map(\.status), [.expired, .expired, .expired])
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions were answered elsewhere."))
+        XCTAssertTrue(appState.resolvedInFlightClarifyRequests.isEmpty, "The record ends with the request's last send")
+        XCTAssertTrue(appState.liveClarifySubmissions.isEmpty)
+    }
+
+    func testResolvedOnAPartlyAnsweredBatchSaysTheRestWereAnsweredElsewhere() throws {
+        // Issue 3131: one question answered here, the rest pending. Hermes'
+        // `resolved` means another surface took the rest.
+        let (appState, _) = makeAppState()
+        var activity = makeBatchActivity()
+        activity.questions[0].status = .answered
+        activity.questions[0].answer = "staging"
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: activity)
+        ]
+
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "req-batch", reason: "resolved"))
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.questions.map(\.status), [.answered, .expired, .expired])
+        XCTAssertEqual(settled.questions[0].answer, "staging", "This device's answer stays")
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions were answered elsewhere."))
+    }
+
     // MARK: - Approval withdrawal (request.cancel)
 
     private func approvalCard(_ appState: AppState, _ requestId: String) -> ApprovalActivity? {

@@ -488,7 +488,10 @@ final class HealthSyncEngine: ObservableObject {
     /// unknown, so a lost answer can't leave a later change unsent.
     fileprivate func noteSending(otherProfiles: Bool, voiceReaders: [String]) {
         let profilesChange = state.sentOtherProfiles != otherProfiles && state.sentOtherProfiles != nil
-        let readersChange = state.sentVoiceReaders != voiceReaders && state.sentVoiceReaders != nil
+        // The very first list sent is unknown too until it's answered, so
+        // a lost answer still sends it first on the next pass.
+        let readersChange = state.sentVoiceReaders != voiceReaders
+            && (state.sentVoiceReaders != nil || state.voiceReadersInDoubt != true)
         guard profilesChange || readersChange else { return }
         if profilesChange { state.sentOtherProfiles = nil }
         if readersChange {

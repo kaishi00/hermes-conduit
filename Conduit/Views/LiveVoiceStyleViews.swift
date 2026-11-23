@@ -143,7 +143,7 @@ struct LiveVoiceStyleSettingsSection: View {
                     }
                     .onDisappear { flushPendingSave() }
             }
-            Text("The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call.")
+            Text("The voice model greets you as soon as a call connects, so you know it's live. Leave the greeting empty for one in its own words. Local Live says a short fixed line instead. GPT-Live needs an up-to-date Hermes notifier plugin for this. Applies to the next call.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             ConduitMenuPicker(

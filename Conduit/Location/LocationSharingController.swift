@@ -126,6 +126,7 @@ final class LocationSharingController: ObservableObject {
     /// Writes the unsent queue, saying whether it was written (tests pass
     /// their own, so they never touch the app group's file).
     private let writeStoredUnsent: (LocationUnsent) -> Bool
+    private let writeStoredConfig: (LocationSharedConfig) -> Bool
     /// A Sign Out dropped the queue while the config couldn't be read, or
     /// its write over the queue's file failed (a full disk), and no save of
     /// the queue has reached the file since: the copy on disk is what was
@@ -165,12 +166,14 @@ final class LocationSharingController: ObservableObject {
         readStoredConfig: @escaping () -> LocationSharedStore.Read<LocationSharedConfig> = { LocationSharedStore.readConfig() },
         readStoredUnsent: @escaping () -> LocationUnsent = { LocationSharedStore.readUnsent() },
         writeStoredUnsent: @escaping (LocationUnsent) -> Bool = { LocationSharedStore.saveUnsent($0) },
+        writeStoredConfig: @escaping (LocationSharedConfig) -> Bool = { LocationSharedStore.saveConfig($0) },
         dropMarker: LocationDropMarker = .keychain
     ) {
         self.engine = engine ?? LocationSyncEngine(deviceName: { UIDevice.current.name })
         self.readStoredConfig = readStoredConfig
         self.readStoredUnsent = readStoredUnsent
         self.writeStoredUnsent = writeStoredUnsent
+        self.writeStoredConfig = writeStoredConfig
         self.dropMarker = dropMarker
         if let config {
             self.config = config
@@ -275,7 +278,7 @@ final class LocationSharingController: ObservableObject {
     /// Writes the config; on failure Settings > Location says so, and the
     /// next change or coming to the foreground tries again.
     private func writeConfig() {
-        if LocationSharedStore.saveConfig(config) {
+        if writeStoredConfig(config) {
             configSaveFailed = false
         } else {
             LocationSyncEngine.log.error("Couldn't write the location config")
