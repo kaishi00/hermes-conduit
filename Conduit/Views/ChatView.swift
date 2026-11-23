@@ -513,7 +513,10 @@ struct ChatView: View {
                     .allowsHitTesting(false)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: appState.isOpeningNotificationSession)
+        .animation(
+            .easeInOut(duration: 0.18),
+            value: appState.isOpeningNotificationSession && !transcriptModel.model.drawsOpeningLine
+        )
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         .overlay {
             // Cross-block selection chrome (endpoint handles + copy pill),
@@ -620,7 +623,7 @@ struct ChatView: View {
         case .opening:
             // Keyed by the chat drawn: a chat opened straight from another
             // that showed this line too starts its grace and slow note over.
-            ChatOpeningStatus()
+            ChatOpeningStatus(skipsGrace: appState.isOpeningNotificationSession)
                 .id(drawnConversation)
                 .padding(.top, 60)
         case .empty:
@@ -955,7 +958,7 @@ struct ChatView: View {
     @ViewBuilder
     private func savedCopyStatus(isOpening: Bool) -> some View {
         if isOpening {
-            ChatOpeningStatus()
+            ChatOpeningStatus(skipsGrace: appState.isOpeningNotificationSession)
                 .id(drawnConversation)
                 .padding(.top, 60)
         } else {
@@ -5560,6 +5563,10 @@ struct ChatOpeningStatus: View {
     static let height: CGFloat = 64
     static let slowAfter: Duration = .seconds(6)
 
+    /// It takes over from the notification-open pill, which shows at
+    /// once: it skips the grace, so nothing blank sits between them.
+    var skipsGrace = false
+
     private enum Stage { case waiting, opening, slow }
     @State private var stage = Stage.waiting
 
@@ -5587,7 +5594,9 @@ struct ChatOpeningStatus: View {
         .accessibilityHidden(stage == .waiting)
         .accessibilityIdentifier("chat-opening-status")
         .task {
-            try? await Task.sleep(for: ResyncGrace.duration)
+            if !skipsGrace {
+                try? await Task.sleep(for: ResyncGrace.duration)
+            }
             guard !Task.isCancelled else { return }
             stage = .opening
             AccessibilityNotification.Announcement(AppLocalization.string("Opening conversation…")).post()
