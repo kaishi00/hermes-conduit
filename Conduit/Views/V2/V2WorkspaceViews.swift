@@ -1468,6 +1468,11 @@ struct WorkspaceFileSheet: View {
         // failure that came after its folder's host went (a far chat's
         // dashboard dropped), and the draft stays then.
         var took = false
+        // The folder and host the save writes to: once the tab shows
+        // another, the saved text isn't put on its file of the same path.
+        let startedScope = explorer.scope
+        let startedFar = explorer.far
+        let owner = explorer.runtimeOwner()
         let error = await explorer.change { client, root in
             saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : edited.readAt)
             took = true
@@ -1482,6 +1487,10 @@ struct WorkspaceFileSheet: View {
         }
         guard took else {
             failure = AppLocalization.string("Couldn't save the file. Try again.")
+            return
+        }
+        guard explorer.scope == startedScope, explorer.far == startedFar, owner.map(explorer.owns) ?? true else {
+            drafts[file.path] = nil
             return
         }
         explorer.saved(saved ?? file, text: text)

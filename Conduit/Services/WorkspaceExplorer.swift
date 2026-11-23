@@ -272,9 +272,19 @@ final class WorkspaceExplorer: ObservableObject {
             }
             guard scope == startedScope, far == startedFar else { break }
             sent = true
-            if let error = await change(refreshing: false, { client, root in
-                try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
-            }) {
+            // A failure that came after the host went (a far chat's
+            // dashboard dropped) is still this file's: `change` answers nil
+            // for it, so it's caught here too.
+            var thrown: Error?
+            let error = await change(refreshing: false, { client, root in
+                do {
+                    try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
+                } catch {
+                    thrown = error
+                    throw error
+                }
+            })
+            if let error = error ?? thrown {
                 failure = UserFacingError.message(for: error)
             }
         }
