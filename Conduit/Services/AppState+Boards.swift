@@ -164,10 +164,11 @@ extension AppState {
             || dashboard == activeRoomSurface?.dashboardID || (pulseRuntime != nil && dashboard == pulseShownDashboardID)
     }
 
-    /// The bridge a card's read goes through: `dashboard`'s, the chat's or
-    /// call's own (nil for the one on screen), while its plugin reports
-    /// `capability`. Another dashboard's goes through its kept connection
-    /// while its chat or call is still up, as richChecklistBridge does; nil
+    /// The bridge a card's read goes through: `dashboard`'s, the one that
+    /// kept the cards (the screen's for its id or nil), while its plugin
+    /// reports `capability`. Another dashboard's goes through its kept
+    /// connection while its chat, room, Pulse chip or call is still up
+    /// (richCardMayReadOffScreen), as richChecklistBridge does; nil
     /// otherwise.
     func richCardReadBridge(capability: String, on dashboard: UUID?) -> DashboardTicketBridge? {
         if dashboard == nil || dashboard == activeDashboardID {
@@ -178,9 +179,9 @@ extension AppState {
         return act(onRuntime: runtime) { notifierPlugin.reports(capability) ? dashboardTicketBridge : nil }
     }
 
-    /// A far chat's or call's plugin may not have said what it keeps yet
-    /// (opening the chat doesn't ask): asked once before its cards' reads
-    /// are gated.
+    /// Another dashboard's plugin (a far chat's, room's, Pulse chip's or
+    /// call's) may not have said what it keeps yet (opening the chat
+    /// doesn't ask): asked once before its cards' reads are gated.
     func readFarCardHostStatus(_ dashboard: UUID?) async {
         guard let dashboard, dashboard != activeDashboardID, richCardMayReadOffScreen(dashboard) else { return }
         await readKeptPluginStatusIfUnknown(dashboard)

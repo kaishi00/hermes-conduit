@@ -182,7 +182,9 @@ struct RichCard: Identifiable, Equatable, Hashable {
         guard tool.name.lowercased() == toolName, tool.status == .complete else { return [] }
         let answer = jsonObject(tool.output)
         if let given = answer?["cards"] {
-            return cards(raw: given, schema: schema)
+            // Opened as the board counts them (RichBoard's given), so a
+            // wrapped answer draws its cards rather than only its Markdown.
+            return cards(raw: RichCardSchema.unwrappedCards(given), schema: schema)
         }
         guard (answer?["ok"] as? Bool) == true || keptNoAnswer(tool) else { return [] }
         return cards(raw: argumentCards(tool), schema: schema)
@@ -207,9 +209,12 @@ struct RichCard: Identifiable, Equatable, Hashable {
         RichCardSchema.unwrappedCards(jsonObject(tool.input)?["cards"])
     }
 
-    /// A conduit_show call's arguments, kept only when they carry cards.
+    /// A conduit_show call's arguments, kept only when they carry cards to
+    /// open (a null, empty or unparseable `cards` draws nothing, so the row
+    /// keeps its short preview).
     static func argumentsWithCards(_ text: String?) -> String? {
-        guard let text, let object = jsonObject(text), object["cards"] != nil else { return nil }
+        guard let text, let object = jsonObject(text),
+              let cards = RichCardSchema.unwrappedCards(object["cards"]) as? [Any], !cards.isEmpty else { return nil }
         return text
     }
 
