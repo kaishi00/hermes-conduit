@@ -316,6 +316,22 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(layout.rowFrame("a")?.minY, TranscriptLayout.topPadding + estimate + TranscriptLayout.rowGap)
     }
 
+    /// Both rows that draw ChatOpeningStatus start at its height (#3156);
+    /// a saved copy with nothing saved keeps the one-line estimate.
+    func testTheOpeningLinesEstimateIsTheOpeningStatusHeight() {
+        let width = layout.itemWidth
+        let opening = TranscriptLayout.rowGap + 60 + ChatOpeningStatus.height
+        XCTAssertEqual(TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "o", kind: .opening), width: width), opening)
+        XCTAssertEqual(
+            TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "s", kind: .savedCopyStatus(isOpening: true)), width: width),
+            opening
+        )
+        XCTAssertEqual(
+            TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "s", kind: .savedCopyStatus(isOpening: false)), width: width),
+            TranscriptLayout.rowGap + 44
+        )
+    }
+
     func testAConversationOpenedAgainLaysOutAtTheHeightsItMeasured() throws {
         let scope = UUID().uuidString
         layout.setScope(scope)

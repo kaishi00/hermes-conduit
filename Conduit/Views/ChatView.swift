@@ -504,7 +504,8 @@ struct ChatView: View {
             appState.dropIntoComposer(providers)
         }
         .overlay(alignment: .top) {
-            if appState.isOpeningNotificationSession {
+            // Not while the transcript's own opening line says it (#3152).
+            if appState.isOpeningNotificationSession, !transcriptModel.model.drawsOpeningLine {
                 Label("Opening conversation…", systemImage: "arrow.down.message")
                     .scaledFont(.footnote.weight(.semibold))
                     .padding(.horizontal, 14)
@@ -515,7 +516,10 @@ struct ChatView: View {
                     .allowsHitTesting(false)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: appState.isOpeningNotificationSession)
+        .animation(
+            .easeInOut(duration: 0.18),
+            value: appState.isOpeningNotificationSession && !transcriptModel.model.drawsOpeningLine
+        )
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         .overlay {
             // Cross-block selection chrome (endpoint handles + copy pill),
@@ -622,7 +626,7 @@ struct ChatView: View {
         case .opening:
             // Keyed by the chat drawn: a chat opened straight from another
             // that showed this line too starts its grace and slow note over.
-            ChatOpeningStatus()
+            ChatOpeningStatus(skipsGrace: appState.isOpeningNotificationSession)
                 .id(drawnConversation)
                 .padding(.top, 60)
         case .empty:
@@ -957,7 +961,7 @@ struct ChatView: View {
     @ViewBuilder
     private func savedCopyStatus(isOpening: Bool) -> some View {
         if isOpening {
-            ChatOpeningStatus()
+            ChatOpeningStatus(skipsGrace: appState.isOpeningNotificationSession)
                 .id(drawnConversation)
                 .padding(.top, 60)
         } else {
@@ -5554,13 +5558,18 @@ struct StreamingBubble: View {
 /// "Opening conversation…" while Hermes sends a chat Conduit has nothing
 /// to draw for yet (issue 3148), and over a chat picked in the saved list
 /// while Conduit connects. It waits out `ResyncGrace.duration`, so a quick
-/// open doesn't flash it, and after `slowAfter` says the connection is
+/// open doesn't flash it (unless it takes over from the notification pill,
+/// see `skipsGrace`), and after `slowAfter` says the connection is
 /// slow, rather than leaving a spinner with no word on why. Its height
 /// stays the same throughout: the scroller measures the row once.
 struct ChatOpeningStatus: View {
     /// The row's height: the line and the slow note under it.
     static let height: CGFloat = 64
     static let slowAfter: Duration = .seconds(6)
+
+    /// It takes over from the notification-open pill, which shows at
+    /// once: it skips the grace, so nothing blank sits between them.
+    var skipsGrace = false
 
     private enum Stage { case waiting, opening, slow }
     @State private var stage = Stage.waiting
@@ -5589,11 +5598,13 @@ struct ChatOpeningStatus: View {
         .accessibilityHidden(stage == .waiting)
         .accessibilityIdentifier("chat-opening-status")
         .task {
-            try? await Task.sleep(for: ResyncGrace.duration)
+            if !skipsGrace {
+                try? await Task.sleep(for: ResyncGrace.duration)
+            }
             guard !Task.isCancelled else { return }
             stage = .opening
             AccessibilityNotification.Announcement(AppLocalization.string("Opening conversation…")).post()
-            try? await Task.sleep(for: Self.slowAfter - ResyncGrace.duration)
+            try? await Task.sleep(for: max(.zero, Self.slowAfter - ResyncGrace.duration))
             guard !Task.isCancelled else { return }
             stage = .slow
         }

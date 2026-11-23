@@ -311,6 +311,19 @@ struct TranscriptModel {
         guard rows.count == 1, case .loadEarlier = rows[0].kind else { return false }
         return true
     }
+
+    /// Whether the rows say the chat is opening (the opening line, or a
+    /// picked chat's saved copy on its way): the notification-open pill
+    /// over the chat would say it twice.
+    var drawsOpeningLine: Bool {
+        rows.contains { row in
+            switch row.kind {
+            case .opening, .savedCopyStatus(isOpening: true): return true
+            default: return false
+            }
+        }
+    }
+
     /// The chat's rows left out because an earlier row has their id. Ids
     /// are unique in practice; the trace names any that aren't.
     private(set) var repeatedIDs: [String] = []

@@ -172,6 +172,19 @@ extension ChatScrollStateTests {
 
         opening.chatIsOpening = false
         XCTAssertEqual(rows(opening).map(\.kind), [.empty], "once Hermes has answered, an empty chat is welcomed")
+
+        // The notification-open pill steps aside while the rows say it.
+        let disclosure = ChatRowDisclosure()
+        var model = TranscriptModel()
+        _ = model.update(TranscriptModel.Input(chatIsOpening: true), targets: [], disclosure: disclosure)
+        XCTAssertTrue(model.drawsOpeningLine)
+        _ = model.update(
+            TranscriptModel.Input(targetsRevision: 1, showsSavedCopy: true, hasSavedCopy: true, savedCopyIsOpening: true),
+            targets: [], disclosure: disclosure
+        )
+        XCTAssertTrue(model.drawsOpeningLine, "a picked copy on its way says it too")
+        _ = model.update(TranscriptModel.Input(targetsRevision: 2), targets: [], disclosure: disclosure)
+        XCTAssertFalse(model.drawsOpeningLine, "the welcome doesn't")
     }
 
     @MainActor
