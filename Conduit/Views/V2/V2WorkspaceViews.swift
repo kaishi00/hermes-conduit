@@ -1464,8 +1464,13 @@ struct WorkspaceFileSheet: View {
         saving = true
         defer { saving = false }
         var saved: WorkspaceEntry?
+        // Whether the host took the save: `change` answers nil too for a
+        // failure that came after its folder's host went (a far chat's
+        // dashboard dropped), and the draft stays then.
+        var took = false
         let error = await explorer.change { client, root in
             saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : edited.readAt)
+            took = true
         }
         if let error {
             if case DashboardTicketBridgeError.http(status: 409, _) = error {
@@ -1473,6 +1478,10 @@ struct WorkspaceFileSheet: View {
             } else {
                 failure = UserFacingError.message(for: error)
             }
+            return
+        }
+        guard took else {
+            failure = AppLocalization.string("Couldn't save the file. Try again.")
             return
         }
         explorer.saved(saved ?? file, text: text)
