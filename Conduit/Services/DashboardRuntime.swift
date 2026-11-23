@@ -127,6 +127,10 @@ final class DashboardRuntime: ObservableObject {
     /// growing roster on the event path.
     var cachedBotOwnership: (generation: Int, ownership: SessionBotOwnership)?
     var botOwnershipGeneration: Int = 0
+    /// Each bot's work on this dashboard while it acts off screen (a far
+    /// Bot Chat's Work panel, its runtime in scope); the one on screen's is
+    /// AppState's `screenBotWork` (`AppState.botWork` picks).
+    lazy var botWork = BotWorkStore()
     /// Whether the roster on hand was verified since the CURRENT connection
     /// began. Cleared whenever a connection (or reconnect) is established, so
     /// absence evidence can never outlive the socket that produced it.

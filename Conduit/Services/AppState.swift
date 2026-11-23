@@ -4290,11 +4290,19 @@ final class AppState: ObservableObject {
     /// kept connections (a far chat's menu), by dashboard.
     var farBotScreens: [UUID: BotScreenSupport] = [:]
 
-    lazy var botWork: BotWorkStore = {
+    lazy var screenBotWork: BotWorkStore = {
         let store = BotWorkStore()
         store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
         return store
     }()
+
+    /// Each bot's work on the dashboard in scope: the one on screen's, or,
+    /// with another dashboard's runtime in scope (a far Bot Chat's Work
+    /// panel), that runtime's own.
+    var botWork: BotWorkStore {
+        let runtime = shownRuntime
+        return runtime === runtimeOnScreen ? screenBotWork : runtime.botWork
+    }
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     var notifierPlugin: NotifierPluginStatus {

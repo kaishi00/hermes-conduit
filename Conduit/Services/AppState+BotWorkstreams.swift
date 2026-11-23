@@ -224,12 +224,16 @@ extension AppState {
     /// Whether the host's plugin serves the Work panel's routes.
     var servesBotWorkstreams: Bool { notifierPlugin.reports(BotWorkstreamsClient.capability) }
 
+    /// The dashboard in scope's: its requests go to that runtime's bridge as
+    /// it is when each is sent (a reconnect's new one), whichever dashboard
+    /// shows by then.
     func botWorkClient(profile: String) -> BotWorkstreamsClient {
-        BotWorkstreamsClient(
+        let runtime = shownRuntime
+        return BotWorkstreamsClient(
             profile: profile,
             parameter: notifierPlugin.dashboardProfileParameter,
-            request: { [weak self] path, method, body in
-                guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            request: { [weak runtime] path, method, body in
+                guard let bridge = runtime?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
                 return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 30_000)
             }
         )
