@@ -55,7 +55,7 @@ Conduit saves this as `voice.speech_server` in the profile's `config.yaml`:
 voice:
   speech_server:
     url: ws://192.168.1.20:8765/v1/realtime
-    # api_key: ...       optional, written only when you set a key
+    # api_key: ...       optional: written when you set a key, "" after Remove key
     # api_key_file: ...  optional, added by hand: read the key from a file (plugin 0.47.1+)
     # drive_turns: true  the Hermes answers switch (plugin 0.173+)
     # own_model: true    its own model answers Live > Local (plugin 0.175+)
