@@ -117,6 +117,48 @@ class SheetEnvironmentTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn("File1.swift:15", found[0])  # Root's sheet, not the drawer's
 
+    def test_generic_wrapper_injecting_around_its_content_satisfies_the_callers_views(self):
+        wrapper = """
+        struct Live<Content: View>: View {
+            @StateObject private var updates: Updates
+            private let content: Content
+            init(appState: AppState, @ViewBuilder content: () -> Content) {
+                self.content = content()
+                _updates = StateObject(wrappedValue: Updates(appState))
+            }
+            var body: some View { content.environmentObject(updates) }
+        }
+        """
+        child = """
+        struct HeldChild: View {
+            @EnvironmentObject private var updates: Updates
+            var body: some View { Text("") }
+        }
+        """
+        caller = """
+        struct Panel: View {
+            @EnvironmentObject private var appState: AppState
+            var body: some View { Live(appState: appState) { HeldChild() } }
+        }
+        """
+        sheet = """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) {
+                    Panel()
+                        .environmentObject(appState)
+                }
+            }
+        }
+        """
+        self.assertEqual(problems(wrapper, child, caller, sheet), [])
+        bare = caller.replace("Live(appState: appState) { HeldChild() }", "HeldChild()")
+        found = problems(wrapper, child, bare, sheet)
+        self.assertEqual(len(found), 1)
+        self.assertIn("needs Updates", found[0])
+
     def test_view_that_reads_and_passes_on_an_object_still_needs_it(self):
         # KanbanTaskDetailView's shape: it reads the store and injects it
         # into a NavigationLink destination; its sheet still has to hand it

@@ -19,6 +19,8 @@ Known limits, none of which occur in the app today:
 - Injections count for the whole content closure, not the branch they are
   attached to: in `Group { Foo().environmentObject(x); Child() }` the
   injection on Foo satisfies Child too.
+- A generic view that injects around its `content` (V2LiveUpdates) provides
+  to every view its caller builds, not just the ones inside its closure.
 - Only structs declaring `View` are followed, so a UIViewControllerRepresentable
   (or a type-erased AnyView) with environment needs is invisible.
 - An injection resolves through its head only: `.environmentObject(appState)`
@@ -128,6 +130,18 @@ class Index:
         # Every type some view reads as an environment object; a plain stored
         # property of one of these types can be injected too.
         self.env_types = {m.group(2) for text in sources.values() for m in ENV_OBJECT.finditer(text)}
+        # Generic views that inject around a content closure: name -> types.
+        self.wrappers = {}
+        for path, text in sources.items():
+            for m in VIEW_DECL.finditer(text):
+                if "<" not in text[m.start():m.end()] or not re.search(r"\bView\b", m.group(2)):
+                    continue
+                body = text[m.start():block_end(text, m.end() - 1)]
+                if not re.search(r"\bcontent\s*(?:\(\s*\))?\s*\.environmentObject\(", body):
+                    continue
+                found = self.injected_types(body, m.group(1))
+                if found:
+                    self.wrappers[m.group(1)] = found
 
     def bodies(self, name):
         """All source text belonging to a type: its declarations and extensions."""
@@ -182,6 +196,10 @@ class Index:
             ref_needs, ref_cut = self._walk(ref, stack + (name,))
             children |= ref_needs
             cut |= ref_cut
+            # A generic wrapper that injects around the content it's handed
+            # (`V2LiveUpdates { ... }`) provides to the views built in it.
+            if ref in self.wrappers:
+                provided |= self.wrappers[ref]
         # What a view injects reaches only the views it builds; its own
         # environment reads still have to come from above.
         result = own | (children - provided)

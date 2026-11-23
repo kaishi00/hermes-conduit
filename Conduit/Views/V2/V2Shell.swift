@@ -510,6 +510,103 @@ final class V2ShownUpdates: ObservableObject {
     }
 }
 
+/// A page a tab shows (Pulse, Artifacts), holding AppState's changes back
+/// while it isn't on screen: another tab selected over it, or a chat pushed
+/// over it. Shown again, it draws once with what it missed, after a pop's
+/// slide (audit 1722). Beside a chat, a streamed reply's bursts draw once,
+/// as the Chats list's do. `root`: the tab's root (or the split list's),
+/// which the shell's path says is covered; otherwise a pushed route.
+struct V2HeldPage<Page: View>: View {
+    @StateObject private var updates: V2ShownUpdates
+    @Environment(\.v2Shell) private var shell
+    private let root: Bool
+    private let page: Page
+    @State private var mounted = false
+    /// A pushed route gone once already: the next appearance is a chat
+    /// popping off it.
+    @State private var wasCovered = false
+
+    init(appState: AppState, root: Bool, @ViewBuilder page: () -> Page) {
+        self.root = root
+        self.page = page()
+        _updates = StateObject(wrappedValue: Self.makeUpdates(appState, root: root))
+    }
+
+    var body: some View {
+        page
+            .environmentObject(updates)
+            // The root follows the shell's path, as the Chats list: born
+            // under a restored chat it starts held, and that chat's pop
+            // waits out the slide.
+            .onChange(of: Self.visibility(in: shell), initial: true) { was, now in
+                guard root else { return }
+                updates.follow(now, from: was)
+            }
+            // A pushed route follows its own appearance: the shell's path
+            // can't say what sits above it.
+            .onAppear {
+                mounted = true
+                guard !root else { return }
+                updates.revealDelay = Self.revealDelay(uncoveredByPop: wasCovered)
+                updates.isShown = Self.isShown(mounted: true, in: shell)
+            }
+            .onDisappear {
+                mounted = false
+                guard !root else { return }
+                wasCovered = true
+                updates.isShown = false
+            }
+            .onChange(of: shell.isTabActive) { _, _ in
+                guard !root else { return }
+                // A tab switch slides nothing: it draws at once.
+                updates.revealDelay = 0
+                updates.isShown = Self.isShown(mounted: mounted, in: shell)
+            }
+            .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+                updates.coalesces = beside
+            }
+    }
+
+    /// A pushed route starts held until it appears: one restored under a
+    /// chat never draws until that chat pops.
+    static func makeUpdates(_ appState: AppState, root: Bool) -> V2ShownUpdates {
+        let updates = V2ShownUpdates(appState)
+        if !root { updates.isShown = false }
+        return updates
+    }
+
+    static func visibility(in shell: V2ShellContext) -> V2ListVisibility {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+    }
+
+    /// A pushed route on screen: mounted and not under a chat pushed over
+    /// it (its `onDisappear`), in the tab that shows.
+    static func isShown(mounted: Bool, in shell: V2ShellContext) -> Bool {
+        mounted && shell.isTabActive
+    }
+
+    static func revealDelay(uncoveredByPop: Bool) -> TimeInterval {
+        uncoveredByPop ? V2ShownUpdates.popSlide : 0
+    }
+}
+
+/// AppState's publishes passed straight on, for a view that reads through
+/// held updates (the Artifacts list, the Folder tab) where nothing holds
+/// them: a chat's sheet or panel, a bot's overview.
+struct V2LiveUpdates<Content: View>: View {
+    @StateObject private var updates: V2ShownUpdates
+    private let content: Content
+
+    init(appState: AppState, @ViewBuilder content: () -> Content) {
+        self.content = content()
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    var body: some View {
+        content.environmentObject(updates)
+    }
+}
+
 extension View {
     /// Tells `updates` while this scroll view moves, so a burst of publishes
     /// waits for it to rest (iOS 18; earlier systems draw each one).
@@ -1316,11 +1413,11 @@ struct V2Shell: View {
             }
         case .artifacts where split:
             splitColumns(path: $artifactsPath, list: list, offersNewChat: false, hostsSettings: false) {
-                tabBarClearance(V2ArtifactsPage())
+                tabBarClearance(V2ArtifactsPageGate(appState: appState).equatable())
             }
         case .artifacts:
             NavigationStack(path: $artifactsPath) {
-                listRoot(tabBarClearance(V2ArtifactsPage()), alone: canSplit)
+                listRoot(tabBarClearance(V2ArtifactsPageGate(appState: appState).equatable()), alone: canSplit)
                     .windowSideContent()
                     .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
             }
@@ -1477,7 +1574,7 @@ struct V2Shell: View {
         case .project(let project):
             listRoot(tabBarClearance(V2ProjectPage(project: project, appState: appState)), alone: alone)
         case .artifacts:
-            listRoot(tabBarClearance(V2ArtifactsPage()), alone: alone)
+            listRoot(tabBarClearance(V2ArtifactsPageGate(appState: appState, root: false).equatable()), alone: alone)
         case .pulse:
             // Full screen on a phone, as a chat is: its reply box sits where
             // the tabs were. Split, the list column keeps the bar (`splitColumns`).

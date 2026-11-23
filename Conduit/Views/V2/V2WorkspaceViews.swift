@@ -48,9 +48,20 @@ struct ArtifactsTabPicker: View {
     }
 }
 
+/// A file's modified date in the Folder tab and its file sheet: the time
+/// today, else the day (and the year when it isn't this one).
+func workspaceDateText(_ date: Date) -> String {
+    if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
+    let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+    return date.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
+}
+
 /// The Folder tab.
 struct WorkspaceFolderView: View {
-    @EnvironmentObject private var appState: AppState
+    /// AppState through held updates: the Artifacts tab's, or AppState's
+    /// own passed straight on (`V2LiveUpdates`) in a chat's sheet or panel.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var explorer = WorkspaceExplorer()
     /// Whether the open chat's folder is offered (a chat is open).
@@ -822,20 +833,14 @@ struct WorkspaceFolderView: View {
     private func details(_ entry: WorkspaceEntry) -> String {
         var parts: [String] = []
         if let size = entry.size { parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)) }
-        if let modified = entry.modified { parts.append(Self.dateText(modified)) }
+        if let modified = entry.modified { parts.append(workspaceDateText(modified)) }
         return parts.joined(separator: " · ")
-    }
-
-    static func dateText(_ date: Date) -> String {
-        if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
-        let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
-        return date.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
     }
 
     /// Where a file sits in the open folder, for search and recent rows.
     private func relativeLocation(_ entry: WorkspaceEntry) -> String {
         let place = relativeLocation(path: entry.folder)
-        let parts = [place, entry.modified.map(Self.dateText) ?? ""].filter { !$0.isEmpty }
+        let parts = [place, entry.modified.map(workspaceDateText) ?? ""].filter { !$0.isEmpty }
         return parts.joined(separator: " · ")
     }
 
@@ -1444,7 +1449,7 @@ struct WorkspaceFileSheet: View {
 
     private func metadata(_ preview: WorkspaceFilePreview) -> some View {
         var parts = [ByteCountFormatter.string(fromByteCount: Int64(preview.byteSize), countStyle: .file)]
-        if let modified = shown.modified { parts.append(WorkspaceFolderView.dateText(modified)) }
+        if let modified = shown.modified { parts.append(workspaceDateText(modified)) }
         return VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: shown.path)
                 .scaledFont(.caption2)

@@ -256,7 +256,9 @@ struct WorkspaceSheet: View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop()
-                WorkspaceFolderView(includesChat: true, handlesReveals: true)
+                V2LiveUpdates(appState: appState) {
+                    WorkspaceFolderView(includesChat: true, handlesReveals: true)
+                }
             }
             .navigationTitle(Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)

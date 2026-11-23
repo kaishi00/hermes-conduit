@@ -34,10 +34,29 @@ enum ArtifactScope: Equatable {
     }
 }
 
+/// Artifacts, mounted the way Pulse is: the shell's own redraws skip it,
+/// and its page follows the gate's updates. `root`: the tab's root (or the
+/// split list's); otherwise a pushed route.
+struct V2ArtifactsPageGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+    var root = true
+
+    var body: some View {
+        V2ArtifactsPageHost(appState: appState, root: root) { V2ArtifactsPage() }
+    }
+}
+
+/// Holds AppState's changes back while the page isn't on screen: another
+/// tab over it, or a chat pushed over it (`V2HeldPage`, audit 1722).
+typealias V2ArtifactsPageHost = V2HeldPage<V2ArtifactsPage>
+
 /// The page pushed from the Chats bar: Artifacts, and the Folder tab for
 /// the projects' folders.
 struct V2ArtifactsPage: View {
-    @EnvironmentObject private var appState: AppState
+    /// AppState through the gate's updates: hidden or covered, the page,
+    /// its list and its Folder tab don't redraw on its publishes.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @State private var tab: ArtifactsTab = .made
 
     var body: some View {
@@ -76,9 +95,11 @@ struct BotArtifactsList: View {
     var body: some View {
         // In a sheet without a navigation bar: search and Show Missing
         // Files sit in the list itself, as beside the chat.
-        ArtifactsList(scope: .bot(profile), chatIsOpen: false, inPanel: true) { item in
-            willShowInChat()
-            appState.showArtifactInChat(item, chatIsOpen: false)
+        V2LiveUpdates(appState: appState) {
+            ArtifactsList(scope: .bot(profile), chatIsOpen: false, inPanel: true) { item in
+                willShowInChat()
+                appState.showArtifactInChat(item, chatIsOpen: false)
+            }
         }
     }
 }
@@ -99,6 +120,11 @@ struct ChatArtifactsContent: View {
     let showInChat: (ArtifactItem) -> Void
 
     var body: some View {
+        // Outside the Artifacts tab nothing holds AppState's publishes.
+        V2LiveUpdates(appState: appState) { content }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             ArtifactsTabPicker(tab: $tab)
                 .padding(.horizontal, 16)
@@ -163,7 +189,11 @@ struct ChatArtifactsSheet: View {
 
 /// Search, kind chips and the list itself, paged from the host.
 private struct ArtifactsList: View {
-    @EnvironmentObject private var appState: AppState
+    /// AppState through held updates: the Artifacts tab's
+    /// (`V2ArtifactsPageHost`), or AppState's own passed straight on
+    /// (`V2LiveUpdates`) in a chat's sheet or panel and a bot's overview.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let scope: ArtifactScope
