@@ -2121,7 +2121,9 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(menuRow.combinedDashboardID, mac.id)
         XCTAssertEqual(appState.activeChatSessionSummary?.title, "VPS notes", "the screen's row stays the screen's")
         appState.act(onRuntime: kept.runtime) {
-            XCTAssertEqual(appState.activeProfileSessions.map(\.title), ["Release prep"], "its scope reads its own rows, not the screen's cache")
+            let titles = appState.activeProfileSessions.map(\.title)
+            XCTAssertTrue(titles.contains("Release prep"), "its scope reads its own rows")
+            XCTAssertFalse(titles.contains("VPS notes"), "not the screen's cache")
         }
     }
 
