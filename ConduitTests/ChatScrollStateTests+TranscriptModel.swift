@@ -145,6 +145,35 @@ extension ChatScrollStateTests {
         XCTAssertTrue(rows(copy).isEmpty, "nor the copy's status")
     }
 
+    /// Issue 3148: a chat Hermes is still sending, with nothing saved to
+    /// draw meanwhile, says it's opening instead of drawing the welcome.
+    @MainActor
+    func testAChatOnItsWayWithNothingToDrawSaysItsOpening() {
+        let pending = pendingSend()
+        var opening = TranscriptModel.Input(chatIsOpening: true)
+        XCTAssertEqual(rows(opening).map(\.kind), [.opening], "not the welcome while Hermes sends it")
+        XCTAssertFalse(rows(opening)[0].isChatRow)
+        opening.pendingSend = pending
+        XCTAssertEqual(rows(opening).map(\.kind), [.opening, .pendingSend(pending)], "a send waits under the line")
+        opening.pendingSend = nil
+
+        let chat = targets([message("u1", .user)])
+        XCTAssertEqual(rows(opening, chat).map(\.id), ["u1"], "rows of its own: no line")
+        var rowsComing = opening
+        rowsComing.rowsOnTheirWay = true
+        XCTAssertTrue(rows(rowsComing).isEmpty, "rows on their way: no line")
+
+        var withCopy = opening
+        withCopy.hasSavedCopy = true
+        XCTAssertTrue(rows(withCopy).isEmpty, "a saved copy over it draws instead")
+        withCopy.showsSavedCopy = true
+        withCopy.savedCopyIsOpening = true
+        XCTAssertEqual(rows(withCopy).map(\.kind), [.savedCopyStatus(isOpening: true)], "a picked copy keeps its own status")
+
+        opening.chatIsOpening = false
+        XCTAssertEqual(rows(opening).map(\.kind), [.empty], "once Hermes has answered, an empty chat is welcomed")
+    }
+
     @MainActor
     func testTheTranscriptLeavesOutRowsThatDrawNothing() {
         // A turn's trailing run of steps: open while the turn runs.
