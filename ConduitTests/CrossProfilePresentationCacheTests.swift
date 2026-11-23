@@ -2519,6 +2519,62 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.farChatDashboardID)
     }
 
+    /// A far Bot Chat its dashboard's bots name opens in place, as a Bot
+    /// Chat opens on screen: its bot's lookup and its chat in the bot's
+    /// profile, through the kept connection, with no switch. It presents
+    /// its own bot, read on its runtime.
+    func testAKeptDashboardsBotChatOpensInPlace() async throws {
+        final class Seen { var looked: [(ObjectIdentifier, String)] = []; var opened: [(ObjectIdentifier, String, String?)] = [] }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { client, name in
+            seen.looked.append((ObjectIdentifier(client), name))
+            return [BotChatLookupRow(id: "atlas-chat")]
+        }
+        operations.openSessionWithProfile = { client, sessionID, _, profile in
+            seen.opened.append((ObjectIdentifier(client), sessionID, profile))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "atlas-1", role: .assistant, content: "Atlas here", timestamp: "ts-a1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        kept.runtime.botRoster = [atlas]
+        var row = SessionSummary(id: "atlas-chat", alternateIds: [], title: BotMode.canonicalChatTitle, model: "Hermes",
+                                 updatedLabel: "now", profile: "atlas", source: .chat, isActive: false, isArchived: false,
+                                 lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        XCTAssertTrue(appState.isFarBotChat(row, in: mac.id))
+        XCTAssertEqual(appState.farBot(for: row, in: mac.id)?.name, "atlas")
+
+        XCTAssertTrue(appState.openFarChatInPlace(row, in: mac.id), "it opens in place")
+        await waitUntil { appState.activeSessionId == "atlas-chat" && appState.messages.contains { $0.id == "atlas-1" } }
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(seen.looked.last?.0, ObjectIdentifier(outgoing), "its bot looked up through the kept connection")
+        XCTAssertEqual(seen.looked.last?.1, "atlas")
+        XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(seen.opened.last?.1, "atlas-chat")
+        XCTAssertEqual(seen.opened.last?.2, "atlas", "in its bot's profile")
+        XCTAssertEqual(appState.conversationAgentIdentity.name, "Atlas", "it presents its own bot")
+
+        // One no bot of its names (a title is all it has) still switches.
+        var unnamed = SessionSummary(id: "other-chat", alternateIds: [], title: BotMode.canonicalChatTitle, model: "Hermes",
+                                     updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                     isArchived: false, lineageRootId: nil)
+        unnamed.combinedDashboardID = mac.id
+        XCTAssertNil(appState.openFarBotChatInPlace(unnamed, in: mac.id))
+    }
+
     /// A far chat on another profile takes the kept socket on a client of
     /// its profile, as a profile switch does: its runtime is on that
     /// profile and the screen's isn't touched. Its followed chats settle

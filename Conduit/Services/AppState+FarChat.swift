@@ -296,13 +296,47 @@ extension AppState {
     // MARK: - Opening
 
     /// Opens another combined dashboard's Chats row in place, on that
-    /// dashboard's runtime through its kept connection, with no switch.
-    /// False when it can't (not kept connected, or its socket can't be
-    /// handed to a client on the row's profile) or it's a bot's Bot Chat,
-    /// whose bot comes from that dashboard's own sync: the caller switches
-    /// as before.
+    /// dashboard's runtime through its kept connection, with no switch: a
+    /// bot's Bot Chat too, once that dashboard's bots name it
+    /// (openFarBotChatInPlace). False when it can't (not kept connected, its
+    /// socket can't be handed to a client on the row's profile, or a Bot
+    /// Chat only its title tells, whose bot isn't read yet): the caller
+    /// switches as before.
     func openFarChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
-        startFarChatOpen(session, in: dashboardID) != nil
+        if isFarBotChat(session, in: dashboardID) { return openFarBotChatInPlace(session, in: dashboardID) != nil }
+        return startFarChatOpen(session, in: dashboardID) != nil
+    }
+
+    /// The bot whose Bot Chat another combined dashboard's row is, by its
+    /// bots as its kept runtime or Bots Home read them: by the row's ids or
+    /// the lineage root a compacted Bot Chat keeps. The kept runtime's own
+    /// copy first, as its open looks the bot up there.
+    func farBot(for session: SessionSummary, in dashboardID: UUID) -> BotProfile? {
+        var ids = Set(SessionContentSearch.identities(of: session))
+        if let root = session.lineageRootId.flatMap(ChatScrollIdentityNormalization.sessionID) { ids.insert(root) }
+        let roster = (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+            + (combinedDashboardBots[dashboardID]?.bots ?? [])
+        return roster.first { $0.canonicalSessionID.map(ids.contains) ?? false }
+    }
+
+    /// Opens another combined dashboard's Bot Chat in place, as a Bot Chat
+    /// opens on screen (its bot's lookup, then its chat in the bot's
+    /// profile), on that dashboard's runtime through its kept connection
+    /// and across its awaits, with no switch. Its client stays the kept
+    /// one's: a Bot Chat rides its bot's profile on any client, as on
+    /// screen. Nil when it can't: not kept connected, or no bot of its
+    /// names the row.
+    @discardableResult
+    func openFarBotChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Task<Bool, Never>? {
+        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
+              let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected,
+              let bot = farBot(for: session, in: dashboardID) else { return nil }
+        let runtime = kept.runtime
+        widgetLaunchCoordinator.supersede()
+        return Task { @MainActor [weak self] in
+            guard let self else { return false }
+            return await self.actAcrossAwaits(onRuntime: runtime) { await self.openBotChat(for: bot) }
+        }
     }
 
     /// The open `openFarChatInPlace` starts, for a caller that waits on it

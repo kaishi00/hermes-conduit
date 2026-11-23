@@ -825,8 +825,11 @@ extension AppState {
     /// owning bot's profile inside a Bot Chat, else the active workspace
     /// profile. The working line's glow tint follows this, so a Bot Chat
     /// breathes in the bot's color, not the workspace's.
+    /// Another combined dashboard's chat open in place: its own bot or
+    /// profile, read on its runtime.
     var conversationIdentityProfile: String {
-        activeBotChatProfile ?? activeProfile
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: composerOwnerProfile) { conversationIdentityProfile } }
+        return activeBotChatProfile ?? activeProfile
     }
 
     /// The agent identity the open conversation presents — the owning bot
@@ -837,7 +840,15 @@ extension AppState {
     /// renders THIS, so a Bot Chat never presents the workspace's (the
     /// default profile's) name and picture instead of the bot the user is
     /// talking to.
+    /// Another combined dashboard's chat open in place presents its own
+    /// bot or profile, read on its runtime (its roster, its names and
+    /// pictures), never the dashboard on screen's.
     var conversationAgentIdentity: ConversationAgentIdentity {
+        guard chatOnScreenIsInScope else {
+            return onChatRuntimeValue(unreachable: ConversationAgentIdentity.workspace(
+                name: profileDisplayName(composerOwnerProfile), photoURL: nil, profile: composerOwnerProfile
+            )) { conversationAgentIdentity }
+        }
         guard let botProfile = activeBotChatProfile else {
             return ConversationAgentIdentity.workspace(
                 name: profileDisplayName(activeProfile),
