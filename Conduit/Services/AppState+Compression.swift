@@ -523,7 +523,7 @@ extension AppState {
         )
         // The chat's own notes aren't among the compressed rows; keep them.
         let kept = Self.keepingLocalNotes(from: messages, in: merged)
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID, window: nil)
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false
@@ -600,12 +600,19 @@ extension AppState {
                 runtimeSessionID: nil,
                 nextOffset: page.rawReturned,
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                reachedBeginning: !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                oldestLoadedTimestamp: PersistedTranscriptWindow.timestampLowerBound(in: transcript.messages),
                 hasBackfilledPrefix: false
             )
         } else {
             // Legacy one-shot hydration: the whole persisted history is on
             // screen; no older page exists to fetch.
             persistedTranscriptWindow = nil
+        }
+        let withCalls = mergeVoiceCallMarkers(into: messages, sessionId: requestedSessionID)
+        if withCalls != messages {
+            messages = withCalls
+            cacheMessagePresentation()
         }
     }
 }

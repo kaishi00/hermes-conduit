@@ -670,7 +670,8 @@ extension AppState {
                 PersistedTranscriptWindowState.LoadedPageStart(
                     firstRowID: $0.id,
                     nextOffset: offset,
-                    hasBackfilledPrefix: current.hasBackfilledPrefix
+                    hasBackfilledPrefix: current.hasBackfilledPrefix,
+                    oldestLoadedTimestamp: current.oldestLoadedTimestamp
                 )
             }
             if fetchedRowCount > 0 {
@@ -719,10 +720,10 @@ extension AppState {
                 }
             }
             if didPrepend {
+                current.oldestLoadedTimestamp = PersistedTranscriptWindow.timestampLowerBound(in: messages)
                 if let replaced = Self.replacingSavedReviews(in: messages) {
                     messages = replaced
                 }
-                messages = mergeVoiceCallMarkers(into: messages, sessionId: requestedSessionId)
                 // The visible transcript now starts with backfilled rows.
                 // The reconcile graft relies on this explicit fact to keep
                 // preserving the prefix across repeated reconciles — the
@@ -739,6 +740,13 @@ extension AppState {
             current.nextOffset = offset + fetchedRowCount
             current.canLoadEarlier = fetchedRowCount > 0
                 && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
+            current.reachedBeginning = current.reachedBeginning
+                || !page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
+            // Terminal empty and overlap-only pages can admit a pre-first-row
+            // call even though no persisted row was prepended. Use this page's
+            // accepted context, not the still-published previous window.
+            let withCalls = mergeVoiceCallMarkers(into: messages, sessionId: requestedSessionId, window: current)
+            if withCalls != messages { messages = withCalls }
             if didPrepend, let first = pageStart(messages) {
                 if current.loadedPageStarts.isEmpty, let startBeforePage {
                     current.loadedPageStarts.append(startBeforePage)
@@ -747,13 +755,16 @@ extension AppState {
                     current.loadedPageStarts = PersistedTranscriptWindow.movingPageStarts(
                         current.loadedPageStarts,
                         off: foldedPageStart.heldIDs,
-                        onto: foldedPageStart.callCardID
+                        onto: foldedPageStart.callCardID,
+                        timestamp: messages.first(where: { $0.id == foldedPageStart.callCardID })
+                            .flatMap { MessageTimestampFormatter.date(from: $0.timestamp) }
                     )
                 }
                 current.loadedPageStarts.append(.init(
                     firstRowID: first.id,
                     nextOffset: current.nextOffset,
-                    hasBackfilledPrefix: true
+                    hasBackfilledPrefix: true,
+                    oldestLoadedTimestamp: current.oldestLoadedTimestamp
                 ))
             }
             return didPrepend

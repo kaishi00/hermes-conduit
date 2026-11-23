@@ -2220,10 +2220,15 @@ extension AppState {
                 // explicit hasBackfilledPrefix flag carries that fact, since
                 // the network coverage reset below erases the offset
                 // evidence after the first one.
+                // A complete current read (including legacy full history)
+                // is authoritative; only a genuinely partial tail needs a prefix.
+                let partialTail = transcript.page.map { page in
+                    page.honorsTailContract && page.mayHaveOlderRows(fetchedRowCount: page.rawReturned)
+                } ?? false
                 let grafted = PersistedTranscriptWindow.grafting(
                     refreshedTail: transcript.messages,
                     ontoBackfilled: previousTranscriptMessages,
-                    window: priorWindowForGraft
+                    window: partialTail ? priorWindowForGraft : nil
                 )
                 presentationResult = SessionResumeResult(
                     sessionId: result.sessionId,
@@ -2274,6 +2279,13 @@ extension AppState {
                     runtimeSessionID: result.sessionId,
                     nextOffset: page.rawReturned,
                     canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                    reachedBeginning: !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned)
+                        || (graftedBackfilledPrefix && priorWindowForGraft?.reachedBeginning == true),
+                    // Only retained persisted rows supply coverage; a replaced
+                    // suffix's skewed timestamp must not survive in the bound.
+                    oldestLoadedTimestamp: PersistedTranscriptWindow.timestampLowerBound(
+                        in: graftedBackfilledPrefix ? presentationResult.messages : transcript.messages
+                    ),
                     hasBackfilledPrefix: graftedBackfilledPrefix,
                     // The grafted prefix keeps its rows, so the page starts
                     // noted on it still mark where a long chat can cut back

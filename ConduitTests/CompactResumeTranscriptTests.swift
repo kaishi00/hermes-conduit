@@ -1195,11 +1195,12 @@ final class CompactResumeTranscriptTests: XCTestCase {
         ))
         let opened = await harness.appState.openSession("stored-a")
         XCTAssertTrue(opened)
-        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-synthetic-backfill")
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-synthetic-backfill" }, "INITIAL_WINDOW: the call predates the loaded partial tail")
+        XCTAssertEqual(backfillCalls.value, 0)
 
         let firstPrepend = await harness.appState.loadEarlierMessages()
         XCTAssertTrue(firstPrepend)
-        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-synthetic-backfill", "The call is older than this entire page, not after its newer prompts")
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-synthetic-backfill" }, "The call still predates this partial older page")
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
         let secondPrepend = await harness.appState.loadEarlierMessages()
         XCTAssertTrue(secondPrepend)
@@ -2988,6 +2989,7 @@ final class CompactResumeTranscriptTests: XCTestCase {
     }
 
     // MARK: - Harness
+    // Window admission is exercised by the extensions below.
 
     private func makeHarness(
         openSession: @escaping @MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult,
@@ -3110,5 +3112,455 @@ final class CompactResumeTranscriptTests: XCTestCase {
             "messages": rows,
             "pagination": pagination
         ])
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testInitialOpenPartialWindowRejectsOutOfWindowCalls() async throws {
+        try await initialOpenFixture()
+    }
+
+    private func initialOpenFixture() async throws {
+        let suite = "InitialOpenWindow.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dashboardID = UUID()
+        let registry = SavedDashboardRegistry(activeDashboardID: dashboardID, dashboards: [
+            SavedDashboard(id: dashboardID, label: "Synthetic chronology", normalizedURL: "https://chronology.invalid")
+        ])
+        var tailReads = 0
+        var earlierReads = 0
+        func row(_ id: Int, _ role: String, _ content: String, _ time: String, hidden: Bool = false) -> [String: Any] {
+            var result: [String: Any] = ["id": id, "role": role, "content": content, "timestamp": time]
+            if hidden { result["display_kind"] = "hidden" }
+            return result
+        }
+        let leadingRows = (0..<118).map { index in
+            row(1000 + index, index.isMultiple(of: 2) ? "user" : "assistant",
+                "Synthetic latest-window row \(index)",
+                "2026-11-20T10:00:00Z")
+        }
+        let tailRows = leadingRows + [
+            row(1118, "user", "Nov 20: latest checkpoint", "2026-11-20T10:01:00Z"),
+            row(1119, "assistant", "Latest checkpoint saved.", "2026-11-20T10:02:00Z")
+        ]
+        let operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, compact in
+                XCTAssertTrue(compact)
+                return SessionResumeResult(sessionId: "chronology-runtime", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                tailReads += 1
+                return self.tailPagePayload(sessionId: "chronology-stored", rows: tailRows, offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionID, profile, offset in
+                earlierReads += 1
+                XCTFail("INITIAL_OPEN: earlier-page read forbidden in this fixture")
+                return self.tailPagePayload(sessionId: "chronology-stored", rows: [], offset: offset)
+            }
+        )
+        let coordinator = ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
+        let state = AppState(defaults: defaults, chatResumeCoordinator: coordinator,
+                             loadSavedConnection: false, dashboardRegistry: registry,
+                             clearSessionPresentationCache: {}, chatResumeLifecycleOperations: operations,
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        // A fresh registry plus disabled saved connection means no bridge exists
+        // through initialization. A client is constructed but never connected;
+        // lifecycle operations above are the only transport for this test.
+        XCTAssertNil(state.dashboardTicketBridge, "No WebKit navigation may exist at construction")
+        let connection = HermesConnection(baseUrl: "https://chronology.invalid", ticket: "synthetic-only")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("chronology-stored", alternateIDs: ["chronology-runtime"])]
+        let opened = await state.openSession("chronology-stored")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(tailReads, 1)
+        XCTAssertEqual(earlierReads, 0, "Visible tail must not auto-backfill")
+        XCTAssertEqual(state.messages.count, 120)
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, true)
+        let iso = ISO8601DateFormatter()
+        let calls = [12, 13].map { day -> VoiceHostChatCall in
+            let start = iso.date(from: "2026-11-\(day)T12:00:00Z")!
+            return VoiceHostChatCall(callID: "synthetic-nov\(day)", chatID: "chronology-stored", startedAt: start, endedAt: start.addingTimeInterval(60))
+        }
+        state.adoptHostChatCalls(calls, profile: "default")
+        XCTAssertEqual(earlierReads, 0, "INITIAL_OPEN: never request an earlier page")
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, true)
+        let oldIDs = Set(calls.map { "voice-call-\($0.callID)" })
+        XCTAssertTrue(oldIDs.isDisjoint(with: state.messages.map(\.id)),
+            "INITIAL_OPEN_WINDOW_ACCEPTANCE: older call markers must not be injected before a partial latest window, prior to any earlier-page load")
+        let visible = ["in-window", "new"].enumerated().map { index, id in
+            let start = iso.date(from: index == 0 ? "2026-11-20T10:01:30Z" : "2026-11-21T12:00:00Z")!
+            return VoiceHostChatCall(callID: id, chatID: "chronology-stored", startedAt: start, endedAt: start)
+        }
+        state.adoptHostChatCalls(visible, profile: "default")
+        for call in visible { XCTAssertEqual(state.messages.filter { $0.id == "voice-call-\(call.callID)" }.count, 1) }
+        XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.count, 120)
+        XCTAssertEqual(state.voiceCallChatLinks.links.count, 4, "Deferred links are not deleted")
+        XCTAssertEqual(earlierReads, 0)
+
+    }
+}
+
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testInitialOpenPartialWindowWithPreexistingLinksExcludesOldCalls() async throws {
+        try await initialOpenControl(partial: true, empty: false)
+    }
+
+    func testInitialOpenCompleteHistoryKeepsCallsBeforeFirstTypedRow() async throws {
+        try await initialOpenControl(partial: false, empty: false)
+    }
+
+    func testInitialOpenCompleteEmptyHistoryKeepsCalls() async throws {
+        try await initialOpenControl(partial: false, empty: true)
+    }
+
+    private func initialOpenControl(partial: Bool, empty: Bool) async throws {
+        let suite = "InitialOpenWindow.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dashboardID = UUID()
+        let registry = SavedDashboardRegistry(activeDashboardID: dashboardID, dashboards: [
+            SavedDashboard(id: dashboardID, label: "Synthetic chronology", normalizedURL: "https://chronology.invalid")
+        ])
+        var tailReads = 0
+        var earlierReads = 0
+        func row(_ id: Int, _ role: String, _ content: String, _ time: String, hidden: Bool = false) -> [String: Any] {
+            var result: [String: Any] = ["id": id, "role": role, "content": content, "timestamp": time]
+            if hidden { result["display_kind"] = "hidden" }
+            return result
+        }
+        let leadingRows = partial ? (0..<118).map { index in
+            row(1000 + index, index.isMultiple(of: 2) ? "user" : "assistant", "Synthetic latest-window row \(index)", "2026-11-20T10:00:00Z")
+        } : []
+        let tailRows = empty ? [] : leadingRows + [
+            row(1118, "user", "Nov 20: latest checkpoint", "2026-11-20T10:01:00Z"),
+            row(1119, "assistant", "Latest checkpoint saved.", "2026-11-20T10:02:00Z")
+        ]
+        let operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, compact in
+                XCTAssertTrue(compact)
+                return SessionResumeResult(sessionId: "chronology-runtime", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                tailReads += 1
+                return self.tailPagePayload(sessionId: "chronology-stored", rows: tailRows, offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionID, profile, offset in
+                earlierReads += 1
+                XCTFail("INITIAL_OPEN: earlier-page read forbidden in this fixture")
+                return self.tailPagePayload(sessionId: "chronology-stored", rows: [], offset: offset)
+            }
+        )
+        let coordinator = ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
+        let state = AppState(defaults: defaults, chatResumeCoordinator: coordinator,
+                             loadSavedConnection: false, dashboardRegistry: registry,
+                             clearSessionPresentationCache: {}, chatResumeLifecycleOperations: operations,
+                             sessionPresentationCache: SessionPresentationCache(defaults: defaults))
+        // A fresh registry plus disabled saved connection means no bridge exists
+        // through initialization. A client is constructed but never connected;
+        // lifecycle operations above are the only transport for this test.
+        XCTAssertNil(state.dashboardTicketBridge, "No WebKit navigation may exist at construction")
+        let connection = HermesConnection(baseUrl: "https://chronology.invalid", ticket: "synthetic-only")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("chronology-stored", alternateIDs: ["chronology-runtime"])]
+        let iso = ISO8601DateFormatter()
+        let calls = [12, 13].map { day -> VoiceHostChatCall in
+            let start = iso.date(from: "2026-11-\(day)T12:00:00Z")!
+            return VoiceHostChatCall(callID: "synthetic-nov\(day)", chatID: "chronology-stored", startedAt: start, endedAt: start.addingTimeInterval(60))
+        }
+        state.adoptHostChatCalls(calls, profile: "default")
+        let opened = await state.openSession("chronology-stored")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(tailReads, 1)
+        XCTAssertEqual(earlierReads, 0, "Visible tail must not auto-backfill")
+        XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind && $0.displayKind != VoiceCallChatLink.originDisplayKind }.count, empty ? 0 : (partial ? 120 : 2))
+        XCTAssertEqual(state.canLoadEarlierMessagesForActiveConversation, partial)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, empty ? 0 : (partial ? 120 : 2))
+        XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, partial)
+        XCTAssertEqual(earlierReads, 0, "INITIAL_OPEN: never request an earlier page")
+        XCTAssertEqual(state.canLoadEarlierMessagesForActiveConversation, partial)
+        XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, partial)
+        let oldIDs = Set(calls.map { "voice-call-\($0.callID)" })
+        if partial {
+            XCTAssertTrue(oldIDs.isDisjoint(with: state.messages.map(\.id)),
+                "INITIAL_OPEN_CACHED_LINKS_ACCEPTANCE: preexisting older calls must not enter a partial latest window")
+        } else {
+            XCTAssertTrue(oldIDs.isSubset(of: Set(state.messages.map(\.id))),
+                "COMPLETE_HISTORY_ACCEPTANCE: a call before the earliest typed row must not be lost")
+            XCTAssertEqual(Array(state.messages.prefix(2)).map(\.id), calls.map { "voice-call-\($0.callID)" })
+            XCTAssertEqual(state.messages.count, empty ? 2 : 4)
+        }
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testEmptyTerminalPageRevealsCallBeforeFirstTypedRow() async throws {
+        try await assertVoiceWindowTerminal(.empty)
+    }
+
+    func testDuplicateOnlyTerminalPageRevealsCallBeforeFirstTypedRow() async throws {
+        try await assertVoiceWindowTerminal(.duplicate)
+    }
+
+    func testShortTerminalPageRevealsCallBeforeFirstTypedRow() async throws {
+        try await assertVoiceWindowTerminal(.short)
+    }
+
+    func testFailedBackfillDoesNotClaimCompleteVoiceWindow() async throws {
+        for kind in [VoiceWindowPage.unavailable, .malformed, .foreign, .idless, .lostContract] {
+            try await assertVoiceWindowTerminal(kind)
+        }
+    }
+
+    private enum VoiceWindowPage { case empty, duplicate, short, unavailable, malformed, foreign, idless, lostContract }
+
+    private func assertVoiceWindowTerminal(_ kind: VoiceWindowPage) async throws {
+        var reads = 0
+        let rows = voiceWindowRows(120..<240)
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-a", rows: rows, offset: 0) },
+            loadEarlierTranscriptPage: { _, _, offset in
+                reads += 1
+                switch kind {
+                case .empty: return self.tailPagePayload(sessionId: "stored-a", rows: [], offset: offset)
+                case .duplicate: return self.tailPagePayload(sessionId: "stored-a", rows: Array(rows.prefix(1)), offset: offset)
+                case .short: return self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(110..<120), offset: offset)
+                case .unavailable: return .unavailable
+                case .malformed: return .payload(["session_id": "stored-a"])
+                case .foreign: return self.tailPagePayload(sessionId: "foreign", rows: [], offset: offset)
+                case .idless: return self.tailPagePayload(sessionId: "stored-a", rows: [["role": "user", "content": "bad"]], offset: offset)
+                case .lostContract: return self.tailPagePayload(sessionId: "stored-a", rows: [], offset: offset, order: nil)
+                }
+            }
+        )
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let start = Date(timeIntervalSince1970: 1_788_256_800)
+        harness.appState.adoptHostChatCalls([VoiceHostChatCall(callID: "before-first", chatID: "stored-a", startedAt: start, endedAt: start)], profile: "default")
+        XCTAssertEqual(reads, 0)
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-before-first" }, "PARTIAL_WINDOW: pre-first call is deferred")
+        // Isolate terminal admission even on the pre-fix implementation,
+        // whose initial merge already leaked this marker.
+        harness.appState.messages.removeAll { $0.id == "voice-call-before-first" }
+        let prepended = await harness.appState.loadEarlierMessages()
+        XCTAssertEqual(reads, 1)
+        XCTAssertFalse(harness.appState.canLoadEarlierMessagesForActiveConversation)
+        let complete = kind == .empty || kind == .duplicate || kind == .short
+        XCTAssertEqual(harness.appState.messages.contains { $0.id == "voice-call-before-first" }, complete, "TERMINAL_ADMISSION: only a validated terminal page proves complete")
+        XCTAssertEqual(prepended, kind == .short, "A marker-only change is not a persisted-row prepend")
+        let refreshed = harness.appState.mergeVoiceCallMarkers(into: harness.appState.messages, sessionId: "stored-a")
+        XCTAssertEqual(refreshed.contains { $0.id == "voice-call-before-first" }, complete, "Retired paging is not proof of complete history")
+        XCTAssertEqual(harness.appState.voiceCallChatLinks.links.count, 1)
+        XCTAssertEqual(refreshed.filter { $0.displayKind != VoiceCallChatLink.displayKind }.count, kind == .short ? 130 : 120)
+    }
+
+    func testInitialLegacyFullHistoryRetainsCallBeforeFirstTypedRow() async throws {
+        var earlierReads = 0
+        let harness = try makeHarness(
+            openSession: { _, _, _ in SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in .payload(["session_id": "stored-a", "messages": self.voiceWindowRows(120..<240)]) },
+            loadEarlierTranscriptPage: { _, _, _ in earlierReads += 1; return .unavailable }
+        )
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let start = Date(timeIntervalSince1970: 1_788_256_800)
+        harness.appState.adoptHostChatCalls([VoiceHostChatCall(callID: "legacy-first", chatID: "stored-a", startedAt: start, endedAt: start)], profile: "default")
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-legacy-first")
+        XCTAssertNil(harness.appState.persistedTranscriptWindow)
+        XCTAssertEqual(earlierReads, 0)
+    }
+
+    private func voiceWindowRows(_ range: Range<Int>) -> [[String: Any]] {
+        let iso = ISO8601DateFormatter()
+        let start = Date(timeIntervalSince1970: 1_788_256_800)
+        return range.map { index in
+            ["id": String(index + 1), "role": "user", "content": "Window row \(index)", "timestamp": iso.string(from: start.addingTimeInterval(Double(index) * 60))]
+        }
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testCompleteVoicePrefixSurvivesReconnectTrimAndReload() async throws {
+        var pages = 0
+        let harness = try makeHarness(
+            openSession: { _, _, _ in SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(1200..<1320), offset: 0) },
+            loadEarlierTranscriptPage: { _, _, offset in
+                pages += 1
+                let end = max(0, 1320 - offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(max(0, end - 120)..<end), offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-a", alternateIDs: ["runtime-a"])] }
+                ops.loadProfiles = {}; ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}; ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let start = Date(timeIntervalSince1970: 1_788_256_740)
+        let call = VoiceHostChatCall(callID: "first-ever", chatID: "stored-a", startedAt: start, endedAt: start)
+        harness.appState.adoptHostChatCalls([call], profile: "default")
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(pages, 0)
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-first-ever" })
+        for _ in 0..<11 { _ = await harness.appState.loadEarlierMessages() }
+        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-first-ever")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, true)
+        harness.appState.chatReaderIsUpInOlderRows = true
+        for _ in 0..<2 {
+            harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "synthetic-reconnect"))
+            XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-first-ever", "A retained whole prefix stays complete even when latest coverage resets")
+            XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, true)
+        }
+        harness.appState.chatReaderIsUpInOlderRows = false
+        harness.appState.trimLoadedHistoryIfLong()
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-first-ever" })
+        let placed = harness.appState.mergeVoiceCallMarkers(into: harness.appState.messages, sessionId: "stored-a")
+        XCTAssertFalse(placed.contains { $0.id == "voice-call-first-ever" }, "Trimmed calls must not resurrect before their persisted region returns")
+        for _ in 0..<11 { _ = await harness.appState.loadEarlierMessages() }
+        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-first-ever")
+        XCTAssertEqual(harness.appState.messages.filter { $0.id == "voice-call-first-ever" }.count, 1)
+        XCTAssertEqual(harness.appState.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.map(\.id), (1...1320).map(String.init))
+    }
+
+    func testCompleteTailRefreshDropsOmittedOlderRows() async throws {
+        try await assertCompleteRefreshAuthority(legacy: false, partial: false)
+    }
+
+    func testLegacyFullRefreshDropsOmittedOlderRows() async throws {
+        try await assertCompleteRefreshAuthority(legacy: true, partial: false)
+    }
+
+    func testCompletePrefixSurvivesGenuinelyPartialRefresh() async throws {
+        try await assertCompleteRefreshAuthority(legacy: false, partial: true)
+    }
+
+    private func assertCompleteRefreshAuthority(legacy: Bool, partial: Bool) async throws {
+        var refreshed = false
+        var reads = 0
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                reads += 1
+                let rows = self.syntheticRows(refreshed ? (partial ? 2..<122 : 2..<4) : 1..<4).map { row in
+                    var row = row
+                    row["id"] = String(row["id"] as! Int)
+                    return row
+                }
+                if refreshed && legacy {
+                    return .payload(["session_id": "stored-a", "messages": rows])
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: rows, offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, _ in
+                XCTFail("Refresh must not request earlier pages")
+                return .unavailable
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}; ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}; ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["1", "2", "3"])
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, true)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, false)
+        refreshed = true
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+        await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "authority-refresh"))
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(harness.appState.messages.map(\.id), partial ? (1..<122).map(String.init) : ["2", "3"],
+            "COMPLETE_REFRESH_AUTHORITY: only a genuinely partial tail may preserve an omitted older prefix")
+        if legacy {
+            XCTAssertNil(harness.appState.persistedTranscriptWindow)
+        } else {
+            XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, true)
+            XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, partial)
+        }
+    }
+
+    func testPartialRefreshDiscardsSkewedSuffixCoverageAndDefersOldCall() async throws {
+        var refreshed = false
+        var earlierReads = 0
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let epoch = Date(timeIntervalSince1970: 1_788_256_800)
+        let iso = ISO8601DateFormatter()
+        func row(_ id: Int, _ seconds: Int) -> [String: Any] {
+            ["id": String(id), "role": "user", "content": "Skew fixture row \(id)",
+             "timestamp": iso.string(from: epoch.addingTimeInterval(Double(seconds)))]
+        }
+        let prefix = [row(1, 800), row(2, 801)]
+        let normalTail = (0..<119).map { row(100 + $0, 1000 + $0) }
+        let oldTail = normalTail + [row(219, 100)]
+        let freshTail = normalTail + [row(220, 1119)]
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: refreshed ? freshTail : oldTail, offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                earlierReads += 1
+                // A full overlapping page adds two prefix rows without proving completeness.
+                return self.tailPagePayload(sessionId: "stored-a", rows: prefix + Array(normalTail.prefix(118)), offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}; ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}; ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [active]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let prepended = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(prepended)
+        XCTAssertEqual(harness.appState.messages.map(\.id), ["1", "2"] + (100..<220).map(String.init))
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.oldestLoadedTimestamp, epoch.addingTimeInterval(100))
+        let start = epoch.addingTimeInterval(200)
+        harness.appState.adoptHostChatCalls([VoiceHostChatCall(callID: "removed-skew-bound", chatID: "stored-a", startedAt: start, endedAt: start)], profile: "default")
+        XCTAssertTrue(harness.appState.messages.contains { $0.id == "voice-call-removed-skew-bound" })
+        refreshed = true
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+        await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "skew-refresh"))
+        XCTAssertEqual(earlierReads, 1)
+        XCTAssertEqual(harness.appState.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.map(\.id),
+            ["1", "2"] + (100..<219).map(String.init) + ["220"], "Ordinary row order stays unchanged; the removed suffix must not survive")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.oldestLoadedTimestamp, epoch.addingTimeInterval(800),
+            "RETAINED_COVERAGE: a discarded skewed suffix cannot supply the current lower bound")
+        XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-removed-skew-bound" },
+            "RETAINED_COVERAGE_ADMISSION: calls older than all retained persisted rows must be deferred")
+        XCTAssertEqual(harness.appState.voiceCallChatLinks.links.count, 1, "Deferral must not delete the durable link")
     }
 }

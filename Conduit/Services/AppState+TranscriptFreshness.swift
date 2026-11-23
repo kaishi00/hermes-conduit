@@ -680,10 +680,16 @@ extension AppState {
                 runtimeSessionID: runtimeSessionID,
                 nextOffset: page.rawReturned,
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                reachedBeginning: priorOwned?.reachedBeginning == true
+                    || !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                oldestLoadedTimestamp: [priorOwned?.oldestLoadedTimestamp,
+                    PersistedTranscriptWindow.timestampLowerBound(in: transcript.messages)].compactMap { $0 }.min(),
                 hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false,
                 loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? []
             )
         }
+        let withCalls = mergeVoiceCallMarkers(into: messages, sessionId: runtimeSessionID)
+        if withCalls != messages { messages = withCalls }
     }
 
     func verifyChatResumeTransportHealth(_ client: HermesClient) async throws {

@@ -106,6 +106,12 @@ struct PersistedTranscriptWindowState: Equatable {
     /// transcript contains.
     var nextOffset: Int
     var canLoadEarlier: Bool
+    /// A validated short/empty page proved the beginning, independently of
+    /// paging availability (a malformed or unavailable page also disables it).
+    var reachedBeginning = false
+    /// Coverage captured from persisted rows BEFORE local reviews, notes or
+    /// call cards decorate them. Nil keeps the legacy/unknown-time fallback.
+    var oldestLoadedTimestamp: Date? = nil
     var isLoadingEarlier = false
     /// The visible transcript starts with rows loaded through backfill.
     /// Explicit state because the reconnect graft must keep preserving that
@@ -125,6 +131,7 @@ struct PersistedTranscriptWindowState: Equatable {
         let firstRowID: String
         let nextOffset: Int
         let hasBackfilledPrefix: Bool
+        var oldestLoadedTimestamp: Date? = nil
     }
 
     /// The page starts a refreshed window keeps when its older rows stay
@@ -138,7 +145,8 @@ struct PersistedTranscriptWindowState: Equatable {
             LoadedPageStart(
                 firstRowID: $0.firstRowID,
                 nextOffset: min($0.nextOffset, refreshedCoverage),
-                hasBackfilledPrefix: $0.hasBackfilledPrefix
+                hasBackfilledPrefix: $0.hasBackfilledPrefix,
+                oldestLoadedTimestamp: $0.oldestLoadedTimestamp
             )
         }
     }
@@ -172,6 +180,16 @@ struct LegacyTranscriptOversizedError: LocalizedError {
 /// Pure algebra for older-page backfill: row merging, reconnect grafting,
 /// tool-boundary reconstruction, and conversation-identity ownership.
 enum PersistedTranscriptWindow {
+    /// Read only persisted coverage, never the timestamps of local decoration.
+    /// No readable time leaves admission unbounded rather than hiding all calls.
+    static func timestampLowerBound(in rows: [ChatMessage]) -> Date? {
+        rows.lazy.filter {
+            $0.displayKind != VoiceCallChatLink.displayKind
+                && $0.displayKind != VoiceCallChatLink.originDisplayKind
+                && !$0.id.hasPrefix("review-summary-") && !$0.id.hasPrefix("slash-")
+        }.compactMap { MessageTimestampFormatter.date(from: $0.timestamp) }.min()
+    }
+
     /// Whether a persisted-history window belongs to a conversation — the
     /// ONE identity rule shared by the backfill action, stale-response
     /// validation, the ChatView affordance, and the reconnect graft gate.
@@ -278,11 +296,15 @@ enum PersistedTranscriptWindow {
     static func movingPageStarts(
         _ starts: [PersistedTranscriptWindowState.LoadedPageStart],
         off foldedIDs: Set<String>,
-        onto callCardID: String
+        onto callCardID: String,
+        timestamp: Date? = nil
     ) -> [PersistedTranscriptWindowState.LoadedPageStart] {
         starts.map { start in
             guard foldedIDs.contains(start.firstRowID) else { return start }
-            return .init(firstRowID: callCardID, nextOffset: start.nextOffset, hasBackfilledPrefix: true)
+            return .init(
+                firstRowID: callCardID, nextOffset: start.nextOffset, hasBackfilledPrefix: true,
+                oldestLoadedTimestamp: [start.oldestLoadedTimestamp, timestamp].compactMap { $0 }.min()
+            )
         }
     }
 
@@ -303,6 +325,8 @@ enum PersistedTranscriptWindow {
             var trimmed = window
             trimmed.nextOffset = start.nextOffset
             trimmed.canLoadEarlier = true
+            trimmed.reachedBeginning = false
+            trimmed.oldestLoadedTimestamp = start.oldestLoadedTimestamp
             trimmed.hasBackfilledPrefix = start.hasBackfilledPrefix
             trimmed.loadedPageStarts = Array(window.loadedPageStarts[...position])
             return (Array(messages[index...]), trimmed)
@@ -326,11 +350,10 @@ enum PersistedTranscriptWindow {
         ontoBackfilled previous: [ChatMessage],
         window: PersistedTranscriptWindowState?
     ) -> (messages: [ChatMessage], grafted: Bool) {
-        guard let window, window.hasBackfilledPrefix,
+        guard let window, window.hasBackfilledPrefix || window.reachedBeginning,
               !previous.isEmpty, !refreshedTail.isEmpty,
               let first = refreshedTail.first,
-              let anchor = previous.firstIndex(where: { $0.id == first.id }),
-              anchor > 0 else {
+              let anchor = previous.firstIndex(where: { $0.id == first.id }) else {
             return (refreshedTail, false)
         }
         return (Array(previous[..<anchor]) + refreshedTail, true)
