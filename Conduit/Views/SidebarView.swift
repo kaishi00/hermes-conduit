@@ -223,6 +223,10 @@ struct SessionList: View {
     /// The last activation the reveal served and the ancestor path it
     /// revealed (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
+    /// One render's catalog walks, kept for that render (audit 1723): the
+    /// chips, the status counts and the list each read a source's rows,
+    /// which walked the whole catalog every time.
+    @State private var renderMemo = V2ChatsRenderMemo()
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
@@ -258,6 +262,7 @@ struct SessionList: View {
     }
 
     var body: some View {
+        let _ = renderMemo.reset()
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Button {
@@ -606,23 +611,36 @@ struct SessionList: View {
         }
     }
 
-    /// Counted within the selected source, matching what the chip shows.
+    /// Counted within the selected source, matching what the chip shows:
+    /// every status in one walk, once a render.
     private func statusCount(_ filter: SessionStatusFilter) -> Int {
-        sourceRows(selectedSource).filter { matches($0, filter) }.count
+        renderMemo.statusCounts(selectedSource?.rawValue ?? "all") {
+            var counts: [SessionStatusFilter: Int] = [:]
+            let filters = visibleStatusFilters
+            for session in sourceRows(selectedSource) {
+                for filter in filters where matches(session, filter) {
+                    counts[filter, default: 0] += 1
+                }
+            }
+            return counts
+        }[filter] ?? 0
     }
 
     /// The rows a source filter lists: cron runs only under Cron, plus the
     /// pinned ones in All (#485). Until this profile's live list lands, the
     /// rows it showed last time.
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
-        SidebarSourceRows.rows(
-            sessions: appState.listedSessions,
-            cronSessions: appState.listedCronSessions,
-            source: source,
-            category: appState.sessionCategory,
-            isPinned: appState.isSessionPinned,
-            hasVoiceCalls: appState.voiceCallChatFilter()
-        )
+        renderMemo.sourceRows(source) {
+            let listed = renderMemo.listed { (appState.listedSessions, appState.listedCronSessions) }
+            return SidebarSourceRows.rows(
+                sessions: listed.sessions,
+                cronSessions: listed.cron,
+                source: source,
+                category: appState.sessionCategory,
+                isPinned: appState.isSessionPinned,
+                hasVoiceCalls: renderMemo.voiceCallChats { appState.voiceCallChatFilter() }
+            )
+        }
     }
 
     private var displayedSessions: [SessionSummary] {
@@ -750,8 +768,17 @@ struct SessionList: View {
         }
     }
 
+    /// One walk for every chat source (`sourcesWithRows`), rather than
+    /// listing each source's rows to see whether it has any.
     private var availableSources: [SessionSource] {
-        appState.sessionFilterOrder.filter { !sourceRows($0).isEmpty }
+        let listed = renderMemo.listed { (appState.listedSessions, appState.listedCronSessions) }
+        let withRows = SidebarSourceRows.sourcesWithRows(
+            sessions: listed.sessions,
+            category: appState.sessionCategory,
+            hasVoiceCalls: renderMemo.voiceCallChats { appState.voiceCallChatFilter() }
+        )
+        let hasRuns = listed.cron.contains { !$0.isArchived }
+        return appState.sessionFilterOrder.filter { $0 == .cron ? hasRuns : withRows.contains($0) }
     }
 
     /// The Pinned and Recent rows, voice-spawned sessions nested under the

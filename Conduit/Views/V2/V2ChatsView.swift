@@ -3217,6 +3217,7 @@ final class V2ChatsRenderMemo {
     private var filtered: [String: [SessionSummary]] = [:]
     private var listed: (sessions: [SessionSummary], cron: [SessionSummary])?
     private var voiceCallChats: ((SessionSummary) -> Bool)?
+    private var statusCounts: [String: [SessionStatusFilter: Int]] = [:]
 
     func reset() {
         listed = nil
@@ -3224,6 +3225,15 @@ final class V2ChatsRenderMemo {
         sources.removeAll(keepingCapacity: true)
         categories.removeAll(keepingCapacity: true)
         filtered.removeAll(keepingCapacity: true)
+        statusCounts.removeAll(keepingCapacity: true)
+    }
+
+    /// Every status filter's count among a source's rows, by source.
+    func statusCounts(_ source: String, _ make: () -> [SessionStatusFilter: Int]) -> [SessionStatusFilter: Int] {
+        if let counts = statusCounts[source] { return counts }
+        let counts = make()
+        statusCounts[source] = counts
+        return counts
     }
 
     func sourceRows(_ source: SessionSource?, _ make: () -> [SessionSummary]) -> [SessionSummary] {
