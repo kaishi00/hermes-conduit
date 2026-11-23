@@ -378,7 +378,44 @@ final class SidebarLayoutTests: XCTestCase {
         shell.values.isRootCovered = false
         root.follow(V2PulsePageHost.visibility(in: shell), from: launched)
         XCTAssertTrue(root.isShown)
-        XCTAssertEqual(root.revealDelay, V2ShownUpdates.popSlide, "the restored chat's pop drew at finger lift")
+        XCTAssertEqual(root.revealDelay, V2ShownUpdates.popSlide, "the restored chat's pop waits out the slide")
+    }
+
+    /// Artifacts takes Pulse's held page: hidden behind another tab or
+    /// under a pushed chat it doesn't draw, and shown it draws once. Outside
+    /// the tab (a chat's sheet or panel, a bot's overview) its list and
+    /// Folder tab read AppState's publishes passed straight on.
+    @MainActor
+    func testArtifactsPageHoldsPublishesWhileItIsntOnScreen() {
+        let state = makeAppState()
+        var shell = V2ShellContext()
+        shell.values.isTabActive = false
+        let updates = V2ArtifactsPageHost.makeUpdates(state, root: true)
+        let hidden = V2ArtifactsPageHost.visibility(in: shell)
+        updates.follow(hidden, from: hidden)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+        state.sessions = [pinnedTestSession("hidden")]
+        settle()
+        XCTAssertEqual(sent, 0, "a hidden Artifacts page drew")
+        shell.values.isTabActive = true
+        updates.follow(V2ArtifactsPageHost.visibility(in: shell), from: hidden)
+        XCTAssertEqual(sent, 1, "shown again, it draws what it missed once")
+        XCTAssertFalse(V2ArtifactsPageHost.makeUpdates(state, root: false).isShown,
+                       "a pushed Artifacts page drew before it appeared")
+
+        // Outside the tab nothing holds: each publish passes straight on.
+        let live = V2LiveUpdates<EmptyView>.makeUpdates(state)
+        XCTAssertTrue(live.isShown)
+        XCTAssertFalse(live.coalesces, "a chat's Artifacts sheet waited to draw")
+        XCTAssertEqual(live.revealDelay, 0)
+        var liveSent = 0
+        let liveWatch = live.objectWillChange.sink { liveSent += 1 }
+        defer { liveWatch.cancel() }
+        state.sessions = [pinnedTestSession("live")]
+        settle()
+        XCTAssertGreaterThan(liveSent, 0, "a chat's Artifacts sheet stopped following AppState")
     }
 
     /// A project page is covered by a chat pushed over it, not by one
