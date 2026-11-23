@@ -147,6 +147,9 @@ extension AppState {
     /// plugin finds where the chat's own tool calls had it (issue 1809), and
     /// says so plainly when the host has no such file.
     func revealWorkspaceFile(_ path: String, line: Int? = nil) {
+        // A far chat (another combined dashboard's, open in place) has no
+        // Folder tab here: the folder it reads is the dashboard on screen's.
+        guard chatOnScreenIsInScope else { return }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // A later tap wins over a lookup still running for an earlier one.

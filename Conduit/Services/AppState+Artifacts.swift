@@ -137,7 +137,9 @@ extension AppState {
     /// and lineage tip for it. Nor does a workstream's chat (left out of
     /// the list for its bot): it goes by its own ids, the durable one its
     /// bot's profile confirmed and the plugin's id for it (issue 2520).
+    /// A far chat goes by its ids on its own dashboard, read in its scope.
     var activeChatArtifactSessionIDs: [String] {
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: []) { activeChatArtifactSessionIDs } }
         if let session = activeChatSessionSummary {
             let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
             return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
@@ -185,7 +187,12 @@ extension AppState {
     /// on) and every other bot's Bot Chat.
     func artifactSources(for scope: ArtifactScope) -> [ArtifactSource] {
         switch scope {
-        case .chat(let ids):
+        case .chat(let ids, let far):
+            // A far chat's store is its own dashboard's, read through its
+            // kept connection (its Bot Chat opens through a switch).
+            if let far, far.dashboardID != activeDashboardID {
+                return [ArtifactSource(profile: far.profile, sessionIDs: ids, dashboardID: far.dashboardID)]
+            }
             guard let bot = botStoreProfile(forSessionIDs: ids) else {
                 return [ArtifactSource(profile: activeProfile, sessionIDs: ids)]
             }

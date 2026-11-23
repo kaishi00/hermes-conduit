@@ -21,14 +21,15 @@ enum ArtifactScope: Equatable {
     /// Every chat in the active profile (in each profile All shows, while
     /// it's on), and every bot's Bot Chat.
     case profile
-    /// One chat, by every id it's known by.
-    case chat([String])
+    /// One chat, by every id it's known by; `far` names another combined
+    /// dashboard's chat open in place, whose store is that dashboard's.
+    case chat([String], far: FarChatOwner? = nil)
     /// One bot's profile, its Bot Chat's rows by the bot's name (the Bot
     /// Overview's Artifacts).
     case bot(String)
 
     var sessionIDs: [String] {
-        if case .chat(let ids) = self { return ids }
+        if case .chat(let ids, _) = self { return ids }
         return []
     }
 }
@@ -88,6 +89,10 @@ struct ChatArtifactsContent: View {
     @EnvironmentObject private var appState: AppState
     /// Read once: the open chat's ids when it opened.
     let sessionIDs: [String]
+    /// Another combined dashboard's chat open in place: its artifacts are
+    /// read on its own dashboard. Its Folder tab isn't offered: the folder
+    /// and projects it reads are the dashboard on screen's.
+    var far: FarChatOwner? = nil
     @Binding var tab: ArtifactsTab
     /// Beside the chat rather than in a sheet of its own: no navigation bar
     /// of its own, so the list's search is a field in the list.
@@ -96,10 +101,12 @@ struct ChatArtifactsContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ArtifactsTabPicker(tab: $tab)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            switch tab {
+            if far == nil {
+                ArtifactsTabPicker(tab: $tab)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+            }
+            switch far == nil ? tab : .made {
             case .made:
                 if sessionIDs.isEmpty {
                     ContentUnavailableView {
@@ -109,7 +116,7 @@ struct ChatArtifactsContent: View {
                     }
                     .frame(maxHeight: .infinity)
                 } else {
-                    ArtifactsList(scope: .chat(sessionIDs), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
+                    ArtifactsList(scope: .chat(sessionIDs, far: far), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
                 }
             case .folder:
                 WorkspaceFolderView(includesChat: true, handlesReveals: true)
@@ -124,23 +131,26 @@ struct ChatArtifactsSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// Read once: the open chat's ids when the sheet opened.
     let sessionIDs: [String]
+    let far: FarChatOwner?
     @State var tab: ArtifactsTab
     /// The tab now showing, so a later open knows whether to switch.
     var onTabChange: (ArtifactsTab) -> Void = { _ in }
 
-    init(sessionIDs: [String], tab: ArtifactsTab = .made, onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
+    init(sessionIDs: [String], far: FarChatOwner? = nil, tab: ArtifactsTab = .made,
+         onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
         self.sessionIDs = sessionIDs
+        self.far = far
         _tab = State(initialValue: tab)
         self.onTabChange = onTabChange
     }
 
     var body: some View {
         NavigationStack {
-            ChatArtifactsContent(sessionIDs: sessionIDs, tab: $tab) { item in
+            ChatArtifactsContent(sessionIDs: sessionIDs, far: far, tab: $tab) { item in
                 dismiss()
                 appState.showArtifactInChat(item, chatIsOpen: true)
             }
-            .navigationTitle(tab == .made ? Text("In This Chat") : Text("Folder"))
+            .navigationTitle(tab == .made || far != nil ? Text("In This Chat") : Text("Folder"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -802,8 +812,9 @@ private struct ArtifactsList: View {
                 Label("Save to Files", systemImage: "folder")
             }
         }
-        // Another dashboard's chat and pins are on that dashboard.
-        if item.dashboardID == nil {
+        // Another dashboard's chat and pins are on that dashboard; the
+        // open chat's own (a far chat open in place) is on screen.
+        if item.dashboardID == nil || chatIsOpen {
             Button {
                 showInChat(item)
             } label: {
