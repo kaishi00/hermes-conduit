@@ -5105,7 +5105,7 @@ the certificate check (each invalidates a session of its own, in a defer) ·
 location's host pass (a copy of the access token, taken again on each
 rotation; see Maps lookups)
 
-**Desktop app:** has native OAuth code exchange, encrypted grant storage, refresh, bearer requests and socket tickets (desktop#409).
+**Desktop app:** has it: native PKCE code exchange, encrypted grant storage, refresh, bearer requests and socket tickets (desktop#409).
 
 **Code**
 - `Conduit/Services/NativeOAuth.swift` (NativeOAuthAPIClient: invalidate, bytes(for:), tokenRequest, requestJSON; NativeOAuthSession: invalidate, refresh, requestJSON)
