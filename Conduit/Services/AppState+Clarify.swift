@@ -1791,11 +1791,6 @@ extension AppState {
                 // elsewhere), so nothing waits on this answer any more.
                 messages[updatedIndex].approval?.status = .expired
                 messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
-            } else if resolvedInFlightClarifyRequests.contains(requestId) {
-                // Hermes reported the request answered elsewhere while this
-                // send was on its way: nothing waits on it any more, so the
-                // card says so rather than offer the question again (3131).
-                settleClarifyRequestAnsweredElsewhere(requestId: requestId)
             } else if let unsent = error as? HermesClient.AnswerNotSent {
                 // Never sent: why Hermes couldn't be reached, and the card
                 // can be answered again.
