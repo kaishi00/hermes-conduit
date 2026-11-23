@@ -2170,6 +2170,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
+        kept.runtime.notifierPlugin.state = .reported(version: "9.0.0", capabilities: [RichChecklistContext.capability])
+        let farScope = try XCTUnwrap(appState.richChecklistContext?.scope, "its checklists are kept on its own Hermes")
+        XCTAssertEqual(farScope, RichChecklistContext.scope(profile: RichChecklistContext.keyProfile("default", dashboard: mac.id), sessionIDs: ids),
+                       "its ticks on the phone are keyed by its own dashboard, the same key it has opened there")
+        let farOwner = try XCTUnwrap(RichChecklistContext.parts(of: farScope)?.profile)
+        XCTAssertFalse(RichChecklistContext.sameOwner(farOwner, RichChecklistContext.keyProfile("default", dashboard: vps.id)),
+                       "and never merge with the screen's chat under the same profile and id")
+        XCTAssertTrue(RichChecklistContext.sameOwner(farOwner, "default"), "a key from before dashboards were named is still taken up")
         XCTAssertFalse(appState.richCardChat?.contains(vps.id.uuidString) == true)
 
         // Its connection dropped: nothing reads or sends for it.

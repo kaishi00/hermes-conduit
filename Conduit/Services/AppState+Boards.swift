@@ -32,7 +32,9 @@ extension AppState {
         guard !sessionIDs.isEmpty else { return nil }
         let profile = activeChatStoreProfile
         let dashboardID = activeDashboardID
-        let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
+        let scope = RichChecklistContext.scope(
+            profile: RichChecklistContext.keyProfile(profile, dashboard: dashboardID),
+            sessionIDs: sessionIDs)
         return RichChecklistContext(
             scope: scope,
             sessionIDs: sessionIDs,
