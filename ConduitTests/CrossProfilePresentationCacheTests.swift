@@ -2278,8 +2278,16 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.richCardHostDashboard, mac.id)
         XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id),
                      "a plugin that keeps no diffs isn't asked")
-        kept.runtime.notifierPlugin.state = .reported(version: "9.0.0", capabilities: [RichDiffLoader.capability,
-                                                                                     RichReviewLoader.capability])
+        // A plugin that hasn't said yet is asked first, then gated.
+        kept.runtime.notifierPlugin.state = .unknown
+        XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id))
+        appState.keptDashboardJSONReader = { bridge, path in
+            guard bridge === kept.bridge, path == NotifierPluginStatus.path else { throw URLError(.badURL) }
+            return ["ok": true, "version": "9.0.0", "capabilities": [RichDiffLoader.capability, RichReviewLoader.capability]]
+        }
+        await appState.readFarCardHostStatus(mac.id)
+        appState.keptDashboardJSONReader = nil
+        XCTAssertTrue(kept.runtime.notifierPlugin.reports(RichDiffLoader.capability), "its status was read on its own Hermes")
         XCTAssertTrue(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id) === kept.bridge,
                       "its diffs are read on its own Hermes")
         XCTAssertTrue(appState.richCardReadBridge(capability: RichReviewLoader.capability, on: mac.id) === kept.bridge)

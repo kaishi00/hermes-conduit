@@ -308,7 +308,10 @@ struct LiveVoiceScreenCardSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if !cards.isEmpty {
+                        // A call going on on another dashboard reads its
+                        // diffs and rounds on that dashboard's Hermes.
                         RichCardsView(cards: cards)
+                            .environment(\.richCardHostDashboard, appState.voiceCallDashboardID)
                     }
                     if !markdown.isEmpty {
                         // Hermes' own images (MEDIA: paths) load through the gateway.

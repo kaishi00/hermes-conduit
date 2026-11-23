@@ -282,6 +282,8 @@ struct MainView: View {
         }
         .sheet(item: $appState.chatCallTranscript) { call in
             VoiceChatCallTranscriptSheet(call: call)
+                // A saved call's cards were kept by its chat's dashboard.
+                .environment(\.richCardHostDashboard, appState.richCardHostDashboard)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }

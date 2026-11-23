@@ -147,7 +147,7 @@ extension AppState {
     /// The dashboard whose Hermes kept the open chat's cards
     /// (richCardHostDashboard in the environment): a far chat's own
     /// (another combined dashboard's open in place), the one on screen's
-    /// otherwise. A far chat whose runtime is gone names its dashboard
+    /// id otherwise. A far chat whose runtime is gone names its dashboard
     /// still, so its cards' reads find no connection rather than asking the
     /// screen's Hermes.
     var richCardHostDashboard: UUID? {
@@ -155,23 +155,32 @@ extension AppState {
         return activeDashboardID
     }
 
-    /// The bridge a card's read goes through: `dashboard`'s, the chat's own
-    /// (nil for the one on screen), while its plugin reports `capability`.
-    /// Another dashboard's goes through its kept connection while its chat
-    /// is still on screen, as richChecklistBridge does; nil otherwise.
+    /// Whether a card may read on `dashboard`, another combined dashboard
+    /// than the one on screen: the far chat's open in place, or a live
+    /// call's that goes on there (its cards and saved transcript).
+    func richCardMayReadOffScreen(_ dashboard: UUID) -> Bool {
+        dashboard == farChatDashboardID || dashboard == callDashboardOffScreen
+    }
+
+    /// The bridge a card's read goes through: `dashboard`'s, the chat's or
+    /// call's own (nil for the one on screen), while its plugin reports
+    /// `capability`. Another dashboard's goes through its kept connection
+    /// while its chat or call is still up, as richChecklistBridge does; nil
+    /// otherwise.
     func richCardReadBridge(capability: String, on dashboard: UUID?) -> DashboardTicketBridge? {
         if dashboard == nil || dashboard == activeDashboardID {
             guard notifierPlugin.reports(capability) else { return nil }
             return dashboardTicketBridge
         }
-        guard let dashboard, dashboard == farChatDashboardID, let runtime = runtime(for: dashboard) else { return nil }
+        guard let dashboard, richCardMayReadOffScreen(dashboard), let runtime = runtime(for: dashboard) else { return nil }
         return act(onRuntime: runtime) { notifierPlugin.reports(capability) ? dashboardTicketBridge : nil }
     }
 
-    /// A far chat's plugin may not have said what it keeps yet (opening
-    /// the chat doesn't ask): asked once before its cards' reads are gated.
+    /// A far chat's or call's plugin may not have said what it keeps yet
+    /// (opening the chat doesn't ask): asked once before its cards' reads
+    /// are gated.
     func readFarCardHostStatus(_ dashboard: UUID?) async {
-        guard let dashboard, dashboard != activeDashboardID, dashboard == farChatDashboardID else { return }
+        guard let dashboard, dashboard != activeDashboardID, richCardMayReadOffScreen(dashboard) else { return }
         await readKeptPluginStatusIfUnknown(dashboard)
     }
 
