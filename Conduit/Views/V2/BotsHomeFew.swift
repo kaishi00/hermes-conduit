@@ -82,7 +82,10 @@ struct BotLastReply: View {
     let bot: BotProfile
     let style: Style
     let onOpen: () -> Void
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2Shell) private var shell
     @State private var reply: String?
     /// The Bot Chat `reply` was read from: another chat's reply never shows
@@ -100,7 +103,8 @@ struct BotLastReply: View {
         let chat = bot.canonicalSession
         let openTail = appState.activeBotChatProfile == bot.name ? Self.replyKey(appState.messages) : ""
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
-                String(appState.isConnected), String(shell.isTabActive)].joined(separator: "\u{1F}")
+                String(appState.isConnected), String(shell.isTabActive),
+                String(shell.isRootCovered)].joined(separator: "\u{1F}")
     }
 
     /// The open chat's newest reply as the re-read follows it: the row
@@ -195,7 +199,8 @@ struct BotLastReply: View {
             reply = nil
             replyChatID = chat.id
         }
-        guard shell.isTabActive, appState.isConnected else { return }
+        // Not while a chat covers Bots Home: the read waits for it to show.
+        guard shell.isTabActive, !shell.isRootCovered, appState.isConnected else { return }
         let target = VoiceThreadTarget(
             runtimeSessionID: chat.resolvedID ?? chat.id,
             storedSessionID: chat.id,
@@ -212,7 +217,10 @@ struct BotLastReply: View {
 /// which opens as a portrait's tap opens it, and is sent there.
 struct BotsHomeAskField: View {
     let bot: BotProfile
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.colorScheme) private var colorScheme
     @State private var text = ""
@@ -288,7 +296,10 @@ struct BotsHomeWorkSection: View {
     let bot: BotProfile
     @ObservedObject var work: BotWorkStore
     let onOverview: () -> Void
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     private var botName: String {
         work.snapshot(bot.name)?.botName ?? bot.displayLabel

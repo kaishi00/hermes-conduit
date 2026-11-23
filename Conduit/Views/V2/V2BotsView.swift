@@ -89,5 +89,10 @@ struct V2BotsView: View {
         .onChange(of: visibility, initial: true) { was, now in
             updates.follow(now, from: was)
         }
+        // Beside an open chat, a streamed reply's bursts draw once, as
+        // the Chats list's do.
+        .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+            updates.coalesces = beside
+        }
     }
 }

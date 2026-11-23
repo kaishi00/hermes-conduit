@@ -1459,7 +1459,10 @@ struct V2Shell: View {
     private func destination(_ route: V2Route, alone: Bool = false) -> some View {
         switch route {
         case .conversation:
+            // Never a tab's held updates: a chat pushed over Bots Home
+            // covers it, and its faces follow AppState.
             V2ConversationScreen()
+                .environment(\.v2ShownUpdates, nil)
         case .project(let project):
             listRoot(tabBarClearance(V2ProjectPage(project: project, appState: appState)), alone: alone)
         case .artifacts:

@@ -18,7 +18,10 @@ private let roomDraftsLogger = Logger(subsystem: "com.milim.relay", category: "R
 struct RoomDraftRosterRow: View {
     let draft: RoomDraft
     let onOpen: () -> Void
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         let line = RoomDraftText.line(for: draft)
