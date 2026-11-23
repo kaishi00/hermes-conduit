@@ -1230,7 +1230,7 @@ struct V2Shell: View {
             }
         case .bots where split:
             splitColumns(path: $botsPath, list: list, offersNewChat: false, hostsSettings: false) {
-                tabBarClearance(V2BotsView())
+                tabBarClearance(V2BotsViewGate(appState: appState).equatable())
             }
         case .chats:
             NavigationStack(path: $chatsPath) {
@@ -1252,7 +1252,7 @@ struct V2Shell: View {
             NavigationStack(path: $botsPath) {
                 // A Bot Chat or a room grows out of its portrait
                 // (BotZoomDestination).
-                listRoot(tabBarClearance(V2BotsView()), alone: canSplit)
+                listRoot(tabBarClearance(V2BotsViewGate(appState: appState).equatable()), alone: canSplit)
                     .windowSideContent()
                     .environment(\.botZoomNamespace, botZoom)
                     .navigationDestination(for: V2Route.self) { route in
