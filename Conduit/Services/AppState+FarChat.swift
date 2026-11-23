@@ -316,7 +316,21 @@ extension AppState {
         if let root = session.lineageRootId.flatMap(ChatScrollIdentityNormalization.sessionID) { ids.insert(root) }
         let roster = (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
             + (combinedDashboardBots[dashboardID]?.bots ?? [])
-        return roster.first { $0.canonicalSessionID.map(ids.contains) ?? false }
+        return roster.first { bot in
+            // Its canonical id or the id Hermes resolved it to, as
+            // isFarBotChat tells the row.
+            [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
+                .compactMap { $0.flatMap(ChatScrollIdentityNormalization.sessionID) }
+                .contains(where: ids.contains)
+        }
+    }
+
+    /// The bot profile the chat on screen belongs to by another combined
+    /// dashboard's own Bot Chat registry (its runtime's, whatever runs in
+    /// scope): nil for an ordinary chat, or when that dashboard isn't kept.
+    func farBotChatProfile(in dashboardID: UUID) -> String? {
+        activeSessionId.flatMap(ChatScrollIdentityNormalization.sessionID)
+            .flatMap { keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles[$0] }
     }
 
     /// Opens another combined dashboard's Bot Chat in place, as a Bot Chat
@@ -441,7 +455,7 @@ extension AppState {
         if let farChat, farChat.dashboardID == dashboardID {
             // A far Bot Chat's requests name its bot's profile, as its open
             // scoped them, not the workspace profile it opened on.
-            let profile = activeSessionId.flatMap(botConversationProfile(for:)) ?? farChat.profile
+            let profile = farBotChatProfile(in: dashboardID) ?? farChat.profile
             next.noteSessionProfile(profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
         }
         for chat in backgroundChats where chat.dashboardID == dashboardID {

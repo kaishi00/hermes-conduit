@@ -838,7 +838,10 @@ extension AppState {
     /// Another combined dashboard's chat open in place: its own bot or
     /// profile, read on its runtime.
     var conversationIdentityProfile: String {
-        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: composerOwnerProfile) { conversationIdentityProfile } }
+        guard chatOnScreenIsInScope else {
+            let unreachable = farChat.flatMap { farBotChatProfile(in: $0.dashboardID) } ?? composerOwnerProfile
+            return onChatRuntimeValue(unreachable: unreachable) { conversationIdentityProfile }
+        }
         return activeBotChatProfile ?? activeProfile
     }
 
@@ -855,11 +858,11 @@ extension AppState {
     /// pictures), never the dashboard on screen's.
     var conversationAgentIdentity: ConversationAgentIdentity {
         guard chatOnScreenIsInScope else {
-            // Its runtime gone: its bot (a far Bot Chat's, from the Bot Chat
-            // registry) or its profile, named and faced by its own
+            // Its runtime gone: its bot (a far Bot Chat's, from its own
+            // dashboard's Bot Chat registry) or its profile, named and faced by its own
             // dashboard's bots as Bots Home read them, else the profile's
             // own name, never the dashboard on screen's for it.
-            let botProfile = activeSessionId.flatMap(botConversationProfile(for:))
+            let botProfile = farChat.flatMap { farBotChatProfile(in: $0.dashboardID) }
             let profile = botProfile ?? composerOwnerProfile
             let farBot = farChat.flatMap { combinedDashboardBots[$0.dashboardID]?.bots }?
                 .first { $0.name.caseInsensitiveCompare(profile) == .orderedSame }
