@@ -452,8 +452,8 @@ struct SpeechServerSettingsView: View {
         if status?.available == true { await runTest(profile: profile) }
     }
 
-    /// The switch saves by itself, like Remove key: true, or the setting
-    /// removed, which is off.
+    /// The switch saves by itself, like Remove key: true or false, never a
+    /// removed key (issue 3153).
     private func saveDriveTurns(_ on: Bool, pickedBefore: Bool? = nil) async {
         isSaving = true
         // Whatever happened, the switch goes back to what the host has.
