@@ -146,7 +146,7 @@ struct SidebarView: View {
                         case .sessions:
                             SessionList()
                         case .bots:
-                            BotRosterView()
+                            BotRosterHost(appState: appState)
                         case .cron:
                             CronList()
                         case .kanban:

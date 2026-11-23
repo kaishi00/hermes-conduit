@@ -47,6 +47,9 @@ struct ChatView: View {
     @State private var stepToggleRevision: UInt64 = 0
     /// Decides the transcript's rows (TranscriptModel), updated in the body.
     @State private var transcriptModel = TranscriptModelBox()
+    /// The running turn's tool and start, looked up once per transcript
+    /// change rather than on every AppState publish (audit 1722).
+    @State private var turnScan = ChatTurnScanCache()
     /// The live turn's rows coming or going re-run the body; it reads the
     /// projection's own shape, which is right on the first frame too.
     @State private var liveShape = LiveTurnShape()
@@ -203,13 +206,14 @@ struct ChatView: View {
     /// the turn began. The body reads it on every AppState change, so the
     /// turn's rows are looked through once (issue 1722).
     private var workingLine: TranscriptWorkingLine {
-        let tool = appState.isBusy ? Self.runningTool(in: appState.messages) : nil
+        let scan = turnScan.scan(appState)
+        let tool = scan.tool
         return TranscriptWorkingLine(
             toolName: tool?.name,
             // Its input, so a Tool Search batch names what it runs.
             toolInput: tool?.input,
             toolTitle: tool.flatMap(runningToolTitle(for:)),
-            startedAt: turnStartedAt
+            startedAt: scan.startedAt
         )
     }
 
@@ -240,11 +244,6 @@ struct ChatView: View {
         return nil
     }
 
-    /// When the running turn began, for the working line's timer.
-    private var turnStartedAt: Date? {
-        guard appState.isBusy else { return nil }
-        return Self.turnStart(in: appState.messages)
-    }
 
     static func turnStart(in messages: [ChatMessage]) -> Date? {
         guard let message = messages.last(where: { $0.role == .user && !$0.isSteer }) else { return nil }
@@ -5820,5 +5819,31 @@ extension View {
     func chatCard(cornerRadius: CGFloat, tint: Color = .clear) -> some View {
         background(tint, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .settingsCard(cornerRadius: cornerRadius)
+    }
+}
+
+/// The running turn's tool and when it began, as the working line shows
+/// them: looked through the transcript again only when it changed (its
+/// chat or revision) or the turn started or ended, not on every AppState
+/// publish (audit 1722).
+@MainActor
+final class ChatTurnScanCache {
+    private struct Key: Equatable {
+        let chat: ObjectIdentifier
+        let revision: UInt64
+        let isBusy: Bool
+    }
+    private var key: Key?
+    private var value: (tool: ToolActivity?, startedAt: Date?) = (nil, nil)
+
+    func scan(_ appState: AppState) -> (tool: ToolActivity?, startedAt: Date?) {
+        let now = Key(chat: ObjectIdentifier(appState.shownChat), revision: appState.chatTranscriptRevision,
+                      isBusy: appState.isBusy)
+        if now == key { return value }
+        key = now
+        value = now.isBusy
+            ? (ChatView.runningTool(in: appState.messages), ChatView.turnStart(in: appState.messages))
+            : (nil, nil)
+        return value
     }
 }

@@ -10,11 +10,32 @@
 
 import SwiftUI
 
+/// Mounts Bots behind `.equatable()`, equal by AppState identity:
+/// redrawn by its own changes only, while the shell redraws on every
+/// publish, as Tasks (V2TasksViewGate).
+struct V2BotsViewGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+
+    var body: some View {
+        V2BotsView(appState: appState)
+    }
+}
+
+/// Bots, mounted through V2BotsViewGate.
 struct V2BotsView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
+    /// Followed through `updates`, which holds AppState's changes back
+    /// while another tab is up: a hidden Bots Home redrew on every publish
+    /// of a turn (issue 1722).
+    private let appState: AppState
+    @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @State private var createRequest = false
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
 
     private var canCreate: Bool {
         appState.botModePhase == .available && appState.isConnected
@@ -56,5 +77,9 @@ struct V2BotsView: View {
         .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.bots.title)
+        .environmentObject(updates)
+        .onChange(of: shell.isTabActive, initial: true) { _, shown in
+            updates.isShown = shown
+        }
     }
 }

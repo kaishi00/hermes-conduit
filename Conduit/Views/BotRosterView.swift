@@ -7,7 +7,12 @@ import TipKit
 /// created, edited (look, picture, description, personality), pinned and
 /// deleted here, through the same gateway records Hermes Desktop uses.
 struct BotRosterView: View {
-    @EnvironmentObject private var appState: AppState
+    /// AppState read through the tab's updates (`V2ShownUpdates`), which
+    /// hold its changes back while another tab is up: a hidden Bots Home
+    /// redrew on every publish of a turn (issue 1722). The sidebar's host
+    /// shows it always (`BotRosterHost`).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     /// Language changes must re-render localized strings immediately while
     /// the Bots tab stays selected (same contract as SessionList/CronList).
     @ObservedObject private var appLanguage = AppLanguageStore.shared
@@ -126,6 +131,12 @@ struct BotRosterView: View {
         // so its id is kept for a retry.
         .onChange(of: shell.isTabActive) { _, active in
             if !active, !creatingNewRoom { newRoom.clear() }
+            // Hidden, it draws none of AppState's changes, so a sign-out
+            // and sign-in to the same dashboard leaves rosterRefreshKey as
+            // it was and groups unprobed: shown again, it probes them.
+            if active, appState.isConnected, appState.groupChatPhase == .idle {
+                Task { await appState.refreshGroupChatSupport() }
+            }
         }
         .onChange(of: canStartRoomHere) { _, can in
             if !can, !creatingNewRoom { newRoom.clear() }
@@ -2249,4 +2260,19 @@ private struct NewRoomFarBot: Identifiable {
     let bot: BotProfile
     let section: CombinedDashboardBotsSection
     let own: OwnHermesBot
+}
+
+/// BotRosterView where no tab holds its updates back (the sidebar): its
+/// updates always pass on.
+struct BotRosterHost: View {
+    @StateObject private var updates: V2ShownUpdates
+
+    init(appState: AppState) {
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    var body: some View {
+        BotRosterView()
+            .environmentObject(updates)
+    }
 }
