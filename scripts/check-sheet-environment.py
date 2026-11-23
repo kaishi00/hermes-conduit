@@ -292,11 +292,13 @@ def find_problems(sources):
             # on their own; nothing in them supplies this one.
             texts = [without_presentations(chunk) for chunk in texts]
             needed = set()
+            injected = set()
             for chunk in texts:
                 for ref in TYPE_REF.findall(chunk):
                     if ref in index.views:
                         needed |= index.needs(ref)
-            injected = set()
+                    # A wrapper in the sheet itself provides to its content.
+                    injected |= index.wrappers.get(ref, set())
             for chunk in texts:
                 injected |= index.injected_types(chunk, owner)
             missing = sorted(needed - injected)

@@ -158,6 +158,18 @@ class SheetEnvironmentTests(unittest.TestCase):
         found = problems(wrapper, child, bare, sheet)
         self.assertEqual(len(found), 1)
         self.assertIn("needs Updates", found[0])
+        direct = """
+        struct Parent: View {
+            @EnvironmentObject var appState: AppState
+            @State private var shown = false
+            var body: some View {
+                Color.clear.sheet(isPresented: $shown) {
+                    Live(appState: appState) { HeldChild() }
+                }
+            }
+        }
+        """
+        self.assertEqual(problems(wrapper, child, direct), [], "a wrapper directly in the sheet")
 
     def test_view_that_reads_and_passes_on_an_object_still_needs_it(self):
         # KanbanTaskDetailView's shape: it reads the store and injects it
