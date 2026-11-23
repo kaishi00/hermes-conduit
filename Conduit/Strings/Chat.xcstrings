@@ -32337,84 +32337,84 @@
         }
       }
     },
-    "The other files weren't uploaded, since the folder changed." : {
+    "The remaining files weren't uploaded, since the folder or connection changed." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die übrigen Dateien wurden nicht hochgeladen, da sich der Ordner geändert hat."
+            "value" : "Die übrigen Dateien wurden nicht hochgeladen, da sich der Ordner oder die Verbindung geändert hat."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Los demás archivos no se subieron porque la carpeta cambió."
+            "value" : "Los archivos restantes no se subieron porque cambió la carpeta o la conexión."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les autres fichiers n’ont pas été envoyés, car le dossier a changé."
+            "value" : "Les fichiers restants n’ont pas été envoyés, car le dossier ou la connexion a changé."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "File lainnya tidak diunggah karena folder berubah."
+            "value" : "File yang tersisa tidak diunggah karena folder atau koneksi berubah."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gli altri file non sono stati caricati perché la cartella è cambiata."
+            "value" : "I file rimanenti non sono stati caricati perché la cartella o la connessione è cambiata."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "フォルダが変わったため、残りのファイルはアップロードされませんでした。"
+            "value" : "フォルダまたは接続が変わったため、残りのファイルはアップロードされませんでした。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "폴더가 바뀌어 나머지 파일은 업로드되지 않았습니다."
+            "value" : "폴더나 연결이 바뀌어 나머지 파일은 업로드되지 않았습니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pozostałe pliki nie zostały przesłane, ponieważ folder się zmienił."
+            "value" : "Pozostałe pliki nie zostały przesłane, ponieważ zmienił się folder lub połączenie."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os outros arquivos não foram enviados porque a pasta mudou."
+            "value" : "Os arquivos restantes não foram enviados porque a pasta ou a conexão mudou."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Остальные файлы не загружены, так как папка изменилась."
+            "value" : "Оставшиеся файлы не загружены, так как изменилась папка или подключение."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Klasör değiştiği için diğer dosyalar yüklenmedi."
+            "value" : "Klasör veya bağlantı değiştiği için kalan dosyalar yüklenmedi."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "文件夹已更改，其余文件未上传。"
+            "value" : "文件夹或连接已更改，其余文件未上传。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "資料夾已變更，其餘檔案未上傳。"
+            "value" : "資料夾或連線已變更，其餘檔案未上傳。"
           }
         }
       }

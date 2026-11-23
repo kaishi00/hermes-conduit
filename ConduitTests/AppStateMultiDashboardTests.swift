@@ -2272,6 +2272,32 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["one.txt"])
     }
 
+    /// An upload whose tab moved on mid-batch (another folder, or the
+    /// folder closed) sends no more files and says so, rather than passing
+    /// the rest off as uploaded (#3170, #3168's review).
+    func testAnUploadStoppedByAFolderChangeSaysTheRestWerentSent() async throws {
+        let (explorer, held, appState) = try await openedFolder()
+        defer { withExtendedLifetime(appState) {} }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appendingPathComponent("one.txt")
+        let second = folder.appendingPathComponent("two.txt")
+        try Data("one".utf8).write(to: first)
+        try Data("two".utf8).write(to: second)
+
+        let upload = Task { await explorer.upload([first, second], into: "/w/app") }
+        try await held.waitForRequests(3)
+        explorer.close()
+        try await held.answer(["ok": true], toPathEnding: "/workspace/upload")
+        let failure = await upload.value
+
+        XCTAssertEqual(held.sent.dropFirst(2).map(\.path), [
+            "/api/plugins/conduit_push/workspace/upload",
+        ], "the second file isn't sent, and a closed folder isn't read again")
+        XCTAssertEqual(failure, AppLocalization.string("The remaining files weren't uploaded, since the folder or connection changed.", table: .chat))
+    }
+
     /// A picture sent into a room is read back through the plugin's room
     /// files (issue 2035), only from a plugin that serves it, and a refusal
     /// says the file is gone rather than that the host was out of reach.

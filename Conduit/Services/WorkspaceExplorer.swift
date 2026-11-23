@@ -253,6 +253,9 @@ final class WorkspaceExplorer: ObservableObject {
         // the tab moved to another folder or chat's host isn't sent there.
         let startedScope = scope
         let startedFar = far
+        // A folder opened and left again meanwhile counts as a move too,
+        // though the folder and host are the same again.
+        let startedGeneration = generation
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -270,9 +273,11 @@ final class WorkspaceExplorer: ObservableObject {
                 failure = tooLarge
                 continue
             }
-            guard scope == startedScope, far == startedFar else {
-                // Said, so the files left unsent don't pass for uploaded.
-                failure = AppLocalization.string("The other files weren't uploaded, since the folder changed.", table: .chat)
+            guard generation == startedGeneration, scope == startedScope, far == startedFar else {
+                // Said, so the files left unsent don't pass for uploaded,
+                // after any earlier file's own failure.
+                let stopped = AppLocalization.string("The remaining files weren't uploaded, since the folder or connection changed.", table: .chat)
+                failure = failure.map { "\($0)\n\(stopped)" } ?? stopped
                 break
             }
             sent = true
