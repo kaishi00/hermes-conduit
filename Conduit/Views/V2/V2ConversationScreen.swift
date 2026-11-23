@@ -1100,7 +1100,7 @@ private struct V2ConversationMenu: View {
         .accessibilityIdentifier("conversation.menu")
         // Asks the bot's host once whether it can have a screen, so the
         // entry shows only where it can (never on Windows or macOS hosts).
-        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.chatIsConnected)\u{1F}\(appState.farChatDashboardID?.uuidString ?? "")\u{1F}\(ObjectIdentifier(screens).hashValue)") {
+        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.chatIsConnected)\u{1F}\(appState.farChatDashboardID?.uuidString ?? "")\u{1F}\(UInt(bitPattern: ObjectIdentifier(screens)))") {
             if let profile = screenProfile, appState.chatIsConnected {
                 screens.check(profile, client: appState.botScreenClient(for: appState.farChatDashboardID))
             }
