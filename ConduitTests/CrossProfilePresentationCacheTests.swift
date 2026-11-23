@@ -2194,8 +2194,9 @@ extension CrossProfilePresentationCacheTests {
         let nahida = BotProfile(name: "nahida", botTitle: nil, displayName: "nahida", profileDescription: "", model: nil,
                                 provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
                                 appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
-        var titled = nahida
-        titled.botTitle = "Lesser Lord"
+        let titled = BotProfile(name: "nahida", botTitle: "Lesser Lord", displayName: "nahida", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
         XCTAssertEqual(appState.farBotName("nahida", on: mac.id), "Nahida", "with no roster yet, its profile")
         kept.runtime.botRoster = [titled]
         XCTAssertEqual(appState.farBotName("nahida", on: mac.id), "Lesser Lord", "its kept connection's roster names it")
@@ -2204,8 +2205,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.farBotName("nahida", on: mac.id), "Nahida", "as its portrait in Bots Home names it")
         appState.combinedDashboardBots[mac.id] = nil
         kept.runtime.botRoster = []
-        XCTAssertEqual(appState.farBotName("default", on: mac.id),
-                       appState.profileAppearanceStore.loadDefaultName(dashboardID: mac.id), "its main bot by its dashboard's saved name")
+        _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
+        XCTAssertEqual(appState.farBotName("default", on: mac.id), "Mac main", "its main bot by its dashboard's saved name")
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
