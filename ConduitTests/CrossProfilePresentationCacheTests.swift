@@ -2610,9 +2610,8 @@ extension CrossProfilePresentationCacheTests {
     }
 
     /// A far chat's bot profile comes from its own dashboard's state alone:
-    /// its Bot Chat registry while kept (never a roster match), and Bots
-    /// Home's read only once let go, by its own open id (never an id the
-    /// dashboard on screen holds).
+    /// its Bot Chat registry, else its bots naming its own open id (never
+    /// an id the dashboard on screen holds), kept or let go.
     func testAFarChatsBotProfileReadsOnlyItsOwnDashboard() async throws {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
@@ -2626,13 +2625,18 @@ extension CrossProfilePresentationCacheTests {
             client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
         )
 
-        // Kept, an id its registry doesn't name is an ordinary chat, though
-        // the roster names it.
+        // Kept: its registry names it, or (a reconnect's fresh registry)
+        // its own dashboard's bots name its open id; an ordinary one is nil.
         appState.activeSessionId = "atlas-chat"
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
-        XCTAssertNil(appState.farBotChatProfile(in: mac.id), "a roster match alone isn't its registry")
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its dashboard's bots name its open id")
         kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
+        appState.activeSessionId = "plain-far-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertNil(appState.farBotChatProfile(in: mac.id), "an ordinary far chat")
+        appState.activeSessionId = "atlas-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
 
         // Let go, its own open id only: an id the screen holds that a far
         // bot names doesn't make an ordinary far chat that bot's.
