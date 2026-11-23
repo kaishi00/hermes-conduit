@@ -241,8 +241,15 @@ private struct ArtifactsList: View {
         let served: Bool
     }
 
+    /// The dashboard and profile the list is read for: a far chat's own,
+    /// so another far chat's rows and opens don't carry over to it.
+    private var keyOwner: (dashboard: UUID?, profile: String) {
+        guard case .chat(_, let far?) = scope else { return (appState.activeDashboardID, appState.activeProfile) }
+        return (far.dashboardID, far.profile)
+    }
+
     private var currentKey: ArtifactsListKey {
-        ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile,
+        ArtifactsListKey(dashboard: keyOwner.dashboard, profile: keyOwner.profile,
                          sources: shownSources(appState.artifactSources(for: scope)), filter: filter,
                          query: query.trimmingCharacters(in: .whitespacesAndNewlines), showMissing: showMissing)
     }
@@ -1156,6 +1163,17 @@ private struct ArtifactsList: View {
             await appState.refreshNotifierPluginStatusOnce()
             guard ticket == generation else { return }
             if appState.notifierPlugin.state == .unknown, loadedKey != key {
+                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
+                feed = nil
+                loadedKey = key
+            }
+        }
+        // A far chat's own dashboard whose plugin never said: asked there.
+        if !hostIsOnScreen, case .chat(_, let far?) = scope, hostIsConnected, hostPlugin.state == .unknown {
+            isLoading = true
+            await appState.readKeptPluginStatusIfUnknown(far.dashboardID)
+            guard ticket == generation else { return }
+            if hostPlugin.state == .unknown, loadedKey != key {
                 failure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
                 feed = nil
                 loadedKey = key
