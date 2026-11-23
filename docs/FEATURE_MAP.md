@@ -2620,7 +2620,7 @@ buttons) · docs/WIDGETS.md · README.md
 - Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
 - Not tried on a device: the small and large layouts on the smallest and largest phones and iPad, and the vibrant artwork in StandBy at night and on HomeView.
 
-**Checked:** 2026-11-23, #3192 (a kept dashboard's Bot Chat from a widget or Siri opens in place through its bot's open, no switch, tested; the desktop has no widgets); 2026-11-22, #3063 (another combined dashboard's chat from a widget opens in place, no switch, tested); 2026-11-20, #2892 (the bundle adds the Plan limits widget; the launchers unchanged); 2026-11-19, #2863 (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
+**Checked:** 2026-11-23, #3193 (#3192's review: a widget's far Bot Chat link never opens that dashboard's Pulse chat as a Bot Chat; tested); 2026-11-23, #3192 (a kept dashboard's Bot Chat from a widget or Siri opens in place through its bot's open, no switch, tested; the desktop has no widgets); 2026-11-22, #3063 (another combined dashboard's chat from a widget opens in place, no switch, tested); 2026-11-20, #2892 (the bundle adds the Plan limits widget; the launchers unchanged); 2026-11-19, #2863 (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
 
 ## Pulse widget
 
