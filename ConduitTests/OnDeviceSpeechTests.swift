@@ -202,7 +202,7 @@ extension HermesVoiceGatewayTimeoutTests {
         IPhoneVoices.readInstalled = { [] }
         IPhoneVoices.forgetInstalled()
         XCTAssertNil(IPhoneVoices.voice(for: "en-US"), "No installed voice: iOS's own, which has none here")
-        XCTAssertEqual(asked.last, "en-US", "The fallback asks iOS for the language's own voice")
+        XCTAssertEqual(asked, ["en-US", "en-US"], "The lookup and the fallback each ask iOS for the language's own voice")
     }
 
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
