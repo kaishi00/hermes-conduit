@@ -2285,8 +2285,9 @@ extension CrossProfilePresentationCacheTests {
             guard bridge === kept.bridge, path == NotifierPluginStatus.path else { throw URLError(.badURL) }
             return ["ok": true, "version": "9.0.0", "capabilities": [RichDiffLoader.capability, RichReviewLoader.capability]]
         }
-        await appState.readFarCardHostStatus(mac.id)
+        let afterStatus = await appState.richCardReadBridgeAfterStatus(capability: RichDiffLoader.capability, on: mac.id)
         appState.keptDashboardJSONReader = nil
+        XCTAssertTrue(afterStatus === kept.bridge, "the readers' path asks its status, then reads on its own Hermes")
         XCTAssertTrue(kept.runtime.notifierPlugin.reports(RichDiffLoader.capability), "its status was read on its own Hermes")
         XCTAssertTrue(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id) === kept.bridge,
                       "its diffs are read on its own Hermes")

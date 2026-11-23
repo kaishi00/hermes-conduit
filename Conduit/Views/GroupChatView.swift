@@ -93,6 +93,9 @@ struct GroupChatView: View {
         .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         // Its members' avatars read its own dashboard's bots.
         .environment(\.readsOpenRoomRuntime, true)
+        // Its boards' diffs and review rounds are read on its own
+        // dashboard's Hermes, a far room's too.
+        .environment(\.richCardHostDashboard, appState.activeRoomSurface?.dashboardID)
         .environment(\.chatTextSize, chatTextSize)
         // A Desktop card reads its title and summary from the connected
         // Hermes (#1522). A member's MEDIA: files read through its own

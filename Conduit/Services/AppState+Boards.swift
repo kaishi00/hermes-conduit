@@ -156,10 +156,12 @@ extension AppState {
     }
 
     /// Whether a card may read on `dashboard`, another combined dashboard
-    /// than the one on screen: the far chat's open in place, or a live
-    /// call's that goes on there (its cards and saved transcript).
+    /// than the one on screen: the far chat's or group room's open in
+    /// place, or a live call's that goes on there (its cards and saved
+    /// transcript).
     func richCardMayReadOffScreen(_ dashboard: UUID) -> Bool {
         dashboard == farChatDashboardID || dashboard == callDashboardOffScreen
+            || dashboard == activeRoomSurface?.dashboardID
     }
 
     /// The bridge a card's read goes through: `dashboard`'s, the chat's or
@@ -184,13 +186,19 @@ extension AppState {
         await readKeptPluginStatusIfUnknown(dashboard)
     }
 
+    /// The bridge a card's read goes through, once a far plugin not yet
+    /// heard from has been asked what it keeps (the readers' path).
+    func richCardReadBridgeAfterStatus(capability: String, on dashboard: UUID?) async -> DashboardTicketBridge? {
+        await readFarCardHostStatus(dashboard)
+        return richCardReadBridge(capability: capability, on: dashboard)
+    }
+
     /// A diff card reads the whole of a long diff from its chat's Hermes,
     /// the one whose plugin kept it; an id from another Hermes is answered
     /// as gone there.
     func installRichDiffReader() {
         RichDiffLoader.shared.read = { [weak self] path, dashboard in
-            await self?.readFarCardHostStatus(dashboard)
-            guard let bridge = self?.richCardReadBridge(capability: RichDiffLoader.capability, on: dashboard) else {
+            guard let bridge = await self?.richCardReadBridgeAfterStatus(capability: RichDiffLoader.capability, on: dashboard) else {
                 throw RichDiffLoader.LoadError.notConnected
             }
             return try await bridge.requestJSON(path: path)
@@ -202,8 +210,7 @@ extension AppState {
     /// gone there.
     func installRichReviewReader() {
         RichReviewLoader.shared.read = { [weak self] path, dashboard in
-            await self?.readFarCardHostStatus(dashboard)
-            guard let bridge = self?.richCardReadBridge(capability: RichReviewLoader.capability, on: dashboard) else {
+            guard let bridge = await self?.richCardReadBridgeAfterStatus(capability: RichReviewLoader.capability, on: dashboard) else {
                 throw RichReviewLoader.LoadError.notConnected
             }
             return try await bridge.requestJSON(path: path)
