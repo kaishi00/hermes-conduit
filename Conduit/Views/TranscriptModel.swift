@@ -305,6 +305,12 @@ struct TranscriptModel {
         guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
         return true
     }
+    /// The same, its row loading or not: the held-page loop reads it right
+    /// after a page, before the rows drop the loading state (#3143).
+    var drawsOnlyLoadEarlierRow: Bool {
+        guard rows.count == 1, case .loadEarlier = rows[0].kind else { return false }
+        return true
+    }
 
     /// Whether the rows say the chat is opening (the opening line, or a
     /// picked chat's saved copy on its way): the notification-open pill

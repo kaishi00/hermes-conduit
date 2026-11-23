@@ -27,8 +27,29 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(requester.maximumInFlight, 1, "a GET→PUT ran while another was in flight")
     }
 
+    /// Issue 3153: the switches off and a removed key are written as false
+    /// and "", not taken out, since Hermes merges a save over the file and
+    /// a removed key kept its old value.
+    func testTheHermesAnswersSwitchTurnsOffThroughHermesMerge() async {
+        let requester = SlowConfigRequester(config: ["voice": ["speech_server": [
+            "url": "ws://10.0.0.2:8765/v1/realtime", "api_key": "sk-secret", "drive_turns": true, "own_model": true,
+        ]]])
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        let off = await service.saveSpeechServerDrivesTurns(false)
+        let disowned = await service.saveSpeechServerOwnModel(false)
+        let keyRemoved = await service.save(value: "", for: SpeechServerSettingsView.apiKeyKey)
+
+        XCTAssertEqual([off, disowned, keyRemoved], [true, true, true])
+        let server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["drive_turns"] as? Bool, false)
+        XCTAssertEqual(server?["own_model"] as? Bool, false)
+        XCTAssertEqual(server?["api_key"] as? String, "")
+        XCTAssertEqual(server?["url"] as? String, "ws://10.0.0.2:8765/v1/realtime")
+    }
+
     /// Issue 2438: the Hermes answers switch is a Boolean in the config,
-    /// removed when off, and waits its turn behind another save.
+    /// false when off, and waits its turn behind another save.
     func testTheHermesAnswersSwitchWritesABooleanAndKeepsAnOverlappingSave() async {
         let requester = SlowConfigRequester(config: ["voice": ["speech_server": ["url": "ws://10.0.0.2:8765/v1/realtime"]]])
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
@@ -47,13 +68,13 @@ extension HermesVoiceConfigurationServiceTests {
         let off = await service.saveSpeechServerDrivesTurns(false)
         XCTAssertTrue(off)
         server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
-        XCTAssertNil(server?["drive_turns"])
+        XCTAssertEqual(server?["drive_turns"] as? Bool, false)
         XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
     }
 
     /// Issue 2438, stage 2: a picked server's names and its Hermes answers
-    /// setting land in one write, an emptied name is removed, and what the
-    /// write doesn't name stays.
+    /// setting land in one write, an emptied name is saved as "", and what
+    /// the write doesn't name stays.
     func testASpeechServersNamesAndSwitchSaveInOneWrite() async {
         let requester = SlowConfigRequester(config: ["voice": ["speech_server": [
             "url": "wss://api.openai.com/v1/realtime", "api_key": "sk-secret", "voice": "alloy",
@@ -68,7 +89,7 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(requester.maximumInFlight, 1)
         var server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
         XCTAssertEqual(server?["model"] as? String, "gpt-realtime")
-        XCTAssertNil(server?["voice"])
+        XCTAssertEqual(server?["voice"] as? String, "")
         XCTAssertEqual(server?["transcription_model"] as? String, "gpt-4o-mini-transcribe")
         XCTAssertEqual(server?["drive_turns"] as? Bool, true)
         XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
@@ -81,7 +102,7 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(server?["voice"] as? String, "marin")
         XCTAssertEqual(server?["drive_turns"] as? Bool, true)
 
-        // Stage 3: the own model switch is a Boolean of its own, removed
+        // Stage 3: the own model switch is a Boolean of its own, false
         // when off, and leaves the rest alone.
         let owned = await service.saveSpeechServerOwnModel(true)
         XCTAssertTrue(owned)
@@ -92,7 +113,7 @@ extension HermesVoiceConfigurationServiceTests {
         let disowned = await service.saveSpeechServerOwnModel(false)
         XCTAssertTrue(disowned)
         server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
-        XCTAssertNil(server?["own_model"])
+        XCTAssertEqual(server?["own_model"] as? Bool, false)
         XCTAssertEqual(server?["drive_turns"] as? Bool, true)
     }
 
@@ -116,7 +137,9 @@ extension HermesVoiceConfigurationServiceTests {
 }
 
 /// One profile config document, with a pause in every request so
-/// overlapping saves interleave unless something keeps them apart.
+/// overlapping saves interleave unless something keeps them apart. A PUT
+/// merges what it's sent over the document, as Hermes' does, so a key a
+/// save leaves out keeps its old value.
 @MainActor
 private final class SlowConfigRequester: VoiceConfigurationRequesting {
     private(set) var config: [String: Any]
@@ -148,9 +171,22 @@ private final class SlowConfigRequester: VoiceConfigurationRequesting {
             if failsPUTsSettingURL, server?["url"] != nil {
                 throw DashboardTicketBridgeError.requestFailed("Mock PUT failure")
             }
-            config = sent
+            config = Self.merged(config, sent)
             return ["ok": true]
         }
+    }
+
+    /// Hermes' _deep_merge: an object over an object merges, anything else replaces.
+    private static func merged(_ base: [String: Any], _ over: [String: Any]) -> [String: Any] {
+        var result = base
+        for (key, value) in over {
+            if let old = result[key] as? [String: Any], let new = value as? [String: Any] {
+                result[key] = merged(old, new)
+            } else {
+                result[key] = value
+            }
+        }
+        return result
     }
 }
 

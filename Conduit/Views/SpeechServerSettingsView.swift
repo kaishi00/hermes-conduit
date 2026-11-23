@@ -280,7 +280,7 @@ struct SpeechServerSettingsView: View {
     }
 
     /// The names that differ from what the host has, by their config key
-    /// under voice.speech_server; an emptied one is removed.
+    /// under voice.speech_server; an emptied one is saved as "".
     private var changedNames: [String: String] {
         guard status?.namesItsModel == true else { return [:] }
         var names: [String: String] = [:]

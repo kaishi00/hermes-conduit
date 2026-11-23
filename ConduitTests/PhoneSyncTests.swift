@@ -459,11 +459,27 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.batches.count, 7)
         XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["other_profiles"] as? Bool, true)
 
+        // A new frame whose cleared hash can't be written holds the upload
+        // until it can, though the hash in memory reads cleared (#3143).
+        shared.otherProfiles = false
+        relaunched.savePreferences(shared)
+        let statePath = folder.appendingPathComponent("state.json")
+        try? FileManager.default.removeItem(at: statePath)
+        try FileManager.default.createDirectory(at: statePath, withIntermediateDirectories: true)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 7, "Nothing goes while the state can't be written")
+        try FileManager.default.removeItem(at: statePath)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 8, "Written now, it goes")
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["other_profiles"] as? Bool, false)
+
         // An older plugin's status doesn't say what's waiting: every pass posts.
         host.reportsPending = false
         now += 60
         _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
-        XCTAssertEqual(host.batches.count, 8)
+        XCTAssertEqual(host.batches.count, 9)
     }
 
     func testPhoneChangesAskUnlessTheUserChoseAddWithoutAsking() async throws {

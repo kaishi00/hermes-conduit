@@ -250,20 +250,30 @@ enum KanbanFullTextFormatter {
         // character, at least as long, with nothing after it closes it. One
         // opened in a list item or a quote keeps its lines' indentation past
         // the item's, or their quote markers, out of the block.
-        var fence: (mark: Character, length: Int, indent: Int, quoted: Bool)?
+        // `quotes` is how deep in quotes it opened: only that many markers
+        // come off its lines, and a line out of the quote ends it, as the
+        // quote it's in ends (#3143).
+        var fence: (mark: Character, length: Int, indent: Int, quotes: Int)?
         for raw in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines) {
             if let open = fence {
-                let content = open.quoted ? quoteStripped(Substring(raw)).content : Substring(raw)
-                let (columns, rest) = leadingColumns(content)
-                let run = rest.prefix { $0 == open.mark }.count
-                if max(0, columns - open.indent) <= 3, run >= open.length, rest.dropFirst(run).allSatisfy(\.isWhitespace) {
+                let stripped = quoteStripped(Substring(raw), upTo: open.quotes)
+                if stripped.depth < open.quotes {
+                    // Out of its quote: the block ends, and this line is read as any other.
                     fence = nil
                     paragraph += 1
                 } else {
-                    let indented = content.prefix(open.indent).prefix { $0 == " " }.count
-                    lines.append(([String(content.dropFirst(indented))], paragraph, true))
+                    let content = stripped.content
+                    let (columns, rest) = leadingColumns(content)
+                    let run = rest.prefix { $0 == open.mark }.count
+                    if max(0, columns - open.indent) <= 3, run >= open.length, rest.dropFirst(run).allSatisfy(\.isWhitespace) {
+                        fence = nil
+                        paragraph += 1
+                    } else {
+                        let indented = content.prefix(open.indent).prefix { $0 == " " }.count
+                        lines.append(([String(content.dropFirst(indented))], paragraph, true))
+                    }
+                    continue
                 }
-                continue
             }
             // A fence opens indented at most 3 columns, in a list item or a
             // quote as at the top.
@@ -272,7 +282,7 @@ enum KanbanFullTextFormatter {
             if columns <= 3, let mark = rest.first, mark == "`" || mark == "~" {
                 let run = rest.prefix { $0 == mark }.count
                 if run >= 3, mark == "~" || !rest.dropFirst(run).contains("`") {
-                    fence = (mark, run, container.indent, container.quoted)
+                    fence = (mark, run, container.indent, container.quotes)
                     paragraph += 1
                     continue
                 }
@@ -332,29 +342,47 @@ enum KanbanFullTextFormatter {
         }
         var removals: [PiecePosition: [NSRange]] = [:]
         for positions in order.values {
-            for marker in ["**", "__"] {
-                var openers: [(position: PiecePosition, range: NSRange)] = []
+            // A run of `*` or `_` is one delimiter, its flanking read at the
+            // run's edges (`***a***`, `****`), and a closer takes two from
+            // the nearest opener's inner end at a time (#3143).
+            for mark in ["*", "_"] {
+                let unit = (mark as NSString).character(at: 0)
+                var openers: [(position: PiecePosition, location: Int, length: Int)] = []
                 for position in positions {
                     let pieces = lines[position.line].pieces
                     let text = pieces[position.piece] as NSString
-                    var searched = NSRange(location: 0, length: text.length)
-                    while searched.length > 0 {
-                        let found = text.range(of: marker, options: .literal, range: searched)
-                        guard found.location != NSNotFound else { break }
-                        searched = NSRange(location: found.upperBound, length: text.length - found.upperBound)
+                    var index = 0
+                    while index < text.length {
+                        guard text.character(at: index) == unit else {
+                            index += 1
+                            continue
+                        }
+                        var end = index
+                        while end < text.length, text.character(at: end) == unit { end += 1 }
+                        let length = end - index
+                        defer { index = end }
+                        guard length >= 2 else { continue }
                         // A line's edge reads as a space; a code span's backtick as punctuation.
-                        let before: Character = found.location > 0
-                            ? text.substring(with: text.rangeOfComposedCharacterSequence(at: found.location - 1)).first ?? " "
+                        let before: Character = index > 0
+                            ? text.substring(with: text.rangeOfComposedCharacterSequence(at: index - 1)).first ?? " "
                             : position.piece > 0 ? "`" : " "
-                        let after: Character = found.upperBound < text.length
-                            ? text.substring(with: text.rangeOfComposedCharacterSequence(at: found.upperBound)).first ?? " "
+                        let after: Character = end < text.length
+                            ? text.substring(with: text.rangeOfComposedCharacterSequence(at: end)).first ?? " "
                             : position.piece < pieces.count - 1 ? "`" : " "
-                        let (opens, closes) = emphasisFlanking(marker, before: before, after: after)
-                        if closes, let opener = openers.popLast() {
-                            removals[opener.position, default: []].append(opener.range)
-                            removals[position, default: []].append(found)
-                        } else if opens {
-                            openers.append((position, found))
+                        let (opens, closes) = emphasisFlanking(mark + mark, before: before, after: after)
+                        var start = index
+                        if closes {
+                            while end - start >= 2, var opener = openers.popLast() {
+                                removals[opener.position, default: []].append(
+                                    NSRange(location: opener.location + opener.length - 2, length: 2))
+                                removals[position, default: []].append(NSRange(location: start, length: 2))
+                                start += 2
+                                opener.length -= 2
+                                if opener.length >= 2 { openers.append(opener) }
+                            }
+                        }
+                        if opens, end - start >= 2 {
+                            openers.append((position, start, end - start))
                         }
                     }
                 }
@@ -387,22 +415,24 @@ enum KanbanFullTextFormatter {
         return (columns, rest)
     }
 
-    /// The line past its quote markers (`> `, each indented at most 3).
-    private static func quoteStripped(_ line: Substring) -> (content: Substring, quoted: Bool) {
+    /// The line past its quote markers (`> `, each indented at most 3), at
+    /// most `limit` of them, and how many came off.
+    private static func quoteStripped(_ line: Substring, upTo limit: Int = .max) -> (content: Substring, depth: Int) {
         var content = line
-        var quoted = false
-        while true {
+        var depth = 0
+        while depth < limit {
             let (columns, rest) = leadingColumns(content)
-            guard columns <= 3, rest.first == ">" else { return (content, quoted) }
+            guard columns <= 3, rest.first == ">" else { break }
             content = rest.dropFirst()
             if content.first == " " { content = content.dropFirst() }
-            quoted = true
+            depth += 1
         }
+        return (content, depth)
     }
 
     /// The line past a quote's markers and a list item's marker, where a
     /// fence in them starts, and the item's content indentation.
-    private static func fenceContainer(_ raw: String) -> (content: Substring, quoted: Bool, indent: Int) {
+    private static func fenceContainer(_ raw: String) -> (content: Substring, quotes: Int, indent: Int) {
         let (content, quoted) = quoteStripped(Substring(raw))
         let (columns, rest) = leadingColumns(content)
         guard columns <= 3 else { return (content, quoted, 0) }

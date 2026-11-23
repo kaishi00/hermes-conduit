@@ -2120,6 +2120,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(menuRow.title, "Release prep")
         XCTAssertEqual(menuRow.combinedDashboardID, mac.id)
         XCTAssertEqual(appState.activeChatSessionSummary?.title, "VPS notes", "the screen's row stays the screen's")
+        // The screen's cron run under the same id doesn't join the far
+        // row's lookup, which would leave it ambiguous (#3141).
+        appState.cronSessions = [SessionSummary(id: "mac-1", alternateIds: [], title: "Nightly run", model: "Hermes", updatedLabel: "now",
+                                                profile: "default", source: .cron, isActive: false, isArchived: false, lineageRootId: nil)]
+        XCTAssertEqual(appState.chatOnScreenSessionSummary?.title, "Release prep", "a cron run on the screen's dashboard isn't the far chat's")
         appState.act(onRuntime: kept.runtime) {
             let titles = appState.activeProfileSessions.map(\.title)
             XCTAssertTrue(titles.contains("Release prep"), "its scope reads its own rows")
@@ -2170,6 +2175,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
+        kept.runtime.notifierPlugin.state = .reported(version: "9.0.0", capabilities: [RichChecklistContext.capability])
+        let farScope = try XCTUnwrap(appState.richChecklistContext?.scope, "its checklists are kept on its own Hermes")
+        XCTAssertEqual(farScope, RichChecklistContext.scope(profile: RichChecklistContext.keyProfile("default", dashboard: mac.id), sessionIDs: ids),
+                       "its ticks on the phone are keyed by its own dashboard, the same key it has opened there")
+        let farOwner = try XCTUnwrap(RichChecklistContext.parts(of: farScope)?.profile)
+        XCTAssertFalse(RichChecklistContext.sameOwner(farOwner, RichChecklistContext.keyProfile("default", dashboard: vps.id)),
+                       "and never merge with the screen's chat under the same profile and id")
+        XCTAssertTrue(RichChecklistContext.sameOwner(farOwner, "default"), "a key from before dashboards were named is still taken up")
         XCTAssertFalse(appState.richCardChat?.contains(vps.id.uuidString) == true)
 
         // Its connection dropped: nothing reads or sends for it.
@@ -2183,6 +2196,9 @@ extension CrossProfilePresentationCacheTests {
         final class Seen { var opened: [(ObjectIdentifier, String)] = []; var sent: [(ObjectIdentifier, String, String)] = [] }
         let seen = Seen()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows (#3143).
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             seen.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -2231,6 +2247,8 @@ extension CrossProfilePresentationCacheTests {
 
         appState.openCombinedChat(row, in: mac.id)
         await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["far-1"], "its rows are up")
+        XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
         XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
@@ -3617,6 +3635,13 @@ extension CrossProfilePresentationCacheTests {
         let refused = await appState.openFarNotificationInPlace(target, in: mac.id)
         XCTAssertEqual(refused, .failed, "Hermes refused it: the same open would hear the same")
         XCTAssertNil(appState.notificationRouteFailure)
+        // The card the push recorded left with the failed open (#3143).
+        let storedCards = appState.act(onRuntime: kept.runtime) {
+            appState.sessionPresentationCache.storedPendingDecisionKeys(
+                profile: appState.presentationProfile(for: "session-a"), sessionIDs: ["session-a"]
+            )
+        }
+        XCTAssertTrue(storedCards.isEmpty, "its card was evicted from the saved chat")
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
 
         script.error = nil
@@ -3638,6 +3663,9 @@ extension CrossProfilePresentationCacheTests {
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows (#3143).
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             counts.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -3678,6 +3706,8 @@ extension CrossProfilePresentationCacheTests {
         appState.showVoiceSheet = false
         XCTAssertTrue(appState.routeWidgetLaunchURL(try link("session-a").url))
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-w1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["far-w1"], "its rows are up")
+        XCTAssertNil(appState.errorMessage)
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")

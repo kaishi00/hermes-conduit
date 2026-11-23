@@ -473,6 +473,10 @@ struct ChatView: View {
             let read = autoEarlierPages.conversation == conversation ? autoEarlierPages.count : 0
             guard read < TranscriptModel.autoEarlierPageLimit else { return }
             ChatViewportWatch.shared.command("loadEarlier")
+            // One read at a time: a restart's read replaces the last one's
+            // (#3143). A landed page's count is written with no wait after
+            // it lands, so cancelling never loses one.
+            backfillTask?.cancel()
             backfillTask = Task { @MainActor in
                 // Only a page that landed counts: a failed read leaves the
                 // budget, isn't read again here, and the next change of
@@ -484,7 +488,7 @@ struct ChatView: View {
                 var heldPages = 0
                 while outcome == .dedupedToNothing, heldPages < TranscriptModel.autoEarlierHeldPageRetries,
                       !Task.isCancelled, Self.drawnConversation(in: appState) == conversation,
-                      transcriptModel.model.drawsOnlyLoadEarlier, appState.canLoadEarlierMessagesForActiveConversation {
+                      transcriptModel.model.drawsOnlyLoadEarlierRow, appState.canLoadEarlierMessagesForActiveConversation {
                     heldPages += 1
                     outcome = await appState.loadEarlierPage()
                 }
