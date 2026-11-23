@@ -2132,6 +2132,58 @@ extension CrossProfilePresentationCacheTests {
         }
     }
 
+    /// A far chat's Artifacts, checklists and cards are its own
+    /// dashboard's: its ids read on its runtime (not the screen's row under
+    /// the same id), its artifacts read through that dashboard's kept
+    /// connection, its ticks and taps sent there.
+    func testAFarChatsArtifactsChecklistsAndCardsAreItsOwnDashboards() async throws {
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.openSession = { _, sessionID, _ in
+            SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = SessionSummary(id: "mac-1", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        appState.openCombinedChat(row, in: mac.id)
+        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        // The screen's own chat under the same id, known by another id too.
+        appState.sessions = [SessionSummary(id: "mac-1", alternateIds: ["vps-alias"], title: "VPS notes", model: "Hermes",
+                                            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                            isArchived: false, lineageRootId: nil)]
+
+        let ids = appState.activeChatArtifactSessionIDs
+        XCTAssertTrue(ids.contains("mac-1"))
+        XCTAssertFalse(ids.contains("vps-alias"), "its ids are its own dashboard's, not the screen's row's")
+        let far = try XCTUnwrap(appState.farChat)
+        XCTAssertEqual(appState.artifactSources(for: .chat(ids, far: far)),
+                       [ArtifactSource(profile: "default", sessionIDs: ids, dashboardID: mac.id)],
+                       "its artifacts are read through its own dashboard's kept connection")
+        XCTAssertEqual(appState.artifactSources(for: .chat(ids)).first?.dashboardID, nil, "a chat of the screen's reads here")
+        let host = appState.artifactsHost(for: .chat(ids, far: far))
+        XCTAssertEqual(host.isConnected, kept.runtime.isConnected, "its feed waits on its own dashboard's connection")
+        XCTAssertEqual(host.plugin, kept.runtime.notifierPlugin, "and asks its own dashboard's plugin")
+        XCTAssertEqual(appState.activeChatStoreProfile, "default")
+        XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
+        XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
+        XCTAssertFalse(appState.richCardChat?.contains(vps.id.uuidString) == true)
+
+        // Its connection dropped: nothing reads or sends for it.
+        appState.keptDashboardRuntimes[mac.id] = nil
+        XCTAssertEqual(appState.activeChatArtifactSessionIDs, [])
+        XCTAssertNil(appState.richCardChat)
+        XCTAssertThrowsError(try appState.richChecklistBridge(for: mac.id))
+    }
+
     func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {
         final class Seen { var opened: [(ObjectIdentifier, String)] = []; var sent: [(ObjectIdentifier, String, String)] = [] }
         let seen = Seen()

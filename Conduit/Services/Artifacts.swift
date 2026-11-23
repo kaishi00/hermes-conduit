@@ -259,6 +259,9 @@ struct ArtifactFeed: Equatable {
         return items.map { item in
             var item = item
             item.dashboardID = source.dashboardID
+            // Another dashboard's files are read as their profile there,
+            // also a far chat's own (no label: it's the chat on screen).
+            if source.dashboardID != nil { item.otherProfile = source.profile }
             if let label = source.label {
                 item.otherProfile = source.profile
                 item.otherProfileLabel = label
