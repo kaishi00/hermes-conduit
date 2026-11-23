@@ -3450,11 +3450,11 @@ extension CrossProfilePresentationCacheTests {
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
         )
         // Its bots are read (none), so a Bot Chat's push could be told apart,
-        // and where its Pulse lives is known, so its Pulse chat's could.
+        // and its Pulse's feed is read, so its Pulse chat's could.
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
             client: ObjectIdentifier(kept.client), bots: [], avatars: [:], at: Date()
         )
-        appState.pulseRememberedHomes[mac.id.uuidString] = "pulse-home"
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: ObjectIdentifier(kept.bridge), unseen: 0, at: Date())
 
         let open = Task { @MainActor in
             await appState.openNotificationTargetOutcome(ConduitNotificationTarget(
@@ -3525,6 +3525,15 @@ extension CrossProfilePresentationCacheTests {
 
         script.error = nil
         // Listed again (a refusal may drop the row, as the switch's does).
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        // Diagnostic (issue 3057 PR): the same open with its Pulse chat
+        // known only as remembered here.
+        let remembered = await appState.openFarNotificationInPlace(target, in: mac.id)
+        print("FAR-DIAG remembered outcome=\(String(describing: remembered)) active=\(appState.activeSessionId ?? "nil") far=\(String(describing: appState.farChatDashboardID)) messages=\(appState.messages.map(\.id)) error=\(appState.errorMessage ?? "nil")")
+        appState.pulseRememberedHomes[mac.id.uuidString] = nil
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: ObjectIdentifier(kept.bridge), unseen: 0, at: Date())
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
         )
