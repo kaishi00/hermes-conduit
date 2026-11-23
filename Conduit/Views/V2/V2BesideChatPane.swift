@@ -40,6 +40,9 @@ struct V2BesideChatPane: View {
 struct V2BesideChatPaneInputs: Equatable {
     /// Ignored by the chat's own equality, so read here.
     var title: String
+    /// The backdrop's glow, the chat's profile's color. Drawn here rather
+    /// than by `V2Backdrop`, which observes AppState itself.
+    var glowTint: Color?
     /// The chat's notice and media resolver, compared by instance.
     @IdentityEquatable var live: BesideChatLive.Chat
     @IdentityEquatable var gatewayResolver: GatewayMediaDataURLResolver
@@ -51,6 +54,7 @@ struct V2BesideChatPaneInputs: Equatable {
     @MainActor
     init(appState: AppState, chat: BackgroundChat) {
         title = chat.title
+        glowTint = appState.profileGlowTint(chat.profile)
         live = appState.besideChatLive.notice(for: chat)
         gatewayResolver = appState.gatewayMediaResolver(for: chat.profile)
         canMoveToWindow = appState.canMoveBesideChatToWindow
@@ -68,7 +72,8 @@ private struct V2BesideChatPaneContent: View, Equatable {
 
     var body: some View {
         ZStack {
-            V2Backdrop(drifts: false, glowProfile: chat.profile)
+            // V2Backdrop's, still: a pane or window never drifts.
+            ConduitBackdrop(drifts: false, glowTint: inputs.glowTint)
             VStack(spacing: 0) {
                 V2BesideChatPaneHeader(
                     title: inputs.title,
