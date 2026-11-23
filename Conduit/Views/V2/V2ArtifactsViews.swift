@@ -1100,7 +1100,7 @@ private struct ArtifactsList: View {
                 }
                 if MediaPreviewPresenter.shared.presentSaveToFiles(downloaded: download) { return }
             case .tooLarge:
-                openFailed(item, tooLarge: true)
+                openFailed(item, tooLarge: true, key: key)
                 return
             case .unavailable:
                 break
@@ -1111,7 +1111,7 @@ private struct ArtifactsList: View {
             if let dataURL, await MediaPreviewPresenter.shared.presentSaveToFiles(dataURL: dataURL, filename: item.name) {
                 return
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stillOwns(key) else { return }
             Haptics.error()
             saveFileFailed = true
         }
@@ -1131,7 +1131,7 @@ private struct ArtifactsList: View {
             }
             if MediaPreviewPresenter.shared.present(downloaded: download) { return }
         case .tooLarge:
-            openFailed(item, tooLarge: true)
+            openFailed(item, tooLarge: true, key: key)
             return
         case .unavailable:
             break
@@ -1141,7 +1141,7 @@ private struct ArtifactsList: View {
         guard !Task.isCancelled else { return }
         guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled, stillOwns(key) else { return }
         guard await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: item.name) else {
-            openFailed(item)
+            openFailed(item, key: key)
             return
         }
     }
@@ -1164,8 +1164,10 @@ private struct ArtifactsList: View {
         .hostFile(path: path, title: item.name, resolver: resolver(for: item))
     }
 
-    private func openFailed(_ item: ArtifactItem, tooLarge: Bool = false) {
-        guard !Task.isCancelled else { return }
+    /// `key`: what the open began on; a failure for a list that has since
+    /// moved to another server or profile isn't shown over it.
+    private func openFailed(_ item: ArtifactItem, tooLarge: Bool = false, key: ArtifactsListKey? = nil) {
+        guard !Task.isCancelled, key.map(stillOwns) ?? true else { return }
         Haptics.error()
         missingIsTooLarge = tooLarge
         missing = item
