@@ -7214,7 +7214,7 @@ it. The Archived sheet finds it again for restoration or permanent deletion.
 the open chat's title and menu · the Archived sheet and its search, restore
 and confirmed delete · All profiles in Chats · the live list's pinned order
 and active-response guard · voice's automatically archived rows · combined
-dashboards · iPhone, iPad and Mac · accessibility labels and text
+dashboards · iPhone, iPad and Mac · accessibility labels and text · README.md
 
 **Desktop app:** partly: Archive in local chat-row menus and Filter › Archived
 for search, restore and confirmed deletion (desktop#410). It checks the chat's
@@ -7231,8 +7231,11 @@ dashboards' rows do not offer Archive.
 
 **Rulings**
 - Archive and restore use the conversation's profile and a revision-fenced
-  dashboard mutation. A running conversation is not archived; a successful
-  archive removes its pin and clears the open chat if it was selected.
+  dashboard mutation. On iOS, the open, running conversation is not archived
+  (a running row that isn't open, and another profile's row, are not stopped);
+  desktop checks live session status for the row's profile before archiving or
+  deleting. A successful archive removes its pin and clears the open chat if it
+  was selected.
 - The Archived sheet searches its server-backed list. Restore returns a chat
   to its list; Delete asks before permanently removing it.
 - Voice rows the plugin auto-archived are shown in Chats instead of Archived.
@@ -7243,6 +7246,7 @@ dashboards' rows do not offer Archive.
 **Open gaps**
 - Desktop does not offer Archive from a project chat row or the open chat's
   title menu. Its Archived view can list all profiles when All is selected.
+- Live Hermes archive/restore has not yet been tested end-to-end.
 
 **Checked:** 2026-11-23, #3194 (recorded the existing iOS archive and Archived
 sheet alongside desktop#410).
