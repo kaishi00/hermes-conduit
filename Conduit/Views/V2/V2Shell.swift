@@ -272,6 +272,20 @@ struct V2ListVisibility: Equatable {
     }
 }
 
+/// The tab's held updates, for a shared leaf (a bot's face) that also
+/// draws outside a tab: inside one it follows the tab's updates, outside it
+/// AppState itself (`BotMonogramView`).
+private struct V2ShownUpdatesKey: EnvironmentKey {
+    static let defaultValue: V2ShownUpdates? = nil
+}
+
+extension EnvironmentValues {
+    var v2ShownUpdates: V2ShownUpdates? {
+        get { self[V2ShownUpdatesKey.self] }
+        set { self[V2ShownUpdatesKey.self] = newValue }
+    }
+}
+
 @MainActor
 final class V2ShownUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()

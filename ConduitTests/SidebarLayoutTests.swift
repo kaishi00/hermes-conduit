@@ -317,6 +317,27 @@ final class SidebarLayoutTests: XCTestCase {
         }
     }
 
+    /// Bots Home holds its updates while another tab or a pushed chat
+    /// covers it, and shown again probes group support only when a
+    /// sign-in left it unread (audit 1722).
+    @MainActor
+    func testBotsHomeFollowsTheChatsListsGateAndProbesGroupsOnShow() {
+        var shell = V2ShellContext()
+        XCTAssertTrue(BotRosterView.isShown(in: shell))
+        shell.values.isTabActive = false
+        XCTAssertFalse(BotRosterView.isShown(in: shell), "another tab")
+        shell.values.isTabActive = true
+        shell.values.isRootCovered = true
+        XCTAssertFalse(BotRosterView.isShown(in: shell), "a chat pushed over it")
+
+        XCTAssertTrue(BotRosterView.probesGroupsOnShow(shown: true, connected: true, phase: .idle))
+        XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: false, connected: true, phase: .idle), "hidden")
+        XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: true, connected: false, phase: .idle), "offline")
+        XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: true, connected: true, phase: .available),
+                       "a socket drop keeps the phase: nothing to probe")
+        XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: true, connected: true, phase: .loading))
+    }
+
     /// A project page is covered by a chat pushed over it, not by one
     /// beside it; its rows compare on what they show.
     @MainActor
