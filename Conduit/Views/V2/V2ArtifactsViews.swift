@@ -260,10 +260,7 @@ private struct ArtifactsList: View {
     private var hostServes: Bool { hostPlugin.reports(ArtifactsClient.capability) }
     /// Whether the feed's host is the one on screen's, whose status this
     /// list may ask for again.
-    private var hostIsOnScreen: Bool {
-        guard case .chat(_, let far?) = scope else { return true }
-        return far.dashboardID == appState.activeDashboardID
-    }
+    private var hostIsOnScreen: Bool { appState.artifactsHostIsOnScreen(scope) }
 
     /// The dashboards whose artifacts the list can show, the one on screen
     /// first (nil), when All reaches other combined dashboards too.
@@ -401,7 +398,7 @@ private struct ArtifactsList: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .refreshable {
-            if savedOnly {
+            if savedOnly, hostIsOnScreen {
                 await reloadSaved()
             } else {
                 await reload()
@@ -506,7 +503,7 @@ private struct ArtifactsList: View {
         // old to say), never while Conduit hasn't heard from it: kept rows
         // show meanwhile, and with none kept, the loader, or offline, why
         // nothing can load yet.
-        if savedOnly {
+        if savedOnly, hostIsOnScreen {
             savedContent
         } else if !hostPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
@@ -1109,7 +1106,7 @@ private struct ArtifactsList: View {
     /// and swipes to the next one.
     private func openImage(_ item: ArtifactItem, path: String) {
         let tapped = galleryItem(item, path: path)
-        let shown = savedOnly ? savedItems : ArtifactsClient.days(items).flatMap(\.items)
+        let shown = savedOnly && hostIsOnScreen ? savedItems : ArtifactsClient.days(items).flatMap(\.items)
         let images = shown.compactMap { other -> ImageGalleryItem? in
             guard other.kind == .image, let path = other.openPath else { return nil }
             return other.id == item.id ? tapped : galleryItem(other, path: path)
