@@ -23,6 +23,11 @@ struct TranscriptRow: Identifiable, Equatable {
         /// A saved copy with no rows of its own: the chat on its way, or no
         /// copy saved.
         case savedCopyStatus(isOpening: Bool)
+        /// A chat on its way from Hermes with no rows and no saved copy to
+        /// draw meanwhile (one never opened on this phone, or no longer
+        /// kept): it says it's opening rather than drawing the welcome
+        /// (issue 3148).
+        case opening
         /// A chat with nothing in it yet.
         case empty
         /// One of the chat's rows.
@@ -51,7 +56,7 @@ struct TranscriptRow: Identifiable, Equatable {
     /// waiting), not its welcome, a status line or Load earlier.
     var isChatRow: Bool {
         switch kind {
-        case .loadEarlier, .savedCopyStatus, .empty: return false
+        case .loadEarlier, .savedCopyStatus, .opening, .empty: return false
         case .message, .thinking, .streaming, .working, .awaitingAgents, .pendingSend, .room: return true
         }
     }
@@ -59,6 +64,7 @@ struct TranscriptRow: Identifiable, Equatable {
     static let loadEarlierID = "transcript-load-earlier"
     static let savedCopyStatusID = "transcript-saved-copy"
     static let emptyID = "transcript-empty"
+    static let openingID = "transcript-opening"
     static let streamingID = "streaming"
     static let workingID = "typing"
     static let awaitingAgentsID = "awaiting-agents"
@@ -273,6 +279,9 @@ struct TranscriptModel {
         /// A chat picked in the saved list is opening while Conduit connects
         /// (not offline): with no rows, it says so.
         var savedCopyIsOpening = false
+        /// The live chat is on its way from Hermes (an open, or a read
+        /// back), so a chat with no rows isn't known to be empty yet.
+        var chatIsOpening = false
     }
 
     private(set) var rows: [TranscriptRow] = []
@@ -296,6 +305,25 @@ struct TranscriptModel {
         guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
         return true
     }
+    /// The same, its row loading or not: the held-page loop reads it right
+    /// after a page, before the rows drop the loading state (#3143).
+    var drawsOnlyLoadEarlierRow: Bool {
+        guard rows.count == 1, case .loadEarlier = rows[0].kind else { return false }
+        return true
+    }
+
+    /// Whether the rows say the chat is opening (the opening line, or a
+    /// picked chat's saved copy on its way): the notification-open pill
+    /// over the chat would say it twice.
+    var drawsOpeningLine: Bool {
+        rows.contains { row in
+            switch row.kind {
+            case .opening, .savedCopyStatus(isOpening: true): return true
+            default: return false
+            }
+        }
+    }
+
     /// The chat's rows left out because an earlier row has their id. Ids
     /// are unique in practice; the trace names any that aren't.
     private(set) var repeatedIDs: [String] = []
@@ -379,8 +407,16 @@ struct TranscriptModel {
                 } else if input.pendingSend == nil {
                     add(TranscriptRow(id: TranscriptRow.savedCopyStatusID, kind: .savedCopyStatus(isOpening: false)))
                 }
-            } else if !input.hasSavedCopy, input.pendingSend == nil {
-                add(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty))
+            } else if !input.hasSavedCopy {
+                // Not the welcome while Hermes is still sending the chat:
+                // on a slow link it read as an empty chat (issue 3148). A
+                // send waiting in it shows under the line, as under a
+                // saved copy's.
+                if input.chatIsOpening {
+                    add(TranscriptRow(id: TranscriptRow.openingID, kind: .opening))
+                } else if input.pendingSend == nil {
+                    add(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty))
+                }
             }
         }
         rows.append(contentsOf: messages)

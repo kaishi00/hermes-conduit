@@ -724,7 +724,7 @@ extension NotificationE2ETests {
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                         keys: LocationKeyStore.memory())
         let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: true),
-                                                   unsent: unsent)
+                                                   unsent: unsent, writeStoredConfig: { _ in true })
         XCTAssertEqual(controller.unsentSpotEntryCount, 1)
         controller.forgetSpots()
         XCTAssertEqual(controller.unsentSpotEntryCount, 0)
@@ -792,7 +792,7 @@ extension NotificationE2ETests {
                                         keys: LocationKeyStore.memory())
         // Not the App Group's queue (#2765's review).
         let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: true),
-                                                   unsent: unsent, writeStoredUnsent: { _ in true }, dropMarker: .memory())
+                                                   unsent: unsent, writeStoredUnsent: { _ in true }, writeStoredConfig: { _ in true }, dropMarker: .memory())
         XCTAssertTrue(controller.hasUnsent)
 
         controller.dropUnsent(boundTo: UUID())
@@ -831,7 +831,7 @@ extension NotificationE2ETests {
             let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                             keys: LocationKeyStore.memory())
             let controller = LocationSharingController(engine: engine, unsent: unsent, readStoredConfig: { .unreadable },
-                                                       dropMarker: .memory())
+                                                       writeStoredConfig: { _ in true }, dropMarker: .memory())
             controller.hostPassDashboardID = { dashboard }
             XCTAssertTrue(controller.configUnreadable)
             XCTAssertTrue(controller.hasUnsent)
@@ -893,7 +893,7 @@ extension NotificationE2ETests {
                 written.append(queue)
                 return true
             },
-            dropMarker: .memory()
+            writeStoredConfig: { _ in true }, dropMarker: .memory()
         )
         controller.hostPassDashboardID = { nil }
         // Without a drop, the file's queue is read once it can be.
@@ -902,7 +902,7 @@ extension NotificationE2ETests {
             readStoredConfig: { configReadable ? .value(LocationFixtures.config(background: true)) : .unreadable },
             readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() },
             writeStoredUnsent: { _ in true },
-            dropMarker: .memory()
+            writeStoredConfig: { _ in true }, dropMarker: .memory()
         )
         XCTAssertFalse(controller.hasUnsent, "Nothing could be read at launch")
 
@@ -943,7 +943,7 @@ extension NotificationE2ETests {
                 written.append(queue)
                 return true
             },
-            dropMarker: .memory()
+            writeStoredConfig: { _ in true }, dropMarker: .memory()
         )
         controller.hostPassDashboardID = { nil }
         controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
@@ -983,7 +983,7 @@ extension NotificationE2ETests {
                     onDisk = queue
                     return true
                 },
-                dropMarker: .memory(marker)
+                writeStoredConfig: { _ in true }, dropMarker: .memory(marker)
             )
         }
         let controller = launch()
@@ -1032,7 +1032,7 @@ extension NotificationE2ETests {
                 onDisk = queue
                 return true
             },
-            dropMarker: marker
+            writeStoredConfig: { _ in true }, dropMarker: marker
         )
         controller.hostPassDashboardID = { nil }
         XCTAssertFalse(controller.unsentDroppedWhileUnreadable, "Nothing could be read before the first unlock")
@@ -1075,7 +1075,7 @@ extension NotificationE2ETests {
                 return onDisk
             },
             writeStoredUnsent: { _ in false },
-            dropMarker: marker
+            writeStoredConfig: { _ in true }, dropMarker: marker
         )
         XCTAssertFalse(unlockedMidLaunch.hasUnsent, "unlocked between the reads: the dropped queue isn't kept")
         XCTAssertTrue(unlockedMidLaunch.unsentDroppedWhileUnreadable)
@@ -1091,7 +1091,7 @@ extension NotificationE2ETests {
                 written.append(queue)
                 return true
             },
-            dropMarker: marker
+            writeStoredConfig: { _ in true }, dropMarker: marker
         )
         noConfig.hostPassDashboardID = { nil }
         unlocked = true
@@ -1107,7 +1107,7 @@ extension NotificationE2ETests {
             readStoredConfig: { .value(LocationFixtures.config(background: true)) },
             readStoredUnsent: { onDisk },
             writeStoredUnsent: { _ in fileWritable },
-            dropMarker: marker
+            writeStoredConfig: { _ in true }, dropMarker: marker
         )
         refused.dropUnsent(boundTo: LocationFixtures.dashboardID)
         XCTAssertTrue(refused.unsentDroppedWhileUnreadable)
@@ -1127,7 +1127,7 @@ extension NotificationE2ETests {
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                         keys: LocationKeyStore.memory())
         let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: false, talking: true),
-                                                   unsent: LocationUnsent())
+                                                   unsent: LocationUnsent(), writeStoredConfig: { _ in true })
         var now = LocationFixtures.at
         var conditions = DeviceConditions()
         controller.now = { now }
@@ -1494,7 +1494,7 @@ extension NotificationE2ETests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                         keys: LocationKeyStore.memory())
-        let controller = LocationSharingController(engine: engine, config: config, unsent: LocationUnsent())
+        let controller = LocationSharingController(engine: engine, config: config, unsent: LocationUnsent(), writeStoredConfig: { _ in true })
         var now = LocationFixtures.at.addingTimeInterval(120)
         controller.now = { now }
         XCTAssertTrue(MapsVoiceTool.allowsLocation(mode: .geminiLive, controller: controller))

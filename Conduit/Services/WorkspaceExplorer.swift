@@ -53,6 +53,10 @@ final class WorkspaceExplorer: ObservableObject {
     @Published private(set) var viewedGone = 0
 
     private weak var appState: AppState?
+    /// Another combined dashboard's chat open in place, whose folder this
+    /// tab shows: everything is read through that dashboard's kept
+    /// connection, as its profile there.
+    private(set) var far: FarChatOwner?
     /// Where the open folder's listing and recent files are kept: on the
     /// dashboard it opened on, for its profile.
     private var answers: KeptAnswers?
@@ -81,10 +85,10 @@ final class WorkspaceExplorer: ObservableObject {
 
     /// Whether the plugin serves search, recent files and file actions for
     /// the open folder's profile.
-    var canChange: Bool { (appState?.supportsWorkspaceFiles ?? false) && pluginOff == nil }
+    var canChange: Bool { (appState?.supportsWorkspaceFiles(far: far) ?? false) && pluginOff == nil }
 
     /// Whether the plugin pastes a copy into another folder.
-    var canCopy: Bool { canChange && (appState?.notifierPlugin.reports(WorkspaceFilesClient.copyCapability) ?? false) }
+    var canCopy: Bool { canChange && (appState?.workspacePlugin(far).reports(WorkspaceFilesClient.copyCapability) ?? false) }
 
     /// Whether `source` may go into `folder`: not where it already is, and
     /// a folder never into itself or a folder inside it.
@@ -95,15 +99,25 @@ final class WorkspaceExplorer: ObservableObject {
         return AppState.parentWorkspacePath(from).map(AppState.normalizedWorkspacePath) != to
     }
 
-    func attach(_ appState: AppState) {
+    func attach(_ appState: AppState, far: FarChatOwner? = nil) {
         self.appState = appState
+        self.far = far
     }
+
+    /// The client for the open folder's host: a far chat's own dashboard's.
+    func filesClient(profile: String) -> WorkspaceFilesClient? {
+        appState?.workspaceFilesClient(profile: profile, far: far)
+    }
+
+    /// Who an answer asked now belongs to, and whether one still does.
+    func runtimeOwner() -> AppState.DashboardRuntimeOwner? { appState?.workspaceRuntimeOwner(far) }
+    func owns(_ owner: AppState.DashboardRuntimeOwner) -> Bool { appState?.ownsWorkspaceRuntime(owner) ?? false }
 
     /// Opens `root` for `profile`, from scratch (another folder, profile or
     /// server), or keeps what is open when nothing changed.
     func open(root: String, profile: String) async {
         guard let appState else { return }
-        let next = Scope(dashboard: appState.activeDashboardID, profile: profile, root: root)
+        let next = Scope(dashboard: appState.workspaceFarDashboardID(far) ?? appState.activeDashboardID, profile: profile, root: root)
         guard next != scope else { return }
         generation &+= 1
         scope = next
@@ -122,10 +136,10 @@ final class WorkspaceExplorer: ObservableObject {
         keepsOpen = []
         previews = [:]
         closeFile()
-        let answers = appState.screenAnswers(profile: profile)
+        let answers = appState.workspaceAnswers(profile: profile, far: far)
         self.answers = answers
         // Before Hermes answers, so nothing comes or goes when it does.
-        let client = appState.workspaceFilesClient(profile: profile)
+        let client = appState.workspaceFilesClient(profile: profile, far: far)
         let kept = client.keptListing(root: root, path: root, in: answers)
         if let kept {
             entries[root] = kept.entries
@@ -235,6 +249,10 @@ final class WorkspaceExplorer: ObservableObject {
     func upload(_ urls: [URL], into folder: String) async -> String? {
         var failure: String?
         var sent = false
+        // The folder and host the files were picked for: a file read after
+        // the tab moved to another folder or chat's host isn't sent there.
+        let startedScope = scope
+        let startedFar = far
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -252,10 +270,21 @@ final class WorkspaceExplorer: ObservableObject {
                 failure = tooLarge
                 continue
             }
+            guard scope == startedScope, far == startedFar else { break }
             sent = true
-            if let error = await change(refreshing: false, { client, root in
-                try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
-            }) {
+            // A failure that came after the host went (a far chat's
+            // dashboard dropped) is still this file's: `change` answers nil
+            // for it, so it's caught here too.
+            var thrown: Error?
+            let error = await change(refreshing: false, { client, root in
+                do {
+                    try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
+                } catch {
+                    thrown = error
+                    throw error
+                }
+            })
+            if let error = error ?? thrown {
                 failure = UserFacingError.message(for: error)
             }
         }
@@ -268,8 +297,13 @@ final class WorkspaceExplorer: ObservableObject {
     /// kept listing, which waits for its word, isn't left up until the next
     /// connect. The Folder reads again once it answers (its `Changes`).
     private func askPluginIfUnanswered() {
-        guard let appState, !appState.supportsWorkspaceFiles, appState.isConnected,
-              appState.notifierPlugin.state == .unknown else { return }
+        guard let appState, !appState.supportsWorkspaceFiles(far: far), appState.workspaceIsConnected(far),
+              appState.workspacePlugin(far).state == .unknown else { return }
+        // A far chat's own dashboard's plugin is asked there.
+        if let id = appState.workspaceFarDashboardID(far) {
+            Task { await appState.readKeptPluginStatusIfUnknown(id) }
+            return
+        }
         Task { await appState.refreshNotifierPluginStatus() }
     }
 
@@ -318,7 +352,7 @@ final class WorkspaceExplorer: ObservableObject {
     /// Whether an answer asked at `ticket` under `owner` still belongs here.
     private func isCurrent(_ ticket: Int, _ owner: AppState.DashboardRuntimeOwner?, _ profile: String) -> Bool {
         guard ticket == generation, let appState, scope?.profile == profile else { return false }
-        if let owner { return appState.ownsDashboardRuntime(owner) }
+        if let owner { return appState.ownsWorkspaceRuntime(owner) }
         return true
     }
 
@@ -326,7 +360,7 @@ final class WorkspaceExplorer: ObservableObject {
     private func load(_ folder: String) async -> Bool {
         guard let appState, let scope else { return false }
         let ticket = generation
-        let owner = appState.currentDashboardRuntimeOwner()
+        let owner = appState.workspaceRuntimeOwner(far)
         // The folder's own listing is what it opens on next time; Hermes'
         // own listing (an older plugin) has no sizes or dates to keep.
         let answers = folder == scope.root ? self.answers : nil
@@ -343,11 +377,11 @@ final class WorkspaceExplorer: ObservableObject {
             // With the plugin off for this profile, a folder in the tree
             // reads Hermes' listing straight away; the open folder asks the
             // plugin again each time, so turning it on shows on a refresh.
-            if appState.supportsWorkspaceFiles, pluginOff == nil || folder == scope.root {
+            if appState.supportsWorkspaceFiles(far: far), pluginOff == nil || folder == scope.root {
                 pluginAsk &+= 1
                 ask = pluginAsk
                 do {
-                    let listing = try await appState.workspaceFilesClient(profile: scope.profile)
+                    let listing = try await appState.workspaceFilesClient(profile: scope.profile, far: far)
                         .list(root: scope.root, path: folder, keptIn: answers)
                     listed = listing.entries
                     cut = listing.truncated
@@ -359,17 +393,17 @@ final class WorkspaceExplorer: ObservableObject {
                     // Said even when Hermes' own listing then fails too, so
                     // no change is offered on a profile that refuses them.
                     if ask == pluginAsk { markPluginOff(remedy) }
-                    listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
+                    listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile, far: far)
                 }
             } else if folder == scope.root, showsKeptRoot,
-                      appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+                      appState.workspacePlugin(far).mayServe(WorkspaceFilesClient.capability) {
                 // The kept listing waits for the plugin's word, as kept
                 // Artifacts rows do: Hermes' own listing has no sizes or
                 // dates, and the folder reads again once the plugin says
                 // whether it serves the routes.
                 return false
             } else {
-                listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
+                listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile, far: far)
             }
             // The bridge's invalidation makes a late answer throw; this
             // re-check also covers a switch landing between that answer and
@@ -411,8 +445,8 @@ final class WorkspaceExplorer: ObservableObject {
     private func loadRecent() async {
         guard let appState, let scope, canChange else { return }
         let ticket = generation
-        let owner = appState.currentDashboardRuntimeOwner()
-        guard let found = try? await appState.workspaceFilesClient(profile: scope.profile)
+        let owner = appState.workspaceRuntimeOwner(far)
+        guard let found = try? await appState.workspaceFilesClient(profile: scope.profile, far: far)
                 .recent(root: scope.root, keptIn: answers),
               isCurrent(ticket, owner, scope.profile), pluginOff == nil else { return }
         recent = found
@@ -432,11 +466,11 @@ final class WorkspaceExplorer: ObservableObject {
         let ticket = generation
         let request = UUID()
         searchRequest = request
-        let owner = appState.currentDashboardRuntimeOwner()
+        let owner = appState.workspaceRuntimeOwner(far)
         searching = true
         defer { if searchRequest == request { searching = false } }
         do {
-            let found = try await appState.workspaceFilesClient(profile: scope.profile).search(root: scope.root, query: words)
+            let found = try await appState.workspaceFilesClient(profile: scope.profile, far: far).search(root: scope.root, query: words)
             guard searchRequest == request, isCurrent(ticket, owner, scope.profile) else { return }
             search = found
             searchError = nil
@@ -455,9 +489,9 @@ final class WorkspaceExplorer: ObservableObject {
     /// shows, and it is the one that ends the loading state.
     func view(_ entry: WorkspaceEntry, line: Int? = nil) async {
         guard let appState else { return }
-        let profile = scope?.profile ?? appState.workspaceProfile
+        let profile = scope?.profile ?? appState.workspaceProfile(far: far)
         let ticket = generation
-        let owner = appState.currentDashboardRuntimeOwner()
+        let owner = appState.workspaceRuntimeOwner(far)
         let request = UUID()
         previewRequest = request
         viewed = entry
@@ -494,17 +528,17 @@ final class WorkspaceExplorer: ObservableObject {
             if let early {
                 text = try await early.value
             } else {
-                text = try await appState.readWorkspaceText(entry.path, profile: profile)
+                text = try await appState.readWorkspaceText(entry.path, profile: profile, far: far)
             }
             guard previewRequest == request, ticket == generation,
-                  owner.map(appState.ownsDashboardRuntime) ?? true else { return }
+                  owner.map(appState.ownsWorkspaceRuntime) ?? true else { return }
             preview = text
             keepPreview(text, for: entry)
         } catch is CancellationError {
             return
         } catch {
             guard previewRequest == request, ticket == generation,
-                  owner.map(appState.ownsDashboardRuntime) ?? true else { return }
+                  owner.map(appState.ownsWorkspaceRuntime) ?? true else { return }
             previewError = UserFacingError.message(for: error)
         }
     }
@@ -514,8 +548,17 @@ final class WorkspaceExplorer: ObservableObject {
     /// it doesn't need (issue 1964). `view` takes it up for the same file.
     /// A read left behind (its tap replaced, or the file never opened) is
     /// no use after this: a later open reads the file again.
-    private var prefetchedText: (path: String, profile: String, dashboard: UUID?, at: Date, read: Task<WorkspaceFilePreview, Error>)?
+    /// With the connection it read on, which an open takes it up only
+    /// while that's still the folder's host's.
+    private var prefetchedText: (path: String, profile: String, dashboard: UUID?, owner: AppState.DashboardRuntimeOwner?,
+                                 at: Date, read: Task<WorkspaceFilePreview, Error>)?
     static let prefetchedTextLifetime: TimeInterval = 30
+
+    /// The dashboard whose host the tab reads: a far chat's own.
+    private var hostDashboardID: UUID? {
+        guard let appState else { return nil }
+        return appState.workspaceFarDashboardID(far) ?? appState.activeDashboardID
+    }
 
     func prefetchText(_ path: String, profile: String) {
         guard let appState else { return }
@@ -524,12 +567,13 @@ final class WorkspaceExplorer: ObservableObject {
         if let kept = prefetchedText {
             if Self.prefetchedTextFits(
                 path: kept.path, profile: kept.profile, dashboard: kept.dashboard, readAt: kept.at,
-                openingPath: path, profile: profile, dashboard: appState.activeDashboardID, now: Date()
+                openingPath: path, profile: profile, dashboard: hostDashboardID, now: Date()
             ) { return }
             kept.read.cancel()
         }
-        prefetchedText = (path, profile, appState.activeDashboardID, Date(), Task {
-            try await appState.readWorkspaceText(path, profile: profile)
+        let far = self.far
+        prefetchedText = (path, profile, hostDashboardID, appState.workspaceRuntimeOwner(far), Date(), Task {
+            try await appState.readWorkspaceText(path, profile: profile, far: far)
         })
     }
 
@@ -538,8 +582,8 @@ final class WorkspaceExplorer: ObservableObject {
         prefetchedText = nil
         guard Self.prefetchedTextFits(
             path: kept.path, profile: kept.profile, dashboard: kept.dashboard, readAt: kept.at,
-            openingPath: path, profile: profile, dashboard: appState?.activeDashboardID, now: Date()
-        ) else {
+            openingPath: path, profile: profile, dashboard: hostDashboardID, now: Date()
+        ), kept.owner.map({ appState?.ownsWorkspaceRuntime($0) ?? false }) ?? true else {
             kept.read.cancel()
             return nil
         }
@@ -620,9 +664,9 @@ final class WorkspaceExplorer: ObservableObject {
     func change(refreshing: Bool = true, _ action: (WorkspaceFilesClient, String) async throws -> Void) async -> Error? {
         guard let appState, let scope else { return nil }
         let ticket = generation
-        let owner = appState.currentDashboardRuntimeOwner()
+        let owner = appState.workspaceRuntimeOwner(far)
         do {
-            try await action(appState.workspaceFilesClient(profile: scope.profile), scope.root)
+            try await action(appState.workspaceFilesClient(profile: scope.profile, far: far), scope.root)
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
             Haptics.success()
             if refreshing { await refresh() }

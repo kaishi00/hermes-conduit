@@ -7,7 +7,12 @@ import TipKit
 /// created, edited (look, picture, description, personality), pinned and
 /// deleted here, through the same gateway records Hermes Desktop uses.
 struct BotRosterView: View {
-    @EnvironmentObject private var appState: AppState
+    /// AppState read through the tab's updates (`V2ShownUpdates`), which
+    /// hold its changes back while another tab is up: a hidden Bots Home
+    /// redrew on every publish of a turn (issue 1722). The sidebar's host
+    /// shows it always (`BotRosterHost`).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     /// Language changes must re-render localized strings immediately while
     /// the Bots tab stays selected (same contract as SessionList/CronList).
     @ObservedObject private var appLanguage = AppLanguageStore.shared
@@ -126,6 +131,15 @@ struct BotRosterView: View {
         // so its id is kept for a retry.
         .onChange(of: shell.isTabActive) { _, active in
             if !active, !creatingNewRoom { newRoom.clear() }
+        }
+        // Hidden or covered, it draws none of AppState's changes, so a
+        // sign-out and sign-in to the same dashboard leaves
+        // rosterRefreshKey as it was and groups unprobed: shown again, it
+        // probes them.
+        .onChange(of: Self.isShown(in: shell)) { _, shown in
+            if Self.probesGroupsOnShow(shown: shown, connected: appState.isConnected, phase: appState.groupChatPhase) {
+                Task { await appState.refreshGroupChatSupport() }
+            }
         }
         .onChange(of: canStartRoomHere) { _, can in
             if !can, !creatingNewRoom { newRoom.clear() }
@@ -399,6 +413,18 @@ struct BotRosterView: View {
     /// replacement that could only race the single-flight claim.
     /// Connection is part of the key: sign-out tears the group state down,
     /// and a same-dashboard sign-in must probe it again.
+    /// Bots Home on screen: its tab, nothing pushed over it (what its
+    /// held updates follow, V2BotsView).
+    static func isShown(in shell: V2ShellContext) -> Bool {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit).isShown
+    }
+
+    /// Shown again, connected, with group support unread (a sign-in while
+    /// hidden reset it): probe it. A socket drop keeps the phase.
+    static func probesGroupsOnShow(shown: Bool, connected: Bool, phase: AppState.GroupChatPhase) -> Bool {
+        shown && connected && phase == .idle
+    }
+
     private var rosterRefreshKey: String {
         "\(appState.activeDashboardID?.uuidString ?? "-")|\(appState.isConnected)"
     }
@@ -1806,7 +1832,10 @@ struct BotRosterView: View {
 /// same-name recreate is a genuinely fresh room upstream).
 struct GroupRosterRow: View {
     let room: GroupRoom
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
 
     var body: some View {
@@ -1851,7 +1880,10 @@ private struct BotRosterRow: View {
     let rooms: [GroupRoom]
     let canStartGroup: Bool
     let actions: Actions
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
 
     /// What the row's menu and swipe actions do (Desktop's row menu).
@@ -2066,7 +2098,10 @@ private struct BotRosterMenu: View {
 /// its color.
 struct BotMonogramView: View {
     let bot: BotProfile
-    @EnvironmentObject private var appState: AppState
+    /// Inside a tab that holds its updates back (Bots Home), the face
+    /// follows them; elsewhere (a group chat, an invite) AppState itself
+    /// (audit 1722).
+    @Environment(\.v2ShownUpdates) private var held
     /// Scales with Dynamic Type so the glyph never clips at accessibility
     /// sizes (a fixed 36x36 frame clipped the letter once `.body` grew).
     @ScaledMetric private var avatarSize: CGFloat
@@ -2084,19 +2119,56 @@ struct BotMonogramView: View {
     }
 
     var body: some View {
-        BotAvatarView(
-            name: bot.name,
-            label: bot.displayLabel,
-            colorString: bot.shownColor,
-            image: appState.botAvatarImage(for: bot),
-            size: avatarSize,
-            playback: animates ? appState.botAvatarPlayback(for: bot) : nil,
-            face: bot.faceLook
-        )
-        // Connecting fetches again: a kept row's fetch fails offline.
-        .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {
-            await appState.loadBotAvatarRetrying(bot)
+        if let held {
+            BotMonogramHeldFace(bot: bot, size: avatarSize, animates: animates, updates: held)
+        } else {
+            BotMonogramLiveFace(bot: bot, size: avatarSize, animates: animates)
         }
+    }
+}
+
+/// BotMonogramView following a tab's held updates.
+private struct BotMonogramHeldFace: View {
+    let bot: BotProfile
+    let size: CGFloat
+    let animates: Bool
+    @ObservedObject var updates: V2ShownUpdates
+
+    var body: some View {
+        botMonogramFace(bot: bot, size: size, animates: animates, appState: updates.appState)
+    }
+}
+
+/// BotMonogramView following AppState.
+private struct BotMonogramLiveFace: View {
+    let bot: BotProfile
+    let size: CGFloat
+    let animates: Bool
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        botMonogramFace(bot: bot, size: size, animates: animates, appState: appState)
+    }
+}
+
+/// The face itself, drawn from whichever AppState its view follows: a
+/// function, not a view of its own, so it's built again with each redraw
+/// of the view that follows (a view holding only AppState would compare
+/// equal and skip it).
+@MainActor @ViewBuilder
+private func botMonogramFace(bot: BotProfile, size: CGFloat, animates: Bool, appState: AppState) -> some View {
+    BotAvatarView(
+        name: bot.name,
+        label: bot.displayLabel,
+        colorString: bot.shownColor,
+        image: appState.botAvatarImage(for: bot),
+        size: size,
+        playback: animates ? appState.botAvatarPlayback(for: bot) : nil,
+        face: bot.faceLook
+    )
+    // Connecting fetches again: a kept row's fetch fails offline.
+    .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {
+        await appState.loadBotAvatarRetrying(bot)
     }
 }
 
@@ -2249,4 +2321,20 @@ private struct NewRoomFarBot: Identifiable {
     let bot: BotProfile
     let section: CombinedDashboardBotsSection
     let own: OwnHermesBot
+}
+
+/// BotRosterView where no tab holds its updates back (the sidebar): its
+/// updates always pass on.
+struct BotRosterHost: View {
+    @StateObject private var updates: V2ShownUpdates
+
+    init(appState: AppState) {
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    var body: some View {
+        BotRosterView()
+            .environmentObject(updates)
+            .environment(\.v2ShownUpdates, updates)
+    }
 }

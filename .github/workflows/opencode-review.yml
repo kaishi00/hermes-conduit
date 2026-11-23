@@ -598,17 +598,25 @@ jobs:
             # starts from the commit this job checked out, the test request
             # reads its URL from that commit's opencode.json, and a key goes
             # only to a host in PROVIDER_HOSTS (notifier#1013).
-            trusted=$(git rev-parse HEAD 2>/dev/null) || trusted=''
-            config="$RUNNER_TEMP/opencode.trusted.json"
-            if [ -z "$trusted" ] || ! cp opencode.json "$config"; then
-              echo "::error::Couldn't note the checked-out commit and its opencode.json."; exit 1
+            if ! trusted=$(git rev-parse HEAD 2>&1); then
+              echo "::error::Couldn't note the checked-out commit: $trusted"; exit 1
             fi
+            config="$RUNNER_TEMP/opencode.trusted.json"
+            if ! why=$(cp opencode.json "$config" 2>&1); then
+              echo "::error::Couldn't copy the checked-out opencode.json: $why"; exit 1
+            fi
+            # Prints why when it fails.
             restore() {
+              local out
               # On a fork's PR opencode adds a "fork" remote and fails if it's
               # already there, as it is after an earlier attempt in the chain.
               git remote remove fork >/dev/null 2>&1 || true
-              git checkout -q -f --detach "$trusted" >/dev/null 2>&1 \
-                && git clean -q -ffdx >/dev/null 2>&1 && cmp -s opencode.json "$config"
+              # An attempt killed by its time limit can leave git's locks
+              # behind; nothing else is using the checkout now.
+              rm -f .git/index.lock .git/HEAD.lock
+              out=$(git checkout -q -f --detach "$trusted" 2>&1) || { echo "git checkout: $out"; return 1; }
+              out=$(git clean -q -ffdx 2>&1) || { echo "git clean: $out"; return 1; }
+              cmp -s opencode.json "$config" || { echo "opencode.json still differs from the checked-out copy"; return 1; }
             }
             seconds() { awk -v m="$1" 'BEGIN { printf "%d", m * 60 + 0.5 }'; }
             review_seconds=$(seconds "$REVIEW_MINUTES")
@@ -639,7 +647,7 @@ jobs:
               host=''
               [[ $base =~ ^https://([A-Za-z0-9.-]+)(/|$) ]] && host=${BASH_REMATCH[1]}
               if [ -z "$host" ] || [[ " $PROVIDER_HOSTS " != *" $host "* ]]; then
-                say "Skipped $what: $base isn't on a provider host the workflow approves."; continue
+                say "Skipped $what: $base isn't on a provider host the workflow approves ($PROVIDER_HOSTS)."; continue
               fi
               if ! answer=$(probe "$base" "$value" "${model#*/}"); then
                 say "Skipped $what: the test request got $answer"; continue
@@ -654,8 +662,8 @@ jobs:
                 limit=$((left < review_seconds ? left : review_seconds))
               fi
               say "Reviewing with $what."
-              if ! restore; then
-                echo "::error::Couldn't restore the checked-out commit before $what, so no attempt runs on the PR's files."; exit 1
+              if ! why=$(restore); then
+                echo "::error::Couldn't restore the checked-out commit before $what ($why), so no attempt runs on the PR's files."; exit 1
               fi
               status=0
               env "$var=$value" MODEL="$model" PROMPT="${PROMPT//'{reviewer}'/$name}$earlier" \

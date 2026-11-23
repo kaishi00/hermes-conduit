@@ -23,7 +23,10 @@ import UniformTypeIdentifiers
 /// over its face starts a room, as over theirs: a draft here that brings it
 /// from its own Hermes over an own Link (Eric, 2026-11-16).
 struct CombinedDashboardBotPortrait: View {
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     let item: CombinedBotsHomeItem
     let section: CombinedDashboardBotsSection
     /// Another portrait dropped on this one: held still over its face

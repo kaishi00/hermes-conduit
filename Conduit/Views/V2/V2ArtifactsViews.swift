@@ -21,14 +21,15 @@ enum ArtifactScope: Equatable {
     /// Every chat in the active profile (in each profile All shows, while
     /// it's on), and every bot's Bot Chat.
     case profile
-    /// One chat, by every id it's known by.
-    case chat([String])
+    /// One chat, by every id it's known by; `far` names another combined
+    /// dashboard's chat open in place, whose store is that dashboard's.
+    case chat([String], far: FarChatOwner? = nil)
     /// One bot's profile, its Bot Chat's rows by the bot's name (the Bot
     /// Overview's Artifacts).
     case bot(String)
 
     var sessionIDs: [String] {
-        if case .chat(let ids) = self { return ids }
+        if case .chat(let ids, _) = self { return ids }
         return []
     }
 }
@@ -88,6 +89,9 @@ struct ChatArtifactsContent: View {
     @EnvironmentObject private var appState: AppState
     /// Read once: the open chat's ids when it opened.
     let sessionIDs: [String]
+    /// Another combined dashboard's chat open in place: its artifacts and
+    /// its folder are read on its own dashboard.
+    var far: FarChatOwner? = nil
     @Binding var tab: ArtifactsTab
     /// Beside the chat rather than in a sheet of its own: no navigation bar
     /// of its own, so the list's search is a field in the list.
@@ -109,10 +113,10 @@ struct ChatArtifactsContent: View {
                     }
                     .frame(maxHeight: .infinity)
                 } else {
-                    ArtifactsList(scope: .chat(sessionIDs), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
+                    ArtifactsList(scope: .chat(sessionIDs, far: far), chatIsOpen: true, inPanel: inPanel, showInChat: showInChat)
                 }
             case .folder:
-                WorkspaceFolderView(includesChat: true, handlesReveals: true)
+                WorkspaceFolderView(includesChat: true, handlesReveals: true, far: far)
             }
         }
     }
@@ -124,19 +128,22 @@ struct ChatArtifactsSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// Read once: the open chat's ids when the sheet opened.
     let sessionIDs: [String]
+    let far: FarChatOwner?
     @State var tab: ArtifactsTab
     /// The tab now showing, so a later open knows whether to switch.
     var onTabChange: (ArtifactsTab) -> Void = { _ in }
 
-    init(sessionIDs: [String], tab: ArtifactsTab = .made, onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
+    init(sessionIDs: [String], far: FarChatOwner? = nil, tab: ArtifactsTab = .made,
+         onTabChange: @escaping (ArtifactsTab) -> Void = { _ in }) {
         self.sessionIDs = sessionIDs
+        self.far = far
         _tab = State(initialValue: tab)
         self.onTabChange = onTabChange
     }
 
     var body: some View {
         NavigationStack {
-            ChatArtifactsContent(sessionIDs: sessionIDs, tab: $tab) { item in
+            ChatArtifactsContent(sessionIDs: sessionIDs, far: far, tab: $tab) { item in
                 dismiss()
                 appState.showArtifactInChat(item, chatIsOpen: true)
             }
@@ -231,11 +238,26 @@ private struct ArtifactsList: View {
         let served: Bool
     }
 
+    /// The dashboard and profile the list is read for: a far chat's own,
+    /// so another far chat's rows and opens don't carry over to it.
+    private var keyOwner: (dashboard: UUID?, profile: String) {
+        guard case .chat(_, let far?) = scope else { return (appState.activeDashboardID, appState.activeProfile) }
+        return (far.dashboardID, far.profile)
+    }
+
     private var currentKey: ArtifactsListKey {
-        ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile,
+        ArtifactsListKey(dashboard: keyOwner.dashboard, profile: keyOwner.profile,
                          sources: shownSources(appState.artifactSources(for: scope)), filter: filter,
                          query: query.trimmingCharacters(in: .whitespacesAndNewlines), showMissing: showMissing)
     }
+
+    /// The plugin the feed is read through: a far chat's own dashboard's.
+    private var hostPlugin: NotifierPluginStatus { appState.artifactsHost(for: scope).plugin }
+    private var hostIsConnected: Bool { appState.artifactsHost(for: scope).isConnected }
+    private var hostServes: Bool { hostPlugin.reports(ArtifactsClient.capability) }
+    /// Whether the feed's host is the one on screen's, whose status this
+    /// list may ask for again.
+    private var hostIsOnScreen: Bool { appState.artifactsHostIsOnScreen(scope) }
 
     /// The dashboards whose artifacts the list can show, the one on screen
     /// first (nil), when All reaches other combined dashboards too.
@@ -282,16 +304,20 @@ private struct ArtifactsList: View {
         return Set(ArtifactPinsClient.items(sources: ownSources, saved: savedRows).map(\.id))
     }
 
-    private var offersSaved: Bool { appState.supportsArtifactPins }
+    /// Saved reads this dashboard's pins: a far chat's list has none to show.
+    private var offersSaved: Bool { hostIsOnScreen && appState.supportsArtifactPins }
     private var nextBefore: ArtifactFeed.Cursor? { feed?.nextCursor }
 
     var body: some View {
         list
         .modifier(ArtifactsListChrome(inPanel: inPanel, query: $query, showMissing: $showMissing,
-                                      offersMissing: appState.supportsArtifacts))
+                                      offersMissing: hostServes))
         // Before the first frame, so nothing comes or goes when Hermes answers.
         .onAppear { showKept(currentKey) }
-        .task(id: Reading(key: currentKey, served: appState.supportsArtifacts)) {
+        .task(id: Reading(key: currentKey, served: hostServes)) {
+            // A far chat's list has no Saved (its pins are the screen's
+            // dashboard's), even when Saved was picked beside another chat.
+            if savedOnly, !hostIsOnScreen { savedOnly = false }
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -369,7 +395,7 @@ private struct ArtifactsList: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .refreshable {
-            if savedOnly {
+            if savedOnly, hostIsOnScreen {
                 await reloadSaved()
             } else {
                 await reload()
@@ -391,7 +417,7 @@ private struct ArtifactsList: View {
                     // its kind.
                     // Kept rows show it before the plugin has answered
                     // (offline, just launched); Save itself waits for it.
-                    if option == .all, offersSaved || savedOnly
+                    if option == .all, hostIsOnScreen, offersSaved || savedOnly
                         || savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
                         let count = savedIDs.count
                         chip(Text("Saved") + Text(verbatim: count == 0 ? "" : " \(count)"),
@@ -415,7 +441,7 @@ private struct ArtifactsList: View {
                         }
                     }
                 }
-                if inPanel, appState.supportsArtifacts {
+                if inPanel, hostServes {
                     Button {
                         Haptics.selection()
                         showMissing.toggle()
@@ -474,15 +500,15 @@ private struct ArtifactsList: View {
         // old to say), never while Conduit hasn't heard from it: kept rows
         // show meanwhile, and with none kept, the loader, or offline, why
         // nothing can load yet.
-        if savedOnly {
+        if savedOnly, hostIsOnScreen {
             savedContent
-        } else if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
+        } else if !hostPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
                 title: Text(PluginUpdateAsk.title(AppLocalization.string("Update the Conduit plugin"))),
                 detail: Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it.", table: .chat))),
                 symbol: "arrow.down.circle"
             )
-        } else if items.isEmpty, loadedKey != currentKey, !appState.supportsArtifacts, !appState.isConnected,
+        } else if items.isEmpty, loadedKey != currentKey, !hostServes, !hostIsConnected,
                   !appState.isRecoveringConnection {
             // Nothing kept or loaded: a list kept empty says so below.
             unavailable(
@@ -802,8 +828,9 @@ private struct ArtifactsList: View {
                 Label("Save to Files", systemImage: "folder")
             }
         }
-        // Another dashboard's chat and pins are on that dashboard.
-        if item.dashboardID == nil {
+        // Another dashboard's chat and pins are on that dashboard; the
+        // open chat's own (a far chat open in place) is on screen.
+        if item.dashboardID == nil || chatIsOpen {
             Button {
                 showInChat(item)
             } label: {
@@ -1076,7 +1103,7 @@ private struct ArtifactsList: View {
     /// and swipes to the next one.
     private func openImage(_ item: ArtifactItem, path: String) {
         let tapped = galleryItem(item, path: path)
-        let shown = savedOnly ? savedItems : ArtifactsClient.days(items).flatMap(\.items)
+        let shown = savedOnly && hostIsOnScreen ? savedItems : ArtifactsClient.days(items).flatMap(\.items)
         let images = shown.compactMap { other -> ImageGalleryItem? in
             guard other.kind == .image, let path = other.openPath else { return nil }
             return other.id == item.id ? tapped : galleryItem(other, path: path)
@@ -1129,7 +1156,7 @@ private struct ArtifactsList: View {
         // failed as Conduit connected): asked again here, as Settings ›
         // Conduit plugin asks on every visit, so the list isn't left on
         // its loader until the next connect.
-        if !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
+        if hostIsOnScreen, !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
             isLoading = true
             await appState.refreshNotifierPluginStatusOnce()
             guard ticket == generation else { return }
@@ -1139,7 +1166,18 @@ private struct ArtifactsList: View {
                 loadedKey = key
             }
         }
-        guard appState.supportsArtifacts else {
+        // A far chat's own dashboard whose plugin never said: asked there.
+        if !hostIsOnScreen, case .chat(_, let far?) = scope, hostIsConnected, hostPlugin.state == .unknown {
+            isLoading = true
+            await appState.readKeptPluginStatusIfUnknown(far.dashboardID)
+            guard ticket == generation else { return }
+            if hostPlugin.state == .unknown, loadedKey != key {
+                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
+                feed = nil
+                loadedKey = key
+            }
+        }
+        guard hostServes else {
             isLoading = false
             return
         }
@@ -1188,7 +1226,7 @@ private struct ArtifactsList: View {
     /// opens, of every kind and unsearched, and only when the list's own
     /// store (the first) kept its page.
     private func showKept(_ key: ArtifactsListKey) {
-        guard loadedKey != key, appState.notifierPlugin.mayServe(ArtifactsClient.capability) else { return }
+        guard loadedKey != key, hostPlugin.mayServe(ArtifactsClient.capability) else { return }
         let pages = key.sources.map { keptPage($0, for: key) }
         guard let first = pages.first, first != nil else { return }
         feed = ArtifactFeed(sources: key.sources, pages: pages)

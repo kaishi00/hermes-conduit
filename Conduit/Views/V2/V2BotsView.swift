@@ -10,11 +10,37 @@
 
 import SwiftUI
 
+/// Mounts Bots behind `.equatable()`, equal by AppState identity:
+/// redrawn by its own changes only, while the shell redraws on every
+/// publish, as Tasks (V2TasksViewGate).
+struct V2BotsViewGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+
+    var body: some View {
+        V2BotsView(appState: appState)
+    }
+}
+
+/// Bots, mounted through V2BotsViewGate.
 struct V2BotsView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
+    /// Followed through `updates`, which holds AppState's changes back
+    /// while another tab is up: a hidden Bots Home redrew on every publish
+    /// of a turn (issue 1722).
+    private let appState: AppState
+    @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @State private var createRequest = false
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    /// What shows Bots Home: its tab, and nothing pushed over it.
+    private var visibility: V2ListVisibility {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+    }
 
     private var canCreate: Bool {
         appState.botModePhase == .available && appState.isConnected
@@ -56,5 +82,17 @@ struct V2BotsView: View {
         .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.bots.title)
+        .environmentObject(updates)
+        .environment(\.v2ShownUpdates, updates)
+        // Another tab or a chat pushed over Bots Home holds its updates
+        // back, as the Chats list (audit 1722).
+        .onChange(of: visibility, initial: true) { was, now in
+            updates.follow(now, from: was)
+        }
+        // Beside an open chat, a streamed reply's bursts draw once, as
+        // the Chats list's do.
+        .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+            updates.coalesces = beside
+        }
     }
 }

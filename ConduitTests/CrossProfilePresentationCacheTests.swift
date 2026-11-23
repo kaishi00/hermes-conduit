@@ -1746,6 +1746,24 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertTrue(counts.reads[readsBefore...].contains { $0.contains("profile=atlas") }, "atlas read on the last list")
         XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id, "its row stays")
+        // Kept anew while a read that then fails was out: the list that
+        // switch seeded wins over the one the read started from (#3143).
+        let keptBefore = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { bridge, path in
+            guard path == "/api/profiles" else { return try await reader(bridge, path) }
+            await MainActor.run {
+                appState.keptDashboardRuntimes[mac.id] = KeptDashboardRuntime(
+                    client: keptBefore.client, bridge: keptBefore.bridge, connection: keptBefore.connection,
+                    keptAt: keptBefore.keptAt.addingTimeInterval(1), runtime: keptBefore.runtime
+                )
+                appState.keptDashboardProfiles[mac.id] = (read.bridge, ["default", "atlas", "seeded"], Date())
+            }
+            throw URLError(.timedOut)
+        }
+        let afterKeptAnew = await appState.keptDashboardProfileNames(mac.id, keptBefore, fresh: true)
+        XCTAssertEqual(afterKeptAnew, ["default", "atlas", "seeded"], "the seeded list, not the last one")
+        appState.keptDashboardRuntimes[mac.id] = keptBefore
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, Date())
         appState.keptDashboardJSONReader = reader
 
         // A room wait whose read was out while the two dashboards turned
@@ -2120,17 +2138,160 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(menuRow.title, "Release prep")
         XCTAssertEqual(menuRow.combinedDashboardID, mac.id)
         XCTAssertEqual(appState.activeChatSessionSummary?.title, "VPS notes", "the screen's row stays the screen's")
+        // The screen's cron run under the same id doesn't join the far
+        // row's lookup, which would leave it ambiguous (#3141).
+        appState.cronSessions = [SessionSummary(id: "mac-1", alternateIds: [], title: "Nightly run", model: "Hermes", updatedLabel: "now",
+                                                profile: "default", source: .cron, isActive: false, isArchived: false, lineageRootId: nil)]
+        XCTAssertEqual(appState.chatOnScreenSessionSummary?.title, "Release prep", "a cron run on the screen's dashboard isn't the far chat's")
         appState.act(onRuntime: kept.runtime) {
             let titles = appState.activeProfileSessions.map(\.title)
             XCTAssertTrue(titles.contains("Release prep"), "its scope reads its own rows")
             XCTAssertFalse(titles.contains("VPS notes"), "not the screen's cache")
         }
+        // Nor do its ids grow through the screen's cron run: a run whose
+        // stored id names another chat would make that chat the far row's.
+        var run = SessionSummary(id: "mac-1", alternateIds: [], title: "Nightly run", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .cron, isActive: false, isArchived: false, lineageRootId: nil)
+        run.storedSessionId = "vps-stored"
+        appState.cronSessions = [run]
+        appState.act(onRuntime: kept.runtime) {
+            XCTAssertFalse(appState.chatOwnSessionIDs(for: "mac-1", includingCronRuns: false).contains("vps-stored"))
+        }
+        XCTAssertTrue(appState.chatOwnSessionIDs(for: "mac-1").contains("vps-stored"), "the screen's own lookup keeps its cron runs")
+    }
+
+    /// A far chat's Artifacts, checklists and cards are its own
+    /// dashboard's: its ids read on its runtime (not the screen's row under
+    /// the same id), its artifacts read through that dashboard's kept
+    /// connection, its ticks and taps sent there.
+    func testAFarChatsArtifactsChecklistsAndCardsAreItsOwnDashboards() async throws {
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.openSession = { _, sessionID, _ in
+            SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = SessionSummary(id: "mac-1", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        appState.openCombinedChat(row, in: mac.id)
+        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        // The screen's own chat under the same id, known by another id too.
+        appState.sessions = [SessionSummary(id: "mac-1", alternateIds: ["vps-alias"], title: "VPS notes", model: "Hermes",
+                                            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                            isArchived: false, lineageRootId: nil)]
+
+        let ids = appState.activeChatArtifactSessionIDs
+        XCTAssertTrue(ids.contains("mac-1"))
+        XCTAssertFalse(ids.contains("vps-alias"), "its ids are its own dashboard's, not the screen's row's")
+        let far = try XCTUnwrap(appState.farChat)
+        XCTAssertEqual(appState.artifactSources(for: .chat(ids, far: far)),
+                       [ArtifactSource(profile: "default", sessionIDs: ids, dashboardID: mac.id)],
+                       "its artifacts are read through its own dashboard's kept connection")
+        XCTAssertEqual(appState.artifactSources(for: .chat(ids)).first?.dashboardID, nil, "a chat of the screen's reads here")
+        let host = appState.artifactsHost(for: .chat(ids, far: far))
+        XCTAssertEqual(host.isConnected, kept.runtime.isConnected, "its feed waits on its own dashboard's connection")
+        XCTAssertEqual(host.plugin, kept.runtime.notifierPlugin, "and asks its own dashboard's plugin")
+        XCTAssertFalse(appState.artifactsHostIsOnScreen(.chat(ids, far: far)), "so it offers no Saved: pins are the screen's dashboard's")
+        XCTAssertTrue(appState.artifactsHostIsOnScreen(.chat(ids)))
+        // Its Bot's Screen is its own dashboard's bot's, asked and driven
+        // through that dashboard's kept connection.
+        XCTAssertTrue(appState.botScreenIsFar(mac.id))
+        XCTAssertFalse(appState.botScreenIsFar(nil))
+        XCTAssertTrue(appState.botScreenClient(for: mac.id) === kept.runtime.client, "its screen is read on its own Hermes")
+        XCTAssertTrue(appState.botScreenClient(for: nil) === appState.client)
+        if kept.runtime.client != nil, appState.client != nil {
+            XCTAssertFalse(appState.botScreenClient(for: mac.id) === appState.client, "not the screen's Hermes")
+        }
+        XCTAssertTrue(appState.botScreenSupport(for: mac.id) === appState.botScreenSupport(for: mac.id))
+        XCTAssertFalse(appState.botScreenSupport(for: mac.id) === appState.botScreens, "what the screen's hosts said doesn't stand for its host")
+        XCTAssertTrue(appState.botScreenSupport(for: nil) === appState.botScreens)
+        XCTAssertNotEqual(BotScreenModel(profile: "default", client: nil, dashboardID: mac.id).stateKey,
+                          BotScreenModel(profile: "default", client: nil).stateKey,
+                          "its owed hand back is kept apart from the screen's same-named bot's")
+        // Its bots are named as its own roster names them, read for Bots
+        // Home or, before that, on its kept connection.
+        let nahida = BotProfile(name: "nahida", botTitle: nil, displayName: "nahida", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        let titled = BotProfile(name: "nahida", botTitle: "Lesser Lord", displayName: "nahida", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        XCTAssertEqual(appState.farBotName("nahida", on: mac.id), "Nahida", "with no roster yet, its profile")
+        kept.runtime.botRoster = [titled]
+        XCTAssertEqual(appState.farBotName("nahida", on: mac.id), "Lesser Lord", "its kept connection's roster names it")
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(client: ObjectIdentifier(kept.bridge), bots: [nahida],
+                                                                      avatars: [:], at: Date())
+        XCTAssertEqual(appState.farBotName("nahida", on: mac.id), "Nahida", "as its portrait in Bots Home names it")
+        appState.combinedDashboardBots[mac.id] = nil
+        kept.runtime.botRoster = []
+        _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
+        XCTAssertEqual(appState.farBotName("default", on: mac.id), "Mac main", "its main bot by its dashboard's saved name")
+        // Its Folder tab is its own dashboard's folders, read through that
+        // dashboard's kept connection as its profile there.
+        XCTAssertEqual(appState.workspaceFarDashboardID(far), mac.id)
+        XCTAssertNil(appState.workspaceFarDashboardID(nil))
+        XCTAssertTrue(appState.workspaceBridge(farDashboard: mac.id) === kept.bridge, "its files are read on its own Hermes")
+        XCTAssertEqual(appState.workspacePlugin(far), kept.runtime.notifierPlugin, "and its own dashboard's plugin is asked")
+        XCTAssertEqual(appState.workspaceIsConnected(far), kept.runtime.isConnected)
+        XCTAssertEqual(appState.workspaceProfile(far: far), "default")
+        kept.runtime.runtime.cwd = "/mac/app"
+        appState.runtime.cwd = "/vps/app"
+        XCTAssertEqual(appState.chatWorkspaceFolder(far: far), "/mac/app", "its folder as its own dashboard has it")
+        XCTAssertEqual(appState.workspaceRoots(includingChat: true, far: far).first?.path, "/mac/app")
+        XCTAssertFalse(appState.workspaceRoots(includingChat: true, far: far).contains { $0.kind == .project },
+                       "the projects are the bot on screen's")
+        XCTAssertEqual(appState.absoluteWorkspacePath("docs/a.md", far: far), "/mac/app/docs/a.md", "a path its reply named is in its folder")
+        XCTAssertEqual(appState.absoluteWorkspacePath("docs/a.md"), "/vps/app/docs/a.md")
+        XCTAssertEqual(appState.projectFolderPickerRoot(far: far), "/mac/app")
+        appState.rememberOpenedWorkspaceFolder("/mac/notes", profile: "default", far: far)
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: "default", far: far), ["/mac/notes"], "a folder opened for it is kept for its dashboard")
+        XCTAssertFalse(appState.openedWorkspaceFolders(profile: "default").contains("/mac/notes"), "not the screen's")
+        appState.forgetOpenedWorkspaceFolder("/mac/notes", profile: "default", far: far)
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: "default", far: far), [])
+        let folderOwner = try XCTUnwrap(appState.workspaceRuntimeOwner(far))
+        XCTAssertEqual(folderOwner.dashboardID, mac.id)
+        XCTAssertTrue(folderOwner.bridge === kept.bridge)
+        XCTAssertTrue(appState.ownsWorkspaceRuntime(folderOwner), "its answers stand while its connection is kept")
+        XCTAssertEqual(appState.activeChatStoreProfile, "default")
+        XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
+        XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
+        kept.runtime.notifierPlugin.state = .reported(version: "9.0.0", capabilities: [RichChecklistContext.capability])
+        let farScope = try XCTUnwrap(appState.richChecklistContext?.scope, "its checklists are kept on its own Hermes")
+        XCTAssertEqual(farScope, RichChecklistContext.scope(profile: RichChecklistContext.keyProfile("default", dashboard: mac.id), sessionIDs: ids),
+                       "its ticks on the phone are keyed by its own dashboard, the same key it has opened there")
+        let farOwner = try XCTUnwrap(RichChecklistContext.parts(of: farScope)?.profile)
+        XCTAssertFalse(RichChecklistContext.sameOwner(farOwner, RichChecklistContext.keyProfile("default", dashboard: vps.id)),
+                       "and never merge with the screen's chat under the same profile and id")
+        XCTAssertTrue(RichChecklistContext.sameOwner(farOwner, "default"), "a key from before dashboards were named is still taken up")
+        XCTAssertFalse(appState.richCardChat?.contains(vps.id.uuidString) == true)
+
+        // Its connection dropped: nothing reads or sends for it.
+        appState.keptDashboardRuntimes[mac.id] = nil
+        XCTAssertEqual(appState.activeChatArtifactSessionIDs, [])
+        XCTAssertNil(appState.richCardChat)
+        XCTAssertThrowsError(try appState.richChecklistBridge(for: mac.id))
+        XCTAssertNil(appState.botScreenClient(for: mac.id), "nor drives its screen")
+        XCTAssertNil(appState.workspaceBridge(farDashboard: mac.id), "nor reads its folder")
+        XCTAssertFalse(appState.ownsWorkspaceRuntime(folderOwner), "and a folder answer still out is dropped")
+        XCTAssertFalse(appState.workspaceIsConnected(far))
     }
 
     func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {
         final class Seen { var opened: [(ObjectIdentifier, String)] = []; var sent: [(ObjectIdentifier, String, String)] = [] }
         let seen = Seen()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows (#3143).
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             seen.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -2179,6 +2340,8 @@ extension CrossProfilePresentationCacheTests {
 
         appState.openCombinedChat(row, in: mac.id)
         await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["far-1"], "its rows are up")
+        XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
         XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
@@ -3565,6 +3728,13 @@ extension CrossProfilePresentationCacheTests {
         let refused = await appState.openFarNotificationInPlace(target, in: mac.id)
         XCTAssertEqual(refused, .failed, "Hermes refused it: the same open would hear the same")
         XCTAssertNil(appState.notificationRouteFailure)
+        // The card the push recorded left with the failed open (#3143).
+        let storedCards = appState.act(onRuntime: kept.runtime) {
+            appState.sessionPresentationCache.storedPendingDecisionKeys(
+                profile: appState.presentationProfile(for: "session-a"), sessionIDs: ["session-a"]
+            )
+        }
+        XCTAssertTrue(storedCards.isEmpty, "its card was evicted from the saved chat")
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
 
         script.error = nil
@@ -3586,6 +3756,9 @@ extension CrossProfilePresentationCacheTests {
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows (#3143).
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             counts.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -3626,6 +3799,8 @@ extension CrossProfilePresentationCacheTests {
         appState.showVoiceSheet = false
         XCTAssertTrue(appState.routeWidgetLaunchURL(try link("session-a").url))
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-w1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["far-w1"], "its rows are up")
+        XCTAssertNil(appState.errorMessage)
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")

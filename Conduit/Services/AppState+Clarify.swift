@@ -181,6 +181,10 @@ extension AppState {
         // On its way: a reopen of the chat meanwhile keeps the question
         // submitting rather than offering it again (issue 2571).
         beginClarifySubmission(requestId)
+        // Whose card this send answers: a settle it leaves for the last send
+        // touches the card only while that dashboard and profile are still
+        // the ones acted on, never another's card with the same id.
+        let owner = clarifySendOwner
         // A completion fenced off below (another connection or profile took
         // over) settles nothing; once no send of this request is on its way,
         // the question goes back to answerable rather than read Sending
@@ -189,14 +193,13 @@ extension AppState {
         defer {
             // Hermes said it was answered elsewhere while this send was out:
             // a fenced-off send settles it so rather than offer it again.
+            // It settles once the request's last send ends, so a sibling
+            // answer Hermes still takes is kept.
             let resolved = resolvedInFlightClarifyRequests.contains(requestId)
+            if fenced, resolved { clarifySettlesOnLastSend[requestId] = owner }
             endClarifySubmission(requestId)
-            if fenced {
-                if resolved {
-                    settleClarifyRequestAnsweredElsewhere(requestId: requestId)
-                } else {
-                    rearmStaleClarifyQuestions(requestId: requestId, questionIds: [question.id])
-                }
+            if fenced, !resolved {
+                rearmStaleClarifyQuestions(requestId: requestId, questionIds: [question.id])
             }
         }
         // Plugin-minted clarify ids are answered through the relay's decision
@@ -269,6 +272,15 @@ extension AppState {
                 fenced = true
                 return nil
             }
+            // Recorded `resolved` while this send was out: a refusal of any
+            // kind (expired, answered elsewhere, ended) reads as answered
+            // elsewhere, once the last send of the request ends (3131).
+            if resolvedInFlightClarifyRequests.contains(requestId) {
+                if case .accepted = outcome {} else {
+                    clarifySettlesOnLastSend[requestId] = owner
+                    return nil
+                }
+            }
             applyClarifyResponseOutcome(
                 outcome,
                 requestId: requestId,
@@ -282,7 +294,15 @@ extension AppState {
                 fenced = true
                 return nil
             }
-            if Self.isExpiredPromptError(error) {
+            if resolvedInFlightClarifyRequests.contains(requestId) {
+                // Hermes reported the request answered elsewhere while this
+                // send was on its way: nothing waits on it any more, so the
+                // card says so rather than offer the question again or say
+                // it timed out (an older gateway's 4009 included), once the
+                // request's last send ends, so a sibling answer Hermes takes
+                // meanwhile still counts (3131).
+                clarifySettlesOnLastSend[requestId] = owner
+            } else if Self.isExpiredPromptError(error) {
                 // Older gateways report expiry as RPC 4009 instead of the
                 // typed `expired` status — same teardown either way.
                 expireClarifyRequest(requestId: requestId)
@@ -290,11 +310,6 @@ extension AppState {
                 // The chat's runtime is gone (reaped, or re-opened elsewhere),
                 // as the approval card reads it: nothing waits on this answer.
                 applyClarifyResponseOutcome(.ended, requestId: requestId, questionId: question.id, answer: wireAnswer)
-            } else if resolvedInFlightClarifyRequests.contains(requestId) {
-                // Hermes reported the request answered elsewhere while this
-                // send was on its way: nothing waits on it any more, so the
-                // card says so rather than offer the question again (3131).
-                settleClarifyRequestAnsweredElsewhere(requestId: requestId)
             } else if let unsent = error as? HermesClient.AnswerNotSent {
                 // Never sent: why Hermes couldn't be reached, and the
                 // question can be answered again.
@@ -315,6 +330,16 @@ extension AppState {
         }
     }
 
+    /// The dashboard and profile a clarify send acts for.
+    struct ClarifySendOwner: Equatable {
+        let dashboardID: UUID?
+        let profile: String
+    }
+
+    var clarifySendOwner: ClarifySendOwner {
+        ClarifySendOwner(dashboardID: activeDashboardID, profile: activeProfile)
+    }
+
     private func beginClarifySubmission(_ requestId: String) {
         liveClarifySubmissions[requestId, default: 0] += 1
     }
@@ -325,6 +350,13 @@ extension AppState {
         } else {
             liveClarifySubmissions.removeValue(forKey: requestId)
             resolvedInFlightClarifyRequests.remove(requestId)
+            // A send that failed after Hermes reported the request resolved
+            // settles the card now, while its owner is the one acted on;
+            // before the rearm below, which then finds nothing to reopen.
+            if let owner = clarifySettlesOnLastSend.removeValue(forKey: requestId),
+               owner == clarifySendOwner {
+                settleClarifyRequestAnsweredElsewhere(requestId: requestId)
+            }
             // The last send settled: what a fenced-off one left waiting on
             // it goes back to answerable now.
             if staleClarifyQuestionIds[requestId] != nil {
@@ -857,13 +889,16 @@ extension AppState {
     }
 
     /// A request Hermes reported `resolved` while this device's answer was
-    /// on its way, whose send then failed: its open questions read as
-    /// answered elsewhere (issue 3131).
+    /// on its way, whose send then failed: once its last send ends, the
+    /// questions not answered read as answered elsewhere (issue 3131).
     private func settleClarifyRequestAnsweredElsewhere(requestId: String) {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               let activity = messages[index].clarify,
               !activity.isExpired else { return }
         settleClarifyCard(at: index, activity, reason: "resolved")
+        // As a send told it was answered elsewhere: the question's copy on
+        // the Needs you list is this card's (notifier#965).
+        if let settled = messages[index].clarify { keepQuestionCopiesOut(answeredOn: settled) }
     }
 
     private func settleClarifyCard(at index: Int, _ activity: ClarifyActivity, reason: String?) {

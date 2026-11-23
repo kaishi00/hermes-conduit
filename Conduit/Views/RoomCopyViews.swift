@@ -15,7 +15,10 @@ import SwiftUI
 /// stands. One that ended, or that your agents left, can be deleted.
 struct RoomCopyRosterRow: View {
     let copy: RoomCopy
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @State private var confirmingDelete = false
 
     private var canDelete: Bool { appState.canDelete(copy) }
@@ -60,7 +63,10 @@ struct RoomCopyRosterRow: View {
 /// rooms, marked as a room over Links, with the same menu as its row.
 struct RoomCopyPortrait: View {
     let copy: RoomCopy
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
     @State private var confirmingDelete = false
 
@@ -122,7 +128,10 @@ struct RoomCopyPortrait: View {
 struct RoomCopyIcon: View {
     let copy: RoomCopy
     let size: CGFloat
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         GroupRoomIcon(picture: nil, members: copy.room.members, size: size)
@@ -135,7 +144,10 @@ struct RoomCopyIcon: View {
 /// their pictures draw other people's agents as the room screen does: on
 /// showing, when the rooms change, and every 30 s.
 struct HomeRoomLooksReader: ViewModifier {
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
 

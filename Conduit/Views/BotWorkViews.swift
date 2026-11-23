@@ -25,6 +25,9 @@ private struct BotWorkRefresh: ViewModifier {
     let profile: String
     /// In a chat, so covering the chat hides it. Bots Home's overview isn't.
     let inChat: Bool
+    /// Off for a bot this dashboard's store doesn't keep (another combined
+    /// dashboard's, on its Bot's Screen).
+    var enabled = true
 
     static let busyInterval: UInt64 = 5_000_000_000
     static let idleInterval: UInt64 = 20_000_000_000
@@ -33,7 +36,7 @@ private struct BotWorkRefresh: ViewModifier {
         // Keyed on the bot's work being on too: turned on in Edit Bot,
         // its reads start again.
         let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
-        let shows = shell.isTabActive && scenePhase != .background
+        let shows = enabled && shell.isTabActive && scenePhase != .background
             && !(inChat && appState.showSidebar && !shell.hasChatBeside)
         content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)\u{1F}\(shows)") {
             guard shows else { return }
@@ -50,8 +53,8 @@ private struct BotWorkRefresh: ViewModifier {
 }
 
 extension View {
-    func refreshesBotWork(profile: String, inChat: Bool = true) -> some View {
-        modifier(BotWorkRefresh(profile: profile, inChat: inChat))
+    func refreshesBotWork(profile: String, inChat: Bool = true, enabled: Bool = true) -> some View {
+        modifier(BotWorkRefresh(profile: profile, inChat: inChat, enabled: enabled))
     }
 }
 

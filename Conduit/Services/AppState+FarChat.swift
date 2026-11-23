@@ -40,6 +40,43 @@ extension AppState {
     /// one on screen's.
     var farChatDashboardID: UUID? { farChat?.dashboardID }
 
+    /// Whether a Bot's Screen for `dashboardID`'s bot is another combined
+    /// dashboard's than the one on screen's.
+    func botScreenIsFar(_ dashboardID: UUID?) -> Bool {
+        dashboardID != nil && dashboardID != dashboardIDOnScreen
+    }
+
+    /// The connection a Bot's Screen reads and drives: the one on screen's,
+    /// or a far bot's own dashboard's kept one (nil once that dropped).
+    func botScreenClient(for dashboardID: UUID?) -> HermesClient? {
+        guard let dashboardID, botScreenIsFar(dashboardID) else { return client }
+        return runtime(for: dashboardID)?.client
+    }
+
+    /// A far bot's name as its own dashboard's roster gives it (its Bots
+    /// Home roster, else its kept connection's), named as its portrait is
+    /// there; else its profile, never the screen's bot under the same
+    /// profile name. Its main bot goes by that dashboard's saved name.
+    func farBotName(_ profile: String, on dashboardID: UUID) -> String {
+        if profile.isEmpty || BotManagement.isDefaultProfile(profile) {
+            return profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
+        }
+        let roster = (combinedDashboardBots[dashboardID]?.bots ?? [])
+            + (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+        if let bot = roster.first(where: { $0.name == profile }) { return bot.displayLabel }
+        return String(profile.prefix(1)).uppercased() + String(profile.dropFirst())
+    }
+
+    /// Whether `dashboardID`'s bots' hosts can have a Bot's Screen, as read
+    /// through its own connection.
+    func botScreenSupport(for dashboardID: UUID?) -> BotScreenSupport {
+        guard let dashboardID, botScreenIsFar(dashboardID) else { return botScreens }
+        if let support = farBotScreens[dashboardID] { return support }
+        let support = BotScreenSupport()
+        farBotScreens[dashboardID] = support
+        return support
+    }
+
     /// The dashboard the chat on screen belongs to.
     var chatOnScreenDashboardID: UUID? { farChatDashboardID ?? dashboardIDOnScreen }
 
@@ -105,6 +142,36 @@ extension AppState {
         }
     }
 
+    /// A value read for the chat on screen, in its own runtime's scope:
+    /// what it goes by and whose host serves it (its Artifacts, its
+    /// checklists, its cards). `unreachable` when its dashboard isn't
+    /// connected.
+    func onChatRuntimeValue<T>(unreachable: T, _ body: () -> T) -> T {
+        switch chatRuntimeRoute {
+        case .inScope: return body()
+        case .far(let runtime): return act(onRuntime: runtime, body)
+        case .unreachable: return unreachable
+        }
+    }
+
+    // MARK: - Its folder
+
+    /// Whether the chat on screen's folder can be moved (the Folder tab's
+    /// Work Here in This Chat): on its own dashboard for a far chat.
+    var canMoveChatOnScreenFolder: Bool {
+        onChatRuntimeValue(unreachable: false) { canMoveOpenChatFolder }
+    }
+
+    /// Moves the chat on screen's folder there, on its own dashboard's
+    /// runtime for a far chat.
+    func moveChatOnScreenFolder(to folder: String) async -> ChatFolderMoveResult {
+        let unreachable = ChatFolderMoveResult.failed(AppLocalization.string("Reconnect to Hermes to move this conversation."))
+        if let routed = await onChatRuntime(unreachable: unreachable, { await moveOpenChatFolder(to: folder, reloadsProjects: false) }) {
+            return routed
+        }
+        return await moveOpenChatFolder(to: folder)
+    }
+
     // MARK: - Its title menu
 
     /// The chat on screen's row, which its title menu acts on. A far
@@ -117,9 +184,9 @@ extension AppState {
     var chatOnScreenSessionSummary: SessionSummary? {
         guard farChat != nil else { return activeChatSessionSummary }
         switch chatRuntimeRoute {
-        case .inScope: return uncachedActiveChatSessionSummary
+        case .inScope: return uncachedActiveChatSessionSummary()
         case .far(let runtime):
-            guard var row = act(onRuntime: runtime, { uncachedActiveChatSessionSummary }) else { return nil }
+            guard var row = act(onRuntime: runtime, { uncachedActiveChatSessionSummary(includingCronRuns: false) }) else { return nil }
             row.combinedDashboardID = farChatDashboardID
             return row
         case .unreachable: return nil

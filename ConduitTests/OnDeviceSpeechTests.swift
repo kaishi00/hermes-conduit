@@ -186,16 +186,23 @@ extension HermesVoiceGatewayTimeoutTests {
     @MainActor
     func testALanguageWithNoInstalledVoiceUsesIOSsOwn() {
         let saved = IPhoneVoices.readInstalled
+        let savedSystem = IPhoneVoices.systemVoice
         defer {
             IPhoneVoices.readInstalled = saved
+            IPhoneVoices.systemVoice = savedSystem
             IPhoneVoices.forgetInstalled()
+        }
+        // iOS's own voice, asked of a stand-in: the simulator's speech
+        // service can hang for minutes on a fresh runner.
+        var asked: [String] = []
+        IPhoneVoices.systemVoice = { language in
+            asked.append(language)
+            return nil
         }
         IPhoneVoices.readInstalled = { [] }
         IPhoneVoices.forgetInstalled()
-        XCTAssertEqual(
-            IPhoneVoices.voice(for: "en-US")?.identifier,
-            AVSpeechSynthesisVoice(language: "en-US")?.identifier
-        )
+        XCTAssertNil(IPhoneVoices.voice(for: "en-US"), "No installed voice: iOS's own, which has none here")
+        XCTAssertEqual(asked, ["en-US", "en-US"], "The lookup and the fallback each ask iOS for the language's own voice")
     }
 
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {

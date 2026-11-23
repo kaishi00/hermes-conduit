@@ -1287,11 +1287,14 @@ final class CarPlayVoiceCoordinator {
 
     /// Whether a read of the far agent's own profile has landed: its
     /// dashboard has a kept read and the agent's profile isn't among those
-    /// whose read failed (another profile answering isn't enough).
+    /// whose read failed (another profile answering isn't enough). A
+    /// profile the kept read didn't list (its roster read failed) wasn't
+    /// read either (#3143).
     private func farChatsRead(_ far: UUID, in appState: AppState) -> Bool {
         guard let chats = appState.combinedDashboardChats[far] else { return false }
         guard let profile = farAgent?.profile else { return true }
-        return !chats.unreadProfiles.contains { AppState.profilesMatch($0, profile) }
+        return chats.profiles.contains { AppState.profilesMatch($0, profile) }
+            && !chats.unreadProfiles.contains { AppState.profilesMatch($0, profile) }
     }
 
     /// Asks for the chats once while the list shows none and Hermes is

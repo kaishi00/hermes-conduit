@@ -280,7 +280,7 @@ struct SpeechServerSettingsView: View {
     }
 
     /// The names that differ from what the host has, by their config key
-    /// under voice.speech_server; an emptied one is removed.
+    /// under voice.speech_server; an emptied one is saved as "".
     private var changedNames: [String: String] {
         guard status?.namesItsModel == true else { return [:] }
         var names: [String: String] = [:]
@@ -452,8 +452,8 @@ struct SpeechServerSettingsView: View {
         if status?.available == true { await runTest(profile: profile) }
     }
 
-    /// The switch saves by itself, like Remove key: true, or the setting
-    /// removed, which is off.
+    /// The switch saves by itself, like Remove key: true or false, never a
+    /// removed key (issue 3153).
     private func saveDriveTurns(_ on: Bool, pickedBefore: Bool? = nil) async {
         isSaving = true
         // Whatever happened, the switch goes back to what the host has.

@@ -186,7 +186,10 @@ extension AppState {
     /// id. Never the scroll identity's aliases or a reconciliation's ids:
     /// a new chat, or one opened from another, keeps the previous chat's
     /// ids there, and that chat's calls would show in this one.
-    func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
+    /// `includingCronRuns` false leaves the Cron rows out: another
+    /// dashboard's chat, whose rows are its own while the Cron rows are the
+    /// screen's (3141's review).
+    func chatOwnSessionIDs(for sessionId: String, includingCronRuns: Bool = true) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
         let durable = confirmedDurableSessionID(forRuntime: sessionId)
@@ -201,9 +204,9 @@ extension AppState {
         // A few entries: the header asks by the open id and by its row's.
         // Another dashboard's scope reads its own rows: the cache follows
         // only the screen's list.
-        let cacheable = actingOnRuntimeOnScreen
+        let cacheable = actingOnRuntimeOnScreen && includingCronRuns
         if cacheable, let cached = chatOwnSessionIDsCache[key] { return cached }
-        let ids = Self.ownSessionIDs(for: seeds, in: [sessions, cronSessions].joined())
+        let ids = Self.ownSessionIDs(for: seeds, in: [sessions, includingCronRuns ? cronSessions : []].joined())
         guard cacheable else { return ids }
         if chatOwnSessionIDsCache.count >= 8 { chatOwnSessionIDsCache.removeAll() }
         chatOwnSessionIDsCache[key] = ids
@@ -260,13 +263,16 @@ extension AppState {
     }
 
     /// `activeChatSessionSummary` without its cache, whose key follows only
-    /// the screen's list: for another dashboard's chat, read in its scope.
-    var uncachedActiveChatSessionSummary: SessionSummary? {
+    /// the screen's list: for another dashboard's chat, read in its scope,
+    /// without cron runs, which never open in place and aren't that
+    /// runtime's (the screen dashboard's would join it, #3141).
+    func uncachedActiveChatSessionSummary(includingCronRuns: Bool = true) -> SessionSummary? {
         guard let sessionId = activeChatRowSessionID else { return nil }
         return activeChatSessionSummary(
             sessionId: sessionId,
-            ownIDs: chatOwnSessionIDs(for: sessionId),
-            durable: conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+            ownIDs: chatOwnSessionIDs(for: sessionId, includingCronRuns: includingCronRuns),
+            durable: conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile),
+            includingCronRuns: includingCronRuns
         )
     }
 
@@ -278,8 +284,13 @@ extension AppState {
         let durable: String?
     }
 
-    func activeChatSessionSummary(sessionId: String, ownIDs: Set<String>, durable: String?) -> SessionSummary? {
-        let rows = [activeProfileSessions, activeProfileCronSessions].joined()
+    func activeChatSessionSummary(
+        sessionId: String,
+        ownIDs: Set<String>,
+        durable: String?,
+        includingCronRuns: Bool = true
+    ) -> SessionSummary? {
+        let rows = [activeProfileSessions, includingCronRuns ? activeProfileCronSessions : []].joined()
         // This row drives rename, archive and delete, so it is never picked
         // by list order: two rows matching the chat's own ids are settled
         // by the stored id its resume recorded, else neither is used. An

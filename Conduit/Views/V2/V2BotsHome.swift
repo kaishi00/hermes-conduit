@@ -52,7 +52,10 @@ struct V2ShortcutPill: View {
 /// isn't any one bot's, and Artifacts lists every bot's with the
 /// profile's own.
 struct BotsHomeShortcuts: View {
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -198,7 +201,10 @@ struct GroupRoomPortrait: View {
     /// The tile in hand already took this one's place: let go here, it
     /// stays where it went rather than moving again.
     @State private var placed = false
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
@@ -565,7 +571,10 @@ struct NewRoomPortrait: View {
     /// in, or one past the room's limit. Without it the tile never swells.
     let canJoin: (String) -> Bool
     let onDrop: (String) -> Bool
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isTargeted = false
 
@@ -655,7 +664,10 @@ struct BotRoomFlight: Identifiable, Equatable {
 /// live rooms and the portraits' "In <room>" pills.
 struct BotsTalkingRoomsReader: ViewModifier {
     static let every: Duration = .seconds(12)
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
 
@@ -1230,7 +1242,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// no accessible form, and Reorder Bots arranges this dashboard only).
     var onMoveEarlier: (() -> Void)?
     var onMoveLater: (() -> Void)?
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

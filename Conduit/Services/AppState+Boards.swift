@@ -15,6 +15,7 @@ extension AppState {
     /// Chat runs in its bot's profile whatever profile is in use (issue
     /// 2520); every other chat, a workstream's included, in the one in use.
     var activeChatStoreProfile: String {
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: composerOwnerProfile) { activeChatStoreProfile } }
         guard let sessionID = activeSessionId, !sessionID.isEmpty else { return activeProfile }
         return botChatStoreProfile(forSessionID: sessionID) ?? activeProfile
     }
@@ -22,13 +23,18 @@ extension AppState {
     /// The open chat's checklists on the host, or nil where they stay on
     /// this phone: a plugin without the route, the saved copy, a chat on
     /// its way.
+    /// A far chat's (another combined dashboard's open in place) are its
+    /// own dashboard's, read and saved there.
     var richChecklistContext: RichChecklistContext? {
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: nil) { richChecklistContext } }
         guard notifierPlugin.reports(RichChecklistContext.capability), offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty else { return nil }
         let profile = activeChatStoreProfile
         let dashboardID = activeDashboardID
-        let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
+        let scope = RichChecklistContext.scope(
+            profile: RichChecklistContext.keyProfile(profile, dashboard: dashboardID),
+            sessionIDs: sessionIDs)
         return RichChecklistContext(
             scope: scope,
             sessionIDs: sessionIDs,
@@ -53,12 +59,15 @@ extension AppState {
     /// open by and which a runtime id moved to another chat doesn't carry,
     /// as for a waiting send (durableComposerSessionID).
     var richCardChat: String? {
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: nil) { richCardChat } }
         guard let activeSessionId, !activeSessionId.isEmpty else { return nil }
         return RichCardActionContext.chat(dashboard: "\(activeDashboardID)", profile: activeProfile,
                                           sessionID: durableComposerSessionID(for: activeSessionId))
     }
 
     func richCardActionContext(canSend: Bool) -> RichCardActionContext? {
+        // A far chat's cards tap through its own dashboard's plugin.
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: nil) { richCardActionContext(canSend: canSend) } }
         guard offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty,
@@ -67,6 +76,7 @@ extension AppState {
         let dashboardID = activeDashboardID
         let tap: (@MainActor ([String: Any], String) async throws -> Void)?
         if notifierPlugin.reports(RichCardActionContext.capability) {
+            let drops = notifierPlugin.reports(RichCardActionContext.dropCapability)
             tap = { [weak self] body, message in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
                 let bridge = try self.richChecklistBridge(for: dashboardID)
@@ -83,7 +93,7 @@ extension AppState {
                     composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft,
                     stagedAttachments: self.predictive.hasStagedAttachments,
                     sameChat: self.richCardChatsAreSame) else {
-                    if let id = answer["id"] as? String, self.notifierPlugin.reports(RichCardActionContext.dropCapability) {
+                    if let id = answer["id"] as? String, drops {
                         let _: [String: Any]? = try? await bridge.requestJSON(
                             path: RichCardActionContext.dropPath(profile: profile, id: id), method: "DELETE")
                     }
@@ -108,8 +118,12 @@ extension AppState {
         if old == new { return true }
         guard let lhs = RichCardActionContext.parts(old), let rhs = RichCardActionContext.parts(new),
               lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
-        return composerDraftKeysAreSameChat(ComposerDraftKey(dashboard: activeDashboardID, profile: lhs.profile, sessionID: lhs.sessionID),
-                                            ComposerDraftKey(dashboard: activeDashboardID, profile: rhs.profile, sessionID: rhs.sessionID))
+        // Read on the chat's own dashboard: a far chat's ids are its rows'.
+        // (richCardChat names it as `activeDashboardID` reads in its scope.)
+        let farID = farChatDashboardID
+        let dashboard = farID != nil && String(describing: farID) == lhs.dashboard ? farID : activeDashboardID
+        return composerDraftKeysAreSameChat(ComposerDraftKey(dashboard: dashboard, profile: lhs.profile, sessionID: lhs.sessionID),
+                                            ComposerDraftKey(dashboard: dashboard, profile: rhs.profile, sessionID: rhs.sessionID))
     }
 
     /// The bridge a chat's checklists go through, taken when each read or
@@ -119,10 +133,14 @@ extension AppState {
     /// dashboard again (#1745). A request already on its way when the
     /// switch lands is refused by the old bridge (answeredAfterSwitch).
     func richChecklistBridge(for dashboardID: UUID?) throws -> DashboardTicketBridge {
-        guard activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else {
-            throw DashboardTicketBridgeError.notReady
+        if activeDashboardID == dashboardID, let bridge = dashboardTicketBridge { return bridge }
+        // A far chat open in place (another combined dashboard's): its own
+        // dashboard's kept connection, while the chat is still on screen.
+        if let dashboardID, dashboardID == farChatDashboardID, let runtime = runtime(for: dashboardID),
+           let bridge = act(onRuntime: runtime, { dashboardTicketBridge }) {
+            return bridge
         }
-        return bridge
+        throw DashboardTicketBridgeError.notReady
     }
 
     /// A diff card reads the whole of a long diff from the connected

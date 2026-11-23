@@ -20,7 +20,10 @@ struct CombinedRoomPortrait: View {
     var onDisband: ((CombinedRoomTile) -> Void)? = nil
     /// Another room's tile is over this one.
     @State private var dropTarget = false
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isHosted: Bool {
@@ -44,8 +47,11 @@ struct CombinedRoomPortrait: View {
         .buttonStyle(PressableButtonStyle())
         .contextMenu { menu }
         .modifier(RoomTileDrag(roomID: tile.id, enabled: isHosted) {
-            // Drawn outside the view's environment, as a bot's preview.
+            // Drawn outside the view's environment, as a bot's preview:
+            // the icon reads the tab's updates, so they're handed in too
+            // (shown, as Bots Home is while a tile is dragged).
             CombinedRoomIcon(tile: tile, size: 56)
+                .environmentObject(updates)
                 .environmentObject(appState)
         })
         .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: tile.id, targeted: $dropTarget) { dragged in
@@ -106,7 +112,10 @@ struct CombinedRoomPortrait: View {
 /// Another combined dashboard's group chat as a row of the list.
 struct CombinedRoomRosterRow: View {
     let tile: CombinedRoomTile
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         Button {
@@ -130,7 +139,10 @@ struct CombinedRoomRosterRow: View {
 struct CombinedRoomIcon: View {
     let tile: CombinedRoomTile
     let size: CGFloat
-    @EnvironmentObject private var appState: AppState
+    /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
+    /// it doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         GroupRoomIcon(picture: appState.combinedRoomPicture(tile), members: tile.room.members, size: size)

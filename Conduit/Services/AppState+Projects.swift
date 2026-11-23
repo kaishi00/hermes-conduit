@@ -420,7 +420,9 @@ extension AppState {
     /// moves a running reply with it, and the chat's project follows the
     /// folder. `.superseded` when the dashboard or profile changed while
     /// it ran, so the answer belongs to nobody on screen.
-    func moveOpenChatFolder(to folder: String) async -> ChatFolderMoveResult {
+    /// `reloadsProjects` false for another combined dashboard's chat, whose
+    /// projects aren't the bot on screen's to replace.
+    func moveOpenChatFolder(to folder: String, reloadsProjects: Bool = true) async -> ChatFolderMoveResult {
         let path = folder.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let open = activeSessionId, !open.isEmpty, !path.isEmpty else {
             return .failed(AppLocalization.string("Open a chat first.", table: .chat))
@@ -458,7 +460,7 @@ extension AppState {
                 updated.cwd = moved
                 setRuntime(updated)
             }
-            if supportsProjects {
+            if reloadsProjects, supportsProjects {
                 await loadProjects(using: client, profile: profile)
                 guard profile == activeProfile, self.client === client else { return .superseded }
             }
@@ -482,6 +484,14 @@ extension AppState {
         if let session = activeSessionId, !session.isEmpty, let folder = chatWorkspaceFolder { return folder }
         return projects.first(where: \.isHome)?.primaryPath?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Where a far chat's (another combined dashboard's, open in place)
+    /// folder picker starts: its own folder there, as the projects are the
+    /// bot on screen's.
+    func projectFolderPickerRoot(far: FarChatOwner?) -> String {
+        guard workspaceFarDashboardID(far) != nil else { return projectFolderPickerRoot }
+        return chatWorkspaceFolder(far: far) ?? ""
     }
 
     /// Why a new project can't be made as it stands, or nil: Hermes would
@@ -528,10 +538,11 @@ extension AppState {
 
     /// A new folder for a project, made in `folder` through the plugin's
     /// workspace routes, which refuse a name that's already there.
-    func makeProjectFolder(named name: String, in folder: String, profile: String? = nil) async throws -> String? {
+    func makeProjectFolder(named name: String, in folder: String, profile: String? = nil,
+                           far: FarChatOwner? = nil) async throws -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let entry = try await workspaceFilesClient(profile: profile ?? activeProfile)
+        let entry = try await workspaceFilesClient(profile: profile ?? activeProfile, far: far)
             .makeFolder(root: folder, in: folder, name: trimmed)
         return entry?.path
     }
@@ -542,29 +553,31 @@ extension AppState {
 
     static let openedWorkspaceFoldersLimit = 8
 
-    private func openedWorkspaceFoldersBucket(profile: String) -> String {
-        "\(Self.dashboardPreferenceBucket(activeDashboardID))|\(profile)"
+    /// A far chat's (another combined dashboard's, open in place) are kept
+    /// for its own dashboard.
+    private func openedWorkspaceFoldersBucket(profile: String, far: FarChatOwner?) -> String {
+        "\(Self.dashboardPreferenceBucket(workspaceFarDashboardID(far) ?? activeDashboardID))|\(profile)"
     }
 
-    func openedWorkspaceFolders(profile: String) -> [String] {
+    func openedWorkspaceFolders(profile: String, far: FarChatOwner? = nil) -> [String] {
         let all = defaults.dictionary(forKey: Self.openedWorkspaceFoldersKey) as? [String: [String]] ?? [:]
-        return all[openedWorkspaceFoldersBucket(profile: profile)] ?? []
+        return all[openedWorkspaceFoldersBucket(profile: profile, far: far)] ?? []
     }
 
-    func rememberOpenedWorkspaceFolder(_ path: String, profile: String) {
+    func rememberOpenedWorkspaceFolder(_ path: String, profile: String, far: FarChatOwner? = nil) {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let kept = openedWorkspaceFolders(profile: profile).filter { $0 != trimmed }
-        setOpenedWorkspaceFolders(Array(([trimmed] + kept).prefix(Self.openedWorkspaceFoldersLimit)), profile: profile)
+        let kept = openedWorkspaceFolders(profile: profile, far: far).filter { $0 != trimmed }
+        setOpenedWorkspaceFolders(Array(([trimmed] + kept).prefix(Self.openedWorkspaceFoldersLimit)), profile: profile, far: far)
     }
 
-    func forgetOpenedWorkspaceFolder(_ path: String, profile: String) {
-        setOpenedWorkspaceFolders(openedWorkspaceFolders(profile: profile).filter { $0 != path }, profile: profile)
+    func forgetOpenedWorkspaceFolder(_ path: String, profile: String, far: FarChatOwner? = nil) {
+        setOpenedWorkspaceFolders(openedWorkspaceFolders(profile: profile, far: far).filter { $0 != path }, profile: profile, far: far)
     }
 
-    private func setOpenedWorkspaceFolders(_ paths: [String], profile: String) {
+    private func setOpenedWorkspaceFolders(_ paths: [String], profile: String, far: FarChatOwner?) {
         var all = defaults.dictionary(forKey: Self.openedWorkspaceFoldersKey) as? [String: [String]] ?? [:]
-        all[openedWorkspaceFoldersBucket(profile: profile)] = paths.isEmpty ? nil : paths
+        all[openedWorkspaceFoldersBucket(profile: profile, far: far)] = paths.isEmpty ? nil : paths
         objectWillChange.send()
         defaults.set(all, forKey: Self.openedWorkspaceFoldersKey)
     }

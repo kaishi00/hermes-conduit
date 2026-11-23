@@ -160,8 +160,10 @@ struct V2ConversationScreen: View {
     /// The panel's width while its line is dragged (`ColumnDivider`).
     @State private var draggedSidePanelWidth: CGFloat?
     @State private var sidePanelTab: ArtifactsTab = .made
-    /// The chat's ids when the panel opened.
+    /// The chat's ids when the panel opened, and its dashboard when it's
+    /// another combined dashboard's chat open in place.
     @State private var sidePanelIDs: [String] = []
+    @State private var sidePanelFar: FarChatOwner?
     @State private var screenWidth: CGFloat = 0
     /// Whether `screenWidth` stays put while a bot's screen in full screen
     /// has the iPhone turned: not for a screen that opened during it.
@@ -250,8 +252,14 @@ struct V2ConversationScreen: View {
                     stored: $storedSidePanelWidth,
                     live: $draggedSidePanelWidth
                 )
-                ChatSidePanel(sessionIDs: sidePanelIDs, tab: $sidePanelTab) {
+                ChatSidePanel(sessionIDs: sidePanelIDs, far: sidePanelFar, tab: $sidePanelTab) {
                     sidePanelOpen = false
+                }
+                // The same id opened on another combined dashboard: the panel
+                // reads that chat's artifacts, not the one it was opened beside.
+                .onChange(of: appState.farChat) { _, far in
+                    sidePanelIDs = appState.activeChatArtifactSessionIDs
+                    sidePanelFar = far
                 }
                 .frame(width: sidePanelWidth)
                 .transition(.move(edge: .trailing))
@@ -313,6 +321,7 @@ struct V2ConversationScreen: View {
             // Animation Hitches track says whether that frame came late.
             ResponsivenessSignposts.signposter.emitEvent("Conversation appeared")
             sidePanelIDs = appState.activeChatArtifactSessionIDs
+            sidePanelFar = appState.farChat
             shownChat = chatShown(byOpenChatToo: true)
         }
         .onChange(of: watchedChat) { old, new in
@@ -328,6 +337,7 @@ struct V2ConversationScreen: View {
             shownChat = heard.shown
             guard opened else { return }
             sidePanelIDs = appState.activeChatArtifactSessionIDs
+            sidePanelFar = appState.farChat
             // A workstream opened from the panel shows its own chat, and
             // the Bot Chat opens again without it, on any window.
             workPanelOpen = false
@@ -410,7 +420,7 @@ struct V2ConversationScreen: View {
                 .environmentObject(appState)
         }
         .sheet(item: $artifactSessionIDs) { sheet in
-            ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
+            ChatArtifactsSheet(sessionIDs: sheet.ids, far: sheet.far, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
         }
         .sheet(item: $editedBot, onDismiss: {
@@ -459,8 +469,10 @@ struct V2ConversationScreen: View {
     /// when the window has room, else the sheet.
     private func openArtifacts(tab: ArtifactsTab) {
         let ids = appState.activeChatArtifactSessionIDs
+        let far = appState.farChat
         if fitsSidePanel {
             sidePanelIDs = ids
+            sidePanelFar = far
             sidePanelTab = tab
             sidePanelOpen = true
             // One column beside the chat: Artifacts take the Work panel's.
@@ -468,7 +480,7 @@ struct V2ConversationScreen: View {
         } else if artifactSessionIDs?.tab != tab || tab == .made {
             // An open sheet on the other tab comes back on this one, where
             // its Folder takes the tapped path.
-            artifactSessionIDs = ArtifactSheetIDs(ids: ids, tab: tab)
+            artifactSessionIDs = ArtifactSheetIDs(ids: ids, far: far, tab: tab)
         }
     }
 
@@ -753,7 +765,7 @@ struct V2ConversationScreen: View {
                     onArtifacts: { openArtifacts(tab: .made) },
                     onEditBot: { editedBot = .edit($0) },
                     onScreen: { screenTarget = $0 },
-                    screens: appState.botScreens
+                    screens: appState.botScreenSupport(for: appState.farChatDashboardID)
                 )
             }
         }
@@ -866,6 +878,7 @@ struct ChatSidePanel: View {
 
     @EnvironmentObject private var appState: AppState
     let sessionIDs: [String]
+    var far: FarChatOwner? = nil
     @Binding var tab: ArtifactsTab
     let onClose: () -> Void
 
@@ -892,7 +905,7 @@ struct ChatSidePanel: View {
             .padding(.leading, 16)
             .padding(.trailing, 8)
             .padding(.top, 8)
-            ChatArtifactsContent(sessionIDs: sessionIDs, tab: $tab, inPanel: true) { item in
+            ChatArtifactsContent(sessionIDs: sessionIDs, far: far, tab: $tab, inPanel: true) { item in
                 appState.showArtifactInChat(item, chatIsOpen: true)
             }
         }
@@ -950,7 +963,14 @@ private struct V2ConversationMenu: View {
     /// ordinary chat runs under (issue 2132). Not a room's (its bots may be
     /// another host's) or a saved copy's (no host to ask).
     private var screenProfile: String? {
-        BotScreenUse.menuProfile(
+        // A far chat (another combined dashboard's, open in place) is an
+        // ordinary chat of its profile there, asked through that dashboard's
+        // connection; a saved copy has no host to ask.
+        if let far = appState.farChat {
+            guard appState.offlineChatPresentation == nil, appState.activeSessionId?.isEmpty == false else { return nil }
+            return far.profile
+        }
+        return BotScreenUse.menuProfile(
             inRoom: appState.activeRoomSurface != nil,
             botChatProfile: appState.activeBotChatProfile,
             workstreamProfile: appState.activeWorkstream?.profile,
@@ -1012,14 +1032,23 @@ private struct V2ConversationMenu: View {
                 }
                 if let profile = screenProfile, screens.isSupported(profile) {
                     Button {
-                        onScreen(BotScreenTarget(profile: profile,
-                                                 botName: appState.botWork.snapshot(profile)?.botName
-                                                     ?? appState.profileDisplayName(profile),
-                                                 chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
+                        if let far = appState.farChat {
+                            // Its own dashboard's bot: its name and ids as
+                            // that dashboard has them, not the screen's.
+                            onScreen(BotScreenTarget(profile: profile,
+                                                     botName: appState.farBotName(profile, on: far.dashboardID),
+                                                     chatSessionIDs: Set(appState.activeChatArtifactSessionIDs),
+                                                     dashboardID: far.dashboardID))
+                        } else {
+                            onScreen(BotScreenTarget(profile: profile,
+                                                     botName: appState.botWork.snapshot(profile)?.botName
+                                                         ?? appState.profileDisplayName(profile),
+                                                     chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
+                        }
                     } label: {
                         Label(AppLocalization.string("Bot's Screen", table: .chat), systemImage: "display")
                     }
-                    .disabled(!appState.isConnected)
+                    .disabled(!appState.chatIsConnected)
                 }
                 if let session = appState.chatOnScreenSessionSummary {
                     Section {
@@ -1071,9 +1100,9 @@ private struct V2ConversationMenu: View {
         .accessibilityIdentifier("conversation.menu")
         // Asks the bot's host once whether it can have a screen, so the
         // entry shows only where it can (never on Windows or macOS hosts).
-        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.isConnected)") {
-            if let profile = screenProfile, appState.isConnected {
-                screens.check(profile, client: appState.client)
+        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.chatIsConnected)\u{1F}\(appState.farChatDashboardID?.uuidString ?? "")\u{1F}\(UInt(bitPattern: ObjectIdentifier(screens)))") {
+            if let profile = screenProfile, appState.chatIsConnected {
+                screens.check(profile, client: appState.botScreenClient(for: appState.farChatDashboardID))
             }
         }
     }
@@ -1096,6 +1125,7 @@ private struct V2PreGlassToolbarControl: ViewModifier {
 private struct ArtifactSheetIDs: Identifiable {
     let id = UUID()
     let ids: [String]
+    var far: FarChatOwner?
     var tab: ArtifactsTab = .made
 }
 
