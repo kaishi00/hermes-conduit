@@ -871,7 +871,7 @@ struct ChatTitleControl: View {
     var compact = false
 
     var body: some View {
-        if let session = appState.activeChatSessionSummary {
+        if let session = appState.chatOnScreenSessionSummary {
             Menu {
                 SessionActionMenuItems(
                     session: session,

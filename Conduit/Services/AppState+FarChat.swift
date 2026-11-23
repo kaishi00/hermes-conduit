@@ -105,6 +105,40 @@ extension AppState {
         }
     }
 
+    // MARK: - Its title menu
+
+    /// The chat on screen's row, which its title menu acts on. A far
+    /// chat's comes from its own runtime's list, read in that scope (this
+    /// dashboard's rows can share its id), and names its dashboard, so
+    /// Rename and Delete run there even if the screen moves on before the
+    /// user confirms. Nil while that dashboard isn't connected.
+    var chatOnScreenSessionSummary: SessionSummary? {
+        guard farChat != nil else { return activeChatSessionSummary }
+        switch chatRuntimeRoute {
+        case .inScope: return uncachedActiveChatSessionSummary
+        case .far(let runtime):
+            guard var row = act(onRuntime: runtime, { uncachedActiveChatSessionSummary }) else { return nil }
+            row.combinedDashboardID = farChatDashboardID
+            return row
+        case .unreachable: return nil
+        }
+    }
+
+    /// Runs a chat action (Rename, Delete) for another combined
+    /// dashboard's row on that dashboard's runtime, with the row as its
+    /// own list has it. Nil for this dashboard's row, so the caller goes on;
+    /// false, with a notice, when that dashboard isn't connected.
+    func onCombinedDashboard(of session: SessionSummary, _ body: (SessionSummary) async -> Bool) async -> Bool? {
+        guard let dashboardID = session.combinedDashboardID, dashboardID != activeDashboardID else { return nil }
+        var local = session
+        local.combinedDashboardID = nil
+        guard let runtime = runtime(for: dashboardID) else {
+            showSessionMutationNotice(AppLocalization.string("Reconnect to Hermes to change this conversation."))
+            return false
+        }
+        return await actAcrossAwaits(onRuntime: runtime) { await body(local) }
+    }
+
     // MARK: - The composer's session state
 
     /// The chat on screen's session state (its model, reasoning, YOLO and

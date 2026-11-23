@@ -2970,6 +2970,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertNotEqual(harness.appState.backgroundProcessChatKey, keyBefore)
     }
 
+    /// A far chat's title menu reads its row from its own dashboard's list,
+    /// never the screen's row under the same id, and its Rename and Delete
+    /// run there: with that dashboard's connection gone they reach nothing.
+    func testAFarChatsTitleMenuNeverActsOnTheScreensRowUnderItsId() async throws {
+        let harness = controlHarness { _ in }
+        let appState = harness.appState
+        appState.isConnected = true
+        let screenRow = try XCTUnwrap(appState.activeChatSessionSummary)
+        XCTAssertEqual(appState.chatOnScreenSessionSummary?.id, screenRow.id)
+
+        let far = UUID()
+        appState.farChat = FarChatOwner(dashboardID: far, profile: "work")
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("Its runtime isn't kept here") }
+        XCTAssertNil(appState.chatOnScreenSessionSummary, "the screen's row under its id isn't the far chat's")
+
+        var farRow = screenRow
+        farRow.combinedDashboardID = far
+        let renamed = await appState.renameSession(farRow, to: "Renamed")
+        let deleted = await appState.deleteSession(farRow)
+
+        XCTAssertFalse(renamed)
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(appState.sessions.map(\.id), [screenRow.id])
+        XCTAssertEqual(appState.sessions.first?.title, screenRow.title)
+        XCTAssertEqual(appState.pinSyncNotice?.message, AppLocalization.string("Reconnect to Hermes to change this conversation."))
+    }
+
     func testAnUnreachableFarChatsActionsNeverReachTheDashboardOnScreen() async throws {
         var listed = 0
         var killed = 0

@@ -1018,7 +1018,7 @@ private struct V2ConversationMenu: View {
                     }
                     .disabled(!appState.isConnected)
                 }
-                if let session = appState.activeChatSessionSummary {
+                if let session = appState.chatOnScreenSessionSummary {
                     Section {
                         SessionActionMenuItems(
                             session: session,

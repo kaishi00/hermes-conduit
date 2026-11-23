@@ -1408,6 +1408,18 @@ struct SessionActionMenuItems: View {
     var onUsageDetails: (() -> Void)? = nil
 
     var body: some View {
+        // Another combined dashboard's chat on screen (its row from that
+        // dashboard's list): Rename and Delete, which run there; the rest
+        // reads and keeps this dashboard's list state.
+        if session.combinedDashboardID != nil {
+            renameButton
+            deleteButton
+        } else {
+            allItems
+        }
+    }
+
+    private var renameButton: some View {
         Button {
             Haptics.selection()
             // Next turn, once the menu has started closing: the rename sheet
@@ -1417,6 +1429,21 @@ struct SessionActionMenuItems: View {
             Label(AppLocalization.string("Rename…"), systemImage: "pencil")
         }
         .disabled(appState.isSessionMutationInFlight(session))
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            Haptics.warning()
+            onDelete()
+        } label: {
+            Label(AppLocalization.string("Delete"), systemImage: "trash")
+        }
+        .disabled(appState.isSessionMutationInFlight(session))
+    }
+
+    @ViewBuilder
+    private var allItems: some View {
+        renameButton
 
         Button {
             Haptics.light()
@@ -1485,13 +1512,7 @@ struct SessionActionMenuItems: View {
         }
         .disabled(appState.isSessionMutationInFlight(session))
 
-        Button(role: .destructive) {
-            Haptics.warning()
-            onDelete()
-        } label: {
-            Label(AppLocalization.string("Delete"), systemImage: "trash")
-        }
-        .disabled(appState.isSessionMutationInFlight(session))
+        deleteButton
     }
 }
 

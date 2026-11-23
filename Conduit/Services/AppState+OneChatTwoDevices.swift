@@ -616,6 +616,7 @@ extension AppState {
 
     @discardableResult
     func renameSession(_ session: SessionSummary, to title: String) async -> Bool {
+        if let done = await onCombinedDashboard(of: session, { await renameSession($0, to: title) }) { return done }
         if isOtherProfileRow(session) {
             return await renameOtherProfileSession(session, to: title)
         }
@@ -703,6 +704,7 @@ extension AppState {
     }
 
     func deleteSession(_ session: SessionSummary) async -> Bool {
+        if let done = await onCombinedDashboard(of: session, { await deleteSession($0) }) { return done }
         if isOtherProfileRow(session) {
             return await deleteOtherProfileSession(session)
         }

@@ -221,11 +221,7 @@ extension AppState {
     /// chat's own ids and handed back carrying the open id too: rename,
     /// archive and delete then reach the open chat as well.
     var activeChatSessionSummary: SessionSummary? {
-        // While an offline copy is on screen the title is that copy's, which
-        // can be another chat than the active id.
-        guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
-              let sessionId = activeSessionId, !sessionId.isEmpty,
-              botConversationProfile(for: sessionId) == nil else { return nil }
+        guard let sessionId = activeChatRowSessionID else { return nil }
         let ownIDs = chatOwnSessionIDs(for: sessionId)
         let durable = conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
         // The chat's header reads this several times per publish, and the
@@ -246,6 +242,27 @@ extension AppState {
         let row = activeChatSessionSummary(sessionId: sessionId, ownIDs: ownIDs, durable: durable)
         activeChatSessionSummaryCache = (key, row)
         return row
+    }
+
+    /// The open chat's id when it can have a row of its own: not while an
+    /// offline copy is on screen (the title is that copy's, which can be
+    /// another chat than the active id), nor a room, a new chat or a Bot Chat.
+    private var activeChatRowSessionID: String? {
+        guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
+              let sessionId = activeSessionId, !sessionId.isEmpty,
+              botConversationProfile(for: sessionId) == nil else { return nil }
+        return sessionId
+    }
+
+    /// `activeChatSessionSummary` without its cache, whose key follows only
+    /// the screen's list: for another dashboard's chat, read in its scope.
+    var uncachedActiveChatSessionSummary: SessionSummary? {
+        guard let sessionId = activeChatRowSessionID else { return nil }
+        return activeChatSessionSummary(
+            sessionId: sessionId,
+            ownIDs: chatOwnSessionIDs(for: sessionId),
+            durable: conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+        )
     }
 
     struct ActiveChatSessionSummaryKey: Equatable {
