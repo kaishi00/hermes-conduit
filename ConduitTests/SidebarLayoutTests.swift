@@ -406,7 +406,10 @@ final class SidebarLayoutTests: XCTestCase {
                        "a pushed Artifacts page drew before it appeared")
 
         // Outside the tab nothing holds: each publish passes straight on.
-        let live = V2ShownUpdates(state)
+        let live = V2LiveUpdates<EmptyView>.makeUpdates(state)
+        XCTAssertTrue(live.isShown)
+        XCTAssertFalse(live.coalesces, "a chat's Artifacts sheet waited to draw")
+        XCTAssertEqual(live.revealDelay, 0)
         var liveSent = 0
         let liveWatch = live.objectWillChange.sink { liveSent += 1 }
         defer { liveWatch.cancel() }

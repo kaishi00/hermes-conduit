@@ -90,6 +90,11 @@ struct WorkspaceFolderView: View {
     /// The latest open; one that lands after another, or after the folder,
     /// profile or server changed, is dropped.
     @State private var openToken: UUID?
+    /// What the open in flight began on. Held while hidden inside Artifacts
+    /// (audit 1722), the tab doesn't rerun its `task(id: key)`, which drops
+    /// an open, when the dashboard, profile or folder changes behind it;
+    /// a file read for the one before isn't shown.
+    @State private var openKey: Key?
     /// The tool count and plugin routes this tab last refreshed for.
     @State private var seenChanges: Changes?
 
@@ -940,7 +945,7 @@ struct WorkspaceFolderView: View {
         Task {
             switch await resolver.file(for: entry.path) {
             case .downloaded(let download):
-                guard openToken == token else {
+                guard isOpening(token) else {
                     MediaPreviewPresenter.removeDirectory(download.directory)
                     return
                 }
@@ -956,7 +961,7 @@ struct WorkspaceFolderView: View {
             case .unavailable:
                 break
             }
-            guard openToken == token else { return }
+            guard isOpening(token) else { return }
             let dataURL = await resolver.dataURL(for: entry.path)
             guard finishOpening(token) else { return }
             guard let dataURL, await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: entry.name) else {
@@ -969,14 +974,20 @@ struct WorkspaceFolderView: View {
     private func startOpening(_ entry: WorkspaceEntry) -> UUID {
         let token = UUID()
         openToken = token
+        openKey = key
         opening = entry.path
         return token
+    }
+
+    /// The open `token` started is still the one to show, on what it began on.
+    private func isOpening(_ token: UUID) -> Bool {
+        openToken == token && openKey == key
     }
 
     /// Whether the open `token` started is still the one to show; it ends
     /// the spinner when it is.
     private func finishOpening(_ token: UUID) -> Bool {
-        guard openToken == token else { return false }
+        guard isOpening(token) else { return false }
         openToken = nil
         opening = nil
         return true

@@ -599,11 +599,16 @@ struct V2LiveUpdates<Content: View>: View {
 
     init(appState: AppState, @ViewBuilder content: () -> Content) {
         self.content = content()
-        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+        _updates = StateObject(wrappedValue: Self.makeUpdates(appState))
     }
 
     var body: some View {
         content.environmentObject(updates)
+    }
+
+    /// Shown, drawing each publish at once: nothing coalesces or waits.
+    static func makeUpdates(_ appState: AppState) -> V2ShownUpdates {
+        V2ShownUpdates(appState)
     }
 }
 
