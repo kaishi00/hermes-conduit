@@ -301,6 +301,11 @@ struct TranscriptModel {
     /// its inbox, its tool steps hidden with Tool cards off). The chat then
     /// reads the page before by itself, up to `autoEarlierPageLimit` pages,
     /// so it opens on words rather than a lone Load earlier.
+    var drawsOnlyLoadEarlier: Bool {
+        guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
+        return true
+    }
+
     /// Whether the rows say the chat is opening (the opening line, or a
     /// picked chat's saved copy on its way): the notification-open pill
     /// over the chat would say it twice.
@@ -313,10 +318,6 @@ struct TranscriptModel {
         }
     }
 
-    var drawsOnlyLoadEarlier: Bool {
-        guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
-        return true
-    }
     /// The chat's rows left out because an earlier row has their id. Ids
     /// are unique in practice; the trace names any that aren't.
     private(set) var repeatedIDs: [String] = []
