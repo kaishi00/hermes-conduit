@@ -755,8 +755,15 @@ extension AppState {
         openAppLink(.session(id: item.sessionID, profile: profile))
     }
 
-    /// Back to the Bot Chat coordinating a workstream.
+    /// Back to the Bot Chat coordinating a workstream. A far workstream
+    /// chat's goes back to its bot on its own dashboard, in place, never to
+    /// a bot of that name on the one on screen.
     func openCoordinator(profile: String) {
+        if let dashboardID = farChatDashboardID, !chatOnScreenIsInScope {
+            guard let bot = Self.linkedBot(named: profile, in: farBotRoster(in: dashboardID)) else { return }
+            _ = openFarBotChatInPlace(of: bot, in: dashboardID)
+            return
+        }
         openAppLink(.bot(profile: profile))
     }
 
