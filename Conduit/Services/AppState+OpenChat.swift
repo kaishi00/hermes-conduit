@@ -855,8 +855,14 @@ extension AppState {
     /// pictures), never the dashboard on screen's.
     var conversationAgentIdentity: ConversationAgentIdentity {
         guard chatOnScreenIsInScope else {
+            // Its runtime gone: the name its own dashboard's bots give that
+            // profile (Bots Home's read), else the profile's own, never the
+            // dashboard on screen's name for it.
+            let profile = composerOwnerProfile
+            let farName = farChat.flatMap { combinedDashboardBots[$0.dashboardID]?.bots }?
+                .first { $0.name.caseInsensitiveCompare(profile) == .orderedSame }?.displayLabel
             return onChatRuntimeValue(unreachable: ConversationAgentIdentity.workspace(
-                name: profileDisplayName(composerOwnerProfile), photoURL: nil, profile: composerOwnerProfile
+                name: farName ?? profile, photoURL: nil, profile: profile
             )) { conversationAgentIdentity }
         }
         guard let botProfile = activeBotChatProfile else {
