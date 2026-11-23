@@ -207,9 +207,12 @@ struct RichCard: Identifiable, Equatable, Hashable {
         RichCardSchema.unwrappedCards(jsonObject(tool.input)?["cards"])
     }
 
-    /// A conduit_show call's arguments, kept only when they carry cards.
+    /// A conduit_show call's arguments, kept only when they carry cards to
+    /// open (a null, empty or unparseable `cards` draws nothing, so the row
+    /// keeps its short preview).
     static func argumentsWithCards(_ text: String?) -> String? {
-        guard let text, let object = jsonObject(text), object["cards"] != nil else { return nil }
+        guard let text, let object = jsonObject(text),
+              let cards = RichCardSchema.unwrappedCards(object["cards"]) as? [Any], !cards.isEmpty else { return nil }
         return text
     }
 

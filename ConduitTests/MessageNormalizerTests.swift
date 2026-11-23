@@ -1937,6 +1937,43 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
     }
 
+    /// A compact row whose content is only whitespace carries no answer:
+    /// its output is nil and its arguments still draw the board.
+    func testCompactResumeShowWithBlankContentKeepsItsBoard() throws {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "role": .string("tool"),
+                "name": .string("conduit_show"),
+                "content": .string("  \n"),
+                "context": .string("Plan"),
+                "args": .object(["cards": .array([.object([
+                    "type": .string("callout"),
+                    "callout": .object(["text": .string("Bring water.")])
+                ])])])
+            ])
+        ])
+
+        let tool = try XCTUnwrap(messages.first?.tool)
+        XCTAssertNil(tool.output)
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
+    }
+
+    /// Arguments whose cards are empty draw nothing, so the row keeps its
+    /// short preview rather than the raw arguments.
+    func testCompactResumeShowWithEmptyCardsKeepsItsPreview() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "role": .string("tool"),
+                "name": .string("conduit_show"),
+                "context": .string("Plan"),
+                "args": .object(["cards": .array([])])
+            ])
+        ])
+
+        XCTAssertEqual(messages.first?.tool?.input, "Plan")
+        XCTAssertFalse(RichCard.hasCards(messages[0]))
+    }
+
     /// A finished show that failed keeps its answer, so its arguments never
     /// draw a board.
     func testAFailedConduitShowAnswerDrawsNoBoardFromItsArguments() {
