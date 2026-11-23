@@ -608,12 +608,13 @@ jobs:
             # Prints why when it fails.
             restore() {
               local out
+              # An attempt killed by its time limit can leave git's locks
+              # behind (index, HEAD, config, refs, FETCH_HEAD); nothing else
+              # is using the checkout now.
+              find .git -name '*.lock' -type f -delete 2>/dev/null || true
               # On a fork's PR opencode adds a "fork" remote and fails if it's
               # already there, as it is after an earlier attempt in the chain.
               git remote remove fork >/dev/null 2>&1 || true
-              # An attempt killed by its time limit can leave git's locks
-              # behind; nothing else is using the checkout now.
-              rm -f .git/index.lock .git/HEAD.lock
               out=$(git checkout -q -f --detach "$trusted" 2>&1) || { echo "git checkout: $out"; return 1; }
               out=$(git clean -q -ffdx 2>&1) || { echo "git clean: $out"; return 1; }
               cmp -s opencode.json "$config" || { echo "opencode.json still differs from the checked-out copy"; return 1; }
@@ -663,7 +664,7 @@ jobs:
               fi
               say "Reviewing with $what."
               if ! why=$(restore); then
-                echo "::error::Couldn't restore the checked-out commit before $what ($why), so no attempt runs on the PR's files."; exit 1
+                echo "::error::Couldn't restore the checked-out commit before $what (${why//$'\n'/ }), so no attempt runs on the PR's files."; exit 1
               fi
               status=0
               env "$var=$value" MODEL="$model" PROMPT="${PROMPT//'{reviewer}'/$name}$earlier" \
