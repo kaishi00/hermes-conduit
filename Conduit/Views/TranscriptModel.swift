@@ -282,6 +282,10 @@ struct TranscriptModel {
     /// (`drawsOnlyLoadEarlier`): with the newest page, 960 rows, under the
     /// 1,000 a chat keeps loaded before it lets go of its oldest pages.
     static let autoEarlierPageLimit = 7
+    /// How many pages in a row that dedupe to nothing (rows already held,
+    /// after a graft) one of those reads goes past: each moves the window
+    /// on, so the next may land.
+    static let autoEarlierHeldPageRetries = 3
 
     /// Whether Load earlier is all the chat draws: its rows are there, but
     /// every one is hidden by the display settings (a bot working through

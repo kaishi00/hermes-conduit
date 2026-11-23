@@ -439,9 +439,18 @@ extension HermesVoiceGatewayTimeoutTests {
         shared.otherProfiles = false
         relaunched.savePreferences(shared)
         host.loseAnswers = true
+        // The frame is unknown on disk before the upload goes, so an app
+        // closed while it waits relaunches knowing it too.
+        let stateFile = PhoneSyncStateStore(url: folder.appendingPathComponent("state.json"))
+        var frameOnDiskWhileSending: String?? = .none
+        host.onIngest = { frameOnDiskWhileSending = .some(stateFile.loadIfReadable()?.frameHash) }
         now += 60
         _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.batches.count, 6)
+        host.onIngest = nil
+        XCTAssertEqual(frameOnDiskWhileSending, .some(nil), "Cleared and written before the upload went")
+        XCTAssertNotNil(stateFile.loadIfReadable(), "The state file still reads")
+        XCTAssertNil(relaunched.state.frameHash)
         host.loseAnswers = false
         shared.otherProfiles = true
         relaunched.savePreferences(shared)
@@ -2258,6 +2267,8 @@ private final class FakePhoneHost {
     var ingestError: Error?
     /// Uploads kept, but their answer never reaches the phone.
     var loseAnswers = false
+    /// Runs as each upload arrives, before it's taken.
+    var onIngest: (() -> Void)?
 
     func forgetKey() {
         keys = nil
@@ -2336,6 +2347,7 @@ private final class FakePhoneHost {
             if Self.items(in: batch) > 5_000 {
                 throw DashboardTicketBridgeError.http(status: 413, detail: "At most 5000 items per batch")
             }
+            onIngest?()
             batches.append(batch)
             if loseAnswers { throw URLError(.networkConnectionLost) }
             // phone_store: a picture the host waits for is taken.

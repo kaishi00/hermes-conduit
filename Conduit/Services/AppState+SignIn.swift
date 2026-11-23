@@ -549,6 +549,15 @@ extension AppState {
         endsOnRestart && !nativeSignIn && failure == .signInExpired ? .signInEndsOnRestart : failure
     }
 
+    /// Whether a forced sign-in is a native one: its bridge says so while
+    /// it's there. A repeat finds the bridge gone, and the first forced
+    /// sign-in after a silent renewal cleared the native grant, so what the
+    /// last one decided comes next; the grant kept in the Keychain only for
+    /// a dashboard this launch hasn't forced a sign-in on.
+    nonisolated static func forcedSignInIsNative(bridge: Bool?, remembered: Bool?, keptGrant: () -> Bool) -> Bool {
+        bridge ?? remembered ?? keptGrant()
+    }
+
     /// Forces the sign-in screen with a classified failure presentation.
     /// Prefer this overload whenever the failure derives from an Error — the
     /// full presentation (title, actions, help routing) reaches the login
@@ -605,13 +614,17 @@ extension AppState {
         pendingFailure: ConnectionFailurePresentation,
         keepingNativeGrant: Bool = false
     ) {
+        let dashboardID = activeDashboardID
+        let nativeSignIn = Self.forcedSignInIsNative(
+            bridge: dashboardTicketBridge?.usesNativeOAuth,
+            remembered: dashboardID.flatMap { forcedSignInWasNative[$0] },
+            keptGrant: { dashboardID.map { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) != nil } ?? false }
+        )
+        if let dashboardID { forcedSignInWasNative[dashboardID] = nativeSignIn }
         let pendingFailure = Self.signInRequiredPresentation(
             pendingFailure,
-            endsOnRestart: NotifierPluginStatus.Remembered.signInEndsOnRestart(for: activeDashboardID, in: defaults),
-            // A repeat forced sign-in finds the bridge already gone; the
-            // native grant it kept says the same.
-            nativeSignIn: dashboardTicketBridge?.usesNativeOAuth
-                ?? activeDashboardID.map { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) != nil } ?? false
+            endsOnRestart: NotifierPluginStatus.Remembered.signInEndsOnRestart(for: dashboardID, in: defaults),
+            nativeSignIn: nativeSignIn
         )
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()

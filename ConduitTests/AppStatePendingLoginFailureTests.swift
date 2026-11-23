@@ -238,6 +238,38 @@ final class AppStatePendingLoginFailureTests: XCTestCase {
         XCTAssertTrue(appState.liveTurnRegistryRecheckPending)
     }
 
+    /// Issue 3097: a repeat forced sign-in finds the bridge gone, and after
+    /// a silent renewal the native grant cleared too, so what the first one
+    /// decided says whether the password-only restart note applies.
+    func testARepeatForcedSignInRemembersWhetherItWasNative() {
+        // The bridge first, then the last forced sign-in, then the kept grant.
+        XCTAssertTrue(AppState.forcedSignInIsNative(bridge: true, remembered: false, keptGrant: { false }))
+        XCTAssertFalse(AppState.forcedSignInIsNative(bridge: false, remembered: true, keptGrant: { true }))
+        XCTAssertTrue(AppState.forcedSignInIsNative(bridge: nil, remembered: true, keptGrant: { false }),
+                      "the grant cleared since")
+        XCTAssertFalse(AppState.forcedSignInIsNative(bridge: nil, remembered: false, keptGrant: { true }))
+        XCTAssertTrue(AppState.forcedSignInIsNative(bridge: nil, remembered: nil, keptGrant: { true }),
+                      "bridge gone, grant kept")
+        XCTAssertFalse(AppState.forcedSignInIsNative(bridge: nil, remembered: nil, keptGrant: { false }),
+                       "bridge gone, no grant")
+
+        // On a dashboard whose password sign-ins end on each restart.
+        let appState = makeAppState()
+        let dashboard = UUID()
+        appState.savedDashboardRegistry.activeDashboardID = dashboard
+        NotifierPluginStatus.Remembered.remember(signInEndsOnRestart: true, for: dashboard, in: appState.defaults)
+        appState.forcedSignInWasNative[dashboard] = true
+        appState.requireSignIn(failure: .signInExpired)
+        XCTAssertEqual(appState.pendingLoginFailure, .signInExpired, "a native sign-in never gets the restart note")
+        XCTAssertEqual(appState.forcedSignInWasNative[dashboard], true, "and the next repeat still knows")
+        appState.requireSignIn(failure: .signInExpired)
+        XCTAssertEqual(appState.pendingLoginFailure, .signInExpired)
+
+        appState.forcedSignInWasNative[dashboard] = false
+        appState.requireSignIn(failure: .signInExpired)
+        XCTAssertEqual(appState.pendingLoginFailure, .signInEndsOnRestart, "a password one does")
+    }
+
     func testRequireSignInMessageOverloadWrapsHumanAuthoredStringsAsNotice() {
         let appState = makeAppState()
         appState.requireSignIn(message: "Your dashboard session ended.")

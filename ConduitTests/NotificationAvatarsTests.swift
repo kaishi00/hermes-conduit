@@ -1,5 +1,6 @@
 import ImageIO
 import UIKit
+import UserNotifications
 import XCTest
 @testable import Conduit
 
@@ -168,6 +169,30 @@ extension BotModeTests {
 
         // A call Conduit couldn't read names no bot and keeps the icon.
         XCTAssertNil(HermesCallNotifications.sender(of: HermesCallNotifications.unreadableMissedCallRequest().content))
+    }
+
+    func testACallNoticesFaceWaitsAtMostItsTimeoutAndALateAnswerResumesNothing() async {
+        let original = UNMutableNotificationContent()
+        original.title = "Missed call"
+        let faced = UNMutableNotificationContent()
+        faced.title = "From Kaleb"
+
+        // The donation answers first: its content, and the timer's later
+        // turn resumes nothing (a second resume would trap).
+        let quick = await NotificationSenderPicture.applied(to: original, timeout: 0.2) { _, done in done(faced) }
+        XCTAssertTrue(quick === faced)
+
+        // Held past the timeout: the notice goes unchanged, and the late
+        // answer resumes nothing.
+        var held: ((UNMutableNotificationContent) -> Void)?
+        let slow = await NotificationSenderPicture.applied(to: original, timeout: 0.05) { _, done in held = done }
+        XCTAssertTrue(slow === original)
+        held?(faced)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        // No sender or picture: nothing to wait for.
+        let plain = await NotificationSenderPicture.applied(to: original, sender: nil, picture: nil)
+        XCTAssertTrue(plain === original)
     }
 
     func testTheLaunchPassNeverOverwritesAFreshCopyWithStaleBytes() throws {

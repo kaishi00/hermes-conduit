@@ -916,6 +916,25 @@ final class KanbanV2Tests: XCTestCase {
         // `__` between letters is never emphasis, however many there are.
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("my__var\nother__name"), "my__var\nother__name")
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("snake__case__var and __bold__"), "snake__case__var and bold")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("__init__"), "init")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("**`code`**"), "code")
+    }
+
+    /// Issue 3092: the rare Markdown where the preview and the sheet differed.
+    func testRowPreviewFollowsTheSheetOnRareMarkdown() {
+        // Markers whitespace keeps from opening or closing stay, even in pairs,
+        // and a closer before any opener pairs with nothing.
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("a ** b ** c"), "a ** b ** c")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("foo__ bar __baz"), "foo__ bar __baz")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("**bold** and ** loose **"), "bold and ** loose **")
+        // A fence in a list item or a quote is a fence.
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("- ```\n  a**b\n  ```\n**Done**"), "a**b\nDone")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("> ```\n> a**b\n> ```\n**Done**"), "a**b\nDone")
+        // Indented 4 or more, a fence marker neither opens nor closes a block.
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("    ```\n**bold**"), "bold")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("```\na\n    ```\nb\n```"), "a\n    ```\nb")
+        // A fenced block's blank lines are kept, as its other lines are.
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("```\na\n\nb\n```\n**Done**"), "a\n\nb\nDone")
     }
 
     func testResultOpensWhenLongOrWhenMarkdownWasTakenOut() {

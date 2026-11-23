@@ -70,6 +70,21 @@ struct ChatMutes: Equatable {
         return mutes.first { $0.isActive(at: now) && !$0.ids.isDisjoint(with: ids) }
     }
 
+    /// When the next timed mute still lasting ends.
+    func nextEnd(after now: Date) -> Date? {
+        mutesByProfile.values.joined().compactMap(\.until).filter { $0 > now }.min()
+    }
+
+    /// Without the mutes that ended by `now`.
+    func droppingEnded(at now: Date) -> ChatMutes {
+        var next = self
+        for (profile, mutes) in mutesByProfile {
+            let lasting = mutes.filter { $0.isActive(at: now) }
+            next.mutesByProfile[profile] = lasting.isEmpty ? nil : lasting
+        }
+        return next
+    }
+
     /// A profile's mutes as its plugin read them; another dashboard's are
     /// dropped first.
     func replacing(_ mutes: [Mute], profile: String, dashboardID: UUID?) -> ChatMutes {

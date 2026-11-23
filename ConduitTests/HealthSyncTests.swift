@@ -161,7 +161,9 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testOtherProfilesGoesWithEveryUploadAndAChangeReachesTheHostAlone() async throws {
         let host = FakeHealthHost()
-        let engine = makeHealthEngine(source: FakeHealthSource())
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
+        let engine = makeHealthEngine(source: FakeHealthSource(), folder: folder)
+        let stateFile = HealthSyncStateStore(url: folder.appendingPathComponent("state.json"))
         var preferences = healthPreferences(history: .days30)
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         XCTAssertTrue(host.batches.allSatisfy { $0["other_profiles"] as? Bool == false })
@@ -183,9 +185,18 @@ extension HermesVoiceGatewayTimeoutTests {
         // unknown, so the next pass sends it again with nothing new.
         preferences.otherProfiles = false
         host.loseAnswers = true
+        // Unknown on disk before the upload goes, so an app closed while it
+        // waits relaunches knowing it too.
+        var choiceOnDiskWhileSending: [Bool?] = []
+        host.onIngest = { choiceOnDiskWhileSending.append(stateFile.loadIfReadable()?.sentOtherProfiles) }
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        host.onIngest = nil
         XCTAssertEqual(host.batches.last?["other_profiles"] as? Bool, false)
         XCTAssertNil(engine.state.sentOtherProfiles)
+        XCTAssertFalse(choiceOnDiskWhileSending.isEmpty)
+        XCTAssertTrue(choiceOnDiskWhileSending.allSatisfy { $0 == nil }, "Cleared and written before the upload went")
+        XCTAssertNotNil(stateFile.loadIfReadable())
+        XCTAssertNil(stateFile.loadIfReadable()?.sentOtherProfiles, "A relaunch reads it as unknown")
         host.loseAnswers = false
         before = host.batches.count
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
@@ -725,6 +736,8 @@ private final class FakeHealthHost {
     var staleWindows = 0
     /// Uploads kept, but their answer never reaches the phone.
     var loseAnswers = false
+    /// Runs as each upload arrives, before it's taken.
+    var onIngest: (() -> Void)?
 
     func forgetKey() {
         session = nil
@@ -767,6 +780,7 @@ private final class FakeHealthHost {
             let aad = HealthSyncCrypto.aad(kid: kid, deviceID: try XCTUnwrap(body["device_id"] as? String),
                                            batchID: try XCTUnwrap(body["batch_id"] as? String))
             let plaintext = try ChaChaPoly.open(box, using: session, authenticating: aad)
+            onIngest?()
             batches.append(try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any]))
             if loseAnswers { throw URLError(.networkConnectionLost) }
             return ["ok": true, "stale_windows": staleWindows]

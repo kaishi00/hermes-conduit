@@ -1790,19 +1790,21 @@ extension AppState {
         let failure = AppLocalization.string("Could not remove \(group.name).")
         // The list may hold another Hermes' groups once the write returns.
         let dashboard = activeDashboardID
+        let projection = desktopGroupProjectionForTesting ?? DesktopGroupProjectionAccess(
+            read: { try await client.desktopGroupProjection() },
+            write: { try await client.writeDesktopGroupProjection($0, expectedRevision: $1) }
+        )
         for attempt in 0..<2 {
             let outcome: BotMetaWriteOutcome
             do {
-                let current = try await client.desktopGroupProjection()
+                let current = try await projection.read()
                 guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, roomID: group.roomIdentity, from: current.snapshot) else {
                     // Already gone (removed elsewhere meanwhile).
                     if activeDashboardID == dashboard { desktopGroupChats.removeAll { $0.isSameRoom(as: group) } }
                     await refreshBotRosterAfterWrite()
                     return nil
                 }
-                outcome = BotMetaWriteOutcome(configureResult: try await client.writeDesktopGroupProjection(
-                    envelope, expectedRevision: current.revision
-                ))
+                outcome = BotMetaWriteOutcome(configureResult: try await projection.write(envelope, current.revision))
             } catch {
                 return failure
             }
@@ -2071,4 +2073,11 @@ extension AppState {
         botModePhase = .idle
         invalidateGroupChatState(keepingDrafts: keepingRoomDrafts)
     }
+}
+
+/// Hermes Desktop's group projection, read and written (the `default`
+/// profile's ui_meta); tests answer it in place of the socket.
+struct DesktopGroupProjectionAccess {
+    var read: @MainActor () async throws -> (snapshot: AnyCodable?, revision: Int?)
+    var write: @MainActor (_ envelope: [String: Any], _ expectedRevision: Int?) async throws -> AnyCodable
 }

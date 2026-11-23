@@ -1995,7 +1995,7 @@ extension CrossProfilePresentationCacheTests {
     /// the profile list can't be read; a profile whose chats couldn't be
     /// read, with none read before, keeps what the widgets stored.
     func testKeptChatReadsPublishAndPruneAFarProfilesWidgetWorkspace() async throws {
-        final class Hermes { var profiles: [String]? = ["default", "atlas"]; var atlasFails = false }
+        final class Hermes { var profiles: [String]? = ["default", "atlas"]; var atlasFails = false; var allFail = false }
         let hermes = Hermes()
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: switchLifecycleOperations(workCatalog: []) { _ in [] })
         await appState.switchDashboard(to: vps.id)
@@ -2011,7 +2011,7 @@ extension CrossProfilePresentationCacheTests {
             }
             guard path.contains("/api/profiles/sessions"), !path.contains("source=cron") else { return ["sessions": []] }
             let profile = path.contains("profile=atlas") ? "atlas" : "default"
-            if profile == "atlas", hermes.atlasFails { throw URLError(.timedOut) }
+            if hermes.allFail || (profile == "atlas" && hermes.atlasFails) { throw URLError(.timedOut) }
             return ["sessions": [
                 ["id": "\(profile)-1", "title": "Chat", "message_count": 1, "profile": profile, "last_active": 2_000],
             ]]
@@ -2053,6 +2053,16 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(farWorkspaces()["atlas"], atlas, "an unread profile keeps what was stored, not an empty list")
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.unreadProfiles, ["atlas"])
+
+        // Atlas deleted again while no chat read answers at all: the pass
+        // narrows the kept list and publishes, so its workspace leaves now
+        // rather than at a later successful read (#3133 review).
+        hermes.profiles = ["default"]
+        hermes.allFail = true
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.profiles, ["default"])
+        XCTAssertEqual(Set(farWorkspaces().keys), ["default"], "a narrowed pass with no answers still publishes")
     }
 
     /// A pass whose chat reads all fail still narrows the kept list to the
@@ -2381,6 +2391,10 @@ extension CrossProfilePresentationCacheTests {
             return "fresh-ticket"
         }
         let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        // The kept dashboard's roster is set by hand below: a read through
+        // its connection that lands late finds no bots, so it can't link
+        // the two Hermes by a Bot Chat (issue 3072).
+        appState.keptDashboardBotRosterReader = { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: true) }
         await appState.switchDashboard(to: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertEqual(appState.rememberedActiveProfile(for: mac.id) ?? "default", "default")
@@ -2508,6 +2522,14 @@ extension CrossProfilePresentationCacheTests {
                                                 updatedLabel: "now", profile: "default", source: .cron, isActive: false,
                                                 isArchived: false, lineageRootId: nil)]
         XCTAssertFalse(appState.combinedHermesEvidence[mac.id]?.contains("cron-run-7f3a") ?? false)
+        // Nothing yet links them: no list ids, waits or Bot Chats in common.
+        // Said whole, so a failure names what did (issue 3072).
+        let before = appState.combinedHermesEvidence
+        let botChats = appState.shownBotRoster.compactMap(\.canonicalSession?.id)
+            + appState.otherCombinedDashboardsBots.flatMap { $0.bots.compactMap(\.canonicalSession?.id) }
+        XCTAssertTrue((before[mac.id] ?? []).isDisjoint(with: before[vps.id] ?? []),
+                      "evidence: \(before), Bot Chats: \(botChats), waits: \(appState.needsYou.items.map(\.hostKey))")
+        XCTAssertTrue(appState.otherCombinedDashboardsBots.isEmpty, "a late roster read: \(botChats)")
         XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-run-7f3a", "42"]
         let evidence = appState.combinedHermesEvidence

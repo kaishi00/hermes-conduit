@@ -63,7 +63,8 @@ extension AppState {
     /// with the call on screen. A call off its dashboard whose connection
     /// has dropped (before a quiet sign-in keeps it again) reads an empty
     /// runtime: no connection and no plugin report, never the screen's.
-    /// Synchronous, as `act(onRuntime:)`.
+    /// A fresh one each time, so nothing `body` writes into it outlives the
+    /// call (issue 3045). Synchronous, as `act(onRuntime:)`.
     func onCallRuntime<T>(_ body: () throws -> T) rethrows -> T {
         guard callDashboardOffScreen != nil else { return try body() }
         return try act(onRuntime: callRuntimeOffScreen ?? DashboardRuntime(), body)
