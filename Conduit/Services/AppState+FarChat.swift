@@ -210,7 +210,8 @@ extension AppState {
         _ session: SessionSummary,
         in dashboardID: UUID,
         prepare: () -> Void = {},
-        onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil
+        onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil,
+        onFailed: (@MainActor (_ refused: Bool) -> Void)? = nil
     ) -> Task<Bool, Never>? {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
               !isFarBotChat(session, in: dashboardID),
@@ -221,7 +222,7 @@ extension AppState {
         widgetLaunchCoordinator.supersede()
         return act(onRuntime: runtime) {
             prepare()
-            return requestOpenSession(session.id, onFailure: onFailure)
+            return requestOpenSession(session.id, onFailure: onFailure, onFailed: onFailed)
         }
     }
 

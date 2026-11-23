@@ -3431,6 +3431,9 @@ extension CrossProfilePresentationCacheTests {
             counts.mints += 1
             return "fresh-ticket"
         }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows.
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             counts.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -3449,10 +3452,12 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
         )
-        // Its bots are read (none), so a Bot Chat's push could be told apart.
+        // Its bots are read (none), so a Bot Chat's push could be told apart,
+        // and its Pulse's feed is read, so its Pulse chat's could.
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
             client: ObjectIdentifier(kept.client), bots: [], avatars: [:], at: Date()
         )
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: ObjectIdentifier(kept.bridge), unseen: 0, at: Date())
 
         let open = Task { @MainActor in
             await appState.openNotificationTargetOutcome(ConduitNotificationTarget(
@@ -3462,6 +3467,8 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-1" } }
         let outcome = await open.value
         XCTAssertEqual(outcome, .opened, "the route waits on the far open")
+        XCTAssertNil(appState.errorMessage, "the far open's error")
+        XCTAssertEqual(appState.messages.map(\.id), ["far-1"], "its rows are up")
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
@@ -3469,6 +3476,71 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing, "still kept")
         XCTAssertEqual(counts.connects, 0, "no socket is opened")
         XCTAssertEqual(counts.mints, 0, "no ticket is minted")
+    }
+
+    /// Issue 3057: a far push whose open fails is tried again, its words
+    /// held for the retries' end; one Hermes refused isn't, and says so at
+    /// once. It goes through the switch while its bots are unread or nothing
+    /// knows where its Pulse lives, and a wait's card lands in the far chat.
+    func testAFarPushThatFailsIsTriedAgainUnlessRefusedAndItsCardLandsInPlace() async throws {
+        final class Script { var error: Error? }
+        let script = Script()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.openSession = { _, sessionID, _ in
+            if let error = script.error { throw error }
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-2", role: .assistant, content: "From the Mac", timestamp: "ts-f2")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = SessionSummary(id: "session-a", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        let target = ConduitNotificationTarget(
+            profile: "default", sessionId: "session-a", dashboardID: mac.id, type: "approval.needed",
+            decision: .approval(sessionKey: "session-a", description: "Run the deploy", choices: ["once", "deny"])
+        )
+
+        let unreadBots = await appState.openFarNotificationInPlace(target, in: mac.id)
+        XCTAssertNil(unreadBots, "its bots unread, it switches")
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(kept.client), bots: [], avatars: [:], at: Date()
+        )
+        let unknownPulse = await appState.openFarNotificationInPlace(target, in: mac.id)
+        XCTAssertNil(unknownPulse, "nothing knows where its Pulse lives: it switches, as its Pulse chat's push must")
+        appState.pulseRememberedHomes[mac.id.uuidString] = "pulse-home"
+
+        script.error = URLError(.timedOut)
+        let passing = await appState.openFarNotificationInPlace(target, in: mac.id)
+        XCTAssertEqual(passing, .retry, "a failure that may pass is tried again")
+        XCTAssertEqual(appState.notificationRouteFailure?.target, target, "its words wait for the retries' end")
+
+        script.error = RpcError(code: 4007, message: "Session not found")
+        let refused = await appState.openFarNotificationInPlace(target, in: mac.id)
+        XCTAssertEqual(refused, .failed, "Hermes refused it: the same open would hear the same")
+        XCTAssertNil(appState.notificationRouteFailure)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+
+        script.error = nil
+        // Listed again (a refusal may drop the row, as the switch's does).
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        let opened = await appState.openFarNotificationInPlace(target, in: mac.id)
+        XCTAssertEqual(opened, .opened)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id)
+        let card = appState.messages.first { $0.role == .approval }
+        XCTAssertEqual(card?.approval?.status, .pending, "the push's card is in the far chat, answerable")
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "session-a")
     }
 
     func testAWidgetOrSiriChatOfAKeptDashboardOpensInPlaceThroughItsKeptConnection() async throws {

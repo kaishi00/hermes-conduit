@@ -19,18 +19,26 @@ import Foundation
 extension AppState {
     /// Opens the chat a push or chat link for another combined dashboard
     /// names in place, as its Chats row does, and lands a wait's push on its
-    /// card: true once its chat opened, waited on so the card's reveal names
-    /// the chat that opened, as on screen; false when the open failed, to
-    /// be tried again. Nil when it opens through a
+    /// card: `.opened` once its chat opened, waited on so the card's reveal
+    /// names the chat that opened, as on screen; `.retry` when the open
+    /// failed, to be tried again, its words held for the retries' end;
+    /// `.failed` when Hermes refused the chat (gone, or another one), which
+    /// says so at once. A card the push carried leaves with an open that
+    /// failed, as the switch's does. Nil when it opens through a
     /// switch as before: the dashboard isn't kept connected (or its socket
     /// can't be handed to the chat's profile), its list doesn't hold the
     /// chat, or the push opens a room, its Pulse, a call or a Bot Chat; and
     /// while its bots aren't read yet, since a Bot Chat's push can't be told
-    /// from a chat's then: the switch reads them and opens it in Bots.
-    func openFarNotificationInPlace(_ target: ConduitNotificationTarget, in dashboardID: UUID) async -> Bool? {
+    /// from a chat's then, nor its Pulse chat while nothing knows where its
+    /// Pulse lives: the switch reads them and opens it in Bots or on Pulse.
+    func openFarNotificationInPlace(_ target: ConduitNotificationTarget, in dashboardID: UUID) async -> NotificationOpenOutcome? {
+        let requested = target.sessionId
+        let attempt = FarNotificationOpenAttempt()
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
               let kept = keptDashboardRuntimes[dashboardID],
               combinedDashboardBots[dashboardID] != nil || !kept.runtime.botRoster.isEmpty,
+              // Its Pulse's feed read, or its Pulse chat known some other way.
+              combinedDashboardPulse[dashboardID] != nil || !farPulseHomes(in: dashboardID).isEmpty,
               let session = Self.farNotificationChat(
                   target,
                   listed: combinedDashboardChats[dashboardID]?.sessions ?? [],
@@ -42,9 +50,18 @@ extension AppState {
                   // its card is recorded on that dashboard's runtime before
                   // the open, whose resume merges it in, as on screen.
                   guard let decision = target.decision else { return }
-                  let requested = target.sessionId
                   let ids = [session.id, requested, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty }
-                  recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: requested == session.id ? [requested] : [requested, session.id])
+                  attempt.cardIDs = requested == session.id ? [requested] : [requested, session.id]
+                  recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: attempt.cardIDs)
+              }, onFailed: { [weak self] wasRefused in
+                  attempt.refused = wasRefused
+                  // Runs on that dashboard's runtime, as the card was recorded.
+                  guard let self, let decision = target.decision,
+                        let key = Self.pendingDecisionEvictionKey(for: decision),
+                        let first = attempt.cardIDs.first else { return }
+                  self.sessionPresentationCache.removePendingDecision(
+                      key: key, profile: self.presentationProfile(for: first), sessionIDs: attempt.cardIDs
+                  )
               }) else { return nil }
         // An approval's or a question's push lands on its card, as on screen.
         var reveal: NeedsYouReveal?
@@ -54,13 +71,37 @@ extension AppState {
         }
         // The open's own answer can be false for an open that a later read
         // of the same chat took over (the chat still came up), so the chat
-        // on screen decides too.
-        let opened = await open.value || farChatIsShown(session, in: dashboardID)
+        // on screen decides too, unless this open itself failed: a failed
+        // resume leaves the chat selected without its rows.
+        let answered = await open.value
+        let opened = answered || (attempt.refused == nil && farChatIsShown(session, in: dashboardID))
+        if opened {
+            discardNotificationRouteFailure(for: target)
+            return .opened
+        }
         // One that didn't open is tried again: its card's reveal waits for
         // that try rather than land on another chat. A newer tap's reveal
         // stays.
-        if !opened, let reveal, pendingNeedsYouReveal == reveal { pendingNeedsYouReveal = nil }
-        return opened
+        if let reveal, pendingNeedsYouReveal == reveal { pendingNeedsYouReveal = nil }
+        // Superseded by another open: the newer one says what happened.
+        guard let refused = attempt.refused else { return .retry }
+        let message = Self.linkedSessionFailureMessage(
+            current: nil, sessionWasNotFound: refused,
+            unavailable: AppLocalization.string("WidgetLaunch.ConversationUnavailable")
+        )
+        if refused {
+            // The same open would hear the same answer.
+            discardNotificationRouteFailure(for: target)
+            errorMessage = message
+            return .failed
+        }
+        // Said when the retries run out with no chat opened, as the
+        // switch's open does (publishNotificationRouteFailure), on the
+        // transition the open itself began.
+        notificationRouteFailure = NotificationRouteFailure(
+            target: target, message: message, transition: chatViewportTransitionGeneration, roomEpoch: groupRoomEpoch
+        )
+        return .retry
     }
 
     /// The chat of another combined dashboard's list a push opens in place:
@@ -155,4 +196,12 @@ extension AppState {
         if open != nil { errorMessage = nil }
         return open != nil
     }
+}
+
+/// What a far push's open learned as it went: the ids its card was recorded
+/// under, and, once it failed, whether Hermes refused the chat.
+@MainActor
+private final class FarNotificationOpenAttempt {
+    var cardIDs: [String] = []
+    var refused: Bool?
 }

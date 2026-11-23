@@ -996,7 +996,13 @@ extension AppState {
     /// superseded it), told whether this open's own reconcile heard the
     /// resume's not found (4007) for a chat that isn't a Kanban worker.
     @discardableResult
-    func requestOpenSession(_ sessionId: String, onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil) -> Task<Bool, Never> {
+    /// `onFailed` runs then too, told whether Hermes refused the chat (gone,
+    /// or another one), which the same open would hear again.
+    func requestOpenSession(
+        _ sessionId: String,
+        onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil,
+        onFailed: (@MainActor (_ refused: Bool) -> Void)? = nil
+    ) -> Task<Bool, Never> {
         // Tapping the chat already open and settled reads it, and nothing
         // else: it shows Hermes' rows as they stand, streamed in live, so a
         // second open would only read them again and drop rows Load earlier
@@ -1016,7 +1022,10 @@ extension AppState {
             guard let self else { return false }
             let open = await self.performSessionOpenNotingRefusal(sessionId, reusing: nil)
             let outcome = open.outcome
-            if outcome == .failed, !Task.isCancelled { onFailure?(open.sessionWasNotFound) }
+            if outcome == .failed, !Task.isCancelled {
+                onFailure?(open.sessionWasNotFound)
+                onFailed?(open.refused)
+            }
             let opened = outcome == .opened
             // Tapping a chat reads it, even when it was already the open one
             // (the id didn't change, so activeSessionId's didSet stayed quiet).
@@ -1393,8 +1402,10 @@ extension AppState {
         // A wait's notification whose id the open resolved to another (a
         // runtime id from an older notifier): its card is in the chat that
         // opened, so the reveal names that one (issue 1705).
+        // Only this tap's own reveal: a newer tap's stays (issue 3057).
         if outcome == .opened, let type = target.type, NeedsYouStore.notificationTypes.contains(type),
-           let reveal = pendingNeedsYouReveal, !isShowingChat(for: reveal),
+           let reveal = pendingNeedsYouReveal, reveal.opening == (target.durableSessionID ?? target.sessionId),
+           !isShowingChat(for: reveal),
            let opened = activeSessionId, !opened.isEmpty {
             pendingNeedsYouReveal = NeedsYouReveal(opening: opened)
         }
@@ -1439,12 +1450,13 @@ extension AppState {
             // Another combined dashboard's chat opens in place, as its Chats
             // row does, on its own runtime through its kept connection. No
             // switch, so a call goes on.
-            if let opened = await openFarNotificationInPlace(target, in: dashboardID) {
+            if let outcome = await openFarNotificationInPlace(target, in: dashboardID) {
                 traceStage = "dashboard check (another combined dashboard, in place)"
                 // One that didn't open (its kept socket dropped, a read
                 // timed out) is tried again, as a switch's open would be;
-                // a newer tap replaces it meanwhile.
-                return opened ? .opened : .retry
+                // a newer tap replaces it meanwhile. One Hermes refused
+                // isn't (issue 3057).
+                return outcome
             }
             traceStage = "dashboard check (switching to another saved dashboard)"
             // A notification tapped during a call, or a chat link routed
