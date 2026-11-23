@@ -338,6 +338,49 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: true, connected: true, phase: .loading))
     }
 
+    /// Pulse holds AppState's publishes while another tab is up or a chat
+    /// is pushed over it (its own disappearance), and draws them once when
+    /// it shows again (audit 1722).
+    @MainActor
+    func testPulsePageHoldsPublishesWhileItIsntOnScreen() {
+        var shell = V2ShellContext()
+        XCTAssertTrue(V2PulsePageHost.isShown(mounted: true, in: shell))
+        XCTAssertFalse(V2PulsePageHost.isShown(mounted: false, in: shell), "a chat pushed over it")
+        shell.values.isTabActive = false
+        XCTAssertFalse(V2PulsePageHost.isShown(mounted: true, in: shell), "another tab")
+
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+        updates.isShown = V2PulsePageHost.isShown(mounted: true, in: shell)
+        state.sessions = [pinnedTestSession("hidden")]
+        settle()
+        XCTAssertEqual(sent, 0, "a hidden page drew")
+        shell.values.isTabActive = true
+        updates.isShown = V2PulsePageHost.isShown(mounted: true, in: shell)
+        XCTAssertEqual(sent, 1, "shown again, it draws what it missed once")
+
+        XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: true), V2ShownUpdates.popSlide,
+                       "a chat popping off it: it draws once the pop has slid")
+        XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: false), 0)
+
+        // A pushed route starts held: restored under a chat, it never drew.
+        XCTAssertFalse(V2PulsePageHost.makeUpdates(state, root: false).isShown)
+        // The root follows the shell's path: born under a restored chat it
+        // starts held, and that chat's pop waits out the slide.
+        let root = V2PulsePageHost.makeUpdates(state, root: true)
+        shell.values.isRootCovered = true
+        let launched = V2PulsePageHost.visibility(in: shell)
+        root.follow(launched, from: launched)
+        XCTAssertFalse(root.isShown, "a page born under a chat counted as shown")
+        shell.values.isRootCovered = false
+        root.follow(V2PulsePageHost.visibility(in: shell), from: launched)
+        XCTAssertTrue(root.isShown)
+        XCTAssertEqual(root.revealDelay, V2ShownUpdates.popSlide, "the restored chat's pop drew at finger lift")
+    }
+
     /// A project page is covered by a chat pushed over it, not by one
     /// beside it; its rows compare on what they show.
     @MainActor
