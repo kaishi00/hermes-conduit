@@ -1490,7 +1490,9 @@ struct WorkspaceFileSheet: View {
             return
         }
         guard explorer.scope == startedScope, explorer.far == startedFar, owner.map(explorer.owns) ?? true else {
-            drafts[file.path] = nil
+            // Text typed while the save ran stays a draft: the host took
+            // only what was sent.
+            if drafts[file.path]?.text == text { drafts[file.path] = nil }
             return
         }
         explorer.saved(saved ?? file, text: text)
