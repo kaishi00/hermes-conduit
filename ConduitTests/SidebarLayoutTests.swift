@@ -361,6 +361,10 @@ final class SidebarLayoutTests: XCTestCase {
         shell.values.isTabActive = true
         updates.isShown = V2PulsePageHost.isShown(mounted: true, in: shell)
         XCTAssertEqual(sent, 1, "shown again, it draws what it missed once")
+
+        XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: true), V2ShownUpdates.popSlide,
+                       "a chat popping off it: it draws once the pop has slid")
+        XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: false), 0)
     }
 
     /// A project page is covered by a chat pushed over it, not by one

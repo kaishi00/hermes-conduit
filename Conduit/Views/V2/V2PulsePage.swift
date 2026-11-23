@@ -141,6 +141,8 @@ struct V2PulsePageHost: View {
     @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @State private var mounted = false
+    /// Gone once already: the next appearance is a chat popping off it.
+    @State private var wasCovered = false
 
     init(appState: AppState) {
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
@@ -151,13 +153,19 @@ struct V2PulsePageHost: View {
             .environmentObject(updates)
             .onAppear {
                 mounted = true
+                // Uncovered by a pop, it draws once the pop has slid, as
+                // the Chats list does; first shown, at once.
+                updates.revealDelay = Self.revealDelay(uncoveredByPop: wasCovered)
                 updates.isShown = Self.isShown(mounted: true, in: shell)
             }
             .onDisappear {
                 mounted = false
+                wasCovered = true
                 updates.isShown = false
             }
             .onChange(of: shell.isTabActive) { _, _ in
+                // A tab switch slides nothing: it draws at once.
+                updates.revealDelay = 0
                 updates.isShown = Self.isShown(mounted: mounted, in: shell)
             }
     }
@@ -166,6 +174,10 @@ struct V2PulsePageHost: View {
     /// `onDisappear`), in the tab that shows.
     static func isShown(mounted: Bool, in shell: V2ShellContext) -> Bool {
         V2PulsePage.isVisible(shown: mounted, in: shell)
+    }
+
+    static func revealDelay(uncoveredByPop: Bool) -> TimeInterval {
+        uncoveredByPop ? V2ShownUpdates.popSlide : 0
     }
 }
 
