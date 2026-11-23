@@ -2273,6 +2273,24 @@ extension CrossProfilePresentationCacheTests {
                        "and never merge with the screen's chat under the same profile and id")
         XCTAssertTrue(RichChecklistContext.sameOwner(farOwner, "default"), "a key from before dashboards were named is still taken up")
         XCTAssertFalse(appState.richCardChat?.contains(vps.id.uuidString) == true)
+        // Its diff cards' long diffs and review cards' rounds are read on
+        // its own Hermes, while its plugin keeps them.
+        XCTAssertEqual(appState.richCardHostDashboard, mac.id)
+        XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id),
+                     "a plugin that keeps no diffs isn't asked")
+        kept.runtime.notifierPlugin.state = .reported(version: "9.0.0", capabilities: [RichDiffLoader.capability,
+                                                                                     RichReviewLoader.capability])
+        XCTAssertTrue(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id) === kept.bridge,
+                      "its diffs are read on its own Hermes")
+        XCTAssertTrue(appState.richCardReadBridge(capability: RichReviewLoader.capability, on: mac.id) === kept.bridge)
+        appState.notifierPlugin.state = .reported(version: "9.0.0", capabilities: [RichDiffLoader.capability])
+        if appState.dashboardTicketBridge != nil {
+            XCTAssertFalse(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id) === appState.dashboardTicketBridge,
+                           "not the screen's")
+        }
+        XCTAssertTrue(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: nil) === appState.dashboardTicketBridge,
+                      "a card outside a chat reads the screen's")
+        XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: UUID()), "nor a dashboard not open here")
 
         // Its connection dropped: nothing reads or sends for it.
         appState.keptDashboardRuntimes[mac.id] = nil
@@ -2283,6 +2301,9 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.workspaceBridge(farDashboard: mac.id), "nor reads its folder")
         XCTAssertFalse(appState.ownsWorkspaceRuntime(folderOwner), "and a folder answer still out is dropped")
         XCTAssertFalse(appState.workspaceIsConnected(far))
+        XCTAssertEqual(appState.richCardHostDashboard, mac.id, "its cards still name its own dashboard")
+        XCTAssertNil(appState.richCardReadBridge(capability: RichDiffLoader.capability, on: mac.id),
+                     "so a diff isn't read on the screen's Hermes")
     }
 
     func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {

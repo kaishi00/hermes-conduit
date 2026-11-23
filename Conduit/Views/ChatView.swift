@@ -1407,6 +1407,8 @@ struct MessageBubble: View, Equatable {
         .environment(\.richChecklistInChat, true)
         // The row state carries cardTaps, so a card-taps report redraws this row.
         .environment(\.richCardActions, appState.richCardActionContext(canSend: rowState.cardsCanSend))
+        // A far chat's diffs and review rounds are its own dashboard's.
+        .environment(\.richCardHostDashboard, appState.richCardHostDashboard)
         .frame(maxWidth: 560, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
     }

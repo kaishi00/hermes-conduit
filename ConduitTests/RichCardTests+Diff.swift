@@ -126,7 +126,7 @@ extension AppStateVoiceCapabilityTests {
 
         let loader = RichDiffLoader.shared
         let asked = AskedPaths()
-        loader.read = { path in
+        loader.read = { path, _ in
             asked.paths.append(path)
             return ["diff": ["files": [["path": "a.swift", "status": "modified", "added": 1, "removed": 0,
                                         "hunks": [["old_start": 1, "new_start": 1, "lines": ["+let x = 1"]]]]],
@@ -137,6 +137,22 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(whole.files[0].hunks[0].lines[0].text, "let x = 1")
         _ = try await loader.diff(id)
         XCTAssertEqual(asked.paths, ["/api/plugins/conduit_push/boards/diffs?id=\(id)"], "read once")
+        // A far chat's diff is read on its own dashboard's Hermes and kept
+        // apart from the screen's under the same id.
+        let far = UUID()
+        loader.read = { path, dashboard in
+            asked.paths.append("\(dashboard?.uuidString ?? "screen") \(path)")
+            return ["diff": ["files": [["path": "far.swift", "status": "added", "added": 1, "removed": 0,
+                                        "hunks": [["old_start": 0, "new_start": 1, "lines": ["+far"]]]]],
+                             "added": 1, "removed": 0]]
+        }
+        let farDiff = try await loader.diff(id, on: far)
+        XCTAssertEqual(farDiff.files[0].path, "far.swift")
+        _ = try await loader.diff(id, on: far)
+        XCTAssertEqual(asked.paths.last, "\(far.uuidString) /api/plugins/conduit_push/boards/diffs?id=\(id)")
+        XCTAssertEqual(asked.paths.count, 2, "read once on its own Hermes")
+        let screens = try await loader.diff(id)
+        XCTAssertEqual(screens.files[0].path, "a.swift", "the screen's stays its own")
         do {
             _ = try await loader.diff("../etc")
             XCTFail("only a kept diff's id is read")

@@ -229,7 +229,9 @@ struct RichDiffLine: Equatable, Hashable {
 }
 
 /// Reads the whole of a diff the host keeps (GET /boards/diffs), once per
-/// launch: a file the user opens again draws from what was read.
+/// launch: a file the user opens again draws from what was read. A far
+/// chat's (another combined dashboard's open in place) is read from its
+/// own dashboard's Hermes (the richCardHostDashboard environment value).
 @MainActor
 final class RichDiffLoader {
     static let shared = RichDiffLoader()
@@ -238,9 +240,10 @@ final class RichDiffLoader {
     static let path = "/api/plugins/conduit_push/boards/diffs"
     private static let keptReads = 20
 
-    /// The connected Hermes' answer for a path; nil while none is
+    /// A Hermes' answer for a path: the chat's own dashboard's (nil for
+    /// the one on screen), whose plugin kept the diff. Nil while none is
     /// connected (AppState sets it).
-    var read: (@MainActor (String) async throws -> [String: Any])?
+    var read: (@MainActor (_ path: String, _ dashboard: UUID?) async throws -> [String: Any])?
     private var diffs: [String: RichDiff] = [:]
     private var order: [String] = []
 
@@ -254,18 +257,25 @@ final class RichDiffLoader {
         return path + "?" + (components.percentEncodedQuery ?? "")
     }
 
-    func diff(_ id: String) async throws -> RichDiff {
-        if let kept = diffs[id] { return kept }
+    /// A kept diff, read from `dashboard`'s Hermes (the chat's own; nil for
+    /// the one on screen) and kept under it, so two hosts' diffs never mix.
+    func diff(_ id: String, on dashboard: UUID? = nil) async throws -> RichDiff {
+        let key = Self.key(id, on: dashboard)
+        if let kept = diffs[key] { return kept }
         guard RichCardSchema.isDiffID(id), let read else { throw LoadError.notConnected }
-        let answer = try await read(Self.readPath(id: id))
+        let answer = try await read(Self.readPath(id: id), dashboard)
         guard let json = RichCardSchema.bundled?.normalizeDiff(answer["diff"]), let diff = RichDiff(json: json) else {
             throw LoadError.gone
         }
-        if diffs[id] == nil {
-            order.append(id)
+        if diffs[key] == nil {
+            order.append(key)
             if order.count > Self.keptReads { diffs[order.removeFirst()] = nil }
         }
-        diffs[id] = diff
+        diffs[key] = diff
         return diff
+    }
+
+    private static func key(_ id: String, on dashboard: UUID?) -> String {
+        "\(dashboard?.uuidString ?? "")#\(id)"
     }
 }

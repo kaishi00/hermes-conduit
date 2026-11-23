@@ -282,12 +282,25 @@ private struct RichCardActionContextKey: EnvironmentKey {
     static let defaultValue: RichCardActionContext? = nil
 }
 
+private struct RichCardHostDashboardKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
+
 extension EnvironmentValues {
     /// The open chat's way to send from a card; nil where only open and
     /// copy buttons work.
     var richCardActions: RichCardActionContext? {
         get { self[RichCardActionContextKey.self] }
         set { self[RichCardActionContextKey.self] = newValue }
+    }
+
+    /// The dashboard whose Hermes kept the chat's cards: where a diff card
+    /// reads its long diff and a review card its rounds
+    /// (AppState.richCardHostDashboard). Nil for the one on screen, as on
+    /// the Pulse screen, the call screen and the saved copy.
+    var richCardHostDashboard: UUID? {
+        get { self[RichCardHostDashboardKey.self] }
+        set { self[RichCardHostDashboardKey.self] = newValue }
     }
 }
 

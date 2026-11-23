@@ -24,6 +24,7 @@ struct RichDiffCard: View {
     static let shownFiles = 6
 
     @State private var opened: RichDiffOpened?
+    @Environment(\.richCardHostDashboard) private var hostDashboard
 
     var body: some View {
         if let diff = card.diff {
@@ -38,7 +39,7 @@ struct RichDiffCard: View {
                 }
             }
             .sheet(item: $opened) { opened in
-                RichDiffSheet(card: card, diff: diff, focus: opened.file)
+                RichDiffSheet(card: card, diff: diff, focus: opened.file, hostDashboard: hostDashboard)
             }
         }
     }
@@ -433,6 +434,9 @@ struct RichDiffSheet: View {
     /// long one.
     let diff: RichDiff
     let focus: Int?
+    /// The dashboard whose Hermes kept the diff (nil for the one on
+    /// screen), passed in since the sheet is drawn outside the chat.
+    var hostDashboard: UUID?
 
     /// Past this many lines a file starts folded, when there are others.
     static let foldedLines = 400
@@ -639,7 +643,7 @@ struct RichDiffSheet: View {
     private func load() async {
         guard whole == nil, !diff.hasLines, let id = diff.keptID else { return }
         do {
-            whole = try await RichDiffLoader.shared.diff(id)
+            whole = try await RichDiffLoader.shared.diff(id, on: hostDashboard)
         } catch {
             failure = (error as? RichDiffLoader.LoadError) ?? .notConnected
             if case DashboardTicketBridgeError.http(let status, _) = error, status == 404 { failure = .gone }
