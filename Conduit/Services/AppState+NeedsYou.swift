@@ -65,6 +65,9 @@ extension AppState {
     /// on failure, as this dashboard's: a profile that can't be read keeps
     /// what it showed, and a dashboard let go says nothing more.
     func readOtherCombinedDashboardsNeedsYou(now: Date = Date()) async {
+        // `now` is the pass's start; an attempt's clock runs from when it is
+        // made, after the reads before it (#3143).
+        let passStarted = Date()
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
         needsYou.forgetOtherDashboards(otherThan: Set(kept.keys))
         keptDashboardProfiles = keptDashboardProfiles.filter { id, read in
@@ -81,8 +84,9 @@ extension AppState {
             // connection is replaced (issue 2948).
             let bridgeID = ObjectIdentifier(runtime.bridge)
             let asked = combinedDashboardNameReads[id]
-            if asked?.bridge != bridgeID || asked?.retryAt.map({ $0 <= now }) == true {
-                combinedDashboardNameReads[id] = (bridgeID, now.addingTimeInterval(Self.combinedDashboardNameRetryInterval))
+            let attemptAt = now.addingTimeInterval(Date().timeIntervalSince(passStarted))
+            if asked?.bridge != bridgeID || asked?.retryAt.map({ $0 <= attemptAt }) == true {
+                combinedDashboardNameReads[id] = (bridgeID, attemptAt.addingTimeInterval(Self.combinedDashboardNameRetryInterval))
                 if await combinedDashboardCapabilities(id, runtime) != nil, combinedDashboardNameReads[id]?.bridge == bridgeID {
                     combinedDashboardNameReads[id] = (bridgeID, nil)
                 }
@@ -162,9 +166,12 @@ extension AppState {
         // Kept anew (opened and left again) while the read was out: the
         // list that switch seeded is newer than this read.
         let keptAt = runtime.keptAt
-        guard let response = try? await readKeptDashboardJSON(runtime.bridge, path: "/api/profiles"),
-              keptDashboardRuntimes[id]?.bridge === runtime.bridge else { return last?.profiles }
+        let response = try? await readKeptDashboardJSON(runtime.bridge, path: "/api/profiles")
+        guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { return last?.profiles }
+        // Checked before a failed read falls back: kept anew meanwhile, the
+        // seeded list wins over the one this read started from (#3143).
         guard keptDashboardRuntimes[id]?.keptAt == keptAt else { return keptDashboardProfiles[id]?.profiles }
+        guard let response else { return last?.profiles }
         let names = (response["profiles"] as? [Any] ?? []).compactMap { value -> String? in
             if let name = value as? String { return name }
             return (value as? [String: Any])?["name"] as? String

@@ -64,7 +64,11 @@ extension AppState {
     /// has dropped (before a quiet sign-in keeps it again) reads an empty
     /// runtime: no connection and no plugin report, never the screen's.
     /// A fresh one each time, so nothing `body` writes into it outlives the
-    /// call (issue 3045). Synchronous, as `act(onRuntime:)`.
+    /// call (issue 3045). Synchronous, as `act(onRuntime:)`: only what
+    /// `body` does before it returns is on the call's runtime. A Task it
+    /// starts runs later, may still write the throwaway empty runtime it
+    /// captured, and reads whatever is current then, so work that must
+    /// reach the call's runtime is done in `body` itself (#3143).
     func onCallRuntime<T>(_ body: () throws -> T) rethrows -> T {
         guard callDashboardOffScreen != nil else { return try body() }
         return try act(onRuntime: callRuntimeOffScreen ?? DashboardRuntime(), body)

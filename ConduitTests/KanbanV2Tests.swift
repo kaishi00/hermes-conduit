@@ -930,6 +930,13 @@ final class KanbanV2Tests: XCTestCase {
         // A fence in a list item or a quote is a fence.
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("- ```\n  a**b\n  ```\n**Done**"), "a**b\nDone")
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("> ```\n> a**b\n> ```\n**Done**"), "a**b\nDone")
+        // Only the quote it opened in comes off its lines, and leaving the
+        // quote ends it (#3143).
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("> ```\n> > a\n> ```"), "> a")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("> ```\n> a**b\n**Done**"), "a**b\nDone")
+        // A run of markers is one delimiter, read at its edges (#3143).
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("***both***"), "*both*")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("a **** b"), "a **** b")
         // Indented 4 or more, a fence marker neither opens nor closes a block.
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("    ```\n**bold**"), "bold")
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("```\na\n    ```\nb\n```"), "a\n    ```\nb")

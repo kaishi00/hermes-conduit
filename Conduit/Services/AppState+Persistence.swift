@@ -260,13 +260,16 @@ extension AppState {
     }
 
     /// `activeChatSessionSummary` without its cache, whose key follows only
-    /// the screen's list: for another dashboard's chat, read in its scope.
-    var uncachedActiveChatSessionSummary: SessionSummary? {
+    /// the screen's list: for another dashboard's chat, read in its scope,
+    /// without cron runs, which never open in place and aren't that
+    /// runtime's (the screen dashboard's would join it, #3141).
+    func uncachedActiveChatSessionSummary(includingCronRuns: Bool = true) -> SessionSummary? {
         guard let sessionId = activeChatRowSessionID else { return nil }
         return activeChatSessionSummary(
             sessionId: sessionId,
             ownIDs: chatOwnSessionIDs(for: sessionId),
-            durable: conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+            durable: conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile),
+            includingCronRuns: includingCronRuns
         )
     }
 
@@ -278,8 +281,13 @@ extension AppState {
         let durable: String?
     }
 
-    func activeChatSessionSummary(sessionId: String, ownIDs: Set<String>, durable: String?) -> SessionSummary? {
-        let rows = [activeProfileSessions, activeProfileCronSessions].joined()
+    func activeChatSessionSummary(
+        sessionId: String,
+        ownIDs: Set<String>,
+        durable: String?,
+        includingCronRuns: Bool = true
+    ) -> SessionSummary? {
+        let rows = [activeProfileSessions, includingCronRuns ? activeProfileCronSessions : []].joined()
         // This row drives rename, archive and delete, so it is never picked
         // by list order: two rows matching the chat's own ids are settled
         // by the stored id its resume recorded, else neither is used. An
