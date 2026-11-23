@@ -116,7 +116,7 @@ extension AppState {
     /// The bot profile the chat on screen belongs to, when it's a Bot Chat:
     /// on screen or on its own kept dashboard.
     var chatBotChatProfile: String? {
-        guard let farDashboardID else { return activeBotChatProfile }
+        guard let farDashboardID = farChatDashboardID else { return activeBotChatProfile }
         return farBotChatProfile(in: farDashboardID)
     }
 

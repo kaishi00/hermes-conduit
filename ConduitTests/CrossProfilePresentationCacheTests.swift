@@ -4302,6 +4302,23 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertEqual(appState.farChatDashboardID, mac.id)
 
+        // ChatAskedQuestionBar reads the far chat's own dashboard waits and
+        // ignores a same-session wait on the dashboard on screen (#3199).
+        var farAsked = NeedsYouItem(waitID: "asked-P11", profile: "delayed", kind: .question, sessionIDs: ["delayed-chat"],
+                                    since: Date(timeIntervalSince1970: 10))
+        farAsked.asked = BotWorkCoordination.Item(row: ["id": "P11", "kind": "proposal", "at": 10.0,
+                                                        "text": "Continue?", "status": "open", "actions": ["approve", "decline"]])
+        var screenCollision = NeedsYouItem(waitID: "asked-P12", profile: "delayed", kind: .question, sessionIDs: ["delayed-chat"],
+                                           since: Date(timeIntervalSince1970: 20))
+        screenCollision.asked = BotWorkCoordination.Item(row: ["id": "P12", "kind": "proposal", "at": 20.0,
+                                                               "text": "Wrong host?", "status": "open", "actions": ["approve", "decline"]])
+        appState.needsYou.apply([screenCollision], profile: "delayed", dashboardID: vps.id) { _ in false }
+        appState.needsYou.applyOther([farAsked], profile: "delayed", dashboardID: mac.id) { _ in false }
+        XCTAssertFalse(appState.isOpenChat(screenCollision))
+        XCTAssertEqual(ChatAskedQuestionBar.questions(in: appState.needsYou, for: appState).map(\.waitID), ["asked-P11"])
+        appState.needsYou.dropAnsweredQuestion("P11", profile: "delayed", dashboardID: mac.id)
+        XCTAssertTrue(ChatAskedQuestionBar.questions(in: appState.needsYou, for: appState).isEmpty)
+
         // 4. Dropped far runtime falls back to `emptyBotWork`, never `screenBotWork`.
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertTrue(appState.chatBotWork === appState.emptyBotWork)
