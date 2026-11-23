@@ -272,7 +272,9 @@ struct V2ChatWindow: View {
             if let chat, let key {
                 V2BesideChatPane(chat: chat, windowKey: key)
             } else {
-                V2Backdrop(drifts: false)
+                // Closing (`closeWithoutAChat`); this view reads AppState
+                // already, so its backdrop doesn't observe it again.
+                ConduitBackdrop(drifts: false, glowTint: appState.profileGlowTint(appState.activeProfile))
             }
         }
         .onAppear { closeWithoutAChat() }

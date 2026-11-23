@@ -4412,6 +4412,18 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.mainWindowOpensChat, "and it opens on the chat, not the list")
         state.mainWindowOpensChat = false
         XCTAssertNotNil(state.windowChat(second), "Shown until the open lands")
+        // Meanwhile its events are the screen's, and the window's box still
+        // hears its turn end, from the notice (#3180's review).
+        let opening = try XCTUnwrap(state.windowChat(second))
+        let openingNotice = state.besideChatLive.notice(for: opening)
+        state.act(on: opening) { state.setRunning(true) }
+        let shownBefore = state.activeSessionId
+        state.activeSessionId = "a"
+        let beforeEnd = openingNotice.revision
+        state.handleStreamEvent(.sessionBusy(sessionId: "a", busy: false))
+        XCTAssertFalse(opening.isRunning)
+        XCTAssertGreaterThan(openingNotice.revision, beforeEnd, "the window's box reads the turn's end")
+        state.activeSessionId = shownBefore
         state.releaseFollowedChat(answering: ["a"])
         XCTAssertTrue(state.windowChatIDs.isEmpty)
 
