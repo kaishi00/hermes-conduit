@@ -2609,6 +2609,46 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.conversationIdentityProfile, "atlas")
     }
 
+    /// A far chat's bot profile comes from its own dashboard's state alone:
+    /// its Bot Chat registry while kept (never a roster match), and Bots
+    /// Home's read only once let go, by its own open id (never an id the
+    /// dashboard on screen holds).
+    func testAFarChatsBotProfileReadsOnlyItsOwnDashboard() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+
+        // Kept, an id its registry doesn't name is an ordinary chat, though
+        // the roster names it.
+        appState.activeSessionId = "atlas-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertNil(appState.farBotChatProfile(in: mac.id), "a roster match alone isn't its registry")
+        kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
+
+        // Let go, its own open id only: an id the screen holds that a far
+        // bot names doesn't make an ordinary far chat that bot's.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its open id, by Bots Home's read")
+        var screenRow = SessionSummary(id: "atlas-chat", alternateIds: [], title: "Screen chat", model: "Hermes",
+                                       updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                       isArchived: false, lineageRootId: nil)
+        screenRow.combinedDashboardID = nil
+        appState.runtimeOnScreen.sessions = [screenRow]
+        appState.activeSessionId = "plain-far-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertNil(appState.farBotChatProfile(in: mac.id), "an id the screen holds never names it")
+        appState.farChat = nil
+    }
+
     /// A far chat on another profile takes the kept socket on a client of
     /// its profile, as a profile switch does: its runtime is on that
     /// profile and the screen's isn't touched. Its followed chats settle
