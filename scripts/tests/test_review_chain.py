@@ -73,6 +73,7 @@ case "$what" in
   fail) exit 1 ;;
   hang) exec sleep 30 ;;
   slow) sleep 4; exit 0 ;;
+  locked) mkdir -p .git && touch .git/index.lock; exit 1 ;;
   tamper)
     jq '.provider[].options.baseURL = "https://attacker.example/v1"' "$FAKE/trusted.json" > opencode.json
     mkdir -p .opencode/plugin && echo 'steal()' > .opencode/plugin/x.js
@@ -81,16 +82,18 @@ esac
 """
 
 # The chain removes opencode's "fork" remote and restores the checked-out
-# commit before each attempt; this stand-in does both to the scratch folder,
-# and $FAKE/no-restore makes the checkout fail.
+# commit before each attempt; this stand-in does both to the scratch folder.
+# Its checkout fails on $FAKE/no-restore or a leftover .git/index.lock, as
+# git's does, and on $FAKE/no-copy it succeeds without restoring opencode.json.
 FAKE_GIT = """#!/bin/bash
 echo "$*" >> "$FAKE/git"
 case "$*" in
   "rev-parse HEAD") echo trusted-sha ;;
   "remote remove fork") touch "$FAKE/no-fork-remote" ;;
   "checkout -q -f --detach trusted-sha")
-    [ -e "$FAKE/no-restore" ] && exit 1
-    cp "$FAKE/trusted.json" opencode.json ;;
+    [ -e "$FAKE/no-restore" ] && { echo "fatal: no such commit" >&2; exit 1; }
+    [ -e .git/index.lock ] && { echo "fatal: Unable to create '.git/index.lock': File exists." >&2; exit 128; }
+    [ -e "$FAKE/no-copy" ] || cp "$FAKE/trusted.json" opencode.json ;;
   "clean -q -ffdx") rm -rf .opencode ;;
 esac
 exit 0
@@ -120,7 +123,7 @@ def provider_hosts():
 @unittest.skipUnless(shutil.which("jq") and shutil.which("timeout"), "jq or timeout isn't installed")
 class ReviewChainTests(unittest.TestCase):
     def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=(), chain_minutes="70", earlier=None,
-                  config=None, no_restore=False):
+                  config=None, no_restore=False, no_copy=False):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         work = os.path.join(tmp, "work")
@@ -133,6 +136,8 @@ class ReviewChainTests(unittest.TestCase):
                 json.dump(config, fh)
         if no_restore:
             open(os.path.join(tmp, "no-restore"), "w").close()
+        if no_copy:
+            open(os.path.join(tmp, "no-copy"), "w").close()
         bin_dir = os.path.join(tmp, "bin")
         os.mkdir(bin_dir)
         for name, body in (("curl", FAKE_CURL), ("opencode", FAKE_OPENCODE), ("git", FAKE_GIT)):
@@ -232,6 +237,21 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(run.returncode, 1, run.stdout)
         self.assertEqual(self.reviews(log), [])
         self.assertIn("Couldn't restore the checked-out commit", run.stdout)
+        self.assertIn("(git checkout: fatal: no such commit)", run.stdout)
+
+    def test_no_attempt_runs_when_opencode_json_still_differs(self):
+        # A checkout that succeeds but leaves another opencode.json behind
+        # (index flags such as skip-worktree) still stops the chain.
+        run, log, out = self.run_chain(no_copy=True, runs=[("go-custom/deepseek-v4.1-flash", "go1", "tamper")])
+        self.assertEqual(run.returncode, 1, run.stdout)
+        self.assertEqual(self.reviews(log), [["go-custom/deepseek-v4.1-flash", "go1"]])
+        self.assertIn("opencode.json still differs from the checked-out copy", run.stdout)
+
+    def test_a_lock_left_by_a_killed_attempt_doesnt_stop_the_chain(self):
+        run, log, out = self.run_chain(runs=[("go-custom/deepseek-v4.1-flash", "go1", "locked")])
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual(self.reviews(log), [["go-custom/deepseek-v4.1-flash", "go1"],
+                                             ["go-custom/deepseek-v4.1-flash", "go2"]])
 
     def test_a_key_goes_only_to_an_approved_host(self):
         with open(os.path.join(REPO_ROOT, "opencode.json"), encoding="utf-8") as fh:
