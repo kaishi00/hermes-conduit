@@ -766,8 +766,10 @@ final class PhoneSyncEngine: ObservableObject {
             // even if its answer doesn't: until one is answered, what the
             // host has is unknown, so turning a choice back still sends.
             // Written before the upload goes, so an app closed while it
-            // waits still finds the frame unknown on its next launch.
-            if frame != state.frameHash, state.frameHash != nil || frameClearUnsaved {
+            // waits still finds the frame unknown on its next launch. A
+            // hash already cleared in memory (forgetSent) whose last write
+            // didn't land (`saved` nil) is written first too.
+            if frame != state.frameHash, state.frameHash != nil || frameClearUnsaved || saved == nil {
                 state.frameHash = nil
                 // Not on disk (still locked, or full): nothing goes until
                 // it is, or a host that takes it is unknown to a relaunch.
