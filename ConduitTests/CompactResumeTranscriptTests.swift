@@ -1153,6 +1153,76 @@ final class CompactResumeTranscriptTests: XCTestCase {
     /// the conversation was open shift the offset origin, so the page
     /// overlaps rows already held — the prepend must deduplicate them without
     /// disturbing the loaded tail.
+    func testLoadEarlierReanchorsVoiceCallMarkersAcrossPages() async throws {
+        let base = Date(timeIntervalSince1970: 1_788_256_800)
+        func rows(_ range: Range<Int>) -> [[String: Any]] {
+            let iso = ISO8601DateFormatter()
+            return range.map { index in
+                ["id": String(index + 1), "role": "user", "content": "Synthetic row \(index)",
+                 "timestamp": iso.string(from: base.addingTimeInterval(Double(index) * 60))]
+            }
+        }
+        let backfillCalls = Counter()
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [],
+                                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                self.tailPagePayload(sessionId: "stored-a", rows: rows(120..<240), offset: 0)
+            },
+            loadEarlierTranscriptPage: { sessionID, profile, offset in
+                XCTAssertEqual(sessionID, "stored-a")
+                XCTAssertEqual(profile, "default")
+                backfillCalls.value += 1
+                XCTAssertEqual(offset, backfillCalls.value * 120)
+                return self.tailPagePayload(sessionId: "stored-a", rows: rows(offset == 120 ? 60..<180 : 0..<60), offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-a", alternateIDs: ["runtime-a"])] }
+                ops.loadProfiles = {}
+                ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}
+                ops.loadSlashCommands = {}
+            }
+        )
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        harness.appState.voiceCallChatLinks.add(VoiceCallChatLink(
+            callID: "synthetic-backfill", callSessionID: "", chatRuntimeSessionID: "runtime-a",
+            chatStoredSessionID: "stored-a", chatTitle: "Synthetic chat", profile: "default",
+            startedAt: base.addingTimeInterval(30.5 * 60), endedAt: base.addingTimeInterval(31 * 60), resumed: false
+        ))
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-synthetic-backfill")
+
+        let firstPrepend = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(firstPrepend)
+        XCTAssertEqual(harness.appState.messages.first?.id, "voice-call-synthetic-backfill", "The call is older than this entire page, not after its newer prompts")
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240)
+        let secondPrepend = await harness.appState.loadEarlierMessages()
+        XCTAssertTrue(secondPrepend)
+        let expected = (1..<32).map(String.init) + ["voice-call-synthetic-backfill"] + (32..<241).map(String.init)
+        XCTAssertEqual(harness.appState.messages.map(\.id), expected)
+        XCTAssertEqual(Set(harness.appState.messages.map(\.id)).count, 241)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 300)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, false)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.loadedPageStarts.map(\.firstRowID), ["121", "61", "1"], "Page starts name persisted rows, not a movable call marker")
+        let refreshed = harness.appState.mergeVoiceCallMarkers(into: harness.appState.messages, sessionId: "stored-a")
+        XCTAssertEqual(refreshed.map(\.id), expected, "A repeated refresh preserves placement and identity")
+        let terminalPrepend = await harness.appState.loadEarlierMessages()
+        XCTAssertFalse(terminalPrepend)
+        XCTAssertEqual(backfillCalls.value, 2)
+        for _ in 0..<2 {
+            harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "synthetic-reconnect-ticket"))
+            XCTAssertEqual(harness.appState.messages.map(\.id), expected, "Repeated reconnect grafts preserve the backfilled call placement")
+            XCTAssertEqual(harness.appState.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+        }
+    }
+
     func testLoadEarlierPrependsOlderPageWithOverlapDeduplicated() async throws {
         let backfillCalls = Counter()
         let active = session("stored-a", alternateIDs: ["runtime-a"])

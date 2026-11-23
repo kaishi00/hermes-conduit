@@ -658,7 +658,15 @@ extension AppState {
             }
             var didPrepend = false
             var foldedPageStart: (heldIDs: Set<String>, callCardID: String)?
-            let startBeforePage = messages.first.map {
+            // Voice markers can move as the window grows. Page starts must
+            // stay on transcript rows so trimming restores the right offset.
+            let pageStart = { (rows: [ChatMessage]) in
+                rows.first {
+                    $0.displayKind != VoiceCallChatLink.displayKind
+                        && $0.displayKind != VoiceCallChatLink.originDisplayKind
+                }
+            }
+            let startBeforePage = pageStart(messages).map {
                 PersistedTranscriptWindowState.LoadedPageStart(
                     firstRowID: $0.id,
                     nextOffset: offset,
@@ -714,6 +722,7 @@ extension AppState {
                 if let replaced = Self.replacingSavedReviews(in: messages) {
                     messages = replaced
                 }
+                messages = mergeVoiceCallMarkers(into: messages, sessionId: requestedSessionId)
                 // The visible transcript now starts with backfilled rows.
                 // The reconcile graft relies on this explicit fact to keep
                 // preserving the prefix across repeated reconciles — the
@@ -730,7 +739,7 @@ extension AppState {
             current.nextOffset = offset + fetchedRowCount
             current.canLoadEarlier = fetchedRowCount > 0
                 && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
-            if didPrepend, let first = messages.first {
+            if didPrepend, let first = pageStart(messages) {
                 if current.loadedPageStarts.isEmpty, let startBeforePage {
                     current.loadedPageStarts.append(startBeforePage)
                 }

@@ -1180,6 +1180,11 @@ struct VoiceCallChatLinks: Codable, Equatable {
         let markers = owned.isEmpty
             ? profileLinks.filter { $0.belongs(toChat: chatIDs) }.map { ($0, $0.marker) }
             : owned.map { ($0, $0.originMarker) }
+        // A marker may have led a bounded tail before older pages arrived.
+        // Place these markers again against the whole loaded window rather
+        // than treating their previous positions as persisted row order.
+        let markerIDs = Set(markers.map { $0.1.id })
+        merged.removeAll { markerIDs.contains($0.id) }
         for (link, marker) in markers {
             guard !merged.contains(where: { $0.id == marker.id }) else { continue }
             let index = merged.firstIndex {
