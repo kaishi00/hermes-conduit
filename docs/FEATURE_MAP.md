@@ -7205,6 +7205,48 @@ Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 
 **Checked:** 2026-11-19, #2840 (a profile's marks read again at once when another dashboard's read dropped them, in All Profiles too; tests for the write fence and order); 2026-11-19, #2830 (added: a Done mark set by the user or the agent, fish0859 on Reddit).
 
+## Archiving chats
+
+Archive removes a conversation from the working Chats list without deleting
+it. The Archived sheet finds it again for restoration or permanent deletion.
+
+**Siblings:** the Chats row's context menu and swipe · project chat rows ·
+the open chat's title and menu · the Archived sheet and its search, restore
+and confirmed delete · All profiles in Chats · the live list's pinned order
+and active-response guard · voice's automatically archived rows · combined
+dashboards · iPhone, iPad and Mac · accessibility labels and text
+
+**Desktop app:** partly: Archive in local chat-row menus and Filter › Archived
+for search, restore and confirmed deletion (desktop#410). It checks the chat's
+own profile, keeps busy chats from being archived or deleted, removes a pin
+when archiving, and excludes voice rows already listed in Chats. Other
+dashboards' rows do not offer Archive.
+
+**Code**
+- Actions and Archived sheet: `Conduit/Views/SidebarView.swift` (SessionActionMenuItems, ArchivedSessionsSheet)
+- V2 rows and Filter menu: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionTrailingSwipes)
+- Archive, restore and deletion: `Conduit/Services/AppState+OneChatTwoDevices.swift` (archiveSession, restoreArchivedSession, loadArchivedSessions)
+- Archived reads and voice exclusion: `Conduit/Services/AppState+SessionCatalog.swift` (dashboardArchivedSessions, isArchivedVoiceChat)
+- All profiles: `Conduit/Services/AppState+AllProfilesChats.swift` (archiveOtherProfileSession)
+
+**Rulings**
+- Archive and restore use the conversation's profile and a revision-fenced
+  dashboard mutation. A running conversation is not archived; a successful
+  archive removes its pin and clears the open chat if it was selected.
+- The Archived sheet searches its server-backed list. Restore returns a chat
+  to its list; Delete asks before permanently removing it.
+- Voice rows the plugin auto-archived are shown in Chats instead of Archived.
+  A user-archived chat stays archived until restored.
+- A far combined dashboard's row does not offer Archive until the action can
+  run against that dashboard's own state.
+
+**Open gaps**
+- Desktop does not offer Archive from a project chat row or the open chat's
+  title menu. Its Archived view can list all profiles when All is selected.
+
+**Checked:** 2026-11-23, #3194 (recorded the existing iOS archive and Archived
+sheet alongside desktop#410).
+
 ## Deleting from a list row
 
 A row's swipe Delete in the lists that ask before deleting: the chat, the
