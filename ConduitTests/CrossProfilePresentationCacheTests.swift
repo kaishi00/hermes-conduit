@@ -2174,6 +2174,18 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(host.plugin, kept.runtime.notifierPlugin, "and asks its own dashboard's plugin")
         XCTAssertFalse(appState.artifactsHostIsOnScreen(.chat(ids, far: far)), "so it offers no Saved: pins are the screen's dashboard's")
         XCTAssertTrue(appState.artifactsHostIsOnScreen(.chat(ids)))
+        // Its Bot's Screen is its own dashboard's bot's, asked and driven
+        // through that dashboard's kept connection.
+        XCTAssertTrue(appState.botScreenIsFar(mac.id))
+        XCTAssertFalse(appState.botScreenIsFar(nil))
+        XCTAssertTrue(appState.botScreenClient(for: mac.id) === kept.runtime.client, "its screen is read on its own Hermes")
+        XCTAssertTrue(appState.botScreenClient(for: nil) === appState.client)
+        if kept.runtime.client != nil, appState.client != nil {
+            XCTAssertFalse(appState.botScreenClient(for: mac.id) === appState.client, "not the screen's Hermes")
+        }
+        XCTAssertTrue(appState.botScreenSupport(for: mac.id) === appState.botScreenSupport(for: mac.id))
+        XCTAssertFalse(appState.botScreenSupport(for: mac.id) === appState.botScreens, "what the screen's hosts said doesn't stand for its host")
+        XCTAssertTrue(appState.botScreenSupport(for: nil) === appState.botScreens)
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
@@ -2192,6 +2204,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeChatArtifactSessionIDs, [])
         XCTAssertNil(appState.richCardChat)
         XCTAssertThrowsError(try appState.richChecklistBridge(for: mac.id))
+        XCTAssertNil(appState.botScreenClient(for: mac.id), "nor drives its screen")
     }
 
     func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {

@@ -765,7 +765,7 @@ struct V2ConversationScreen: View {
                     onArtifacts: { openArtifacts(tab: .made) },
                     onEditBot: { editedBot = .edit($0) },
                     onScreen: { screenTarget = $0 },
-                    screens: appState.botScreens
+                    screens: appState.botScreenSupport(for: appState.farChatDashboardID)
                 )
             }
         }
@@ -963,9 +963,13 @@ private struct V2ConversationMenu: View {
     /// ordinary chat runs under (issue 2132). Not a room's (its bots may be
     /// another host's) or a saved copy's (no host to ask).
     private var screenProfile: String? {
-        // A far chat's bot is on another dashboard's host, which this menu
-        // doesn't ask.
-        guard appState.farChat == nil else { return nil }
+        // A far chat (another combined dashboard's, open in place) is an
+        // ordinary chat of its profile there, asked through that dashboard's
+        // connection; a saved copy has no host to ask.
+        if let far = appState.farChat {
+            guard appState.offlineChatPresentation == nil, appState.activeSessionId?.isEmpty == false else { return nil }
+            return far.profile
+        }
         return BotScreenUse.menuProfile(
             inRoom: appState.activeRoomSurface != nil,
             botChatProfile: appState.activeBotChatProfile,
@@ -1028,14 +1032,23 @@ private struct V2ConversationMenu: View {
                 }
                 if let profile = screenProfile, screens.isSupported(profile) {
                     Button {
-                        onScreen(BotScreenTarget(profile: profile,
-                                                 botName: appState.botWork.snapshot(profile)?.botName
-                                                     ?? appState.profileDisplayName(profile),
-                                                 chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
+                        if let far = appState.farChat {
+                            // Its own dashboard's bot: its name and ids as
+                            // that dashboard has them, not the screen's.
+                            onScreen(BotScreenTarget(profile: profile,
+                                                     botName: appState.farBotName(profile, on: far.dashboardID),
+                                                     chatSessionIDs: Set(appState.activeChatArtifactSessionIDs),
+                                                     dashboardID: far.dashboardID))
+                        } else {
+                            onScreen(BotScreenTarget(profile: profile,
+                                                     botName: appState.botWork.snapshot(profile)?.botName
+                                                         ?? appState.profileDisplayName(profile),
+                                                     chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
+                        }
                     } label: {
                         Label(AppLocalization.string("Bot's Screen", table: .chat), systemImage: "display")
                     }
-                    .disabled(!appState.isConnected)
+                    .disabled(!appState.chatIsConnected)
                 }
                 if let session = appState.chatOnScreenSessionSummary {
                     Section {
@@ -1087,9 +1100,9 @@ private struct V2ConversationMenu: View {
         .accessibilityIdentifier("conversation.menu")
         // Asks the bot's host once whether it can have a screen, so the
         // entry shows only where it can (never on Windows or macOS hosts).
-        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.isConnected)") {
-            if let profile = screenProfile, appState.isConnected {
-                screens.check(profile, client: appState.client)
+        .task(id: "\(screenProfile ?? "")\u{1F}\(appState.chatIsConnected)\u{1F}\(appState.farChatDashboardID?.uuidString ?? "")") {
+            if let profile = screenProfile, appState.chatIsConnected {
+                screens.check(profile, client: appState.botScreenClient(for: appState.farChatDashboardID))
             }
         }
     }

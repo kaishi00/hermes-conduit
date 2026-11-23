@@ -2045,6 +2045,7 @@ extension AppState {
         botWork.clear()
         // Another server's hosts may or may not have a Bot Screen.
         botScreens.reset()
+        farBotScreens.removeAll()
         botRosterVerifiedForCurrentConnection = false
         botChatOpenFlights.values.forEach { $0.task?.cancel() }
         botChatSessionProfiles.removeAll()

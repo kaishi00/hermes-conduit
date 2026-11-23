@@ -40,6 +40,44 @@ extension AppState {
     /// one on screen's.
     var farChatDashboardID: UUID? { farChat?.dashboardID }
 
+    /// Whether a Bot's Screen for `dashboardID`'s bot is another combined
+    /// dashboard's than the one on screen's.
+    func botScreenIsFar(_ dashboardID: UUID?) -> Bool {
+        dashboardID != nil && dashboardID != dashboardIDOnScreen
+    }
+
+    /// The connection a Bot's Screen reads and drives: the one on screen's,
+    /// or a far bot's own dashboard's kept one (nil once that dropped).
+    func botScreenClient(for dashboardID: UUID?) -> HermesClient? {
+        guard let dashboardID, botScreenIsFar(dashboardID) else { return client }
+        return runtime(for: dashboardID)?.client
+    }
+
+    /// A far bot's name as its own dashboard's roster gives it, else its
+    /// profile, never the screen's bot under the same profile name.
+    func farBotName(_ profile: String, on dashboardID: UUID) -> String {
+        if let bot = combinedDashboardBots[dashboardID]?.bots.first(where: { $0.name == profile }) {
+            let title = (bot.botTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+            let name = bot.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { return name }
+        }
+        if profile.isEmpty || profile.lowercased() == "default" {
+            return profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
+        }
+        return String(profile.prefix(1)).uppercased() + String(profile.dropFirst())
+    }
+
+    /// Whether `dashboardID`'s bots' hosts can have a Bot's Screen, as read
+    /// through its own connection.
+    func botScreenSupport(for dashboardID: UUID?) -> BotScreenSupport {
+        guard let dashboardID, botScreenIsFar(dashboardID) else { return botScreens }
+        if let support = farBotScreens[dashboardID] { return support }
+        let support = BotScreenSupport()
+        farBotScreens[dashboardID] = support
+        return support
+    }
+
     /// The dashboard the chat on screen belongs to.
     var chatOnScreenDashboardID: UUID? { farChatDashboardID ?? dashboardIDOnScreen }
 
