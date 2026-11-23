@@ -321,9 +321,7 @@ extension AppState {
     /// of `ids` is, by its kept runtime's bots, then Bots Home's read of
     /// them (kept when its connection drops).
     func farBot(named ids: Set<String>, in dashboardID: UUID) -> BotProfile? {
-        let roster = (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
-            + (combinedDashboardBots[dashboardID]?.bots ?? [])
-        return roster.first { bot in
+        farBotRoster(in: dashboardID).first { bot in
             // Its canonical id or the id Hermes resolved it to, as
             // isFarBotChat tells the row.
             [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]

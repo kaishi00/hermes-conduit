@@ -155,9 +155,14 @@ extension AppState {
         if let bot = farBot(named: ids, in: dashboardID) { return bot }
         let registry = keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles ?? [:]
         guard let name = ids.sorted().lazy.compactMap({ registry[$0] }).first else { return nil }
-        let roster = (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+        return Self.linkedBot(named: name, in: farBotRoster(in: dashboardID))
+    }
+
+    /// Another combined dashboard's bots: its kept runtime's, then Bots
+    /// Home's read of them (kept when its connection drops).
+    func farBotRoster(in dashboardID: UUID) -> [BotProfile] {
+        (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
             + (combinedDashboardBots[dashboardID]?.bots ?? [])
-        return roster.first { profilesMatch($0.name, name) }
     }
 
     /// Opens the Bot Chat a push or chat link of another combined dashboard
@@ -227,20 +232,28 @@ extension AppState {
         // does (A switch during a call): end the call first.
         guard !isVoiceCallInProgress,
               link.action == .resume, let workspace = link.workspace,
-              let reference = link.reference, reference.kind == .dashboard,
+              let reference = link.reference,
               workspace.dashboardID != dashboardIDOnScreen,
               let kept = keptDashboardRuntimes[workspace.dashboardID],
               // Its bots read, so a Bot Chat is told from a chat, as a push's.
               combinedDashboardBots[workspace.dashboardID] != nil || !kept.runtime.botRoster.isEmpty else { return false }
-        // A bot's Bot Chat opens in place too, as its Chats row does; one
-        // that fails says so in its open, as on screen.
-        if let id = ChatScrollIdentityNormalization.sessionID(reference.sessionID),
-           let bot = farBot(named: [id], in: workspace.dashboardID) {
+        // A bot's Bot Chat (a `.bot` link, as the widget snapshot makes
+        // one) opens in place too, as its Chats row does: by the bot its
+        // bots name for the chat's id, else by the link's bot. One that
+        // fails says so in its open, as on screen.
+        let byID = ChatScrollIdentityNormalization.sessionID(reference.sessionID)
+            .flatMap { farBot(named: [$0], in: workspace.dashboardID) }
+        let byName = reference.kind == .bot
+            ? reference.botName.flatMap { Self.linkedBot(named: $0, in: farBotRoster(in: workspace.dashboardID)) }
+            : nil
+        if let bot = byID ?? byName {
             let open = openFarBotChatInPlace(of: bot, in: workspace.dashboardID)
             if open != nil { errorMessage = nil }
             return open != nil
         }
-        guard let session = combinedDashboardChats[workspace.dashboardID]?.sessions.first(where: {
+        // A bot's link no bot of its names: it switches, as before.
+        guard reference.kind == .dashboard,
+              let session = combinedDashboardChats[workspace.dashboardID]?.sessions.first(where: {
                   profilesMatch($0.profile ?? "default", workspace.profile)
                       && SessionContentSearch.identities(of: $0).contains(reference.sessionID)
               }),

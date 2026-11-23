@@ -2726,18 +2726,42 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertGreaterThan(seen.looked.count, looksBeforeLink, "its bot's lookup ran again")
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
 
-        // So does a widget's or Siri's tap on it.
-        let widget = try XCTUnwrap(WidgetLaunchLink(
+        // So does a widget's or Siri's tap on it: a bot's link, as the
+        // widget snapshot makes it, through its URL as a tap brings it.
+        let made = try XCTUnwrap(WidgetLaunchLink(
             action: .resume,
             workspace: WidgetWorkspaceID(dashboardID: mac.id, profile: "default"),
-            reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "atlas", botName: "atlas",
+            reference: WidgetConversationReference(kind: .bot, scopeProfile: "atlas", botName: "atlas",
                                                    botLabel: "Atlas", sessionID: "atlas-chat", isUnverified: false)
+        ))
+        let widget = try XCTUnwrap(WidgetLaunchLink(url: made.url), "a real widget link")
+        // One whose chat id no bot names still opens by its link's bot.
+        let byName = try XCTUnwrap(WidgetLaunchLink(
+            action: .resume,
+            workspace: WidgetWorkspaceID(dashboardID: mac.id, profile: "default"),
+            reference: WidgetConversationReference(kind: .bot, scopeProfile: "atlas", botName: "atlas",
+                                                   botLabel: "Atlas", sessionID: "atlas-older", isUnverified: false)
         ))
         let looksBeforeWidget = seen.looked.count
         XCTAssertTrue(appState.openWidgetChatInPlace(widget), "it opens in place")
         await waitUntil { seen.looked.count > looksBeforeWidget }
         XCTAssertEqual(seen.looked.last?.0, ObjectIdentifier(outgoing))
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        let looksBeforeName = seen.looked.count
+        XCTAssertTrue(appState.openWidgetChatInPlace(byName), "by its link's bot")
+        await waitUntil { seen.looked.count > looksBeforeName }
+        XCTAssertEqual(seen.looked.last?.1, "atlas")
+
+        // A registry naming a bot by another case picks the exact name.
+        let upper = BotProfile(name: "Atlas", botTitle: nil, displayName: "Atlas Two", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas, upper], avatars: [:], at: Date()
+        )
+        kept.runtime.botChatSessionProfiles["atlas-tip"] = "Atlas"
+        XCTAssertEqual(appState.farBotChatPushed(tip, in: mac.id)?.displayName, "Atlas Two", "the exact name first")
+        kept.runtime.botChatSessionProfiles["atlas-tip"] = nil
 
         // Its connection let go, a push switches as before.
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
