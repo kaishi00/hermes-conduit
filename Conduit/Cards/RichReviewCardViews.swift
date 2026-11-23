@@ -16,6 +16,7 @@ struct RichReviewCard: View {
     let card: RichCard
 
     @Environment(\.richCardActions) private var context
+    @Environment(\.richCardHostDashboard) private var hostDashboard
     @ObservedObject private var taps = RichCardTapMemory.shared
     @State private var round: RichReviewRound?
     @State private var failed = false
@@ -85,6 +86,7 @@ struct RichReviewCard: View {
             .sheet(isPresented: $reviewing) {
                 RichReviewSheet(card: card, review: review, onSent: { sent(review) })
                     .environment(\.richCardActions, context)
+                    .environment(\.richCardHostDashboard, hostDashboard)
             }
             .sheet(item: $fullScreen) { page in
                 RichReviewFullScreen(page: page)
@@ -236,7 +238,7 @@ struct RichReviewCard: View {
         // the kept one stands (issue 2149).
         reads += 1
         let read = reads
-        let kept = RichReviewLoader.shared.kept(review.id, review.round)
+        let kept = RichReviewLoader.shared.kept(review.id, review.round, on: hostDashboard)
         known = false
         if let kept {
             round = kept
@@ -248,8 +250,8 @@ struct RichReviewCard: View {
             }
         }
         do {
-            let loaded = try await RichReviewLoader.shared.round(review.id, review.round, fresh: kept != nil,
-                                                                 freshFor: RichReviewLoader.rowFreshFor)
+            let loaded = try await RichReviewLoader.shared.round(review.id, review.round, on: hostDashboard,
+                                                                 fresh: kept != nil, freshFor: RichReviewLoader.rowFreshFor)
             guard !Task.isCancelled, read == reads else { return }
             round = loaded
             failed = false
@@ -275,7 +277,7 @@ struct RichReviewCard: View {
     }
 
     private func sent(_ review: RichReview) {
-        RichReviewLoader.shared.forget(review.id, review.round)
+        RichReviewLoader.shared.forget(review.id, review.round, on: hostDashboard)
         Task { await load(review) }
     }
 
@@ -595,6 +597,7 @@ struct RichReviewSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.richCardActions) private var context
+    @Environment(\.richCardHostDashboard) private var hostDashboard
     @ObservedObject private var taps = RichCardTapMemory.shared
     @State private var shownRound: Int?
     @State private var loaded: RichReviewRound?
@@ -989,7 +992,8 @@ struct RichReviewSheet: View {
         let read = reads
         answered = false
         do {
-            let round = try await RichReviewLoader.shared.round(review.id, number, fresh: number == review.round)
+            let round = try await RichReviewLoader.shared.round(review.id, number, on: hostDashboard,
+                                                                fresh: number == review.round)
             guard number == roundNumber, read == reads, !Task.isCancelled else { return }
             loaded = round
             failed = false
@@ -998,7 +1002,7 @@ struct RichReviewSheet: View {
         } catch {
             guard number == roundNumber, read == reads, !Task.isCancelled else { return }
             // A round read before still shows, to look at; marking waits for the host.
-            loaded = RichReviewLoader.shared.kept(review.id, number)
+            loaded = RichReviewLoader.shared.kept(review.id, number, on: hostDashboard)
             failed = loaded == nil && (review.hasPages || number != review.round)
             answered = false
             stale = !failed

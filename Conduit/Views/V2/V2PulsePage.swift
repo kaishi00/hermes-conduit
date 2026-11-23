@@ -1266,6 +1266,9 @@ struct V2PulsePage: View {
         if let look = card.look, look.drawsBody {
             // The whole card already steps back when cleared.
             PulseLookBody(look: look, framed: framed)
+                // A card's diff or review rounds are read on the Hermes
+                // whose Pulse this is, another dashboard's chip's too.
+                .environment(\.richCardHostDashboard, appState.pulseDashboardID)
         }
     }
 

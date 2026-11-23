@@ -360,6 +360,9 @@ struct GroupChatView: View {
                 mediaResolver: event.isMemberMessage
                     ? mediaResolver(for: GroupRoomTurns.speaker(of: event, members: members)) : nil
             )
+            // Set on the row, which its own cell draws: its boards' diffs and
+            // review rounds are read on the room's dashboard, a far room's too.
+            .environment(\.richCardHostDashboard, appState.activeRoomSurface?.dashboardID)
         case .room(.pending(let text, let members, let isSending, let copyPost, let files)):
             GroupUserBubble(text: text, members: members, timestamp: nil, eventID: row.id, files: files) {
                 if let copyPost {

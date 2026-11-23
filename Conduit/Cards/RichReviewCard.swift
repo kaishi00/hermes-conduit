@@ -253,9 +253,10 @@ final class RichReviewLoader {
     /// The most page text the kept rounds hold together.
     static let keptPageBytes = 24 * 1024 * 1024
 
-    /// The connected Hermes' answer for a path; nil while none is
+    /// A Hermes' answer for a path: the chat's own dashboard's (nil for
+    /// the one on screen), whose plugin kept the review. Nil while none is
     /// connected (AppState sets it).
-    var read: (@MainActor (String) async throws -> [String: Any])?
+    var read: (@MainActor (_ path: String, _ dashboard: UUID?) async throws -> [String: Any])?
     private var rounds: [String: RichReviewRound] = [:]
     private var order: [String] = []
     /// When each kept round was read from the host.
@@ -281,15 +282,17 @@ final class RichReviewLoader {
 
     /// A round; `fresh` asks again (its marks may have gone since), unless
     /// it was read within `freshFor`.
-    func round(_ id: String, _ number: Int, fresh: Bool = false, freshFor: TimeInterval? = nil,
-               now: Date = .now) async throws -> RichReviewRound {
-        let key = "\(id)#\(number)"
+    /// Read from `dashboard`'s Hermes (the chat's own; nil for the one on
+    /// screen) and kept under it, so two hosts' rounds never mix.
+    func round(_ id: String, _ number: Int, on dashboard: UUID? = nil, fresh: Bool = false,
+               freshFor: TimeInterval? = nil, now: Date = .now) async throws -> RichReviewRound {
+        let key = Self.key(id, number, on: dashboard)
         if let kept = rounds[key] {
             if !fresh { return kept }
             if let freshFor, let at = readAt[key], now.timeIntervalSince(at) < freshFor { return kept }
         }
         guard RichCardSchema.isReviewID(id), let read else { throw LoadError.notConnected }
-        let answer = try await read(Self.readPath(id: id, round: number))
+        let answer = try await read(Self.readPath(id: id, round: number), dashboard)
         guard let round = Self.checkedRound(answer["review"], id: id) else { throw LoadError.gone }
         order.removeAll { $0 == key }
         order.append(key)
@@ -318,15 +321,19 @@ final class RichReviewLoader {
     }
 
     /// A round already read this launch, without asking the host.
-    func kept(_ id: String, _ number: Int) -> RichReviewRound? {
-        rounds["\(id)#\(number)"]
+    func kept(_ id: String, _ number: Int, on dashboard: UUID? = nil) -> RichReviewRound? {
+        rounds[Self.key(id, number, on: dashboard)]
     }
 
     /// Forgets a round, after the user sent marks on it.
-    func forget(_ id: String, _ number: Int) {
-        let key = "\(id)#\(number)"
+    func forget(_ id: String, _ number: Int, on dashboard: UUID? = nil) {
+        let key = Self.key(id, number, on: dashboard)
         rounds[key] = nil
         readAt[key] = nil
         order.removeAll { $0 == key }
+    }
+
+    private static func key(_ id: String, _ number: Int, on dashboard: UUID?) -> String {
+        "\(dashboard?.uuidString ?? "")#\(id)#\(number)"
     }
 }

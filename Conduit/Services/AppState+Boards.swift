@@ -4,7 +4,8 @@
 //
 //  Where the open chat's checklist cards keep their ticks: on the host,
 //  through the plugin's /boards/checklists route (RichChecklistMemory);
-//  and where a diff card reads the whole of a long diff (/boards/diffs).
+//  and where a diff card reads the whole of a long diff (/boards/diffs)
+//  and a review card its rounds (/boards/reviews): the chat's own Hermes.
 //
 
 import Foundation
@@ -143,24 +144,76 @@ extension AppState {
         throw DashboardTicketBridgeError.notReady
     }
 
-    /// A diff card reads the whole of a long diff from the connected
-    /// Hermes, the one whose plugin kept it; an id from another Hermes is
-    /// answered as gone there.
+    /// The dashboard whose Hermes kept the open chat's cards
+    /// (richCardHostDashboard in the environment): a far chat's own
+    /// (another combined dashboard's open in place), the one on screen's
+    /// id otherwise. A far chat whose runtime is gone names its dashboard
+    /// still, so its cards' reads find no connection rather than asking the
+    /// screen's Hermes.
+    var richCardHostDashboard: UUID? {
+        guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: farChatDashboardID) { richCardHostDashboard } }
+        return activeDashboardID
+    }
+
+    /// Whether a card may read on `dashboard`, another combined dashboard
+    /// than the one on screen: the far chat's or group room's open in
+    /// place, the Pulse page's while it shows that dashboard's chip, or a
+    /// live call's that goes on there (its cards and saved transcript).
+    func richCardMayReadOffScreen(_ dashboard: UUID) -> Bool {
+        dashboard == farChatDashboardID || dashboard == callDashboardOffScreen
+            || dashboard == activeRoomSurface?.dashboardID || (pulseRuntime != nil && dashboard == pulseShownDashboardID)
+    }
+
+    /// The bridge a card's read goes through: `dashboard`'s, the one that
+    /// kept the cards (the screen's for its id or nil), while its plugin
+    /// reports `capability`. Another dashboard's goes through its kept
+    /// connection while its chat, room, Pulse chip or call is still up
+    /// (richCardMayReadOffScreen), as richChecklistBridge does; nil
+    /// otherwise.
+    func richCardReadBridge(capability: String, on dashboard: UUID?) -> DashboardTicketBridge? {
+        if dashboard == nil || dashboard == activeDashboardID {
+            guard notifierPlugin.reports(capability) else { return nil }
+            return dashboardTicketBridge
+        }
+        guard let dashboard, richCardMayReadOffScreen(dashboard), let runtime = runtime(for: dashboard) else { return nil }
+        return act(onRuntime: runtime) { notifierPlugin.reports(capability) ? dashboardTicketBridge : nil }
+    }
+
+    /// Another dashboard's plugin (a far chat's, room's, Pulse chip's or
+    /// call's) may not have said what it keeps yet (opening the chat
+    /// doesn't ask): asked once before its cards' reads are gated.
+    func readFarCardHostStatus(_ dashboard: UUID?) async {
+        guard let dashboard, dashboard != activeDashboardID, richCardMayReadOffScreen(dashboard) else { return }
+        await readKeptPluginStatusIfUnknown(dashboard)
+    }
+
+    /// The bridge a card's read goes through, once a far plugin not yet
+    /// heard from has been asked what it keeps (the readers' path).
+    func richCardReadBridgeAfterStatus(capability: String, on dashboard: UUID?) async -> DashboardTicketBridge? {
+        await readFarCardHostStatus(dashboard)
+        return richCardReadBridge(capability: capability, on: dashboard)
+    }
+
+    /// A diff card reads the whole of a long diff from its chat's Hermes,
+    /// the one whose plugin kept it; an id from another Hermes is answered
+    /// as gone there.
     func installRichDiffReader() {
-        RichDiffLoader.shared.read = { [weak self] path in
-            guard let self, self.notifierPlugin.reports(RichDiffLoader.capability),
-                  let bridge = self.dashboardTicketBridge else { throw RichDiffLoader.LoadError.notConnected }
+        RichDiffLoader.shared.read = { [weak self] path, dashboard in
+            guard let bridge = await self?.richCardReadBridgeAfterStatus(capability: RichDiffLoader.capability, on: dashboard) else {
+                throw RichDiffLoader.LoadError.notConnected
+            }
             return try await bridge.requestJSON(path: path)
         }
     }
 
-    /// A review card reads its rounds' pages from the connected Hermes,
-    /// the one whose plugin kept them; an id from another Hermes is
-    /// answered as gone there.
+    /// A review card reads its rounds' pages from its chat's Hermes, the
+    /// one whose plugin kept them; an id from another Hermes is answered as
+    /// gone there.
     func installRichReviewReader() {
-        RichReviewLoader.shared.read = { [weak self] path in
-            guard let self, self.notifierPlugin.reports(RichReviewLoader.capability),
-                  let bridge = self.dashboardTicketBridge else { throw RichReviewLoader.LoadError.notConnected }
+        RichReviewLoader.shared.read = { [weak self] path, dashboard in
+            guard let bridge = await self?.richCardReadBridgeAfterStatus(capability: RichReviewLoader.capability, on: dashboard) else {
+                throw RichReviewLoader.LoadError.notConnected
+            }
             return try await bridge.requestJSON(path: path)
         }
     }

@@ -103,7 +103,7 @@ extension AppStateVoiceCapabilityTests {
         let id = "rv-0123456789abcdef"
         let loader = RichReviewLoader.shared
         let asked = AskedReviewPaths()
-        loader.read = { path in
+        loader.read = { path, _ in
             asked.paths.append(path)
             return ["review": ["id": id, "round": 1, "rounds": 2, "title": "T", "pages": ["d1/A": "<p>A</p>"],
                                "decisions": [["id": "d1", "title": "Chart", "options": [
@@ -137,6 +137,23 @@ extension AppStateVoiceCapabilityTests {
         _ = try await loader.round(id, 1, fresh: true, freshFor: RichReviewLoader.rowFreshFor,
                                    now: Date().addingTimeInterval(RichReviewLoader.rowFreshFor + 1))
         XCTAssertEqual(asked.paths.count, 4, "past it, the row asks again")
+        // A far chat's round is read on its own dashboard's Hermes and kept
+        // apart from the screen's under the same id.
+        let far = UUID()
+        let farAsked = AskedReviewPaths()
+        let screenRead = loader.read
+        loader.read = { path, dashboard in
+            farAsked.paths.append(dashboard?.uuidString ?? "screen")
+            return try await screenRead?(path, dashboard) ?? [:]
+        }
+        defer { loader.forget(id, 1, on: far) }
+        XCTAssertNil(loader.kept(id, 1, on: far), "the screen's round doesn't stand for its host's")
+        _ = try await loader.round(id, 1, on: far)
+        XCTAssertEqual(farAsked.paths, [far.uuidString], "asked on its own Hermes")
+        XCTAssertNotNil(loader.kept(id, 1, on: far))
+        loader.forget(id, 1, on: far)
+        XCTAssertNil(loader.kept(id, 1, on: far))
+        XCTAssertNotNil(loader.kept(id, 1), "forgetting its round leaves the screen's")
         do {
             _ = try await loader.round("../etc", 1)
             XCTFail("only a kept review's id is read")
