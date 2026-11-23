@@ -31,13 +31,23 @@ struct RichChecklistContext {
         "\(profile)\u{1E}\(sessionIDs.joined(separator: "\u{1D}"))"
     }
 
-    /// The profile part of a chat's key: a far chat's (another combined
-    /// dashboard's) carries its dashboard too, so two dashboards' chats with
-    /// the same profile and an id in common never share ticks on the phone
-    /// (carryOver merges only within one profile part).
-    static func keyProfile(_ profile: String, far dashboardID: UUID?) -> String {
+    /// The profile part of a chat's key: its profile and its dashboard, so
+    /// two combined dashboards' chats with the same profile and an id in
+    /// common never share ticks on the phone, while a chat keeps one key
+    /// whether it's open on its own dashboard or from another's.
+    static func keyProfile(_ profile: String, dashboard dashboardID: UUID?) -> String {
         guard let dashboardID else { return profile }
         return "\(profile)\u{1C}\(dashboardID.uuidString)"
+    }
+
+    /// Whether two keys' profile parts are one owner's: the same profile on
+    /// the same dashboard, or a key from before keys named their dashboard
+    /// (taken up by the chat it was made for, as before).
+    static func sameOwner(_ lhs: String, _ rhs: String) -> Bool {
+        if lhs == rhs { return true }
+        let left = lhs.split(separator: "\u{1C}", maxSplits: 1, omittingEmptySubsequences: false)
+        let right = rhs.split(separator: "\u{1C}", maxSplits: 1, omittingEmptySubsequences: false)
+        return left[0] == right[0] && (left.count == 1 || right.count == 1)
     }
 
     /// A chat scope's profile and ids; nil for any other scope.
@@ -206,7 +216,7 @@ final class RichChecklistMemory: ObservableObject {
             guard other != id, other.hasSuffix(suffix),
                   let parts = RichChecklistContext.parts(of: String(other.dropLast(suffix.count)))
             else { return false }
-            return parts.profile == profile && !parts.sessionIDs.isDisjoint(with: ids)
+            return RichChecklistContext.sameOwner(parts.profile, profile) && !parts.sessionIDs.isDisjoint(with: ids)
         }
         guard !earlier.isEmpty else { return }
         for other in earlier.keys { entries.removeValue(forKey: other) }

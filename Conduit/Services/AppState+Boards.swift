@@ -33,7 +33,7 @@ extension AppState {
         let profile = activeChatStoreProfile
         let dashboardID = activeDashboardID
         let scope = RichChecklistContext.scope(
-            profile: RichChecklistContext.keyProfile(profile, far: dashboardID != dashboardIDOnScreen ? dashboardID : nil),
+            profile: RichChecklistContext.keyProfile(profile, dashboard: dashboardID),
             sessionIDs: sessionIDs)
         return RichChecklistContext(
             scope: scope,

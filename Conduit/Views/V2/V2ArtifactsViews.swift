@@ -321,6 +321,9 @@ private struct ArtifactsList: View {
         // Before the first frame, so nothing comes or goes when Hermes answers.
         .onAppear { showKept(currentKey) }
         .task(id: Reading(key: currentKey, served: hostServes)) {
+            // A far chat's list has no Saved (its pins are the screen's
+            // dashboard's), even when Saved was picked beside another chat.
+            if savedOnly, !hostIsOnScreen { savedOnly = false }
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -420,8 +423,8 @@ private struct ArtifactsList: View {
                     // its kind.
                     // Kept rows show it before the plugin has answered
                     // (offline, just launched); Save itself waits for it.
-                    if option == .all, offersSaved || savedOnly
-                        || hostIsOnScreen && savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
+                    if option == .all, hostIsOnScreen, offersSaved || savedOnly
+                        || savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
                         let count = savedIDs.count
                         chip(Text("Saved") + Text(verbatim: count == 0 ? "" : " \(count)"),
                              isOn: savedOnly) {
