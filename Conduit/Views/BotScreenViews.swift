@@ -74,7 +74,8 @@ private struct BotScreenContent: View {
         self.target = target
         self.work = work
         self.far = far
-        _model = StateObject(wrappedValue: BotScreenModel(profile: target.profile, client: client))
+        _model = StateObject(wrappedValue: BotScreenModel(profile: target.profile, client: client,
+                                                             dashboardID: far ? target.dashboardID : nil))
     }
 
     private var use: BotScreenUse? { work.snapshot(target.profile)?.screen }

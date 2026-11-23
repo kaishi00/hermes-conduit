@@ -2186,6 +2186,9 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.botScreenSupport(for: mac.id) === appState.botScreenSupport(for: mac.id))
         XCTAssertFalse(appState.botScreenSupport(for: mac.id) === appState.botScreens, "what the screen's hosts said doesn't stand for its host")
         XCTAssertTrue(appState.botScreenSupport(for: nil) === appState.botScreens)
+        XCTAssertNotEqual(BotScreenModel(profile: "default", client: nil, dashboardID: mac.id).stateKey,
+                          BotScreenModel(profile: "default", client: nil).stateKey,
+                          "its owed hand back is kept apart from the screen's same-named bot's")
         XCTAssertEqual(appState.activeChatStoreProfile, "default")
         XCTAssertTrue(try appState.richChecklistBridge(for: mac.id) === kept.bridge, "its ticks go to its own Hermes")
         XCTAssertTrue(appState.richCardChat?.contains(mac.id.uuidString) == true, "its cards name its own dashboard")
