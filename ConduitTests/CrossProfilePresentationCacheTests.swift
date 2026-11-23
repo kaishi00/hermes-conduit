@@ -3431,6 +3431,9 @@ extension CrossProfilePresentationCacheTests {
             counts.mints += 1
             return "fresh-ticket"
         }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows.
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             counts.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -3483,6 +3486,7 @@ extension CrossProfilePresentationCacheTests {
         final class Script { var error: Error? }
         let script = Script()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { _, sessionID, _ in
             if let error = script.error { throw error }
             return SessionResumeResult(
