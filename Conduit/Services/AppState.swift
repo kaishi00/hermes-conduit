@@ -4286,6 +4286,9 @@ final class AppState: ObservableObject {
     /// (AppState+BotWorkstreams.swift).
     /// Which bots' hosts can have a Bot Screen, as read (BotScreen.swift).
     let botScreens = BotScreenSupport()
+    /// The same, read for other combined dashboards' bots through their
+    /// kept connections (a far chat's menu), by dashboard.
+    var farBotScreens: [UUID: BotScreenSupport] = [:]
 
     lazy var botWork: BotWorkStore = {
         let store = BotWorkStore()

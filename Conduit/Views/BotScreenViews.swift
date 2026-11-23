@@ -8,7 +8,11 @@ struct BotScreenTarget: Identifiable, Equatable {
     /// The ids of the chat it opened from, when it opened from a chat's
     /// menu, so the sheet can say that chat is the one using the screen.
     var chatSessionIDs: Set<String> = []
-    var id: String { profile }
+    /// Another combined dashboard's bot, from a chat of that dashboard's
+    /// open in place: the sheet reads and drives its screen through that
+    /// dashboard's kept connection. Nil for the one on screen's.
+    var dashboardID: UUID? = nil
+    var id: String { "\(profile)\u{1F}\(dashboardID?.uuidString ?? "")" }
 }
 
 /// A bot's screen (Bot Screen): watch it, take over for a sign-in or a
@@ -17,11 +21,16 @@ struct BotScreenTarget: Identifiable, Equatable {
 struct BotScreenSheet: View {
     @EnvironmentObject private var appState: AppState
     let target: BotScreenTarget
+    /// A far bot's work: its own dashboard's isn't read here, so who drives
+    /// the screen isn't said rather than said from another bot's work.
+    @StateObject private var farWork = BotWorkStore()
 
     var body: some View {
-        BotScreenContent(target: target, client: appState.client, work: appState.botWork)
+        let client = appState.botScreenClient(for: target.dashboardID)
+        let far = appState.botScreenIsFar(target.dashboardID)
+        BotScreenContent(target: target, client: client, work: far ? farWork : appState.botWork, far: far)
             // A reconnect makes a new client: the screen is read again on it.
-            .id(appState.client.map { ObjectIdentifier($0) })
+            .id(client.map { ObjectIdentifier($0) })
             // The screen covers the open chat from wherever it opened (the
             // chat's menu, a Work panel card, Bots Home): what arrives
             // meanwhile hasn't been read, and closing it reads it (#1579).
@@ -58,10 +67,15 @@ private struct BotScreenContent: View {
     @State private var isZoomed = false
     @State private var resetZoom = 0
 
-    init(target: BotScreenTarget, client: HermesClient?, work: BotWorkStore) {
+    /// Another combined dashboard's bot (`BotScreenTarget.dashboardID`).
+    let far: Bool
+
+    init(target: BotScreenTarget, client: HermesClient?, work: BotWorkStore, far: Bool = false) {
         self.target = target
         self.work = work
-        _model = StateObject(wrappedValue: BotScreenModel(profile: target.profile, client: client))
+        self.far = far
+        _model = StateObject(wrappedValue: BotScreenModel(profile: target.profile, client: client,
+                                                             dashboardID: far ? target.dashboardID : nil))
     }
 
     private var use: BotScreenUse? { work.snapshot(target.profile)?.screen }
@@ -92,10 +106,11 @@ private struct BotScreenContent: View {
         // rebuilt the sheet there): it starts away, so nothing attaches.
         .onAppear { if scenePhase == .background { model.backgrounded() } }
         .task { await model.load() }
-        // Who drives the screen now, read again while the sheet is open.
-        .refreshesBotWork(profile: target.profile)
+        // Who drives the screen now, read again while the sheet is open
+        // (the one on screen's bots; a far bot's work isn't read here).
+        .refreshesBotWork(profile: target.profile, enabled: !far)
         // Gone because a reconnect rebuilt it on a new client: the hold stays.
-        .onDisappear { model.close(reconnecting: !model.uses(appState.client)) }
+        .onDisappear { model.close(reconnecting: !model.uses(appState.botScreenClient(for: target.dashboardID))) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { model.backgrounded() }
             // Read again: the screen may have started or stopped meanwhile.
