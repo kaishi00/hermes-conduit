@@ -314,6 +314,13 @@ extension AppState {
     func farBot(for session: SessionSummary, in dashboardID: UUID) -> BotProfile? {
         var ids = Set(SessionContentSearch.identities(of: session))
         if let root = session.lineageRootId.flatMap(ChatScrollIdentityNormalization.sessionID) { ids.insert(root) }
+        return farBot(named: ids, in: dashboardID)
+    }
+
+    /// The bot of another combined dashboard whose canonical Bot Chat one
+    /// of `ids` is, by its kept runtime's bots, then Bots Home's read of
+    /// them (kept when its connection drops).
+    func farBot(named ids: Set<String>, in dashboardID: UUID) -> BotProfile? {
         let roster = (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
             + (combinedDashboardBots[dashboardID]?.bots ?? [])
         return roster.first { bot in
@@ -325,12 +332,17 @@ extension AppState {
         }
     }
 
-    /// The bot profile the chat on screen belongs to by another combined
-    /// dashboard's own Bot Chat registry (its runtime's, whatever runs in
-    /// scope): nil for an ordinary chat, or when that dashboard isn't kept.
+    /// The bot profile the chat on screen belongs to on another combined
+    /// dashboard: by that dashboard's own Bot Chat registry (its runtime's,
+    /// whatever runs in scope), else, with its runtime let go (its
+    /// connection dropped), by Bots Home's read of its bots naming the
+    /// chat's ids. Nil for an ordinary chat.
     func farBotChatProfile(in dashboardID: UUID) -> String? {
-        activeSessionId.flatMap(ChatScrollIdentityNormalization.sessionID)
-            .flatMap { keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles[$0] }
+        let open = activeSessionId.flatMap(ChatScrollIdentityNormalization.sessionID)
+        if let open, let profile = keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles[open] { return profile }
+        let ids = Set(([open] + (offlineChatIdentities() ?? []).map(Optional.some))
+            .compactMap { $0.flatMap(ChatScrollIdentityNormalization.sessionID) })
+        return ids.isEmpty ? nil : farBot(named: ids, in: dashboardID)?.name
     }
 
     /// Opens another combined dashboard's Bot Chat in place, as a Bot Chat
