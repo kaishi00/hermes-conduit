@@ -2755,9 +2755,9 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.openWidgetChatInPlace(byName), "by its link's bot")
         await waitUntil { seen.looked.count > looksBeforeName }
         XCTAssertEqual(seen.looked.last?.1, "atlas")
-        // A chat's link to its Pulse chat goes on to the Pulse screen, as
-        // its push does; a bot's link still opens its Bot Chat, as the
-        // switch's launch would.
+        // A chat's link to its Pulse chat isn't opened in place as a Bot
+        // Chat (it goes on to the switch's launch); a bot's link still
+        // opens its Bot Chat, as that launch would.
         appState.pulseRememberedHomes[mac.id.uuidString] = "atlas-chat"
         let chatLink = try XCTUnwrap(WidgetLaunchLink(
             action: .resume,
@@ -2787,6 +2787,53 @@ extension CrossProfilePresentationCacheTests {
         let dropped = await appState.openFarNotificationInPlace(push, in: mac.id)
         XCTAssertNil(dropped, "not kept connected: it switches")
         XCTAssertFalse(appState.openWidgetChatInPlace(widget), "not kept connected: it switches")
+    }
+
+    /// Each bot's work is its own dashboard's: with a kept dashboard's
+    /// runtime in scope (its roster read, a far Bot Chat's Work panel) it's
+    /// that runtime's store, never the one on screen's. Its reads leave the
+    /// open chat's title and Tasks line alone unless that chat is its own.
+    func testAKeptDashboardsBotWorkIsItsOwn() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(appState.botWork === appState.screenBotWork, "the one on screen's")
+        let far = appState.act(onRuntime: kept.runtime) { appState.botWork }
+        XCTAssertTrue(far === kept.runtime.botWork, "the kept dashboard's own")
+        XCTAssertFalse(far === appState.screenBotWork)
+        let scoped = await appState.actAcrossAwaits(onRuntime: kept.runtime) { appState.botWork }
+        XCTAssertTrue(scoped === far, "across awaits too")
+        XCTAssertTrue(appState.act(onRuntime: appState.runtimeOnScreen) { appState.botWork } === appState.screenBotWork)
+
+        // Only the open chat's dashboard's work touches its Tasks line.
+        XCTAssertTrue(appState.botWorkIsTheChatOnScreens, "the one on screen's chat")
+        XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.botWorkIsTheChatOnScreens },
+                       "a kept dashboard's read isn't the open chat's")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.botWorkIsTheChatOnScreens },
+                      "a far chat open there is its own")
+        XCTAssertFalse(appState.botWorkIsTheChatOnScreens, "and isn't the one on screen's")
+        appState.farChat = nil
+
+        // A far chat that's a workstream's finds it in its own dashboard's
+        // store, from any scope; the one on screen's never has it.
+        let work = try XCTUnwrap(BotWorkSnapshot(response: [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+            "counts": ["working": 1, "needs_you": 0, "ready": 0, "waiting": 0],
+            "work": [["ref": "W1", "kind": "workstream", "status": "running", "title": "Login bug",
+                      "session_id": "far-w1", "closed": false, "actions": ["send", "stop"]]],
+        ], profile: "atlas"))
+        kept.runtime.botWork.set(work)
+        appState.activeSessionId = "far-w1"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertEqual(appState.activeWorkstream?.item.ref, "W1", "read on its own dashboard")
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.activeWorkstream?.item.ref }, "W1")
+        XCTAssertNotNil(appState.workstreamStoppedByComposer, "its Stop reaches it")
+        XCTAssertNil(appState.screenBotWork.workstream(forSession: ["far-w1"]))
+        appState.farChat = nil
+        XCTAssertNil(appState.activeWorkstream, "the one on screen's chat of that id isn't it")
+        appState.activeSessionId = nil
     }
 
     /// A far chat on another profile takes the kept socket on a client of

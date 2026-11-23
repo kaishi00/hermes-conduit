@@ -222,8 +222,8 @@ extension AppState {
     /// as before (through a switch, or its refusal during a call): a call
     /// going on, not a chat's resume, the dashboard on
     /// screen's, not kept connected, its bots not read yet, not listed, or
-    /// its Pulse chat. A bot's Bot Chat opens through its bot's open
-    /// (openFarBotChatInPlace). An open that fails later shows the launch's
+    /// its Pulse chat (a chat's link; a bot's opens its Bot Chat). A bot's
+    /// Bot Chat opens through its bot's open (openFarBotChatInPlace). An open that fails later shows the launch's
     /// error.
     func openWidgetChatInPlace(_ link: WidgetLaunchLink) -> Bool {
         // During a call a widget's chat refuses, as the switch's launch
@@ -244,9 +244,9 @@ extension AppState {
         let byName = reference.kind == .bot
             ? reference.botName.flatMap { Self.linkedBot(named: $0, in: farBotRoster(in: workspace.dashboardID)) }
             : nil
-        // A chat's link to its Pulse chat goes on to the Pulse screen, as a
-        // push's does; a bot's link opens its Bot Chat, as the switch's
-        // launch would (openWidgetConversation).
+        // A chat's link to its Pulse chat isn't opened here as a Bot Chat:
+        // it goes on to the switch's launch as before. A bot's link opens
+        // its Bot Chat, as that launch would (openWidgetConversation).
         let isPulse = id.map { farPulseHomes(in: workspace.dashboardID).contains($0) } ?? false
         if !(isPulse && reference.kind == .dashboard), let bot = byID ?? byName {
             let open = openFarBotChatInPlace(of: bot, in: workspace.dashboardID)

@@ -618,7 +618,7 @@ struct V2ConversationScreen: View {
         guard appState.activeRoomSurface == nil else { return BotChatSwap.Shown() }
         let drawn = ChatView.drawnOrFallbackScrollSessionKey(in: appState).sessionID
         let ids = appState.chatOwnSessionIDs(for: drawn).union([drawn])
-        let work = appState.botWork.workstream(forSession: ids) ?? (byOpenChatToo ? appState.activeWorkstream : nil)
+        let work = appState.chatOnScreenWorkstream(forSession: ids) ?? (byOpenChatToo ? appState.activeWorkstream : nil)
         let bot = appState.botScopeProfile(forSessionIDs: ids, workspaceProfile: appState.activeProfile)
             ?? (byOpenChatToo ? appState.activeBotChatProfile : nil)
         return BotChatSwap.Shown(botChat: bot, workstreamOf: work?.profile, workstream: work?.item.sessionID)
