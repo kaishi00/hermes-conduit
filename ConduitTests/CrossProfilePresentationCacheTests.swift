@@ -2131,6 +2131,9 @@ extension CrossProfilePresentationCacheTests {
         final class Seen { var opened: [(ObjectIdentifier, String)] = []; var sent: [(ObjectIdentifier, String, String)] = [] }
         let seen = Seen()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows (#3143).
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             seen.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -2179,6 +2182,8 @@ extension CrossProfilePresentationCacheTests {
 
         appState.openCombinedChat(row, in: mac.id)
         await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["far-1"], "its rows are up")
+        XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
         XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
@@ -3565,6 +3570,13 @@ extension CrossProfilePresentationCacheTests {
         let refused = await appState.openFarNotificationInPlace(target, in: mac.id)
         XCTAssertEqual(refused, .failed, "Hermes refused it: the same open would hear the same")
         XCTAssertNil(appState.notificationRouteFailure)
+        // The card the push recorded left with the failed open (#3143).
+        let storedCards = appState.act(onRuntime: kept.runtime) {
+            appState.sessionPresentationCache.storedPendingDecisionKeys(
+                profile: appState.presentationProfile(for: "session-a"), sessionIDs: ["session-a"]
+            )
+        }
+        XCTAssertTrue(storedCards.isEmpty, "its card was evicted from the saved chat")
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
 
         script.error = nil
@@ -3586,6 +3598,9 @@ extension CrossProfilePresentationCacheTests {
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
+        // No history page here (the kept dashboard's page isn't loaded in
+        // tests): the resume carries the rows (#3143).
+        operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSession = { client, sessionID, _ in
             counts.opened.append((ObjectIdentifier(client), sessionID))
             return SessionResumeResult(
@@ -3626,6 +3641,8 @@ extension CrossProfilePresentationCacheTests {
         appState.showVoiceSheet = false
         XCTAssertTrue(appState.routeWidgetLaunchURL(try link("session-a").url))
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-w1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["far-w1"], "its rows are up")
+        XCTAssertNil(appState.errorMessage)
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
