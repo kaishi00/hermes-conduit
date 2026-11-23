@@ -501,7 +501,8 @@ struct ChatView: View {
             appState.dropIntoComposer(providers)
         }
         .overlay(alignment: .top) {
-            if appState.isOpeningNotificationSession {
+            // Not while the transcript's own opening line says it (#3152).
+            if appState.isOpeningNotificationSession, !transcriptModel.model.drawsOpeningLine {
                 Label("Opening conversation…", systemImage: "arrow.down.message")
                     .scaledFont(.footnote.weight(.semibold))
                     .padding(.horizontal, 14)
@@ -5590,7 +5591,7 @@ struct ChatOpeningStatus: View {
             guard !Task.isCancelled else { return }
             stage = .opening
             AccessibilityNotification.Announcement(AppLocalization.string("Opening conversation…")).post()
-            try? await Task.sleep(for: Self.slowAfter - ResyncGrace.duration)
+            try? await Task.sleep(for: max(.zero, Self.slowAfter - ResyncGrace.duration))
             guard !Task.isCancelled else { return }
             stage = .slow
         }

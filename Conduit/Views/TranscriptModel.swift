@@ -301,6 +301,18 @@ struct TranscriptModel {
     /// its inbox, its tool steps hidden with Tool cards off). The chat then
     /// reads the page before by itself, up to `autoEarlierPageLimit` pages,
     /// so it opens on words rather than a lone Load earlier.
+    /// Whether the rows say the chat is opening (the opening line, or a
+    /// picked chat's saved copy on its way): the notification-open pill
+    /// over the chat would say it twice.
+    var drawsOpeningLine: Bool {
+        rows.contains { row in
+            switch row.kind {
+            case .opening, .savedCopyStatus(isOpening: true): return true
+            default: return false
+            }
+        }
+    }
+
     var drawsOnlyLoadEarlier: Bool {
         guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
         return true
