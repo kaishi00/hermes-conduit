@@ -255,6 +255,12 @@ struct V2ConversationScreen: View {
                 ChatSidePanel(sessionIDs: sidePanelIDs, far: sidePanelFar, tab: $sidePanelTab) {
                     sidePanelOpen = false
                 }
+                // The same id opened on another combined dashboard: the panel
+                // reads that chat's artifacts, not the one it was opened beside.
+                .onChange(of: appState.farChat) { _, far in
+                    sidePanelIDs = appState.activeChatArtifactSessionIDs
+                    sidePanelFar = far
+                }
                 .frame(width: sidePanelWidth)
                 .transition(.move(edge: .trailing))
             }
@@ -335,12 +341,6 @@ struct V2ConversationScreen: View {
             // A workstream opened from the panel shows its own chat, and
             // the Bot Chat opens again without it, on any window.
             workPanelOpen = false
-        }
-        // The same id opened on another combined dashboard: the panel reads
-        // that chat's artifacts, not the one it was opened beside.
-        .onChange(of: appState.farChat) { _, far in
-            sidePanelIDs = appState.activeChatArtifactSessionIDs
-            sidePanelFar = far
         }
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
             composerExpanded = expanded
