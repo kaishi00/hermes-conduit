@@ -53,18 +53,17 @@ extension AppState {
         return runtime(for: dashboardID)?.client
     }
 
-    /// A far bot's name as its own dashboard's roster gives it, else its
-    /// profile, never the screen's bot under the same profile name.
+    /// A far bot's name as its own dashboard's roster gives it (its Bots
+    /// Home roster, else its kept connection's), named as its portrait is
+    /// there; else its profile, never the screen's bot under the same
+    /// profile name. Its main bot goes by that dashboard's saved name.
     func farBotName(_ profile: String, on dashboardID: UUID) -> String {
-        if let bot = combinedDashboardBots[dashboardID]?.bots.first(where: { $0.name == profile }) {
-            let title = (bot.botTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !title.isEmpty { return title }
-            let name = bot.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !name.isEmpty { return name }
-        }
-        if profile.isEmpty || profile.lowercased() == "default" {
+        if profile.isEmpty || BotManagement.isDefaultProfile(profile) {
             return profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
         }
+        let roster = (combinedDashboardBots[dashboardID]?.bots ?? [])
+            + (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+        if let bot = roster.first(where: { $0.name == profile }) { return bot.displayLabel }
         return String(profile.prefix(1)).uppercased() + String(profile.dropFirst())
     }
 
