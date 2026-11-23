@@ -1304,13 +1304,13 @@ struct V2Shell: View {
             }
         case .pulse where split:
             splitColumns(path: $pulsePath, list: list, offersNewChat: false, hostsSettings: false) {
-                tabBarClearance(V2PulsePage())
+                tabBarClearance(V2PulsePageGate(appState: appState).equatable())
             }
         case .pulse:
             // The page is the tab's root, over the bar as a list is; a chat
             // opened from a card is pushed over it.
             NavigationStack(path: $pulsePath) {
-                listRoot(tabBarClearance(V2PulsePage()), alone: canSplit)
+                listRoot(tabBarClearance(V2PulsePageGate(appState: appState).equatable()), alone: canSplit)
                     .windowSideContent()
                     .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
             }
@@ -1377,7 +1377,7 @@ struct V2Shell: View {
                     .navigationDestination(for: V2Route.self) { route in
                         Group {
                             if route == .pulse {
-                                tabBarClearance(V2PulsePage())
+                                tabBarClearance(V2PulsePageGate(appState: appState).equatable())
                             } else {
                                 destination(route)
                             }
@@ -1481,7 +1481,7 @@ struct V2Shell: View {
         case .pulse:
             // Full screen on a phone, as a chat is: its reply box sits where
             // the tabs were. Split, the list column keeps the bar (`splitColumns`).
-            V2PulsePage()
+            V2PulsePageGate(appState: appState).equatable()
         }
     }
 

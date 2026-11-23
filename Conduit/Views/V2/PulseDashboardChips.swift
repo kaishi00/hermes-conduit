@@ -12,7 +12,10 @@
 import SwiftUI
 
 struct PulseDashboardChips: View {
-    @EnvironmentObject private var appState: AppState
+    /// The Pulse page's held updates (`V2PulsePageHost`): hidden, it
+    /// doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
 
     var body: some View {
         let chips = appState.pulseDashboardChips
@@ -31,7 +34,10 @@ struct PulseDashboardChips: View {
 }
 
 private struct PulseDashboardChipButton: View {
-    @EnvironmentObject private var appState: AppState
+    /// The Pulse page's held updates (`V2PulsePageHost`): hidden, it
+    /// doesn't redraw on AppState's publishes (audit 1722).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     let chip: PulseDashboardChip
 
     /// How many of its cards are new, as the page's own line says it.

@@ -123,9 +123,58 @@ struct PulseMessageMark: View {
     }
 }
 
+/// Pulse, mounted the way the Chats list and Bots Home are: the shell's
+/// own redraws skip it, and its page follows the gate's updates.
+struct V2PulsePageGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+
+    var body: some View {
+        V2PulsePageHost(appState: appState)
+    }
+}
+
+/// Holds AppState's changes back while the page isn't on screen: another
+/// tab selected over it, or a chat pushed over it. Shown again, it draws
+/// once with what it missed (audit 1722). Its reads already waited for it
+/// to show (`isVisible`).
+struct V2PulsePageHost: View {
+    @StateObject private var updates: V2ShownUpdates
+    @Environment(\.v2Shell) private var shell
+    @State private var mounted = false
+
+    init(appState: AppState) {
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    var body: some View {
+        V2PulsePage()
+            .environmentObject(updates)
+            .onAppear {
+                mounted = true
+                updates.isShown = Self.isShown(mounted: true, in: shell)
+            }
+            .onDisappear {
+                mounted = false
+                updates.isShown = false
+            }
+            .onChange(of: shell.isTabActive) { _, _ in
+                updates.isShown = Self.isShown(mounted: mounted, in: shell)
+            }
+    }
+
+    /// On screen: mounted and not under a chat pushed over it (its
+    /// `onDisappear`), in the tab that shows.
+    static func isShown(mounted: Bool, in shell: V2ShellContext) -> Bool {
+        V2PulsePage.isVisible(shown: mounted, in: shell)
+    }
+}
+
 struct V2PulsePage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @EnvironmentObject private var appState: AppState
+    /// AppState through the gate's updates (`V2PulsePageHost`): hidden or
+    /// covered, the page doesn't redraw on its publishes.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @Environment(\.v2Shell) private var shell

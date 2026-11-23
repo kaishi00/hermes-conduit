@@ -338,6 +338,31 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: true, connected: true, phase: .loading))
     }
 
+    /// Pulse holds AppState's publishes while another tab is up or a chat
+    /// is pushed over it (its own disappearance), and draws them once when
+    /// it shows again (audit 1722).
+    @MainActor
+    func testPulsePageHoldsPublishesWhileItIsntOnScreen() {
+        var shell = V2ShellContext()
+        XCTAssertTrue(V2PulsePageHost.isShown(mounted: true, in: shell))
+        XCTAssertFalse(V2PulsePageHost.isShown(mounted: false, in: shell), "a chat pushed over it")
+        shell.values.isTabActive = false
+        XCTAssertFalse(V2PulsePageHost.isShown(mounted: true, in: shell), "another tab")
+
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+        updates.isShown = V2PulsePageHost.isShown(mounted: true, in: shell)
+        state.sessions = [pinnedTestSession("hidden")]
+        settle()
+        XCTAssertEqual(sent, 0, "a hidden page drew")
+        shell.values.isTabActive = true
+        updates.isShown = V2PulsePageHost.isShown(mounted: true, in: shell)
+        XCTAssertEqual(sent, 1, "shown again, it draws what it missed once")
+    }
+
     /// A project page is covered by a chat pushed over it, not by one
     /// beside it; its rows compare on what they show.
     @MainActor
