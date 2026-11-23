@@ -617,7 +617,10 @@ struct ChatView: View {
         case .savedCopyStatus(let isOpening):
             savedCopyStatus(isOpening: isOpening)
         case .opening:
+            // Keyed by the chat drawn: a chat opened straight from another
+            // that showed this line too starts its grace and slow note over.
             ChatOpeningStatus()
+                .id(drawnConversation)
                 .padding(.top, 60)
         case .empty:
             // Room under the card as over it: the cell clips its row at the
@@ -952,6 +955,7 @@ struct ChatView: View {
     private func savedCopyStatus(isOpening: Bool) -> some View {
         if isOpening {
             ChatOpeningStatus()
+                .id(drawnConversation)
                 .padding(.top, 60)
         } else {
             Text("No saved copy of this conversation")
