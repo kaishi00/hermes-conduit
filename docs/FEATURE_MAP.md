@@ -8083,7 +8083,7 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 
 ## Pairing a computer
 
-Conduit for Windows and Mac (hermes-conduit-desktop) signs in by scanning its
+Conduit for desktop on Mac, Windows and Linux (hermes-conduit-desktop) signs in by scanning its
 QR code with the phone: the phone sends that computer its Hermes sign-ins,
 sealed to the computer's key, through a one-time inbox on the rooms mailbox,
 and both screens show the same four words before the computer signs in.
@@ -8119,7 +8119,7 @@ nothing there signs a computer in)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-22, #3116 (the mailbox counts new inboxes per network, not per address, notifier #1024; the code keeps its inbox as before, so neither app changes); 2026-11-18, #2743 (the Code line names proxyHeaders, from #2738's reviews); 2026-11-18, #2738 (#2734's review leftovers: the Cloudflare token wins over a same-named extra header in any case, merged in ComputerPairing.proxyHeaders and tested; README's feature line names the headers); 2026-11-18, #2734 (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
+**Checked:** 2026-11-23, #3138 (the desktop app runs on Linux too, so the entry and README name Mac, Windows and Linux; no behavior change); 2026-11-22, #3116 (the mailbox counts new inboxes per network, not per address, notifier #1024; the code keeps its inbox as before, so neither app changes); 2026-11-18, #2743 (the Code line names proxyHeaders, from #2738's reviews); 2026-11-18, #2738 (#2734's review leftovers: the Cloudflare token wins over a same-named extra header in any case, merged in ComputerPairing.proxyHeaders and tested; README's feature line names the headers); 2026-11-18, #2734 (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
 
 ## Another saved dashboard's address
 
