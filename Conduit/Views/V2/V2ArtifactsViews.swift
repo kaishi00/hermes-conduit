@@ -1017,7 +1017,7 @@ private struct ArtifactsList: View {
                 guard let dataURL = await resolver.dataURL(for: path), !Task.isCancelled,
                       stillOwns(key) else { return }
                 guard let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
-                    openFailed(item)
+                    openFailed(item, key: key)
                     return
                 }
                 page = OpenPage(name: item.name, html: html)
@@ -1156,7 +1156,7 @@ private struct ArtifactsList: View {
             return other.id == item.id ? tapped : galleryItem(other, path: path)
         }
         if !ImageGallery.open(tapped, in: ImageGallerySource { images }) {
-            openFailed(item)
+            openFailed(item, key: nil)
         }
     }
 
@@ -1165,8 +1165,9 @@ private struct ArtifactsList: View {
     }
 
     /// `key`: what the open began on; a failure for a list that has since
-    /// moved to another server or profile isn't shown over it.
-    private func openFailed(_ item: ArtifactItem, tooLarge: Bool = false, key: ArtifactsListKey? = nil) {
+    /// moved to another server or profile isn't shown over it. Nil only for
+    /// a failure the tap meets at once, with nothing awaited.
+    private func openFailed(_ item: ArtifactItem, tooLarge: Bool = false, key: ArtifactsListKey?) {
         guard !Task.isCancelled, key.map(stillOwns) ?? true else { return }
         Haptics.error()
         missingIsTooLarge = tooLarge
