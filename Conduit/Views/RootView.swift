@@ -397,7 +397,7 @@ struct MainView: View {
                 controller: appState.voiceConversationController,
                 backgroundJobs: appState.voiceBackgroundJobSupervisor,
                 profile: appState.activeProfile,
-                chatTitle: appState.activeChatSessionSummary?.title,
+                chatTitle: appState.chatOnScreenSessionSummary?.title,
                 appState: appState,
                 onClose: appState.closeVoiceConversation,
                 shouldAutoListen: { appState.consumeVoiceSheetAutoListenIfPresenting() },
@@ -871,7 +871,7 @@ struct ChatTitleControl: View {
     var compact = false
 
     var body: some View {
-        if let session = appState.activeChatSessionSummary {
+        if let session = appState.chatOnScreenSessionSummary {
             Menu {
                 SessionActionMenuItems(
                     session: session,

@@ -316,7 +316,10 @@ extension AppState {
             botOwnershipGeneration: botOwnershipGeneration,
             workstreamsGeneration: botWork.workstreamsGeneration
         )
-        if let cached = activeProfileSessionsCache, cached.key == key { return cached.rows }
+        // The cache is the screen's list's: another dashboard's scope (its
+        // revision isn't counted) reads its own rows each time.
+        let cacheable = actingOnRuntimeOnScreen
+        if cacheable, let cached = activeProfileSessionsCache, cached.key == key { return cached.rows }
         let botOwned = botOwnedSessionIDs
         let rows = sessions.filter {
             sessionBelongsToProfile($0, profile: activeProfile)
@@ -324,7 +327,7 @@ extension AppState {
                 && !BotChatHygiene.isBotOwnedRow($0, botOwnedSessionIDs: botOwned)
                 && !isWorkstreamRow($0)
         }
-        activeProfileSessionsCache = (key, rows)
+        if cacheable { activeProfileSessionsCache = (key, rows) }
         return rows
     }
 
@@ -340,9 +343,10 @@ extension AppState {
     /// it read this on every publish.
     var activeProfileCronSessions: [SessionSummary] {
         let key = ActiveProfileCronSessionsKey(cronSessionsRevision: cronSessionsRevision, profile: activeProfile)
-        if let cached = activeProfileCronSessionsCache, cached.key == key { return cached.rows }
+        let cacheable = actingOnRuntimeOnScreen
+        if cacheable, let cached = activeProfileCronSessionsCache, cached.key == key { return cached.rows }
         let rows = cronSessions.filter { sessionBelongsToProfile($0, profile: activeProfile) }
-        activeProfileCronSessionsCache = (key, rows)
+        if cacheable { activeProfileCronSessionsCache = (key, rows) }
         return rows
     }
 

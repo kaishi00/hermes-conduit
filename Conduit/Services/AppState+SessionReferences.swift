@@ -443,7 +443,9 @@ extension AppState {
         // display label and persist the literal wire title into the
         // dashboard profile's cache. Registry identity — never a title
         // comparison — decides ownership.
-        if matchesActiveSession {
+        // The chat on screen's title only for its own dashboard's rename:
+        // another dashboard's chat can share its id.
+        if matchesActiveSession, chatOnScreenIsInScope {
             if let activeSessionId, botConversationProfile(for: activeSessionId) == nil {
                 setActiveSessionTitle(title)
             }

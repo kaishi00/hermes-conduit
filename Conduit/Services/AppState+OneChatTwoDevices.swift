@@ -616,6 +616,7 @@ extension AppState {
 
     @discardableResult
     func renameSession(_ session: SessionSummary, to title: String) async -> Bool {
+        if let done = await onCombinedDashboard(of: session, { await renameSession($0, to: title) }) { return done }
         if isOtherProfileRow(session) {
             return await renameOtherProfileSession(session, to: title)
         }
@@ -654,7 +655,9 @@ extension AppState {
                 return false
             }
             let activeClient = client
-            let runtimeRenameExpected = activeClient != nil
+            // The open chat only when it's this dashboard's: another
+            // dashboard's chat on screen can share an id with this row.
+            let runtimeRenameExpected = activeClient != nil && chatOnScreenIsInScope
                 && activeSessionId.map { knownIDs.contains($0) } == true
             operations = SessionRenameOperation.Operations(
                 renameRuntime: activeClient.map { client in
@@ -687,7 +690,7 @@ extension AppState {
         do {
             guard let result = try await SessionRenameOperation.perform(
                 session: session,
-                activeSessionID: activeSessionId,
+                activeSessionID: chatOnScreenIsInScope ? activeSessionId : nil,
                 title: trimmedTitle,
                 operations: operations
             ), profile == activeProfile else { return false }
@@ -703,6 +706,7 @@ extension AppState {
     }
 
     func deleteSession(_ session: SessionSummary) async -> Bool {
+        if let done = await onCombinedDashboard(of: session, { await deleteSession($0) }) { return done }
         if isOtherProfileRow(session) {
             return await deleteOtherProfileSession(session)
         }
@@ -1011,7 +1015,9 @@ extension AppState {
     }
 
     func sessionMatchesActiveSession(_ session: SessionSummary) -> Bool {
-        guard let activeSessionId else { return false }
+        // Only a row of the dashboard whose chat is on screen: another
+        // dashboard's chat can share its id.
+        guard let activeSessionId, chatOnScreenIsInScope else { return false }
         return Set([session.id] + session.alternateIds).contains(activeSessionId)
     }
 

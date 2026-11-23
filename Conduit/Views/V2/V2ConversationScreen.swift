@@ -201,7 +201,10 @@ struct V2ConversationScreen: View {
 
     private var parent: SessionSummary? {
         guard appState.activeRoomSurface == nil,
-              let session = appState.activeChatSessionSummary else { return nil }
+              let session = appState.chatOnScreenSessionSummary,
+              // A far chat's parent is in its own dashboard's list, not
+              // this one's.
+              session.combinedDashboardID == nil else { return nil }
         return appState.nestingParent(of: session)
     }
 
@@ -1018,7 +1021,7 @@ private struct V2ConversationMenu: View {
                     }
                     .disabled(!appState.isConnected)
                 }
-                if let session = appState.activeChatSessionSummary {
+                if let session = appState.chatOnScreenSessionSummary {
                     Section {
                         SessionActionMenuItems(
                             session: session,
