@@ -938,18 +938,22 @@ private struct V2ConnectionLine: View {
     var body: some View {
         if !appState.chatIsConnected, !appState.chatHidesBriefReconnect {
             let connecting = appState.chatIsRecoveringConnection
+            // A far chat's dashboard waiting for a sign-in: orange, as its
+            // Saved Dashboards row, with that row's words.
+            let needsSignIn = !connecting && appState.chatNeedsSignIn
+            let word = appState.chatDisconnectedWord
             HStack(spacing: 4) {
-                Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
+                Image(systemName: connecting ? "arrow.triangle.2.circlepath" : needsSignIn ? "lock.fill" : "wifi.slash")
                     .scaledFont(.caption2.weight(.bold))
-                Text(connecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected"))
+                Text(word)
                     .scaledFont(.caption.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(connecting ? Color.orange : Color.red)
+            .foregroundStyle(connecting || needsSignIn ? Color.orange : Color.red)
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .transition(.opacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(connecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected"))
+            .accessibilityLabel(word)
         }
     }
 }
@@ -1009,12 +1013,12 @@ private struct V2ConversationMenu: View {
     private var statusColor: Color {
         if appState.chatIsConnected { return .green }
         if appState.chatHidesBriefReconnect { return .secondary }
-        return appState.chatIsRecoveringConnection ? .orange : .red
+        return appState.chatIsRecoveringConnection || appState.chatNeedsSignIn ? .orange : .red
     }
 
     private var statusWord: String {
         if appState.chatIsConnected { return AppLocalization.string("Connected") }
-        return appState.chatIsRecoveringConnection ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
+        return appState.chatDisconnectedWord
     }
 
     var body: some View {
