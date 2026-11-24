@@ -16,7 +16,7 @@ concurrency:
   # plan job's if must match. Marking a PR ready shares the group only on a
   # trusted contributor's fork PR, the one PR it reviews; elsewhere it gets a
   # group of its own, so it can't cancel a review already running.
-  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ ((github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah", "Slaymish"]'), github.event.pull_request.user.login))) || (github.event.action == 'ready_for_review' && (github.event.pull_request.head.repo.full_name == github.repository || !contains(fromJSON('["malaiwah", "Slaymish"]'), github.event.pull_request.user.login)))) && format('-{0}', github.run_id) || '' }}
+  group: opencode-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}${{ ((github.event.action == 'labeled' && (github.event.label.name != 'run-review' || github.event.pull_request.head.repo.full_name == github.repository || contains(fromJSON('["malaiwah", "Slaymish", "mkslzk"]'), github.event.pull_request.user.login))) || (github.event.action == 'ready_for_review' && (github.event.pull_request.head.repo.full_name == github.repository || !contains(fromJSON('["malaiwah", "Slaymish", "mkslzk"]'), github.event.pull_request.user.login)))) && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -52,7 +52,7 @@ jobs:
       (github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.action != 'labeled' && github.event.action != 'ready_for_review') ||
       (github.event.pull_request.head.repo.full_name != github.repository &&
-        contains(fromJSON('["malaiwah", "Slaymish"]'), github.event.pull_request.user.login) &&
+        contains(fromJSON('["malaiwah", "Slaymish", "mkslzk"]'), github.event.pull_request.user.login) &&
         !github.event.pull_request.draft && github.event.action != 'labeled') ||
       (github.event.pull_request.head.repo.full_name != github.repository && github.event.pull_request.state == 'open' &&
         ((github.event.action == 'labeled' && github.event.label.name == 'run-review') ||
