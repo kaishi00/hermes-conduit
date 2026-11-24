@@ -4817,4 +4817,196 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(droppedPulse)
         XCTAssertNil(droppedUnlisted)
     }
+
+    /// Open Beside, Swap, kept-chat send & live stream updates, chat windows,
+    /// Open in Main Window, and kept-runtime drop stay scoped to each
+    /// dashboard without switching the screen away from its active dashboard.
+    func testFarOpenBesideSwapChatWindowSendAndDropAcrossDashboards() async throws {
+        final class Seen {
+            var opened: [(ObjectIdentifier, String, String?)] = []
+            var sent: [(ObjectIdentifier, String, String)] = []
+        }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.openSessionWithProfile = { client, sessionID, _, profile in
+            seen.opened.append((ObjectIdentifier(client), sessionID, profile))
+            let host = client.connection.ticket == "vps-ticket" ? "vps" : "mac"
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "msg-\(sessionID)-\(host)", role: .assistant, content: "Reply from \(host) \(sessionID)", timestamp: "ts-1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        operations.sendPrompt = { client, sessionID, text in
+            seen.sent.append((ObjectIdentifier(client), sessionID, text))
+            return .accepted
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        // Connect the screen dashboard so local chats can stay beside and move to windows.
+        let vpsConnection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "vps-ticket")
+        let vpsTransport = ClarifyFakeTransport()
+        let vpsSocket = ClarifyFakeSocket()
+        vpsSocket.refusesEveryRequest = true
+        vpsTransport.nextSocket = { vpsSocket }
+        let vpsClient = HermesClient(connection: vpsConnection, profile: "default", transportFactory: { vpsTransport })
+        vpsTransport.open(vpsSocket)
+        try await vpsClient.connect()
+        addTeardownBlock { @MainActor in vpsClient.disconnect() }
+        appState.client = vpsClient
+        appState.isConnected = true
+
+        let localRow = SessionSummary(
+            id: "vps-1", alternateIds: [], title: "Local work", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        let localSharedRow = SessionSummary(
+            id: "shared-1", alternateIds: [], title: "Shared on VPS", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        appState.runtimeOnScreen.sessions = [localRow, localSharedRow]
+        appState.setActiveSessionState(id: "vps-1", title: "Local work")
+        appState.messages = [ChatMessage(id: "vps-m1", role: .user, content: "Local words", timestamp: "ts-0")]
+        appState.turnState = .idle
+
+        var macRow = SessionSummary(
+            id: "mac-1", alternateIds: [], title: "Mac chat", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        macRow.combinedDashboardID = mac.id
+        var sharedMacRow = SessionSummary(
+            id: "shared-1", alternateIds: [], title: "Shared on Mac", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        sharedMacRow.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [macRow, sharedMacRow], at: Date()
+        )
+
+        // 1. Open Beside on a far row keeps local chat beside and opens far chat in place.
+        XCTAssertTrue(appState.canOpenBeside(macRow))
+        appState.openBeside(macRow)
+        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "msg-mac-1-mac" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "openBeside keeps screen dashboard active")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        XCTAssertNil(appState.besideChatOwner, "previous local chat stays beside under screen owner")
+        XCTAssertEqual(appState.besideChat?.dashboardID, vps.id)
+        XCTAssertTrue(appState.besideChat?.answers(to: "vps-1") == true)
+        XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing))
+
+        // 2. Swap opens local chat in main column and keeps far chat in the beside pane.
+        appState.swapBesideChat()
+        await waitUntil {
+            appState.activeSessionId == "vps-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-vps-1-vps" }
+        }
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertEqual(appState.besideChatOwner, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        let farBeside = try XCTUnwrap(appState.besideChat)
+        XCTAssertEqual(farBeside.dashboardID, mac.id)
+        XCTAssertTrue(farBeside.answers(to: "mac-1"))
+
+        // 3. Sending in the far beside chat uses the kept client, and kept stream events update it.
+        XCTAssertTrue(appState.keptChatTakesMessages(farBeside))
+        let sentFar = await appState.sendInKeptChat(farBeside, text: "Ping Mac")
+        XCTAssertTrue(sentFar)
+        XCTAssertEqual(seen.sent.last?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(seen.sent.last?.1, "mac-1")
+        XCTAssertEqual(seen.sent.last?.2, "Ping Mac")
+        XCTAssertTrue(farBeside.state.messages.contains { $0.role == .user && $0.content == "Ping Mac" })
+
+        let notice = appState.besideChatLive.notice(for: farBeside)
+        let revisionBefore = notice.revision
+        appState.act(onRuntime: kept.runtime) {
+            appState.handleStreamEvent(.userMessage(sessionId: "mac-1", rowId: 42, text: "Mac reply", origin: nil))
+        }
+        XCTAssertTrue(farBeside.state.messages.contains { $0.rowId == 42 && $0.content == "Mac reply" })
+        XCTAssertGreaterThan(notice.revision, revisionBefore)
+        appState.act(on: farBeside) { appState.setRunning(false) }
+
+        // 4. Move far beside chat to a window and Open in Main Window back in place.
+        let macWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
+        XCTAssertEqual(macWindowKey, "\(mac.id.uuidString)/default/mac-1")
+        XCTAssertNil(appState.besideChatIDs)
+        XCTAssertNil(appState.besideChatOwner)
+        XCTAssertEqual(appState.windowChatOwners[macWindowKey], FarChatOwner(dashboardID: mac.id, profile: "default"))
+        XCTAssertEqual(appState.windowChat(macWindowKey)?.dashboardID, mac.id)
+
+        appState.windowScenePhases[AppState.mainWindowScene] = .active
+        XCTAssertFalse(appState.openWindowChatInMainWindow(macWindowKey))
+        await waitUntil {
+            appState.activeSessionId == "mac-1"
+                && appState.farChat == FarChatOwner(dashboardID: mac.id, profile: "default")
+                && appState.messages.contains { $0.id == "msg-mac-1-mac" }
+                && appState.windowChat(macWindowKey) == nil
+        }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "openWindowChatInMainWindow does not switch")
+        XCTAssertNil(appState.windowChatOwners[macWindowKey])
+
+        // 5. Same-ID windows (far opened first, then local) stay isolated, and drop closes only Mac's.
+        XCTAssertTrue(appState.canOpenBeside(localRow))
+        appState.openBeside(localRow)
+        await waitUntil {
+            appState.activeSessionId == "vps-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-vps-1-vps" }
+                && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
+        }
+        // Put vps-1 into a local window first, then open far shared-1 window before local shared-1.
+        appState.openBeside(sharedMacRow)
+        await waitUntil {
+            appState.activeSessionId == "shared-1"
+                && appState.farChat == FarChatOwner(dashboardID: mac.id, profile: "default")
+                && appState.messages.contains { $0.id == "msg-shared-1-mac" }
+        }
+        XCTAssertNil(appState.besideChatOwner, "local vps-1 is beside")
+        let localWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
+        XCTAssertEqual(localWindowKey, "vps-1")
+        XCTAssertNil(appState.windowChatOwners[localWindowKey])
+
+        appState.openBeside(localSharedRow)
+        await waitUntil {
+            appState.activeSessionId == "shared-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-shared-1-vps" }
+                && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
+        }
+        let farSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
+        XCTAssertEqual(farSharedWindowKey, "\(mac.id.uuidString)/default/shared-1")
+
+        appState.openBeside(macRow)
+        await waitUntil {
+            appState.activeSessionId == "mac-1" && appState.besideChatOwner == nil
+                && appState.messages.contains { $0.id == "msg-mac-1-mac" }
+                && appState.besideChat?.answers(to: "shared-1") == true
+        }
+        let localSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
+        XCTAssertEqual(localSharedWindowKey, "shared-1")
+        XCTAssertEqual(appState.windowChat(localSharedWindowKey)?.dashboardID, vps.id, "local window is not shadowed by far window")
+        XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
+
+        // Closing the local shared-1 window leaves the far shared-1 window untouched.
+        appState.closeChatWindow(localSharedWindowKey)
+        XCTAssertNil(appState.windowChat(localSharedWindowKey))
+        XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
+
+        // Keep far mac-1 beside while opening local shared-1, then drop Mac's kept runtime.
+        appState.openBeside(localSharedRow)
+        await waitUntil {
+            appState.activeSessionId == "shared-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-shared-1-vps" }
+                && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
+        }
+        XCTAssertEqual(try XCTUnwrap(appState.besideChat).answers(to: "mac-1"), true)
+        XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
+
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertNil(appState.besideChatIDs, "dropping Mac closes its far beside pane")
+        XCTAssertNil(appState.besideChatOwner)
+        XCTAssertNil(appState.windowChat(farSharedWindowKey), "dropping Mac closes its kept window")
+        XCTAssertTrue(appState.windowChatOwners.isEmpty)
+        XCTAssertNotNil(appState.windowChat(localWindowKey), "local window stays open")
+        XCTAssertEqual(appState.windowChatIDs.count, 1)
+    }
 }

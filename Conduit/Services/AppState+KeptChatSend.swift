@@ -14,8 +14,27 @@ import SwiftUI
 import UIKit
 
 extension AppState {
-    /// Whether `chat` takes a message here now: connected, on the profile
-    /// on screen, and between turns.
+    /// The runtime owning `chat`: the screen runtime for the dashboard on
+    /// screen's active profile, or a connected kept dashboard's runtime.
+    func keptChatRuntime(for chat: BackgroundChat) -> DashboardRuntime? {
+        if chat.dashboardID == dashboardIDOnScreen {
+            return chat.profile == runtimeOnScreen.activeProfile ? runtimeOnScreen : nil
+        }
+        guard let kept = keptDashboardRuntimes[chat.dashboardID], kept.client.isConnected else { return nil }
+        return kept.runtime
+    }
+
+    /// Reads `body` on `chat`'s own owning runtime when `chat` belongs to a
+    /// live kept dashboard, else directly.
+    func readingKeptChatRuntime<T>(_ chat: BackgroundChat, _ body: () -> T) -> T {
+        guard chat.dashboardID != dashboardIDOnScreen,
+              let runtime = keptDashboardRuntimes[chat.dashboardID]?.runtime,
+              runtime !== shownRuntime else { return body() }
+        return act(onRuntime: runtime, body)
+    }
+
+    /// Whether `chat` takes a message here now: connected, on its owning
+    /// dashboard and profile, and between turns.
     func canSendInKeptChat(_ chat: BackgroundChat) -> Bool {
         keptChatTakesMessages(chat) && !chat.isRunning
     }
@@ -24,9 +43,11 @@ extension AppState {
     /// change. The box reads the turn from its chat's own notice, which
     /// moves as the turn starts and ends without publishing AppState.
     func keptChatTakesMessages(_ chat: BackgroundChat) -> Bool {
-        isConnected && client != nil
-            && chat.dashboardID == activeDashboardID && chat.profile == activeProfile
-            && keptChatIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } == true
+        guard isKeptChat(chat) else { return false }
+        if chat.dashboardID == dashboardIDOnScreen {
+            return isConnected && client != nil && chat.profile == runtimeOnScreen.activeProfile
+        }
+        return keptDashboardRuntimes[chat.dashboardID]?.client.isConnected == true
     }
 
     /// The id the chat's turns run under on this connection: the id its
@@ -35,28 +56,30 @@ extension AppState {
     /// it was left as. An id Hermes has since bound to another chat is
     /// never a target: nil sends nothing.
     func keptChatSendTarget(_ chat: BackgroundChat) -> String? {
-        let index = conversationIdentityIndex
-        func isThisChat(_ durable: String) -> Bool {
-            chat.sessionIDs.contains(durable) || chat.durableSessionID == durable
-        }
-        if let latest = keptChatEventIDs[Self.keptChatKey(chat)],
-           index.durableID(forRuntime: latest, profile: chat.profile).map(isThisChat)
-               ?? chat.sessionIDs.contains(latest) {
-            return latest
-        }
-        var runtime: String?
-        var free: [String] = []
-        for id in chat.sessionIDs.sorted() {
-            guard let durable = index.durableID(forRuntime: id, profile: chat.profile) else {
-                free.append(id)
-                continue
+        readingKeptChatRuntime(chat) {
+            let index = conversationIdentityIndex
+            func isThisChat(_ durable: String) -> Bool {
+                chat.sessionIDs.contains(durable) || chat.durableSessionID == durable
             }
-            guard isThisChat(durable) else { continue }
-            if durable != id, runtime == nil { runtime = id } else { free.append(id) }
+            if let latest = keptChatEventIDs[Self.keptChatKey(chat)],
+               index.durableID(forRuntime: latest, profile: chat.profile).map(isThisChat)
+                   ?? chat.sessionIDs.contains(latest) {
+                return latest
+            }
+            var runtime: String?
+            var free: [String] = []
+            for id in chat.sessionIDs.sorted() {
+                guard let durable = index.durableID(forRuntime: id, profile: chat.profile) else {
+                    free.append(id)
+                    continue
+                }
+                guard isThisChat(durable) else { continue }
+                if durable != id, runtime == nil { runtime = id } else { free.append(id) }
+            }
+            return runtime
+                ?? free.first { $0 != chat.durableSessionID }
+                ?? free.first
         }
-        return runtime
-            ?? free.first { $0 != chat.durableSessionID }
-            ?? free.first
     }
 
     /// Notes the id a kept chat's event came under, the one its next
@@ -67,7 +90,8 @@ extension AppState {
     }
 
     nonisolated static func keptChatKey(_ chat: BackgroundChat) -> String {
-        chat.durableSessionID ?? chat.sessionIDs.sorted().first ?? ""
+        let base = chat.durableSessionID ?? chat.sessionIDs.sorted().first ?? ""
+        return "\(chat.dashboardID.uuidString)/\(chat.profile)/\(base)"
     }
 
     /// Sends `text` to the kept chat as the chat's own composer sends a
@@ -79,82 +103,91 @@ extension AppState {
     @discardableResult
     func sendInKeptChat(_ chat: BackgroundChat, text: String) async -> Bool {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !words.isEmpty, canSendInKeptChat(chat), let client,
-              let target = keptChatSendTarget(chat) else { return false }
-        // A reply still settling from the last turn is no word of this one.
-        let replyWasSettled = chat.state.streamingBuffer.isEmpty
-        let rowID = "user-kept-\(UUID().uuidString)"
-        chat.state.messages.append(ChatMessage(
-            id: rowID, role: .user, content: words, timestamp: Self.localTimestamp(), author: nil
-        ))
-        act(on: chat) { setRunning(true) }
-        besideChatLive.moved(chat)
-        let ids = chat.sessionIDs.union([target])
-        let reportedOn = activeDashboardID
-        let profileBefore = activeProfile
-        // Where its words go back if its pane goes, settled now: a sign-out
-        // meanwhile clears the drafts, and the words with them.
-        let wordsBack = KeptChatWordsBack(
-            draftSessionID: chat.durableSessionID
-                ?? conversationIdentityIndex.durableID(forRuntime: target, profile: chat.profile)
-                ?? target,
-            draftsClearCount: composerDraftStore.clearCount(for: chat.dashboardID)
-        )
-        await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
-        // A switch to another dashboard or profile during the report closed
-        // the chat and moved the connection on: nothing goes, and the box
-        // keeps the words.
-        guard activeDashboardID == reportedOn, activeProfile == profileBefore,
-              // A switch away and back closed it all the same.
-              keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true else {
-            discardTurnSurface(runtimeSessionID: target, text: words, after: CancellationError(), reportedOn: reportedOn)
-            chat.state.messages.removeAll { $0.id == rowID }
-            act(on: chat) { setRunning(false) }
+        guard !words.isEmpty, canSendInKeptChat(chat),
+              let targetRuntime = keptChatRuntime(for: chat) else { return false }
+        return await actAcrossAwaits(onRuntime: targetRuntime) {
+            guard let client, let target = keptChatSendTarget(chat) else { return false }
+            // A reply still settling from the last turn is no word of this one.
+            let replyWasSettled = chat.state.streamingBuffer.isEmpty
+            let rowID = "user-kept-\(UUID().uuidString)"
+            chat.state.messages.append(ChatMessage(
+                id: rowID, role: .user, content: words, timestamp: Self.localTimestamp(), author: nil
+            ))
+            act(on: chat) { setRunning(true) }
             besideChatLive.moved(chat)
-            returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
-            return false
-        }
-        LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
-        // The client as of the send: a reconnect during the report replaced it.
-        let sender = self.client ?? client
-        do {
-            let outcome: PromptSubmissionOutcome
-            if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
-                outcome = try await sendPrompt(sender, target, words)
-            } else {
-                outcome = try await sender.sendPrompt(target, text: words)
-            }
-            // Steered, redirected or queued: a turn was running there
-            // already, so the message joined it and its card stands.
-            guard outcome == .accepted else { return true }
-            LiveTurnActivities.shared?.turnStarted(
-                sessionIDs: ids,
-                primaryID: target,
-                linkID: chat.durableSessionID,
-                title: chat.title,
-                profile: chat.profile,
-                glowHex: profileGlowColors()[chat.profile]?.hex
-                    ?? profileGlowTint(chat.profile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex },
-                dashboardID: chat.dashboardID.uuidString
+            let ids = chat.sessionIDs.union([target])
+            let reportedOn = activeDashboardID
+            let profileBefore = activeProfile
+            // Where its words go back if its pane goes, settled now: a sign-out
+            // meanwhile clears the drafts, and the words with them.
+            let wordsBack = KeptChatWordsBack(
+                draftSessionID: chat.durableSessionID
+                    ?? conversationIdentityIndex.durableID(forRuntime: target, profile: chat.profile)
+                    ?? target,
+                draftsClearCount: composerDraftStore.clearCount(for: chat.dashboardID)
             )
-            return true
-        } catch {
-            // A send that failed after Hermes took it: its echo gave the row
-            // Hermes' id, or its reply streams. Keep it. A row from
-            // elsewhere landing after it (a job's post, another device's
-            // message) is no word of this one.
-            if let at = chat.state.messages.firstIndex(where: { $0.id == rowID }),
-               chat.state.messages[at].rowId != nil
-                || (replyWasSettled && !chat.state.streamingBuffer.isEmpty) {
-                return true
+            await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
+            let paneStillValid: Bool
+            if chat.dashboardID == dashboardIDOnScreen {
+                paneStillValid = dashboardIDOnScreen == reportedOn && runtimeOnScreen.activeProfile == profileBefore
+                    && isKeptChat(chat)
+            } else {
+                paneStillValid = keptDashboardRuntimes[chat.dashboardID]?.client.isConnected == true
+                    && isKeptChat(chat)
             }
-            discardTurnSurface(runtimeSessionID: target, text: words, after: error, reportedOn: reportedOn)
-            chat.state.messages.removeAll { $0.id == rowID }
-            act(on: chat) { setRunning(false) }
-            besideChatLive.moved(chat)
-            // The pane may have gone while the send was out, too.
-            returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
-            return false
+            guard paneStillValid else {
+                discardTurnSurface(runtimeSessionID: target, text: words, after: CancellationError(), reportedOn: reportedOn)
+                chat.state.messages.removeAll { $0.id == rowID }
+                act(on: chat) { setRunning(false) }
+                besideChatLive.moved(chat)
+                returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
+                return false
+            }
+            LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
+            // The client as of the send: a reconnect during the report replaced it.
+            let sender = self.client ?? client
+            if !profilesMatch(sender.profile ?? "default", chat.profile) {
+                sender.noteSessionProfile(chat.profile, for: [target])
+            }
+            do {
+                let outcome: PromptSubmissionOutcome
+                if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
+                    outcome = try await sendPrompt(sender, target, words)
+                } else {
+                    outcome = try await sender.sendPrompt(target, text: words)
+                }
+                // Steered, redirected or queued: a turn was running there
+                // already, so the message joined it and its card stands.
+                guard outcome == .accepted else { return true }
+                LiveTurnActivities.shared?.turnStarted(
+                    sessionIDs: ids,
+                    primaryID: target,
+                    linkID: chat.durableSessionID,
+                    title: chat.title,
+                    profile: chat.profile,
+                    glowHex: profileGlowColors()[chat.profile]?.hex
+                        ?? profileGlowTint(chat.profile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex },
+                    dashboardID: chat.dashboardID.uuidString
+                )
+                return true
+            } catch {
+                // A send that failed after Hermes took it: its echo gave the row
+                // Hermes' id, or its reply streams. Keep it. A row from
+                // elsewhere landing after it (a job's post, another device's
+                // message) is no word of this one.
+                if let at = chat.state.messages.firstIndex(where: { $0.id == rowID }),
+                   chat.state.messages[at].rowId != nil
+                    || (replyWasSettled && !chat.state.streamingBuffer.isEmpty) {
+                    return true
+                }
+                discardTurnSurface(runtimeSessionID: target, text: words, after: error, reportedOn: reportedOn)
+                chat.state.messages.removeAll { $0.id == rowID }
+                act(on: chat) { setRunning(false) }
+                besideChatLive.moved(chat)
+                // The pane may have gone while the send was out, too.
+                returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
+                return false
+            }
         }
     }
 
@@ -163,11 +196,7 @@ extension AppState {
     /// Open in Main Window), or a switch. They go to that chat's draft, on
     /// screen if it's there now, and a notice says so.
     private func returnKeptChatWordsIfItsPaneWent(_ chat: BackgroundChat, target: String, words: String, back: KeptChatWordsBack) {
-        // Its pane still holds it only in the dashboard and profile it was
-        // kept in: after a switch, a chat kept there under the same id is
-        // another one.
-        let stillKept = activeDashboardID == chat.dashboardID && profilesMatch(activeProfile, chat.profile)
-            && keptChat(answering: target) != nil
+        let stillKept = isKeptChat(chat)
         guard !stillKept,
               // Signed out since: the drafts were the outgoing
               // account's, and so are these words.
