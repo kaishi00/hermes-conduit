@@ -5109,7 +5109,7 @@ the certificate check (each invalidates a session of its own, in a defer) ·
 location's host pass (a copy of the access token, taken again on each
 rotation; see Maps lookups)
 
-**Desktop app:** has it: native PKCE code exchange, encrypted grant storage, refresh, bearer requests and socket tickets (desktop#409).
+**Desktop app:** has it: native PKCE code exchange, encrypted grant storage, refresh, bearer requests and socket tickets (desktop#409). Sign out, Remove and a sign-in that replaces another end the old sign-in on Hermes through `POST /auth/logout`, the refresh token as its session cookie, as the phone's ServerSignOut does (`desktop/src/main/oidc.ts`, desktop#465). Gap: one attempt, with no record kept to retry after a launch, where the phone keeps a pending sign-out until Hermes answers (desktop#463).
 
 **Code**
 - `Conduit/Services/NativeOAuth.swift` (NativeOAuthAPIClient: invalidate, bytes(for:), tokenRequest, requestJSON; NativeOAuthSession: invalidate, refresh, requestJSON)
@@ -5650,7 +5650,7 @@ Pulse putting its chat on its model (`notifier/pulse_host.py` _use_model, the sa
 `config.set model`) · Text (not needed: no Settings caption or README line
 describes how a pick is saved)
 
-**Desktop app:** has it: the model panel follows the sheet, its model card with the provider's logo, reasoning as rising bars, Fast mode and YOLO as switches (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/components/ModelSheet.tsx`, desktop#18, desktop#242).
+**Desktop app:** has it: the model panel follows the sheet, its model card with the provider's logo, reasoning as rising bars, Fast mode and YOLO as switches (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/components/ModelSheet.tsx`, desktop#18, desktop#242); a new chat's picks, made before its first message, go with the chat's `session.create`, and one made while that is out goes to the session it made (`desktop/src/renderer/src/state/useChat.ts`, desktop#392, desktop#459, desktop#465). The phone needs neither: New Chat makes its session at once, so a pick there is always on a live session.
 
 **Code**
 - Sheet: `Conduit/Views/ModelPickerView.swift` (currentModelSection, switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
