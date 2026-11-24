@@ -58,7 +58,7 @@ struct NeedsYouBanner: View {
         // The banner's own wait under another spelling of its profile isn't
         // another (issue 2770).
         let others = store.everyItem.filter {
-            !NeedsYouStore.sameWait($0, item) && !(($0.dashboardID == nil || $0.roomID == nil) && appState.isOpenChat($0))
+            !NeedsYouStore.sameWait($0, item) && !appState.isOpenChat($0)
         }.count
         return HStack(spacing: 10) {
             NeedsYouRow.picture(item, appState, size: 28)
@@ -187,7 +187,7 @@ struct NeedsYouSheet: View {
                                 NeedsYouRow(item: item)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint(item.dashboardID.map { $0 != appState.activeDashboardID } == true
+                            .accessibilityHint(appState.needsYouOpensViaSwitch(item)
                                 // Another combined dashboard's: the whole app moves there.
                                 ? (item.asked != nil
                                    ? AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat)

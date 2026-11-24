@@ -122,10 +122,12 @@ extension AppState {
                                                       openRoomDashboardID: self.activeRoomSurface?.dashboardID)
                     }
                 )
+                takeBackQuestionCardsNoLongerListed(profile: profile, dashboardID: id)
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
                 needsYou.forgetOther(id, profilesOtherThan: Set(currentKeptProfiles(id, else: profiles)))
             }
+            if farChatDashboardID == id { showWaitingQuestionCards() }
         }
     }
 
@@ -240,11 +242,13 @@ extension AppState {
     /// card. An older card of Hermes', answered or run out, that asked the
     /// same thing doesn't: the question asked again needs its card.
     func showWaitingQuestionCards() {
-        guard needsYou.items.contains(where: { $0.card != nil }),
+        let targetDashboard = farChatDashboardID ?? activeDashboardID
+        let list = farChatDashboardID.map { needsYou.otherDashboards[$0] ?? [] } ?? needsYou.items
+        guard list.contains(where: { $0.card != nil }),
               // A transcript still being restored takes it afterwards.
               chatResumeRestorationRequest == nil,
               let openID = activeSessionId, !openID.isEmpty else { return }
-        for item in needsYou.items where item.roomID == nil {
+        for item in list where item.roomID == nil {
             guard let card = item.card,
                   let key = Self.pendingDecisionEvictionKey(for: card),
                   let pushed = Self.notificationClarifyActivity(for: card),
@@ -257,34 +261,32 @@ extension AppState {
             // answer may go unsealed is worked out at the send, and one
             // with no key here while the profile has one under another
             // gateway is refused (Eric, 2026-11-18, issue 2692).
-            if let gatewayID = needsYouCardGatewayID(item) {
-                PushNotificationService.shared.retainRelayGatewayID(
-                    gatewayID, forRequestID: pushed.requestId,
-                    sealContext: .init(gatewayID: gatewayID, dashboardID: activeDashboardID, profile: item.profile)
-                )
-            }
+            retainNeedsYouRelayGateway(for: item, on: targetDashboard)
             guard !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
             if Self.hermesCardHoldsQuestion(pushed, in: messages) {
                 // Its answer leaves the wait listed until the next read.
                 needsYou.noteHermesDrewCard(for: pushed.requestId)
                 continue
             }
-            let openIDs = presentationCacheSessionIDs(for: openID)
-            let profile = presentationProfile(for: openID)
-            recordNotificationDecision(
-                card,
-                sessionIDs: item.sessionIDs + openIDs,
-                cacheSessionIDs: openIDs,
-                profile: profile
-            )
-            needsYou.noteDrewCard(.init(requestID: pushed.requestId, profile: item.profile, decisionKey: key,
-                                        presentationProfile: profile, cacheSessionIDs: openIDs))
-            messages = sessionPresentationCache.merge(
-                messages,
-                profile: profile,
-                sessionIDs: openIDs,
-                includePendingClarifications: true
-            )
+            onChatRuntimeNow {
+                let openIDs = presentationCacheSessionIDs(for: openID)
+                let profile = presentationProfile(for: openID)
+                recordNotificationDecision(
+                    card,
+                    sessionIDs: item.sessionIDs + openIDs,
+                    cacheSessionIDs: openIDs,
+                    profile: profile
+                )
+                needsYou.noteDrewCard(.init(requestID: pushed.requestId, profile: item.profile, decisionKey: key,
+                                            presentationProfile: profile, cacheSessionIDs: openIDs,
+                                            dashboardID: targetDashboard))
+                messages = sessionPresentationCache.merge(
+                    messages,
+                    profile: profile,
+                    sessionIDs: openIDs,
+                    includePendingClarifications: true
+                )
+            }
         }
     }
 
@@ -299,7 +301,8 @@ extension AppState {
         guard !answered.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return }
         // Only the open chat's waits: the answered card is in it, and the
         // same words asked in another chat are another question.
-        for item in needsYou.items where item.roomID == nil && isOpenChat(item) {
+        let list = farChatDashboardID.map { needsYou.otherDashboards[$0] ?? [] } ?? needsYou.items
+        for item in list where item.roomID == nil && isOpenChat(item) {
             guard let card = item.card,
                   let pushed = Self.notificationClarifyActivity(for: card),
                   Self.pushCardSupersededBy(pushed, live: answered) else { continue }
@@ -318,13 +321,15 @@ extension AppState {
     /// keeping this copy would draw it twice. Still unanswered only: a card this
     /// iPhone answered keeps its answer. Its saved copy goes too, so a
     /// reopen within the day doesn't bring it back over Hermes' own record.
-    func takeBackQuestionCardsNoLongerListed(profile: String) {
-        for drawn in needsYou.takeCardsNoLongerListed(profile: profile) {
+    func takeBackQuestionCardsNoLongerListed(profile: String, dashboardID: UUID? = nil) {
+        let updatesOpenTranscript = (dashboardID ?? dashboardIDOnScreen) == (farChatDashboardID ?? dashboardIDOnScreen)
+        for drawn in needsYou.takeCardsNoLongerListed(profile: profile, dashboardID: dashboardID) {
             sessionPresentationCache.removePendingDecision(
                 key: drawn.decisionKey,
                 profile: drawn.presentationProfile,
                 sessionIDs: drawn.cacheSessionIDs
             )
+            guard updatesOpenTranscript else { continue }
             let isDrawn = { (message: ChatMessage) in
                 SessionPresentationCache.decisionKey(for: message) == drawn.decisionKey
                     && SessionPresentationCache.pendingDecisionKey(for: message) != nil
@@ -333,18 +338,29 @@ extension AppState {
         }
     }
 
+    private func retainNeedsYouRelayGateway(for item: NeedsYouItem, on dashboardID: UUID?) {
+        guard let card = item.card,
+              let pushed = Self.notificationClarifyActivity(for: card),
+              let gatewayID = needsYouCardGatewayID(item) else { return }
+        PushNotificationService.shared.retainRelayGatewayID(
+            gatewayID, forRequestID: pushed.requestId,
+            sealContext: .init(gatewayID: gatewayID, dashboardID: dashboardID, profile: item.profile)
+        )
+    }
+
     /// The relay gateway a question's card drawn from its row answers
     /// through: the one the row's list named, else the profile's pairing
     /// key on this iPhone, else the gateway the host last reported for it.
     func needsYouCardGatewayID(_ item: NeedsYouItem) -> String? {
         let notifications = PushNotificationService.shared
+        let dashboardID = item.dashboardID ?? activeDashboardID
         return Self.needsYouCardGatewayID(
             listed: item.relayGatewayID,
-            dashboardID: activeDashboardID,
+            dashboardID: dashboardID,
             profile: item.profile,
             installationID: notifications.installationID,
             records: PushNotificationService.e2eKeyStore.records(),
-            reported: activeDashboardID.flatMap { reportedRelayGatewayID(of: $0, profile: item.profile) }
+            reported: dashboardID.flatMap { reportedRelayGatewayID(of: $0, profile: item.profile) }
         )
     }
 
@@ -439,6 +455,170 @@ extension AppState {
         return item.sessionIDs.contains(where: own.contains)
     }
 
+    /// Whether tapping `item` switches the whole dashboard rather than
+    /// opening in place on a kept runtime.
+    func needsYouOpensViaSwitch(_ item: NeedsYouItem) -> Bool {
+        guard let dashboardID = item.dashboardID, dashboardID != activeDashboardID else { return false }
+        if item.roomID != nil { return keptRuntimeOpeningRoomsInPlace(dashboardID) == nil }
+        return !isOpenChat(item) && farNeedsYouInPlacePlan(item, in: dashboardID) == nil
+    }
+
+    private enum FarNeedsYouPlan {
+        case botChat(BotProfile)
+        case listedChat(SessionSummary)
+        case unlistedChat
+    }
+
+    private func farNeedsYouBot(for item: NeedsYouItem, in dashboardID: UUID, ids: Set<String>) -> BotProfile? {
+        if let bot = farBot(named: ids, in: dashboardID) { return bot }
+        let registry = keptDashboardRuntimes[dashboardID]?.runtime.botChatSessionProfiles ?? [:]
+        guard let name = ids.sorted().lazy.compactMap({ registry[$0] }).first else { return nil }
+        return Self.linkedBot(named: name, in: farBotRoster(in: dashboardID))
+    }
+
+    private func farNeedsYouListedRow(for item: NeedsYouItem, in dashboardID: UUID, ids: Set<String>) -> SessionSummary? {
+        let listed = combinedDashboardChats[dashboardID]?.sessions ?? []
+        return listed.first { row in
+            !ids.isDisjoint(with: SessionContentSearch.identities(of: row))
+                && profilesMatch(row.profile ?? "default", item.profile)
+        }
+    }
+
+    private func farNeedsYouInPlacePlan(_ item: NeedsYouItem, in dashboardID: UUID) -> FarNeedsYouPlan? {
+        guard item.roomID == nil,
+              dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
+              let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected,
+              combinedDashboardBots[dashboardID] != nil || !kept.runtime.botRoster.isEmpty else { return nil }
+        let rawIDs = Set(item.sessionIDs.filter { !$0.isEmpty })
+        let ids = Set(item.sessionIDs.compactMap(ChatScrollIdentityNormalization.sessionID))
+        let pulseHomes = farPulseHomes(in: dashboardID)
+        guard !rawIDs.isEmpty, !ids.isEmpty,
+              rawIDs.isDisjoint(with: pulseHomes), ids.isDisjoint(with: pulseHomes) else { return nil }
+        if let bot = farNeedsYouBot(for: item, in: dashboardID, ids: ids),
+           farBotChatRuntime(in: dashboardID) != nil {
+            return .botChat(bot)
+        }
+        guard combinedDashboardPulse[dashboardID] != nil || !pulseHomes.isEmpty else { return nil }
+        let clientProfile = kept.client.profile ?? "default"
+        if let row = farNeedsYouListedRow(for: item, in: dashboardID, ids: ids) {
+            guard !isFarBotChat(row, in: dashboardID) else { return nil }
+            let targetProfile = row.profile ?? "default"
+            guard profilesMatch(clientProfile, targetProfile) || kept.client.canHandOffSocket else { return nil }
+            return .listedChat(row)
+        }
+        guard profilesMatch(clientProfile, item.profile) || kept.client.canHandOffSocket else { return nil }
+        return .unlistedChat
+    }
+
+    @discardableResult
+    private func openFarNeedsYouInPlace(_ item: NeedsYouItem, in dashboardID: UUID) -> Bool {
+        guard let plan = farNeedsYouInPlacePlan(item, in: dashboardID),
+              let primaryID = item.sessionIDs.first(where: { !$0.isEmpty }) else { return false }
+        let secondaryID = item.sessionIDs.dropFirst().first(where: { !$0.isEmpty }) ?? primaryID
+        let unavailable = AppLocalization.string("Couldn't open that chat. Try again.")
+        let reveal: NeedsYouReveal? = item.asked == nil ? NeedsYouReveal(opening: primaryID) : nil
+        switch plan {
+        case .botChat(let bot):
+            let target = ConduitNotificationTarget(
+                profile: bot.name,
+                sessionId: secondaryID,
+                durableSessionID: primaryID,
+                dashboardID: dashboardID,
+                type: item.asked == nil ? (item.kind == .approval ? "approval.needed" : "input.needed") : nil,
+                decision: nil
+            )
+            retainNeedsYouRelayGateway(for: item, on: dashboardID)
+            errorMessage = nil
+            pendingNeedsYouReveal = reveal
+            dismissSidebarDrawer()
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard self.chatViewportTransitionGeneration == viewport,
+                      self.groupRoomEpoch == roomEpoch else {
+                    if let reveal, self.pendingNeedsYouReveal?.opening == reveal.opening {
+                        self.pendingNeedsYouReveal = nil
+                    }
+                    return
+                }
+                guard let outcome = await self.openFarBotChatNotification(target, of: bot, in: dashboardID) else {
+                    if let reveal, self.pendingNeedsYouReveal?.opening == reveal.opening {
+                        self.pendingNeedsYouReveal = nil
+                    }
+                    if self.errorMessage == nil {
+                        self.errorMessage = unavailable
+                    }
+                    return
+                }
+                if outcome == .opened {
+                    self.showWaitingQuestionCards()
+                } else {
+                    if let reveal, self.pendingNeedsYouReveal?.opening == reveal.opening {
+                        self.pendingNeedsYouReveal = nil
+                    }
+                    if outcome == .retry {
+                        self.publishNotificationRouteFailure(for: target)
+                    }
+                }
+            }
+            return true
+
+        case .listedChat(let row):
+            guard let open = startFarChatOpen(row, in: dashboardID, prepare: { [weak self] in
+                self?.retainNeedsYouRelayGateway(for: item, on: dashboardID)
+            }, onFailure: { [weak self] sessionWasNotFound in
+                guard let self else { return }
+                self.errorMessage = Self.linkedSessionFailureMessage(
+                    current: self.errorMessage,
+                    sessionWasNotFound: sessionWasNotFound,
+                    unavailable: unavailable
+                )
+            }) else { return false }
+            ensureKeptPluginReport(for: dashboardID)
+            errorMessage = nil
+            pendingNeedsYouReveal = reveal
+            dismissSidebarDrawer()
+            awaitFarNeedsYouChatOpen(open, reveal: reveal)
+            return true
+
+        case .unlistedChat:
+            guard let runtime = keptRuntime(dashboardID, on: item.profile) else { return false }
+            ensureKeptPluginReport(for: dashboardID)
+            widgetLaunchCoordinator.supersede()
+            errorMessage = nil
+            pendingNeedsYouReveal = reveal
+            dismissSidebarDrawer()
+            let open = act(onRuntime: runtime) {
+                retainNeedsYouRelayGateway(for: item, on: dashboardID)
+                return requestOpenSession(primaryID, onFailure: { [weak self] sessionWasNotFound in
+                    guard let self else { return }
+                    self.errorMessage = Self.linkedSessionFailureMessage(
+                        current: self.errorMessage,
+                        sessionWasNotFound: sessionWasNotFound,
+                        unavailable: unavailable
+                    )
+                })
+            }
+            awaitFarNeedsYouChatOpen(open, reveal: reveal)
+            return true
+        }
+    }
+
+    private func awaitFarNeedsYouChatOpen(
+        _ open: Task<Bool, Never>,
+        reveal: NeedsYouReveal?
+    ) {
+        Task { @MainActor [weak self] in
+            let opened = await open.value
+            guard let self else { return }
+            if opened {
+                self.showWaitingQuestionCards()
+            } else if let reveal, self.pendingNeedsYouReveal == reveal {
+                self.pendingNeedsYouReveal = nil
+            }
+        }
+    }
+
     /// Opens the waiting chat in its profile and scrolls to its card. In
     /// the chat on screen it only scrolls.
     func openNeedsYou(_ item: NeedsYouItem) {
@@ -462,9 +642,17 @@ extension AppState {
             }
             return
         }
-        // Another combined dashboard's chat: switch to it (through its kept
-        // connection, no sign-in), then open as one of its own.
+        // Another combined dashboard's chat or Bot Chat: open in place on
+        // its kept runtime when live and its bots are read; only a dashboard
+        // whose kept connection was let go or lacks those reads still switches.
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
+            if item.roomID == nil, isOpenChat(item) {
+                pendingNeedsYouReveal = item.asked != nil ? nil : NeedsYouReveal(opening: activeSessionId)
+                dismissSidebarDrawer()
+                if activeRoomSurface != nil { closeGroupRoom() }
+                return
+            }
+            if openFarNeedsYouInPlace(item, in: dashboardID) { return }
             guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -524,7 +712,11 @@ extension AppState {
     func isShowingChat(for reveal: NeedsYouReveal) -> Bool {
         guard let opening = reveal.opening else { return true }
         guard let active = activeSessionId, !active.isEmpty else { return false }
-        return active == opening || chatOwnSessionIDs(for: active).contains(opening)
+        let includeCronRuns = farChatDashboardID == nil
+        let own = onChatRuntimeValue(unreachable: Set([active])) {
+            chatOwnSessionIDs(for: active, includingCronRuns: includeCronRuns).union([active])
+        }
+        return own.contains(opening)
     }
 }
 

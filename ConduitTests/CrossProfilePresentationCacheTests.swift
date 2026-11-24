@@ -4401,4 +4401,159 @@ extension CrossProfilePresentationCacheTests {
         let loadedSettings = try await settingsTask.value
         XCTAssertEqual(loadedSettings.policy, .strict)
     }
+
+    /// Needs you opens another combined dashboard's chat, Bot Chat and
+    /// workstream waits in place on its kept runtime, draws and retracts
+    /// row-carried question cards on that runtime, and falls back to a switch
+    /// (with its call refusal) only once the kept connection drops.
+    func testFarNeedsYouChatAndBotChatWaitsOpenInPlaceAndFallbackWhenDropped() async throws {
+        final class Seen {
+            var looked: [(ObjectIdentifier, String)] = []
+            var opened: [(ObjectIdentifier, String, String?)] = []
+        }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { client, name in
+            seen.looked.append((ObjectIdentifier(client), name))
+            return [BotChatLookupRow(id: "far-atlas", title: BotMode.canonicalChatTitle)]
+        }
+        operations.openSessionWithProfile = { client, sessionID, _, profile in
+            seen.opened.append((ObjectIdentifier(client), sessionID, profile))
+            let resolvedID = sessionID == "far-stored" ? "far-runtime" : sessionID
+            return SessionResumeResult(
+                sessionId: resolvedID,
+                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Reply", timestamp: "ts-1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        _ = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        // Clear the shared seed session so mac and vps stay distinct Hermes hosts.
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.runtimeOnScreen.sessions = []
+
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "far-atlas", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        let listedChat = session("far-stored", profile: "default")
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.bridge)),
+            profiles: ["default", "atlas"],
+            sessions: [listedChat],
+            at: Date()
+        )
+
+        // 1. Listed plain far chat wait opens in place (during a call too),
+        // resolves reveal against its far runtime, draws its relay card and
+        // ignores screen-dashboard refreshes.
+        let pushReqID = "conduit-push-\(UUID().uuidString)"
+        var plainWait = NeedsYouItem(
+            waitID: "w-plain", profile: "default", kind: .question, sessionIDs: ["far-stored"],
+            since: Date(timeIntervalSince1970: 10),
+            card: .clarify(requestId: pushReqID, question: "Deploy now?", choices: ["Yes", "No"])
+        )
+        plainWait.dashboardID = mac.id
+        plainWait.relayGatewayID = "gw-far"
+        appState.needsYou.apply([], profile: "default", dashboardID: vps.id) { _ in false }
+        appState.needsYou.applyOther([plainWait], profile: "default", dashboardID: mac.id) { _ in false }
+        XCTAssertTrue(appState.needsYouOpensViaSwitch(plainWait), "unread Pulse keeps plain far waits on switch")
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(
+            bridge: ObjectIdentifier(try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.bridge)),
+            unseen: 0,
+            at: Date()
+        )
+        XCTAssertFalse(appState.needsYouOpensViaSwitch(plainWait))
+
+        appState.isNativeHermesCallActive = true
+        appState.openNeedsYou(plainWait)
+        XCTAssertNil(appState.errorMessage, "in-place far Needs you does not refuse during a call")
+        XCTAssertNil(appState.pinSyncNotice)
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-stored")
+        await waitUntil { appState.activeSessionId == "far-runtime" && appState.messages.contains { $0.id == "msg-far-stored" } }
+        appState.isNativeHermesCallActive = false
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        let reveal = try XCTUnwrap(appState.pendingNeedsYouReveal)
+        XCTAssertTrue(appState.isShowingChat(for: reveal), "matches stored ID via far runtime")
+        appState.showWaitingQuestionCards()
+        XCTAssertTrue(appState.messages.contains { $0.clarify?.requestId == pushReqID })
+        XCTAssertEqual(PushNotificationService.shared.relayGatewayID(forRequestID: pushReqID), "gw-far")
+
+        // A screen-dashboard take-back must not drop the far chat's card, while
+        // a far-dashboard update without the wait removes it.
+        appState.takeBackQuestionCardsNoLongerListed(profile: "default")
+        XCTAssertTrue(appState.messages.contains { $0.clarify?.requestId == pushReqID })
+        appState.needsYou.applyOther([], profile: "default", dashboardID: mac.id) { _ in false }
+        appState.takeBackQuestionCardsNoLongerListed(profile: "default", dashboardID: mac.id)
+        XCTAssertFalse(appState.messages.contains { $0.clarify?.requestId == pushReqID })
+
+        // Re-tapping when already open closes an overlaying room and reveals without reopening.
+        let opensBeforeRetap = seen.opened.count
+        let room = GroupRoom(roomID: "r1", name: "Room", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                             revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0)
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: mac.id, room: room))
+        appState.openNeedsYou(plainWait)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-runtime")
+        XCTAssertEqual(seen.opened.count, opensBeforeRetap)
+
+        // 2. Far Bot Chat wait opens in place via `openFarBotChatNotification`.
+        var botWait = NeedsYouItem(
+            waitID: "w-bot", profile: "Atlas", kind: .approval, sessionIDs: ["far-atlas"],
+            since: Date(timeIntervalSince1970: 20)
+        )
+        botWait.dashboardID = mac.id
+        XCTAssertFalse(appState.needsYouOpensViaSwitch(botWait))
+        appState.openNeedsYou(botWait)
+        await waitUntil { appState.activeSessionId == "far-atlas" && appState.messages.contains { $0.id == "msg-far-atlas" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for far Bot Chat wait")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas")
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-atlas")
+        XCTAssertEqual(seen.looked.last?.1, "atlas")
+
+        var askedBotWait = NeedsYouItem(
+            waitID: "asked-P21", profile: "atlas", kind: .question, sessionIDs: ["far-atlas"],
+            since: Date(timeIntervalSince1970: 25)
+        )
+        askedBotWait.asked = BotWorkCoordination.Item(row: ["id": "P21", "kind": "proposal", "at": 25.0,
+                                                            "text": "Proceed?", "status": "open", "actions": ["approve", "decline"]])
+        askedBotWait.dashboardID = mac.id
+        appState.openNeedsYou(askedBotWait)
+        XCTAssertNil(appState.pendingNeedsYouReveal, "re-tapping asked wait clears card reveal")
+
+        // 3. Unlisted far workstream wait opens in place by handing the kept client.
+        var wsWait = NeedsYouItem(
+            waitID: "w-ws", profile: "atlas", kind: .question, sessionIDs: ["far-ws"],
+            since: Date(timeIntervalSince1970: 30)
+        )
+        wsWait.dashboardID = mac.id
+        XCTAssertFalse(appState.needsYouOpensViaSwitch(wsWait))
+        appState.openNeedsYou(wsWait)
+        await waitUntil { appState.activeSessionId == "far-ws" && appState.messages.contains { $0.id == "msg-far-ws" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for unlisted workstream wait")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        XCTAssertEqual(appState.keptDashboardRuntimes[mac.id]?.client.profile, "atlas")
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-ws")
+
+        // 4. Dropped kept runtime falls back to switching (refusing during a call).
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertTrue(appState.needsYouOpensViaSwitch(plainWait))
+        appState.isNativeHermesCallActive = true
+        appState.errorMessage = nil
+        appState.pinSyncNotice = nil
+        appState.openNeedsYou(plainWait)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "call refuses fallback switch")
+        XCTAssertNotNil(appState.pinSyncNotice?.message ?? appState.errorMessage)
+        appState.isNativeHermesCallActive = false
+        appState.openNeedsYou(plainWait)
+        await waitUntil { appState.activeDashboardID == mac.id }
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+    }
 }
