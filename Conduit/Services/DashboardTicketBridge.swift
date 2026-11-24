@@ -120,7 +120,7 @@ enum DashboardCookiePersistence {
 
     /// The dashboard's cookies as last mirrored to the Keychain. Readable
     /// with the phone locked, unlike the saved password.
-    static func mirroredCookies(dashboardID: UUID?) -> [HTTPCookie] {
+    nonisolated static func mirroredCookies(dashboardID: UUID?) -> [HTTPCookie] {
         // Dashboard-scoped mirror first (#148); the legacy global record is
         // only consulted when the caller has no dashboard identity (tests).
         let data: Data?

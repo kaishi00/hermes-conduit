@@ -10,7 +10,10 @@
 //  Navigation emits markers rather than intervals: "Tab selected" when the
 //  shell's tab changes, "Chat pushed" as the conversation route is appended,
 //  and "Conversation appeared" when that screen is on screen, so a trace's
-//  Animation Hitches track can be read against the screen it was on.
+//  Animation Hitches track can be read against the screen it was on; a
+//  pop's "Chat popped", "Conversation disappeared" and "Bots shown". A Bot
+//  Chat's open marks "Bot Chat cover" and the transcript's "Transcript
+//  rows".
 //  Signposts cost next to nothing while no trace records them.
 //
 

@@ -2971,8 +2971,8 @@ final class AppStateSessionCompressTests: XCTestCase {
     }
 
     /// A far chat's title menu reads its row from its own dashboard's list,
-    /// never the screen's row under the same id, and its Rename and Delete
-    /// run there: with that dashboard's connection gone they reach nothing.
+    /// never the screen's row under the same id, and its Rename, Archive and
+    /// Delete run there: with that dashboard's connection gone they reach nothing.
     func testAFarChatsTitleMenuNeverActsOnTheScreensRowUnderItsId() async throws {
         let harness = controlHarness { _ in }
         let appState = harness.appState
@@ -2988,9 +2988,12 @@ final class AppStateSessionCompressTests: XCTestCase {
         var farRow = screenRow
         farRow.combinedDashboardID = far
         let renamed = await appState.renameSession(farRow, to: "Renamed")
+        let archived = await appState.archiveSession(farRow)
         let deleted = await appState.deleteSession(farRow)
 
         XCTAssertFalse(renamed)
+        XCTAssertFalse(archived, "Archive runs on its own dashboard too")
+        XCTAssertTrue(appState.archivedSessions.isEmpty)
         XCTAssertFalse(deleted)
         XCTAssertEqual(appState.sessions.map(\.id), [screenRow.id])
         XCTAssertEqual(appState.sessions.first?.title, screenRow.title)

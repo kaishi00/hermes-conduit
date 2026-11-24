@@ -549,6 +549,9 @@ extension AppState {
     }
 
     private func setSessionArchived(_ session: SessionSummary, archived: Bool) async -> Bool {
+        // Another combined dashboard's row is archived on its own runtime,
+        // as Rename and Delete run there.
+        if let done = await onCombinedDashboard(of: session, { await setSessionArchived($0, archived: archived) }) { return done }
         if archived, isOtherProfileRow(session) {
             return await archiveOtherProfileSession(session)
         }
@@ -587,8 +590,14 @@ extension AppState {
                         sessionIDs: [updated.id] + updated.alternateIds
                     )
                     removeSessionFromLiveCatalog(updated)
-                    archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
-                    removePinnedState(for: updated, unpinOnHost: true)
+                    // The Archived list and the pins are the dashboard on
+                    // screen's: another dashboard's chat, archived through
+                    // its kept connection, joins its own Archived list at
+                    // that list's next read there.
+                    if actingOnRuntimeOnScreen {
+                        archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
+                        removePinnedState(for: updated, unpinOnHost: true)
+                    }
                     clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
                     archivedSessions.removeAll { sessionMatches($0, updated) }
@@ -1024,10 +1033,13 @@ extension AppState {
 
     func removeSessionFromLiveCatalog(_ session: SessionSummary) {
         sessions.removeAll { sessionMatches($0, session) }
-        cronSessions.removeAll { sessionMatches($0, session) }
+        // The Cron rows and the saved list are the dashboard on screen's:
+        // another combined dashboard's chat, deleted or archived on its
+        // own runtime, never takes a row of this one's under the same id.
+        if actingOnRuntimeOnScreen { cronSessions.removeAll { sessionMatches($0, session) } }
         // A row deleted or archived while the saved list still shows goes
         // from it too, not only once the live list lands without it.
-        if var saved = savedChatList {
+        if actingOnRuntimeOnScreen, var saved = savedChatList {
             saved.list.sessions.removeAll { sessionMatches($0, session) }
             saved.list.cronSessions.removeAll { sessionMatches($0, session) }
             saved.keptPinnedRows?.removeAll { sessionMatches($0, session) }
@@ -1044,8 +1056,10 @@ extension AppState {
         // call archived on Hermes already, deleted or archived here, leaves
         // no trace in the live total that would make it read again. Kept
         // archives that don't list it (other profiles') stay.
-        archivedCallsReads = archivedCallsReads.filter { _, read in
-            !read.calls.contains { sessionMatches($0, session) }
+        if actingOnRuntimeOnScreen {
+            archivedCallsReads = archivedCallsReads.filter { _, read in
+                !read.calls.contains { sessionMatches($0, session) }
+            }
         }
         publishWidgetSnapshot()
     }

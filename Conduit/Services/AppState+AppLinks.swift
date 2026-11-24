@@ -33,9 +33,12 @@ extension AppState {
                     return
                 }
                 if owner != activeDashboardID {
+                    // That dashboard's default profile is the one it named,
+                    // never the one on screen's.
+                    let farDefault = profileAppearanceStore.loadDefaultName(dashboardID: owner)
                     if let kept = keptDashboardRuntimes[owner], kept.client.isConnected,
                        let workstreamProfile = kept.runtime.botWork.workstreamProfile(forSession: [id]) {
-                        let prof = notificationProfileID(profile) ?? workstreamProfile
+                        let prof = notificationProfileID(profile, defaultName: farDefault) ?? workstreamProfile
                         _ = openFarWorkstreamInPlace(id, profile: prof, in: owner)
                         return
                     }
@@ -45,7 +48,8 @@ extension AppState {
                     }
                     PushNotificationService.shared.routeChatLink(
                         ConduitNotificationTarget(
-                            profile: notificationProfileID(profile), sessionId: id, dashboardID: owner, type: nil, isChatLink: true
+                            profile: notificationProfileID(profile, defaultName: farDefault),
+                            sessionId: id, dashboardID: owner, type: nil, isChatLink: true
                         )
                     )
                     return

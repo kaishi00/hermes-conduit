@@ -1436,10 +1436,11 @@ struct SessionActionMenuItems: View {
 
     var body: some View {
         // Another combined dashboard's chat on screen (its row from that
-        // dashboard's list): Rename and Delete, which run there; the rest
-        // reads and keeps this dashboard's list state.
+        // dashboard's list): Rename, Archive and Delete, which run there;
+        // the rest reads and keeps this dashboard's list state.
         if session.combinedDashboardID != nil {
             renameButton
+            archiveButton
             deleteButton
         } else {
             allItems
@@ -1528,6 +1529,12 @@ struct SessionActionMenuItems: View {
             MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
         }
 
+        archiveButton
+
+        deleteButton
+    }
+
+    private var archiveButton: some View {
         Button {
             Task {
                 let archived = await appState.archiveSession(session)
@@ -1538,8 +1545,6 @@ struct SessionActionMenuItems: View {
             Label(AppLocalization.string("Archive"), systemImage: "archivebox")
         }
         .disabled(appState.isSessionMutationInFlight(session))
-
-        deleteButton
     }
 }
 

@@ -114,6 +114,24 @@ final class ChatMessageScrollTargetCacheIncrementalTests: XCTestCase {
         XCTAssertEqual(TranscriptPerf.lastFingerprintedMessageCount, 0)
     }
 
+    /// The same array handed in again is told by its storage: no message
+    /// is compared. An equal array of its own still is.
+    func testTheSameArrayAgainComparesNoMessage() {
+        let base = (0..<50).map { message("m\($0)", "content \($0)") }
+        var cache = prime(base)
+
+        TranscriptPerf.reset()
+        XCTAssertEqual(cache.update(for: base), .unchanged)
+        XCTAssertEqual(TranscriptPerf.scrollTargetCommonPrefixComparisons, 0)
+
+        var copy = base
+        copy.append(message("x", "x"))
+        copy.removeLast()
+        XCTAssertEqual(cache.update(for: copy), .unchanged)
+        XCTAssertEqual(TranscriptPerf.scrollTargetCommonPrefixComparisons, 50)
+        XCTAssertEqual(cache.targets, referenceTargets(for: base))
+    }
+
     // MARK: - Incremental equivalence vs full rebuild
 
     func testAppendResultMatchesFullRebuild() {

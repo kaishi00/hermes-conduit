@@ -676,6 +676,7 @@ struct BotsTalkingRoomsReader: ViewModifier {
         let shown = shell.isTabActive && !shell.isRootCovered && scenePhase == .active
         content.task(id: "\(shown)\u{1F}\(appState.isConnected)\u{1F}\(appState.groupRoomsListed)") {
             guard shown else { return }
+            await updates.settled()
             while !Task.isCancelled {
                 await appState.refreshTalkingRoomsIfDue(every: Self.every)
                 // The other combined dashboards' rooms, on their own runtimes.
@@ -1432,6 +1433,10 @@ struct BotPortraitCell<MenuContent: View>: View {
         // part of the key.
         .task(id: "\(bot.name)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
+            // Not during a pop's slide: every portrait's read waits for it
+            // and they go out together (`V2ShownUpdates.settled`).
+            await updates.settled()
+            guard !Task.isCancelled else { return }
             await appState.refreshBotWork(profile: bot.name)
         }
         // Counted by a read on one dashboard: the phone's copy of an earlier

@@ -66,9 +66,34 @@ struct ChatMessageScrollTargetCache: Equatable {
     private(set) var targets: [ChatMessageScrollTarget] = []
     private(set) var renderingRevision: UInt64 = 0
     private var fingerprints: [String] = []
+    /// The array the targets were last made from. Held, its storage can't
+    /// be another array's, so the same storage handed in again is the same
+    /// rows.
+    @EqualityIgnored private var lastMessages: [ChatMessage] = []
 
     @discardableResult
     mutating func update(for messages: [ChatMessage]) -> ChatMessageScrollTargetCacheUpdate {
+        // The rows a chat holds are handed in again on most updates: the
+        // same array, told apart by its storage alone, with no message
+        // compared.
+        if Self.sameStorage(messages, lastMessages) {
+            TranscriptPerf.lastFingerprintedMessageCount = 0
+            TranscriptPerf.lastFingerprintedByteCount = 0
+            return .unchanged
+        }
+        lastMessages = messages
+        return updateComparing(messages)
+    }
+
+    private static func sameStorage(_ rows: [ChatMessage], _ other: [ChatMessage]) -> Bool {
+        guard rows.count == other.count else { return false }
+        guard !rows.isEmpty else { return true }
+        return rows.withUnsafeBufferPointer { new in
+            other.withUnsafeBufferPointer { new.baseAddress == $0.baseAddress }
+        }
+    }
+
+    private mutating func updateComparing(_ messages: [ChatMessage]) -> ChatMessageScrollTargetCacheUpdate {
         // Longest common prefix of equal messages: plain value compares,
         // no hashing, no intermediate allocations.
         var commonPrefix = 0
