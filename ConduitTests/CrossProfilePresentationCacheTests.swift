@@ -2204,6 +2204,14 @@ extension CrossProfilePresentationCacheTests {
         let ids = appState.activeChatArtifactSessionIDs
         XCTAssertTrue(ids.contains("mac-1"))
         XCTAssertFalse(ids.contains("vps-alias"), "its ids are its own dashboard's, not the screen's row's")
+        // A Cron run of the screen's under the same id, stored under another.
+        var cronRun = SessionSummary(id: "mac-1", alternateIds: [], title: "Nightly", model: "Hermes", updatedLabel: "now",
+                                     profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        cronRun.storedSessionId = "vps-cron-stored"
+        appState.cronSessions = [cronRun]
+        XCTAssertFalse(appState.activeChatArtifactSessionIDs.contains("vps-cron-stored"),
+                       "the Cron rows are the screen's, never a far chat's ids")
+        appState.cronSessions = []
         let far = try XCTUnwrap(appState.farChat)
         XCTAssertEqual(appState.artifactSources(for: .chat(ids, far: far)),
                        [ArtifactSource(profile: "default", sessionIDs: ids, dashboardID: mac.id)],
@@ -5263,6 +5271,64 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.messages.map(\.id), ["live-1"], "the live transcript replaces the saved copy once loaded")
     }
 
+    /// A far chat whose dashboard drops after its saved copy's read began
+    /// and before it answered still shows that copy, under its own
+    /// dashboard and profile, never the screen's (#3208's review, issue 3211).
+    func testAFarChatWhoseDashboardDropsMidReadStillShowsItsSavedCopy() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FarDroppedOfflineCopy-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+
+        // The open answers long after the test: the saved copy is all there is to show.
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.openSession = { _, sessionID, _ in
+            try? await Task.sleep(for: .seconds(30))
+            return SessionResumeResult(sessionId: sessionID, messages: [],
+                                       snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+        }
+
+        let writer = OfflineChatCacheStore(directory: dir, writesAsynchronously: false)
+        let reader = OfflineChatCacheStore(directory: dir, writesAsynchronously: true)
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations, offlineChatCache: reader)
+        writer.record(
+            dashboardID: mac.id,
+            profile: "default",
+            sessionID: "mac-1",
+            identities: ["mac-1"],
+            title: "Saved far chat",
+            messages: [ChatMessage(id: "saved-far-1", role: .assistant, content: "Cached on Mac", timestamp: "ts-s1")],
+            sessions: [session("mac-1", profile: "default")]
+        )
+
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = session("mac-1", profile: "default")
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+
+        // The read's answer is held until the dashboard has dropped.
+        reader.readAnswersHeldForTesting = []
+        appState.openCombinedChat(row, in: mac.id)
+        await waitUntil { reader.readAnswersHeldForTesting?.isEmpty == false }
+        XCTAssertEqual(appState.activeSessionId, "mac-1")
+        XCTAssertNil(appState.offlineChatPresentation, "nothing shows before the read answers")
+
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("its dashboard is gone") }
+        let held = reader.readAnswersHeldForTesting ?? []
+        reader.readAnswersHeldForTesting = nil
+        held.forEach { $0() }
+
+        XCTAssertEqual(appState.offlineChatPresentation?.dashboardID, mac.id)
+        XCTAssertEqual(appState.offlineChatPresentation?.profile, "default")
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["saved-far-1"],
+                       "the saved copy shows under the far dashboard though its connection went mid-read")
+    }
+
     /// A far chat's header recovery state follows its own dashboard's quiet
     /// reconnect rather than the screen dashboard's connection state.
     func testFarChatConnectionRecoveryStateFollowsItsOwnDashboard() async throws {
@@ -5314,9 +5380,14 @@ extension CrossProfilePresentationCacheTests {
             appState.noteCombinedDashboardFailed(mac.id, .down)
         }
         XCTAssertFalse(appState.chatIsRecoveringConnection, "after quiet retries are spent it reads Disconnected")
+        XCTAssertFalse(appState.chatNeedsSignIn)
+        XCTAssertEqual(appState.chatDisconnectedWord, AppLocalization.string("Disconnected"))
         appState.noteCombinedDashboardFailed(mac.id, .signInNeeded)
         XCTAssertFalse(appState.chatIsRecoveringConnection)
+        XCTAssertTrue(appState.chatNeedsSignIn, "a refused or missing sign-in is said, as on Saved Dashboards (issue 3211)")
+        XCTAssertEqual(appState.chatDisconnectedWord, AppLocalization.string("Sign In required", table: .connection))
         appState.clearCombinedDashboardTrouble(mac.id)
+        XCTAssertFalse(appState.chatNeedsSignIn)
         appState.combinedSignInsUnderWay.insert(mac.id)
 
         // Without network, the far chat does not claim to be reconnecting.

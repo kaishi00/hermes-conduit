@@ -181,11 +181,23 @@ struct RichCard: Identifiable, Equatable, Hashable {
     static func cards(for tool: ToolActivity, schema: RichCardSchema? = .bundled) -> [RichCard] {
         guard tool.name.lowercased() == toolName, tool.status == .complete else { return [] }
         let answer = jsonObject(tool.output)
-        if let given = answer?["cards"] {
-            // Opened as the board counts them (RichBoard's given), so a
-            // wrapped answer draws its cards rather than only its Markdown.
-            return cards(raw: RichCardSchema.unwrappedCards(given), schema: schema)
-        }
+        return cards(for: tool, answer: answer, answerCards: openedAnswerCards(answer), schema: schema)
+    }
+
+    /// An answer's `cards`, opened as the board counts them, so a wrapped
+    /// answer draws its cards rather than only its Markdown. Nil when the
+    /// answer carries none.
+    static func openedAnswerCards(_ answer: [String: Any]?) -> Any? {
+        answer?["cards"].flatMap { RichCardSchema.unwrappedCards($0) }
+    }
+
+    /// `cards(for:)` for a caller that has already read the answer and
+    /// opened its cards (the board), so an answer's JSON string of cards
+    /// is parsed once per row.
+    static func cards(for tool: ToolActivity, answer: [String: Any]?, answerCards: Any?,
+                      schema: RichCardSchema?) -> [RichCard] {
+        guard tool.name.lowercased() == toolName, tool.status == .complete else { return [] }
+        if let answerCards { return cards(raw: answerCards, schema: schema) }
         guard (answer?["ok"] as? Bool) == true || keptNoAnswer(tool) else { return [] }
         return cards(raw: argumentCards(tool), schema: schema)
     }
@@ -209,12 +221,13 @@ struct RichCard: Identifiable, Equatable, Hashable {
         RichCardSchema.unwrappedCards(jsonObject(tool.input)?["cards"])
     }
 
-    /// A conduit_show call's arguments, kept only when they carry cards to
-    /// open (a null, empty or unparseable `cards` draws nothing, so the row
-    /// keeps its short preview).
-    static func argumentsWithCards(_ text: String?) -> String? {
+    /// A conduit_show call's arguments, kept only when they carry cards
+    /// Conduit can draw. A null, empty or unparseable `cards`, and one
+    /// holding nothing the schema takes (`{}`, `[{}]`, an unknown type, a
+    /// plain string), draws nothing, so the row keeps its short preview.
+    static func argumentsWithCards(_ text: String?, schema: RichCardSchema? = .bundled) -> String? {
         guard let text, let object = jsonObject(text),
-              let cards = RichCardSchema.unwrappedCards(object["cards"]) as? [Any], !cards.isEmpty else { return nil }
+              !cards(raw: RichCardSchema.unwrappedCards(object["cards"]), schema: schema).isEmpty else { return nil }
         return text
     }
 

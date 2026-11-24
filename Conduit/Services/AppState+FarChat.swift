@@ -113,6 +113,24 @@ extension AppState {
         return retry.attempt < Self.quietReconnectAttempts
     }
 
+    /// Whether the far chat on screen's dashboard waits for a sign-in
+    /// Conduit can't make quietly (nothing saved to sign in with, or the
+    /// sign-in refused): no retry is coming, and a tap on its Saved
+    /// Dashboards row signs in.
+    var chatNeedsSignIn: Bool {
+        guard let farDashboardID = farChatDashboardID, !chatIsConnected else { return false }
+        return combinedDashboardStatus(farDashboardID) == .signInNeeded
+    }
+
+    /// The chat header's word for a connection that isn't up: a far chat
+    /// whose dashboard waits for a sign-in says so, as its Saved Dashboards
+    /// row does, rather than "Disconnected" (issue 3211).
+    var chatDisconnectedWord: String {
+        if chatIsRecoveringConnection { return AppLocalization.string("Reconnecting…") }
+        if chatNeedsSignIn { return CombinedDashboardStatus.signInNeeded.label }
+        return AppLocalization.string("Disconnected")
+    }
+
     /// Whether the chat on screen hides a brief reconnect indicator while
     /// returning to the foreground.
     var chatHidesBriefReconnect: Bool {
