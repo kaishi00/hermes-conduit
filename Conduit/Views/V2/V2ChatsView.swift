@@ -584,9 +584,10 @@ struct V2ChatsView: View {
 
     /// A live filter saved while the gateway can't report live status sits
     /// out, so the list doesn't empty out behind a filter nobody can see;
-    /// so do In progress and Done on a plugin that keeps no Done marks.
+    /// so do In progress and Done when no dashboard the list shows keeps
+    /// Done marks.
     private var selection: V2FilterSelection {
-        let saved = appState.chatDoneAvailable ? savedSelection : savedSelection.withoutProgress
+        let saved = appState.chatDoneFilterAvailable ? savedSelection : savedSelection.withoutProgress
         return appState.liveSessionStatusAvailable ? saved : saved.withoutLive
     }
 
@@ -1093,7 +1094,7 @@ struct V2ChatsView: View {
                     }
                 }
 
-                if appState.chatDoneAvailable {
+                if appState.chatDoneFilterAvailable {
                     Section {
                         filterToggle(.inProgress)
                         filterToggle(.done)

@@ -709,6 +709,11 @@ final class AppState: ObservableObject {
     var chatMutesPendingWrites: [String: Int] = [:]
     var chatMutesWrites: [String: Int] = [:]
     var chatMutesWriteTail: [String: Task<Void, Never>] = [:]
+    /// The other combined dashboards' Done marks and mutes, each as its own
+    /// plugin keeps them (AppState+FarChatMarks.swift): their chats show
+    /// and change them without a switch.
+    @Published var farChatDoneMarks: [UUID: ChatDoneMarks] = [:]
+    @Published var farChatMutes: [UUID: ChatMutes] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).

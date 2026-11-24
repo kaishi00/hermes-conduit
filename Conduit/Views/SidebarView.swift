@@ -1436,10 +1436,16 @@ struct SessionActionMenuItems: View {
 
     var body: some View {
         // Another combined dashboard's chat on screen (its row from that
-        // dashboard's list): Rename, Archive and Delete, which run there;
-        // the rest reads and keeps this dashboard's list state.
+        // dashboard's list): Rename, Done, Mute, Archive and Delete, which
+        // run there; the rest reads and keeps this dashboard's list state.
         if session.combinedDashboardID != nil {
             renameButton
+            if appState.canMarkSessionDone(session) {
+                DoneToggleButton(session: session)
+            }
+            if appState.canMuteSession(session) {
+                ChatMuteMenu(session: session)
+            }
             archiveButton
             deleteButton
         } else {
