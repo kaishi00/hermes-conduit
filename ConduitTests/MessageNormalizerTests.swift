@@ -1960,7 +1960,7 @@ final class MessageNormalizerTests: XCTestCase {
 
     /// Arguments whose cards are empty draw nothing, so the row keeps its
     /// short preview rather than the raw arguments.
-    func testCompactResumeShowWithEmptyCardsKeepsItsPreview() {
+    func testCompactResumeShowWithEmptyCardsKeepsItsPreview() throws {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
                 "role": .string("tool"),
@@ -1970,8 +1970,63 @@ final class MessageNormalizerTests: XCTestCase {
             ])
         ])
 
-        XCTAssertEqual(messages.first?.tool?.input, "Plan")
-        XCTAssertFalse(RichCard.hasCards(messages[0]))
+        let row = try XCTUnwrap(messages.first)
+        XCTAssertEqual(row.tool?.input, "Plan")
+        XCTAssertFalse(RichCard.hasCards(row))
+    }
+
+    /// Arguments whose cards open to something Conduit can't draw (an
+    /// empty object, an unknown type, a plain string, a wrapper around a
+    /// string) draw nothing either, so the row keeps its preview too
+    /// instead of showing the raw arguments under no board (issue 3176).
+    func testCompactResumeShowWithUndrawableCardsKeepsItsPreview() throws {
+        let undrawable: [AnyCodable] = [
+            .object([:]),
+            .array([.object([:])]),
+            .array([.object(["type": .string("bogus")])]),
+            .object(["cards": .string("oops")]),
+            .array([.string("oops")])
+        ]
+        for cards in undrawable {
+            let messages = MessageNormalizer.normalizeMessages([
+                .object([
+                    "role": .string("tool"),
+                    "name": .string("conduit_show"),
+                    "context": .string("Plan"),
+                    "args": .object(["cards": cards])
+                ])
+            ])
+            let row = try XCTUnwrap(messages.first)
+            XCTAssertEqual(row.tool?.input, "Plan", "\(cards)")
+            XCTAssertFalse(RichCard.hasCards(row), "\(cards)")
+        }
+    }
+
+    /// Cards sent as a JSON string, in a resume row's arguments, still
+    /// draw the board.
+    func testCompactResumeShowWithCardsAsAJSONStringKeepsItsBoard() throws {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "role": .string("tool"),
+                "name": .string("conduit_show"),
+                "context": .string("Plan"),
+                "args": .object(["cards": .string(#"[{"type": "callout", "callout": {"text": "Bring water."}}]"#)])
+            ])
+        ])
+
+        let tool = try XCTUnwrap(messages.first?.tool)
+        XCTAssertNil(tool.output)
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
+    }
+
+    /// Cards sent as a JSON string in an answer draw the board as well.
+    func testAConduitShowAnswerWithCardsAsAJSONStringDrawsItsCards() {
+        let tool = ToolActivity(
+            id: "t1", name: "conduit_show", input: nil,
+            output: #"{"ok": true, "markdown": "Hi", "cards": "[{\"type\": \"callout\", \"callout\": {\"text\": \"Hi\"}}]"}"#,
+            status: .complete
+        )
+        XCTAssertEqual(RichBoard.board(for: tool, schema: .bundled)?.cards.map(\.kind), [.callout])
     }
 
     /// An answer whose cards came wrapped draws them, as the board counts

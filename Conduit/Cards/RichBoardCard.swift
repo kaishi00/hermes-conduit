@@ -270,8 +270,11 @@ struct RichBoard: Equatable {
         // copies is the cleaned string.
         let markdown = (answer?["markdown"] as? String).map(RichCardSchema.cleanMarkdown)
             .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-        let cards = RichCard.cards(for: tool, schema: schema)
-        let given = (RichCardSchema.unwrappedCards(answer?["cards"]) as? [Any])?.count
+        // The answer's cards are opened once here and handed on: a JSON
+        // string of them can be large.
+        let answerCards = RichCard.openedAnswerCards(answer)
+        let cards = RichCard.cards(for: tool, answer: answer, answerCards: answerCards, schema: schema)
+        let given = (answerCards as? [Any])?.count
             ?? (((answer?["ok"] as? Bool) == true || RichCard.keptNoAnswer(tool))
                 ? (RichCard.argumentCards(tool) as? [Any])?.count : nil)
             ?? 0
