@@ -7010,7 +7010,7 @@ README.md
 - The dot reads the chats the project tree lists, as the Running line does, so an unread chat beyond the tree's preview of a big project doesn't light it. A chat the catalog also lists reads its copy there, which stays current between loads of the tree.
 - Projects belong to the profile in use; All profiles has no Projects list of its own.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (the code it lists moved out of AppState.swift, issue 828); 2026-11-03, #1685 (the Projects list gained New Project controls; a new project's row takes the dot like any other); 2026-10-29, #1499.
+**Checked:** 2026-11-24, #3244 (a chat row's dot for another combined dashboard's chat reads Hermes' flag on its own dashboard, and Mark as read and unread set it there; projects are the profile in use's, so no project's dot changes; Desktop not needed: its dots are per host); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (the code it lists moved out of AppState.swift, issue 828); 2026-11-03, #1685 (the Projects list gained New Project controls; a new project's row takes the dot like any other); 2026-10-29, #1499.
 
 ## Whose project page
 
