@@ -1400,8 +1400,10 @@ struct V2PulsePage: View {
     /// The chat it came from, a tap away.
     private func chatLink(_ card: PulseCard) -> some View {
         Button {
-            // Another dashboard's Pulse: its chat opens there.
+            // Another dashboard's Pulse: its chat opens in place, on its
+            // own dashboard, with no switch while it's kept connected.
             let dashboard = appState.pulseDashboardID
+            if appState.openFarPulseCardChat(card, for: dashboard) { return }
             Task { if await appState.switchForFarPulseStep(for: dashboard) { appState.openPulseCardChat(card) } }
         } label: {
             HStack(spacing: 6) {

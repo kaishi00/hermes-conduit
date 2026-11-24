@@ -158,10 +158,59 @@ extension AppState {
         if pulseShownDashboardID != shown { pulseShownDashboardID = shown }
     }
 
-    /// Before a Pulse card's step that opens a chat or task, or changes
-    /// this phone's calendar, on another combined dashboard's Pulse: the
-    /// switch there, until chats of another dashboard open in place too
-    /// (this phone shares its calendar with the one on screen). `dashboard`
+    /// A card's chat on another combined dashboard's Pulse shown in place:
+    /// it opens as a chat link naming that dashboard is routed, in place on its
+    /// own runtime through its kept connection with no switch (a Bot Chat,
+    /// a listed chat or one its list doesn't hold), at the message the card
+    /// came from; the link's route switches only when that dashboard can't
+    /// open it in place. `dashboard` is the one whose Pulse the page showed
+    /// at the tap. False when the card is the dashboard on screen's, the
+    /// page has left that Pulse, or its kept connection is gone: the caller
+    /// goes on as before (`switchForFarPulseStep`).
+    func openFarPulseCardChat(_ card: PulseCard, for dashboard: UUID?) -> Bool {
+        guard let id = dashboard, id != dashboardIDOnScreen, pulseDashboardID == id,
+              let runtime = runtime(for: id) else { return false }
+        // What the card names, as its own Pulse reads it, its profile
+        // spelled as that dashboard lists it and its default the one that
+        // dashboard named, never the one on screen's.
+        let farDefault = profileAppearanceStore.loadDefaultName(dashboardID: id)
+        let (hasChat, profile) = act(onRuntime: runtime) {
+            (
+                pulseCardHasChat(card),
+                notificationProfileID(card.profile.isEmpty ? pulseHomeProfile : card.profile, defaultName: farDefault)
+            )
+        }
+        guard hasChat else { return true }
+        let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
+        pendingArtifactReveal = reveal
+        widgetLaunchCoordinator.supersede()
+        // A workstream's hidden chat opens on its bot's profile, as its
+        // link does (`openAppLink`). One that can't start (its socket busy
+        // with a request, so not handed to that profile now) has said so,
+        // and nothing waits to scroll.
+        if let workstreamProfile = runtime.botWork.workstreamProfile(forSession: [card.chatID]) {
+            let open = openFarWorkstreamInPlace(
+                card.chatID, profile: profile ?? workstreamProfile, in: id
+            )
+            if open == nil, pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
+            return true
+        }
+        // The route tries it in place first, so a call goes on; only a
+        // switch it falls back to is refused during one.
+        PushNotificationService.shared.routeChatLink(
+            ConduitNotificationTarget(
+                profile: profile, sessionId: card.chatID, dashboardID: id, type: nil, isChatLink: true
+            )
+        )
+        return true
+    }
+
+    /// Before a Pulse card's step that opens a task or starts Do it's chat,
+    /// or changes this phone's calendar, on another combined dashboard's
+    /// Pulse: the switch there (its board and its new chats are that
+    /// dashboard's own pages, and this phone shares its calendar with the
+    /// one on screen). A card's chat link doesn't come here while that
+    /// dashboard is kept connected (`openFarPulseCardChat`). `dashboard`
     /// is the one whose Pulse the page showed at the tap (`pulseDashboardID`
     /// then). True when the step can go ahead on that dashboard, the page
     /// still showing its Pulse: never on another one, as a chip picked
