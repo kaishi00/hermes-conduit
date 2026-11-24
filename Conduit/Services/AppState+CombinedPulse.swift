@@ -171,9 +171,14 @@ extension AppState {
         guard let id = dashboard, id != dashboardIDOnScreen, pulseDashboardID == id,
               let runtime = runtime(for: id) else { return false }
         // What the card names, as its own Pulse reads it, its profile
-        // spelled as that dashboard lists it (its default is its own).
+        // spelled as that dashboard lists it and its default the one that
+        // dashboard named, never the one on screen's.
+        let farDefault = profileAppearanceStore.loadDefaultName(dashboardID: id)
         let (hasChat, profile) = act(onRuntime: runtime) {
-            (pulseCardHasChat(card), notificationProfileID(card.profile.isEmpty ? pulseHomeProfile : card.profile))
+            (
+                pulseCardHasChat(card),
+                notificationProfileID(card.profile.isEmpty ? pulseHomeProfile : card.profile, defaultName: farDefault)
+            )
         }
         guard hasChat else { return true }
         let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
