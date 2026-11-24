@@ -444,7 +444,7 @@ final class AppState: ObservableObject {
     @Published var combinedDashboardBotWork: [UUID: [String: BotWorkSnapshot]] = [:]
     /// What another combined dashboard's plugin serves, read through its
     /// kept connection (keyed by that connection's bridge).
-    var combinedDashboardPluginCapabilities: [UUID: (bridge: ObjectIdentifier, capabilities: Set<String>)] = [:]
+    var combinedDashboardPluginCapabilities: [UUID: KeptPluginReport] = [:]
     /// The kept connection whose plugin the Needs you pass last asked for
     /// its Hermes' name, by dashboard: asked once per connection, so an old
     /// plugin without the route isn't asked on every poll (Dashboard names).

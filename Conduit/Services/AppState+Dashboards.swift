@@ -803,8 +803,8 @@ extension AppState {
             uniquingKeysWith: { first, _ in first }
         )
         let outgoingGlows = profileGlowColors()
-        var outgoingCapabilities: Set<String>?
-        if case .reported(_, let capabilities) = notifierPlugin.state { outgoingCapabilities = capabilities }
+        var outgoingPluginReport: NotifierPluginStatus?
+        if case .reported = notifierPlugin.state { outgoingPluginReport = notifierPlugin }
         // What it shows, for a switch back to show at once if it's kept.
         let outgoingLists = isInCombinedGroup(previousDashboardID)
             ? DashboardRuntime(keepingListsOf: runtimeOnScreen, profile: activeProfile) : nil
@@ -829,7 +829,7 @@ extension AppState {
         // switch back is at once (multi-instance stage 3).
         keepOutgoingDashboardRuntimeIfCombined(
             previousDashboardID, switchingTo: id, roster: outgoingRoster, profiles: outgoingProfiles, chats: outgoingChats,
-            cronIDs: outgoingCronIDs, work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows,
+            cronIDs: outgoingCronIDs, work: outgoingWork, pluginReport: outgoingPluginReport, glows: outgoingGlows,
             lists: outgoingLists
         )
         retireConnectionRuntimeForDashboardSwitch()
@@ -982,19 +982,38 @@ extension AppState {
         /// and back, so the bridge alone can't tell an answer to an earlier
         /// visit from one to this.
         var switchGeneration: UInt64 = 0
+        /// Taken in another combined dashboard's scope (a far chat's
+        /// rename or delete, a far Bot Chat's action): the screen never
+        /// visits that dashboard, so a switch on screen isn't a visit of
+        /// it ending. Its answer stands while its own connection is the
+        /// one kept (issue 3166).
+        var isFar = false
     }
 
     /// The current dashboard and its bridge; nil without a bridge.
     func currentDashboardRuntimeOwner() -> DashboardRuntimeOwner? {
         dashboardTicketBridge.map {
-            DashboardRuntimeOwner(dashboardID: activeDashboardID, bridge: $0, switchGeneration: dashboardSwitchGeneration)
+            DashboardRuntimeOwner(dashboardID: activeDashboardID, bridge: $0, switchGeneration: dashboardSwitchGeneration,
+                                  isFar: !actingOnRuntimeOnScreen)
         }
     }
 
     func ownsDashboardRuntime(_ owner: DashboardRuntimeOwner) -> Bool {
-        owner.bridge === dashboardTicketBridge
-            && owner.dashboardID == activeDashboardID
-            && owner.switchGeneration == dashboardSwitchGeneration
+        guard owner.bridge === dashboardTicketBridge, owner.dashboardID == activeDashboardID else { return false }
+        // Another dashboard's, acted on through its kept connection: the
+        // switch counter follows the screen, which that dashboard was never
+        // on, so a switch between two others would throw away an answer
+        // its own Hermes already acted on. Still kept on the same bridge,
+        // in the runtime this answer applies to, is what says nothing
+        // replaced it; taken up to the screen or let go meanwhile, the
+        // answer is dropped as before, also when the dashboard was kept
+        // again since: a visit hands the bridge on to a new runtime, and
+        // this scope still holds the retired one.
+        if owner.isFar {
+            guard let id = owner.dashboardID, let kept = keptDashboardRuntimes[id] else { return false }
+            return kept.bridge === owner.bridge && kept.runtime === shownRuntime
+        }
+        return owner.switchGeneration == dashboardSwitchGeneration
     }
 
     func switchGenerationIsCurrent(_ generation: UInt64) -> Bool {

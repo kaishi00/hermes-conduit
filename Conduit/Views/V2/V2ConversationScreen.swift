@@ -755,6 +755,7 @@ struct V2ConversationScreen: View {
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatIsConnected)
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatIsRecoveringConnection)
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatHidesBriefReconnect)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatNeedsSignIn)
             }
         }
         // The big button does something else: a live call stays one

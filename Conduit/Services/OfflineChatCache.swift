@@ -534,10 +534,12 @@ final class OfflineChatCacheStore {
     /// in flight across one keeps nothing (#1525).
     var removals: Int { memoryLock.withLock { removalCount } }
     private var removalCount = 0
+    #if DEBUG
     /// Tests only: when set, a read's answer waits here on the main thread
     /// until the test hands it on, so a test can act between a read's
     /// start and its answer (a far chat's dashboard dropping mid-read).
     var readAnswersHeldForTesting: [@MainActor () -> Void]?
+    #endif
 
     init(
         directory: URL,
@@ -671,11 +673,13 @@ final class OfflineChatCacheStore {
                 let answer: @MainActor () -> Void = { [self] in
                     completion(removals == removalsBefore ? transcript : nil)
                 }
+                #if DEBUG
                 if readAnswersHeldForTesting != nil {
                     readAnswersHeldForTesting?.append(answer)
-                } else {
-                    answer()
+                    return
                 }
+                #endif
+                answer()
             }
         }
     }

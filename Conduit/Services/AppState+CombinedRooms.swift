@@ -456,8 +456,8 @@ extension AppState {
         guard state != .unknown, case .unknown = kept.runtime.notifierPlugin.state else { return }
         kept.runtime.notifierPlugin.state = state
         kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
-        if case .reported(_, let capabilities) = state {
-            combinedDashboardPluginCapabilities[id] = (ObjectIdentifier(kept.bridge), capabilities)
+        if let report = KeptPluginReport(bridge: ObjectIdentifier(kept.bridge), response: response) {
+            combinedDashboardPluginCapabilities[id] = report
         }
         if farChatDashboardID == id { objectWillChange.send() }
     }

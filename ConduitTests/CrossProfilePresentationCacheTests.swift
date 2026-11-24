@@ -931,8 +931,11 @@ extension CrossProfilePresentationCacheTests {
         // Kept, then the address moves on: the switch back lets it go.
         registry.dashboards[0].normalizedURL = "https://127.0.0.9:1"
         appState.savedDashboardRegistry = registry
+        let letGo = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]).runtime
+        XCTAssertTrue(letGo.isConnected)
         XCTAssertNil(appState.takeKeptDashboardRuntime(mac.id, profile: "default"))
         XCTAssertFalse(outgoing.isConnected)
+        XCTAssertFalse(letGo.isConnected, "a scope still holding its runtime reads it as dropped")
 
         let again = try await openClient("https://127.0.0.9:1")
         appState.client = again
@@ -4356,6 +4359,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(handedAtlas.profile, "atlas")
         XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(handedAtlas))
         XCTAssertEqual(seen.opened.last?.1, "far-w1")
+        // A Cron run of the screen's under the workstream chat's id never
+        // adds its stored id to the far chat's Artifacts, checklist and
+        // card ids (#3218's review).
+        var screenCron = session("far-w1", profile: "atlas")
+        screenCron.storedSessionId = "vps-cron-stored"
+        appState.cronSessions = [screenCron]
+        XCTAssertFalse(appState.activeChatArtifactSessionIDs.contains("vps-cron-stored"))
+        appState.cronSessions = []
 
         appState.openAppLink(.session(id: "far-w2", profile: "atlas", dashboard: mac.id.uuidString))
         await waitUntil { appState.activeSessionId == "far-w2" && appState.messages.contains { $0.id == "msg-far-w2" } }
@@ -4438,6 +4449,106 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.chatBotWork === appState.emptyBotWork)
         XCTAssertFalse(appState.chatBotWork === appState.screenBotWork)
         _ = outgoing
+    }
+
+    /// What another combined dashboard's scope reads of the group and of
+    /// its own connection (Yelan audits 3165, 3166, 3209 and 3210): one
+    /// Hermes saved twice is found from there too, an answer asked there
+    /// outlives a switch on screen, its plugin's version comes with the
+    /// cached report, and once it's let go it stops saying it's connected.
+    func testAFarScopeReadsItsTwinsItsOwnFenceAndItsPluginsVersion() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        // One Hermes saved twice: both dashboards list the same chat and
+        // the same question.
+        appState.runtimeOnScreen.sessions = [session("shared-1", profile: "default")]
+        var farRow = session("shared-1", profile: "default")
+        farRow.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [farRow], at: Date()
+        )
+        let asked = NeedsYouItem(waitID: "asked-P7", profile: "default", kind: .question, sessionIDs: ["shared-1"],
+                                 since: Date(timeIntervalSince1970: 10))
+        appState.needsYou.apply([asked], profile: "default", dashboardID: vps.id) { _ in false }
+        appState.needsYou.applyOther([asked], profile: "default", dashboardID: mac.id) { _ in false }
+        let onScreen = appState.combinedHermesGroups
+        XCTAssertNotNil(onScreen[vps.id])
+        XCTAssertEqual(onScreen[mac.id], onScreen[vps.id])
+        let inFarScope = appState.act(onRuntime: kept.runtime) { appState.combinedHermesGroups }
+        XCTAssertNotNil(inFarScope[vps.id], "the dashboard on screen has its evidence when read in the far scope")
+        XCTAssertEqual(inFarScope[mac.id], inFarScope[vps.id], "so an answer given on the far twin finds the screen's copy")
+        // Answered on the far twin, with the screen as its twin: both go.
+        appState.needsYou.dropAnsweredQuestion("P7", profile: "default", dashboardID: mac.id, alsoOn: [vps.id])
+        XCTAssertFalse(appState.needsYou.items.contains { $0.waitID == "asked-P7" }, "the screen's copy goes too")
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id])
+
+        // A far answer's fence follows its own kept connection, not the
+        // screen's switches; the screen's own still follows the visit.
+        let farOwner = try XCTUnwrap(appState.act(onRuntime: kept.runtime) { appState.currentDashboardRuntimeOwner() })
+        XCTAssertTrue(farOwner.isFar)
+        let screenOwner = appState.currentDashboardRuntimeOwner()
+        XCTAssertNotEqual(screenOwner?.isFar, true)
+        appState.dashboardSwitchGeneration &+= 1
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) },
+                      "a switch between two other dashboards doesn't discard its answer")
+        if let screenOwner {
+            XCTAssertFalse(appState.ownsDashboardRuntime(screenOwner), "an answer to an earlier visit of the screen's is dropped")
+        }
+
+        // The cached report carries the plugin's version and running state.
+        kept.runtime.notifierPlugin.state = .unknown
+        kept.runtime.notifierPlugin.runtime = nil
+        appState.combinedDashboardPluginCapabilities[mac.id] = try XCTUnwrap(KeptPluginReport(
+            bridge: ObjectIdentifier(kept.bridge),
+            response: ["ok": true, "version": "0.200.0", "loaded_version": "0.200.0", "capabilities": ["voice-tools"]]
+        ))
+        appState.ensureKeptPluginReport(for: mac.id)
+        XCTAssertEqual(kept.runtime.notifierPlugin.state, .reported(version: "0.200.0", capabilities: ["voice-tools"]))
+        XCTAssertEqual(kept.runtime.notifierPlugin.runtime?.loadedVersion, "0.200.0")
+        XCTAssertTrue(kept.runtime.notifierPlugin.servesLocationVoice, "version-gated voice tools aren't read as too old")
+        XCTAssertTrue(kept.runtime.notifierPlugin.recordsSpokenQuestionAnswers)
+
+        // Kept again after a visit, the bridge is the same and the runtime
+        // is new: an answer still holding the earlier one is dropped.
+        appState.keptDashboardRuntimes[mac.id] = KeptDashboardRuntime(
+            client: kept.client, bridge: kept.bridge, connection: kept.connection, keptAt: Date()
+        )
+        XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) },
+                       "an answer to an earlier keep doesn't land in a retired runtime")
+        appState.keptDashboardRuntimes[mac.id] = kept
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) })
+
+        // Let go, its runtime stops saying it's connected to a scope that
+        // still holds it, and its answers no longer stand.
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.isConnected })
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertFalse(kept.runtime.isConnected)
+        XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.isConnected })
+        XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) })
+
+        // With the screen on a dashboard outside the group, the group's own
+        // twins are still found, from the screen and from a far scope, and
+        // the one on screen is nobody's twin.
+        let third = SavedDashboard(id: UUID(), label: "Third", normalizedURL: "https://127.0.0.3:1", combined: true)
+        var alone = vps
+        alone.combined = false
+        appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, alone, third])
+        var thirdRow = session("shared-1", profile: "default")
+        thirdRow.combinedDashboardID = third.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [farRow], at: Date()
+        )
+        appState.combinedDashboardChats[third.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [thirdRow], at: Date()
+        )
+        for groups in [appState.combinedHermesGroups, appState.act(onRuntime: kept.runtime) { appState.combinedHermesGroups }] {
+            XCTAssertNotNil(groups[mac.id])
+            XCTAssertEqual(groups[mac.id], groups[third.id], "two kept dashboards of the group are still found to be one Hermes")
+            XCTAssertNil(groups[vps.id], "the dashboard on screen, outside the group, has no evidence")
+        }
     }
 
     /// `botWorkClient` and `botWorkSettingsClient` send to the kept
