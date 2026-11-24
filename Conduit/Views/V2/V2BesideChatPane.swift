@@ -33,6 +33,13 @@ struct V2BesideChatPane: View {
         )
         .equatable()
     }
+
+    /// Accessibility label spoken by VoiceOver for a beside-pane or chat-window
+    /// header, including its dashboard name when shown from a peer dashboard.
+    static func headerAccessibilityLabel(title: String, dashboardBadge: V2DashboardBadge?) -> String {
+        guard let dashboardBadge else { return title }
+        return "\(title), \(dashboardBadge.name)"
+    }
 }
 
 /// What the pane or a chat window shows from AppState, read once per
@@ -97,7 +104,9 @@ private struct V2BesideChatPaneContent: View, Equatable {
     }
 }
 
-private struct KeptChatComposerIdentity: Hashable {
+/// Identifies the chat a kept-chat composer is currently bound to so SwiftUI
+/// rebuilds draft/picker state when its dashboard, profile, or session IDs change.
+struct KeptChatComposerIdentity: Hashable {
     let dashboardID: UUID
     let profile: String
     let sessionIDs: Set<String>
@@ -128,6 +137,12 @@ private struct V2BesideChatPaneHeader: View {
                 .scaledFont(.headline)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+                .accessibilityLabel(
+                    V2BesideChatPane.headerAccessibilityLabel(
+                        title: title,
+                        dashboardBadge: dashboardBadge
+                    )
+                )
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             if let windowKey {

@@ -1,4 +1,6 @@
 import Combine
+import SwiftUI
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -4902,6 +4904,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.canOpenBeside(macRow))
         appState.openBeside(macRow)
         await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "msg-mac-1-mac" } }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-mac-1-mac" })
         XCTAssertEqual(appState.activeDashboardID, vps.id, "openBeside keeps screen dashboard active")
         XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
         XCTAssertNil(appState.besideChatOwner, "previous local chat stays beside under screen owner")
@@ -4915,6 +4918,7 @@ extension CrossProfilePresentationCacheTests {
             appState.activeSessionId == "vps-1" && appState.farChat == nil
                 && appState.messages.contains { $0.id == "msg-vps-1-vps" }
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-vps-1-vps" })
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertEqual(appState.besideChatOwner, FarChatOwner(dashboardID: mac.id, profile: "default"))
         let farBeside = try XCTUnwrap(appState.besideChat)
@@ -4955,6 +4959,7 @@ extension CrossProfilePresentationCacheTests {
                 && appState.messages.contains { $0.id == "msg-mac-1-mac" }
                 && appState.windowChat(macWindowKey) == nil
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-mac-1-mac" })
         XCTAssertEqual(appState.activeDashboardID, vps.id, "openWindowChatInMainWindow does not switch")
         XCTAssertNil(appState.windowChatOwners[macWindowKey])
 
@@ -4966,6 +4971,7 @@ extension CrossProfilePresentationCacheTests {
                 && appState.messages.contains { $0.id == "msg-vps-1-vps" }
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-vps-1-vps" })
         // Put vps-1 into a local window first, then open far shared-1 window before local shared-1.
         appState.openBeside(sharedMacRow)
         await waitUntil {
@@ -4973,6 +4979,7 @@ extension CrossProfilePresentationCacheTests {
                 && appState.farChat == FarChatOwner(dashboardID: mac.id, profile: "default")
                 && appState.messages.contains { $0.id == "msg-shared-1-mac" }
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-shared-1-mac" })
         XCTAssertNil(appState.besideChatOwner, "local vps-1 is beside")
         let localWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
         XCTAssertEqual(localWindowKey, "vps-1")
@@ -4984,6 +4991,7 @@ extension CrossProfilePresentationCacheTests {
                 && appState.messages.contains { $0.id == "msg-shared-1-vps" }
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-shared-1-vps" })
         let farSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
         XCTAssertEqual(farSharedWindowKey, "\(mac.id.uuidString)/default/shared-1")
 
@@ -4993,6 +5001,7 @@ extension CrossProfilePresentationCacheTests {
                 && appState.messages.contains { $0.id == "msg-mac-1-mac" }
                 && appState.besideChat?.answers(to: "shared-1") == true
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-mac-1-mac" })
         let localSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
         XCTAssertEqual(localSharedWindowKey, "shared-1")
         XCTAssertEqual(appState.windowChat(localSharedWindowKey)?.dashboardID, vps.id, "local window is not shadowed by far window")
@@ -5010,6 +5019,7 @@ extension CrossProfilePresentationCacheTests {
                 && appState.messages.contains { $0.id == "msg-shared-1-vps" }
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-shared-1-vps" })
         XCTAssertEqual(try XCTUnwrap(appState.besideChat).answers(to: "mac-1"), true)
         XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
 
@@ -5437,5 +5447,491 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.conversationIdentityIndex.durableID(forRuntime: "mac-keep-rt", profile: "default"),
                        "mac-keep-dur",
                        "switching back restores Mac's kept identity index")
+    }
+
+    private final class MountedBesideChatModel: ObservableObject {
+        @Published var chat: BackgroundChat
+        init(chat: BackgroundChat) { self.chat = chat }
+    }
+
+    private struct MountedBesideChatHost: View {
+        @ObservedObject var model: MountedBesideChatModel
+        var body: some View {
+            V2BesideChatPane(chat: model.chat, windowKey: nil)
+        }
+    }
+
+    private func findEditableTextInput(in root: UIView) -> UIView? {
+        if let textView = root as? UITextView, textView.isEditable {
+            return textView
+        }
+        if let textField = root as? UITextField, textField.isEnabled {
+            return textField
+        }
+        for subview in root.subviews {
+            if let match = findEditableTextInput(in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func editableText(of control: UIView) -> String {
+        if let textView = control as? UITextView { return textView.text ?? "" }
+        if let textField = control as? UITextField { return textField.text ?? "" }
+        return ""
+    }
+
+    private func insertText(_ text: String, into control: UIView) {
+        if let textView = control as? UITextView {
+            _ = textView.becomeFirstResponder()
+            textView.insertText(text)
+        } else if let textField = control as? UITextField {
+            _ = textField.becomeFirstResponder()
+            textField.insertText(text)
+        }
+    }
+
+    /// Beside/window composer identity keys, VoiceOver header labels, mounted
+    /// `V2BesideChatPane` draft reset across owner changes, and list seeding when
+    /// `openKeptChatInMainColumn` hands the kept client across profiles (#3207).
+    func testFarBesideComposerIdentityAccessibilityAndListReseedAcrossProfiles() async throws {
+        let dashA = UUID()
+        let dashB = UUID()
+        let base = KeptChatComposerIdentity(dashboardID: dashA, profile: "default", sessionIDs: ["s1"])
+        XCTAssertEqual(base, KeptChatComposerIdentity(dashboardID: dashA, profile: "default", sessionIDs: ["s1"]))
+        XCTAssertNotEqual(
+            base,
+            KeptChatComposerIdentity(dashboardID: dashB, profile: "default", sessionIDs: ["s1"]),
+            "composer identity differs across dashboards even with identical session IDs"
+        )
+        XCTAssertNotEqual(
+            base,
+            KeptChatComposerIdentity(dashboardID: dashA, profile: "work", sessionIDs: ["s1"]),
+            "composer identity differs across profiles even with identical session IDs"
+        )
+        XCTAssertNotEqual(base, KeptChatComposerIdentity(dashboardID: dashA, profile: "default", sessionIDs: ["s2"]))
+
+        let badge = V2DashboardBadge(letter: "M", colorIndex: 0, name: "Mac")
+        XCTAssertEqual(V2BesideChatPane.headerAccessibilityLabel(title: "Deploy", dashboardBadge: badge), "Deploy, Mac")
+        XCTAssertEqual(V2BesideChatPane.headerAccessibilityLabel(title: "Deploy", dashboardBadge: nil), "Deploy")
+
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.openSessionWithProfile = { _, sessionID, _, _ in
+            SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Reply", timestamp: "ts-1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        var defaultRow = SessionSummary(
+            id: "mac-default-1", alternateIds: [], title: "Mac Default", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        defaultRow.combinedDashboardID = mac.id
+        var workRow = SessionSummary(
+            id: "mac-work-1", alternateIds: [], title: "Mac Work", model: "Hermes", updatedLabel: "now",
+            profile: "work", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        workRow.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "work"], sessions: [defaultRow, workRow], at: Date()
+        )
+
+        // Hand Mac's kept client to "work" (which clears runtime.sessions), then
+        // open a "default" kept chat in the main column.
+        let handedWorkRuntime = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
+        XCTAssertTrue(handedWorkRuntime.sessions.isEmpty)
+
+        XCTAssertTrue(
+            appState.openKeptChatInMainColumn(
+                target: "mac-default-1",
+                owner: FarChatOwner(dashboardID: mac.id, profile: "default"),
+                onFailure: nil
+            )
+        )
+        await waitUntil {
+            appState.activeSessionId == "mac-default-1" && appState.messages.contains { $0.id == "msg-mac-default-1" }
+        }
+        XCTAssertTrue(appState.messages.contains { $0.id == "msg-mac-default-1" })
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        XCTAssertEqual(appState.keptDashboardRuntimes[mac.id]?.client.profile, "default")
+        XCTAssertEqual(handedWorkRuntime.sessions.map(\.id), ["mac-default-1"])
+        XCTAssertNil(handedWorkRuntime.sessions.first?.combinedDashboardID)
+        XCTAssertEqual(appState.act(onRuntime: handedWorkRuntime) { appState.sessions.map(\.id) }, ["mac-default-1"])
+
+        // Mounted V2BesideChatPane resets composer draft when dashboardID or profile changes
+        // even while sessionIDs remains identical (#3207).
+        let chatMacDefault = BackgroundChat(
+            sessionIDs: ["shared-1"], durableSessionID: "shared-1", title: "Shared",
+            dashboardID: mac.id, profile: "default", isBotChat: false, state: ChatState()
+        )
+        let chatVpsDefault = BackgroundChat(
+            sessionIDs: ["shared-1"], durableSessionID: "shared-1", title: "Shared",
+            dashboardID: vps.id, profile: "default", isBotChat: false, state: ChatState()
+        )
+        let chatVpsWork = BackgroundChat(
+            sessionIDs: ["shared-1"], durableSessionID: "shared-1", title: "Shared",
+            dashboardID: vps.id, profile: "work", isBotChat: false, state: ChatState()
+        )
+        let mountedModel = MountedBesideChatModel(chat: chatMacDefault)
+        let host = UIHostingController(rootView: MountedBesideChatHost(model: mountedModel).environmentObject(appState))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 420, height: 600))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        addTeardownBlock { @MainActor in
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+
+        await waitUntil { [self] in
+            host.view.layoutIfNeeded()
+            return findEditableTextInput(in: window) != nil
+        }
+        let firstInput = try XCTUnwrap(findEditableTextInput(in: window))
+        insertText("Draft on Mac", into: firstInput)
+        XCTAssertEqual(editableText(of: firstInput), "Draft on Mac")
+
+        mountedModel.chat = chatVpsDefault
+        await waitUntil { [self] in
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            guard let current = findEditableTextInput(in: window) else { return false }
+            return editableText(of: current).isEmpty
+        }
+        let secondInput = try XCTUnwrap(findEditableTextInput(in: window))
+        XCTAssertEqual(editableText(of: secondInput), "", "changing dashboardID resets kept composer draft")
+
+        insertText("Draft on VPS", into: secondInput)
+        XCTAssertEqual(editableText(of: secondInput), "Draft on VPS")
+        mountedModel.chat = chatVpsWork
+        await waitUntil { [self] in
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            guard let current = findEditableTextInput(in: window) else { return false }
+            return editableText(of: current).isEmpty
+        }
+        let thirdInput = try XCTUnwrap(findEditableTextInput(in: window))
+        XCTAssertEqual(editableText(of: thirdInput), "", "changing profile resets kept composer draft")
+    }
+
+    /// Far room notifications handle kept-runtime replacement, navigation
+    /// supersession, and mid-open runtime loss (`closeFarRoomIfLetGo`), while far
+    /// Pulse pushes fall back to `showsPulseScreen` when the Pulse badge cache
+    /// is empty (#3205).
+    func testFarRoomAndPulseNotificationReplacementSupersessionDropAndUnlistedPulseFallback() async throws {
+        final class Script {
+            var onLog: (() -> Void)?
+        }
+        let script = Script()
+        let trip = GroupRoom(
+            roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+            revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil
+        )
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(
+                    protocolVersion: 2, driverReady: true, authorityGatewayID: "gw", features: [],
+                    methods: GroupWire.requiredMethods, maxLogLimit: 500
+                )
+            },
+            list: { _ in ([trip], nil) },
+            state: { _, _ in (trip, nil) },
+            log: { _, _, sinceSeq, _ in
+                script.onLog?()
+                return GroupLogPage(
+                    events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                    authorityGatewayID: "gw", authorityEpoch: 1
+                )
+            }
+        )
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations, groups: groups)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let held = HeldDashboardRequests(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        addTeardownBlock { @MainActor in held.shutdown() }
+        appState.keep(
+            KeptDashboardRuntime(
+                client: kept.client, bridge: held.bridge, connection: kept.connection,
+                keptAt: kept.keptAt, runtime: kept.runtime
+            ),
+            for: mac.id
+        )
+        kept.runtime.notifierPlugin.state = .unknown
+        appState.combinedDashboardBots[mac.id] = nil
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.combinedDashboardPulse[mac.id] = nil
+
+        let roomPush = ConduitNotificationTarget(
+            profile: nil, sessionId: "room-hidden-1", dashboardID: mac.id, type: "response.ready", roomID: "trip"
+        )
+
+        // 1. Replacement of kept runtime during `readyKeptRuntimeForRooms` returns nil.
+        let replacedTask = Task { @MainActor in await appState.openFarNotificationInPlace(roomPush, in: mac.id) }
+        try await held.waitForRequests(1)
+        let replacementTransport = ClarifyFakeTransport()
+        let replacementSocket = ClarifyFakeSocket()
+        replacementSocket.refusesEveryRequest = true
+        replacementTransport.nextSocket = { replacementSocket }
+        let replacementConnection = HermesConnection(baseUrl: mac.normalizedURL, ticket: "replacement-ticket")
+        let replacementClient = HermesClient(
+            connection: replacementConnection, profile: "default", transportFactory: { replacementTransport }
+        )
+        replacementTransport.open(replacementSocket)
+        try await replacementClient.connect()
+        addTeardownBlock { @MainActor in replacementClient.disconnect() }
+        appState.keep(
+            KeptDashboardRuntime(
+                client: replacementClient, bridge: held.bridge, connection: replacementConnection, keptAt: Date()
+            ),
+            for: mac.id
+        )
+        try await held.answer(["ok": true])
+        let replacedOutcome = await replacedTask.value
+        XCTAssertNil(replacedOutcome, "replaced kept runtime returns nil so switch fallback can handle it")
+        XCTAssertNil(appState.activeRoomSurface)
+
+        // 2. Navigation supersession during `readyKeptRuntimeForRooms` returns `.failed` silently.
+        let replacedKept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        replacedKept.runtime.dashboardTicketBridge = held.bridge
+        replacedKept.runtime.notifierPlugin.state = .unknown
+        appState.errorMessage = nil
+        let supersededTask = Task { @MainActor in await appState.openFarNotificationInPlace(roomPush, in: mac.id) }
+        try await held.waitForRequests(2)
+        appState.groupRoomEpoch &+= 1
+        try await held.answer(["ok": true])
+        let supersededOutcome = await supersededTask.value
+        XCTAssertEqual(supersededOutcome, .failed)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertNil(appState.errorMessage)
+
+        // 3. Losing kept room reachability mid-open triggers `closeFarRoomIfLetGo` and `.failed`.
+        replacedKept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [])
+        appState.errorMessage = nil
+        script.onLog = {
+            replacedKept.runtime.isConnected = false
+        }
+        let letGoOutcome = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+        script.onLog = nil
+        XCTAssertEqual(letGoOutcome, .failed)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Couldn't open that chat. Try again."))
+
+        // 4. Far Pulse push with empty `combinedDashboardPulse` falls back to `showsPulseScreen`.
+        replacedKept.runtime.isConnected = true
+        replacedKept.runtime.pulseHomeChatID = "pulse-mac"
+        appState.combinedDashboardPulse[mac.id] = nil
+        appState.pulseOpenRequest = nil
+        appState.pulseShownDashboardID = nil
+        let pulsePush = ConduitNotificationTarget(
+            profile: "default", sessionId: "pulse-mac", dashboardID: mac.id, type: "response.ready"
+        )
+
+        replacedKept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [])
+        let hiddenPulseOutcome = await appState.openFarNotificationInPlace(pulsePush, in: mac.id)
+        XCTAssertNil(hiddenPulseOutcome)
+        XCTAssertNil(appState.pulseShownDashboardID)
+
+        replacedKept.runtime.notifierPlugin.state = .reported(
+            version: "0.200.0", capabilities: [PulseClient.capability, PulseClient.feedCapability]
+        )
+        let reportedOutcome = await appState.openFarNotificationInPlace(pulsePush, in: mac.id)
+        XCTAssertEqual(reportedOutcome, .opened)
+        XCTAssertEqual(appState.pulseShownDashboardID, mac.id)
+        XCTAssertNotNil(appState.pulseOpenRequest)
+
+        appState.pulseOpenRequest = nil
+        appState.pulseShownDashboardID = nil
+        replacedKept.runtime.notifierPlugin.state = .unknown
+        let unansweredOutcome = await appState.openFarNotificationInPlace(pulsePush, in: mac.id)
+        XCTAssertEqual(unansweredOutcome, .opened)
+        XCTAssertEqual(appState.pulseShownDashboardID, mac.id)
+        XCTAssertNotNil(appState.pulseOpenRequest)
+    }
+
+    /// Needs you `.botChat` taps clear their pending reveal silently when
+    /// superseded before running, and clear it with an unavailable error when
+    /// `openFarBotChatNotification` returns `nil` mid-open (#3203).
+    func testFarNeedsYouBotChatSupersessionAndMidOpenNilOutcome() async throws {
+        var lookupCount = 0
+        var openCount = 0
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { _, _ in
+            lookupCount += 1
+            return [BotChatLookupRow(id: "far-atlas", title: BotMode.canonicalChatTitle)]
+        }
+        operations.openSessionWithProfile = { _, sessionID, _, _ in
+            openCount += 1
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Reply", timestamp: "ts-1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+
+        let atlas = BotProfile(
+            name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+            provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "far-atlas", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        var botWait = NeedsYouItem(
+            waitID: "w-bot", profile: "Atlas", kind: .approval, sessionIDs: ["far-atlas"],
+            since: Date(timeIntervalSince1970: 20)
+        )
+        botWait.dashboardID = mac.id
+
+        // 1. Superseded before async Task body runs: clears matching reveal without error.
+        appState.errorMessage = nil
+        appState.openNeedsYou(botWait)
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-atlas")
+        appState.groupRoomEpoch &+= 1
+        await waitUntil { appState.pendingNeedsYouReveal == nil }
+        XCTAssertNil(appState.pendingNeedsYouReveal)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(lookupCount, 0)
+        XCTAssertEqual(openCount, 0)
+
+        // 2. Kept runtime dropped before `openFarBotChatNotification`: returns nil,
+        // clears reveal, and sets unavailable error.
+        appState.openNeedsYou(botWait)
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-atlas")
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        await waitUntil { appState.pendingNeedsYouReveal == nil && appState.errorMessage != nil }
+        XCTAssertNil(appState.pendingNeedsYouReveal)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Couldn't open that chat. Try again."))
+    }
+
+    /// A far chat's waiting `PendingComposerSend` is held while its own dashboard
+    /// is disconnected even if the screen dashboard is connected, then delivers
+    /// through the far kept client once `isConnected` flips in its runtime scope
+    /// or after `resumeFarChatAfterReconnect` (#3104).
+    func testFarChatPendingComposerSendDeliversThroughKeptClientWhenConnected() async throws {
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CrossProfilePendingSend-\(UUID().uuidString)", isDirectory: true)
+        let store = OfflineChatCacheStore(directory: storeDirectory, writesAsynchronously: false)
+        addTeardownBlock {
+            store.waitForPendingWrites()
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        final class Seen {
+            var sent: [(ObjectIdentifier, String, String)] = []
+        }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.openSessionWithProfile = { _, sessionID, _, _ in
+            SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Reply", timestamp: "ts-1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        operations.sendPrompt = { client, sessionID, text in
+            seen.sent.append((ObjectIdentifier(client), sessionID, text))
+            return .accepted
+        }
+
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(
+            operations: operations, offlineChatCache: store
+        )
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        // Connect screen dashboard (VPS) so `appState.isConnected` is true while Mac is down.
+        let vpsConnection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "vps-ticket")
+        let vpsTransport = ClarifyFakeTransport()
+        let vpsSocket = ClarifyFakeSocket()
+        vpsSocket.refusesEveryRequest = true
+        vpsTransport.nextSocket = { vpsSocket }
+        let vpsClient = HermesClient(connection: vpsConnection, profile: "default", transportFactory: { vpsTransport })
+        vpsTransport.open(vpsSocket)
+        try await vpsClient.connect()
+        addTeardownBlock { @MainActor in vpsClient.disconnect() }
+        appState.client = vpsClient
+        appState.isConnected = true
+
+        var macRow = SessionSummary(
+            id: "mac-wait", alternateIds: [], title: "Mac Wait", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        macRow.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [macRow], at: Date()
+        )
+        XCTAssertNotNil(appState.startFarChatOpen(macRow, in: mac.id))
+        await waitUntil {
+            appState.activeSessionId == "mac-wait"
+                && appState.farChat == FarChatOwner(dashboardID: mac.id, profile: "default")
+                && appState.messages.contains { $0.id == "msg-mac-wait" }
+        }
+        appState.act(onRuntime: kept.runtime) {
+            appState.isConnected = false
+        }
+        appState.turnState = .reconnecting
+
+        XCTAssertTrue(appState.sendWhenConnected("Send when Mac connects", replyReference: nil))
+        XCTAssertEqual(appState.pendingComposerSend?.dashboardID, mac.id)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: mac.id).count, 1)
+
+        // Even with idle turn state on screen, settling waits until Mac's kept runtime connects.
+        // Drain the check scheduled by `sendWhenConnected` while Mac is still down so delivery
+        // below proves `AppState.isConnected`'s forwarder schedules its own check.
+        appState.turnState = .idle
+        await waitUntil { !appState.shownChat.pendingComposerSendCheckScheduled }
+        appState.settlePendingComposerSend()
+        XCTAssertNotNil(appState.pendingComposerSend)
+        XCTAssertTrue(seen.sent.isEmpty)
+
+        // 1. Flipping `isConnected` inside Mac's runtime scope schedules and delivers via `outgoing`.
+        appState.act(onRuntime: kept.runtime) {
+            appState.isConnected = true
+        }
+        await waitUntil {
+            seen.sent.count == 1 && appState.pendingComposerSend == nil
+                && store.loadPendingSends(dashboardID: mac.id).isEmpty
+        }
+        XCTAssertEqual(seen.sent.first?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(seen.sent.first?.1, "mac-wait")
+        XCTAssertEqual(seen.sent.first?.2, "Send when Mac connects")
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertTrue(store.loadPendingSends(dashboardID: mac.id).isEmpty)
+
+        // 2. Queued while disconnected then resumed via `resumeFarChatAfterReconnect` also delivers through `outgoing`.
+        appState.act(onRuntime: kept.runtime) {
+            appState.isConnected = false
+        }
+        appState.turnState = .reconnecting
+        XCTAssertTrue(appState.sendWhenConnected("Send after quiet reconnect", replyReference: nil))
+        XCTAssertEqual(store.loadPendingSends(dashboardID: mac.id).count, 1)
+        await waitUntil { !appState.shownChat.pendingComposerSendCheckScheduled }
+        XCTAssertNotNil(appState.pendingComposerSend)
+
+        kept.runtime.isConnected = true
+        appState.resumeFarChatAfterReconnect(mac.id)
+        await waitUntil {
+            seen.sent.count == 2 && appState.pendingComposerSend == nil
+                && store.loadPendingSends(dashboardID: mac.id).isEmpty
+        }
+        XCTAssertEqual(seen.sent.last?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(seen.sent.last?.1, "mac-wait")
+        XCTAssertEqual(seen.sent.last?.2, "Send after quiet reconnect")
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertTrue(store.loadPendingSends(dashboardID: mac.id).isEmpty)
     }
 }

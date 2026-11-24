@@ -241,6 +241,7 @@ extension AppState {
     ) -> Bool {
         if let owner {
             guard let runtime = keptRuntime(owner.dashboardID, on: owner.profile) else { return false }
+            seedFarChatList(runtime, from: owner.dashboardID)
             ensureKeptPluginReport(for: owner.dashboardID)
             widgetLaunchCoordinator.supersede()
             act(onRuntime: runtime) {
