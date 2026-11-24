@@ -60,6 +60,8 @@ extension AppState {
         let transcriptRevision: UInt64
         let sessionsRevision: Int
         let cronSessionsRevision: Int
+        let identityRevision: UInt64
+        let identityIndex: ObjectIdentifier?
     }
 
     var liveTurnRegistryRecheckPending: Bool { liveTurnRegistryRecheck != nil }

@@ -233,22 +233,38 @@ extension AppState {
         let durableID = session.storedSessionId ?? session.id
         let profile = activeProfile
         offlineChatCache.readTranscript(durableID, dashboardID: dashboardID, profile: profile) { [weak self] saved in
-            guard let self, let saved,
-                  self.chatViewportTransitionIsCurrent(generation: transition),
-                  self.shownChat.reconciliationToken == reconcileToken,
-                  self.reconciliation?.token == reconcileToken,
-                  self.activeSessionId == sessionID,
-                  self.activeDashboardID == dashboardID,
-                  self.activeProfile == profile,
-                  self.messages.isEmpty else { return }
-            self.offlineChatPresentation = OfflineChatPresentation(
-                dashboardID: dashboardID,
-                profile: profile,
-                snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
-                displayedTranscript: saved,
-                picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
-            )
-            ResponsivenessSignposts.signposter.emitEvent("Saved rows shown")
+            guard let self, let saved else { return }
+            let applyIfCurrent: () -> Void = {
+                guard self.chatViewportTransitionIsCurrent(generation: transition),
+                      self.shownChat.reconciliationToken == reconcileToken,
+                      self.reconciliation?.token == reconcileToken,
+                      self.activeSessionId == sessionID,
+                      self.activeDashboardID == dashboardID,
+                      self.activeProfile == profile,
+                      self.messages.isEmpty else { return }
+                self.offlineChatPresentation = OfflineChatPresentation(
+                    dashboardID: dashboardID,
+                    profile: profile,
+                    snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+                    displayedTranscript: saved,
+                    picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
+                )
+                ResponsivenessSignposts.signposter.emitEvent("Saved rows shown")
+            }
+            if case .unreachable = self.chatRuntimeRoute,
+               let farChat = self.farChat,
+               farChat.dashboardID == dashboardID,
+               farChat.profile == profile {
+                let standIn = DashboardRuntime()
+                standIn.activeProfile = farChat.profile
+                RuntimeScope.$runtime.withValue(standIn) {
+                    RuntimeScope.$dashboardID.withValue(farChat.dashboardID) {
+                        applyIfCurrent()
+                    }
+                }
+                return
+            }
+            self.onChatRuntimeNow(applyIfCurrent)
         }
     }
 

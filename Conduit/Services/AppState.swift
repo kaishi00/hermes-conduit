@@ -401,7 +401,8 @@ final class AppState: ObservableObject {
     @Published var combinedDashboardTrouble: [UUID: CombinedDashboardTrouble] = [:]
     /// Each combined dashboard that's down: how many retries it has had in
     /// a row, and the one waiting.
-    var combinedDashboardRetries: [UUID: CombinedDashboardRetry] = [:]
+    /// Published because `chatIsRecoveringConnection` reads it between early retries.
+    @Published var combinedDashboardRetries: [UUID: CombinedDashboardRetry] = [:]
     /// Combined dashboards whose quiet sign-in was refused (the password or
     /// the grant turned down): no pass asks again until it's opened.
     var combinedSignInsRefused: Set<UUID> = []
@@ -502,7 +503,10 @@ final class AppState: ObservableObject {
         get { shownRuntime.sessions }
         set {
             shownRuntime.sessions = newValue
-            guard actingOnRuntimeOnScreen else { return }
+            guard actingOnRuntimeOnScreen else {
+                if farChat?.dashboardID == activeDashboardID { openChatPinnedRepliesCache = nil }
+                return
+            }
             sessionsRevision &+= 1
             catalogRowsByAnyID = nil
             refreshActiveChatScrollSessionIdentity()
@@ -3304,7 +3308,7 @@ final class AppState: ObservableObject {
     let sessionPresentationCache: SessionPresentationCache
     let offlineChatCache: OfflineChatCacheStore
     let sessionYoloStore: SessionYoloStore
-    let conversationIdentityIndex: ConversationIdentityIndex
+    var conversationIdentityIndex: ConversationIdentityIndex { shownRuntime.conversationIdentityIndex }
     var sessionYoloWriteRevision: UInt64 = 0
     var sessionYoloWriteRevisions: [ChatScrollSessionKey: UInt64] = [:]
     /// Sessions whose user-initiated YOLO write is awaiting its RPC, tracked
@@ -3408,10 +3412,13 @@ final class AppState: ObservableObject {
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
-        let initialRuntime = DashboardRuntime(notifierPlugin: NotifierPluginStatus(
-            followsMain: noticeChannel.followsMain,
-            asksToUpdate: noticeChannel.asksToUpdate
-        ))
+        let initialRuntime = DashboardRuntime(
+            notifierPlugin: NotifierPluginStatus(
+                followsMain: noticeChannel.followsMain,
+                asksToUpdate: noticeChannel.asksToUpdate
+            ),
+            conversationIdentityIndex: conversationIdentityIndex
+        )
         self._runtimeOnScreen = Published(wrappedValue: initialRuntime)
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
@@ -3428,7 +3435,6 @@ final class AppState: ObservableObject {
         self.sessionPresentationCache = sessionPresentationCache
         self.offlineChatCache = offlineChatCache ?? Self.makeDefaultOfflineChatCache()
         self.sessionYoloStore = sessionYoloStore ?? SessionYoloStore(defaults: defaults)
-        self.conversationIdentityIndex = conversationIdentityIndex ?? ConversationIdentityIndex()
         self.chatResumeCoordinator = chatResumeCoordinator
             ?? ChatResumeCoordinator(store: ChatResumeStore(defaults: defaults))
         self.recoverySequence = recoverySequence

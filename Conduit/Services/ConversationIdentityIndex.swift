@@ -74,6 +74,10 @@ final class ConversationIdentityIndex {
     }
 
     private var runtimeToDurable: [String: [String: String]] = [:]
+    /// Bumped whenever the index's confirmed mappings change so caches
+    /// keyed by identity evidence (such as `OpenChatPinnedRepliesKey`)
+    /// stay valid on streaming publishes without ignoring rebinds.
+    private(set) var revision: UInt64 = 0
 
     func durableID(
         forRuntime runtimeID: String,
@@ -125,6 +129,7 @@ final class ConversationIdentityIndex {
             return conflict
         }
         runtimeToDurable[normalizedProfile, default: [:]][normalizedRuntime] = normalizedDurable
+        revision &+= 1
         conversationIdentityLog.debug(
             "Confirmed alias: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) → durable \(normalizedDurable, privacy: .private(mask: .hash)) (\(source.rawValue, privacy: .public))"
         )
@@ -165,9 +170,11 @@ final class ConversationIdentityIndex {
                 "Authoritative rebind: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) \(confirmed, privacy: .private(mask: .hash)) → \(normalizedDurable, privacy: .private(mask: .hash)) (\(source.rawValue, privacy: .public)); suspended work keeps its captured sets"
             )
             runtimeToDurable[normalizedProfile]?[normalizedRuntime] = normalizedDurable
+            revision &+= 1
             return conflict
         }
         runtimeToDurable[normalizedProfile, default: [:]][normalizedRuntime] = normalizedDurable
+        revision &+= 1
         conversationIdentityLog.debug(
             "Confirmed alias: runtime \(normalizedRuntime, privacy: .private(mask: .hash)) → durable \(normalizedDurable, privacy: .private(mask: .hash)) (\(source.rawValue, privacy: .public))"
         )
@@ -214,7 +221,10 @@ final class ConversationIdentityIndex {
                 // default: so a first catalog commit into an empty profile
                 // scope actually lands (chained optional assignment into a
                 // missing key is a silent no-op).
-                runtimeToDurable[normalizedProfile, default: [:]][runtimeID] = stored
+                if runtimeToDurable[normalizedProfile]?[runtimeID] != stored {
+                    runtimeToDurable[normalizedProfile, default: [:]][runtimeID] = stored
+                    revision &+= 1
+                }
             }
         }
     }
@@ -227,21 +237,33 @@ final class ConversationIdentityIndex {
             return
         }
         let ids = Set(sessionIDs.compactMap(ChatScrollIdentityNormalization.sessionID))
-        guard !ids.isEmpty, var scoped = runtimeToDurable[normalizedProfile] else { return }
-        scoped = scoped.filter { runtimeID, durableID in
+        guard !ids.isEmpty, let existing = runtimeToDurable[normalizedProfile] else { return }
+        let scoped = existing.filter { runtimeID, durableID in
             !ids.contains(runtimeID) && !ids.contains(durableID)
         }
+        guard scoped != existing else { return }
         if scoped.isEmpty {
             runtimeToDurable.removeValue(forKey: normalizedProfile)
         } else {
             runtimeToDurable[normalizedProfile] = scoped
         }
+        revision &+= 1
     }
 
     /// Drops every mapping in every profile. The server-change boundary
     /// calls this: mappings confirmed against one Hermes server must never
     /// answer lookups against another.
     func removeAll() {
+        guard !runtimeToDurable.isEmpty else { return }
         runtimeToDurable.removeAll()
+        revision &+= 1
+    }
+
+    /// Replaces every mapping with `other`'s snapshot (used when keeping
+    /// or restoring a combined dashboard's runtime across a switch).
+    func replaceAll(with other: ConversationIdentityIndex) {
+        guard runtimeToDurable != other.runtimeToDurable else { return }
+        runtimeToDurable = other.runtimeToDurable
+        revision &+= 1
     }
 }

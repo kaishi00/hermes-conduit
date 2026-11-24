@@ -100,6 +100,26 @@ extension AppState {
         return chatOnScreenRuntime?.isConnected ?? false
     }
 
+    /// Whether the chat on screen's gateway connection is recovering
+    /// (`Reconnecting…` rather than `Disconnected`): connecting now or between
+    /// the first few quiet retries.
+    var chatIsRecoveringConnection: Bool {
+        guard let farDashboardID = farChatDashboardID else { return isRecoveringConnection }
+        guard networkPathUsable else { return false }
+        if combinedDashboardStatus(farDashboardID) == .connecting { return true }
+        guard combinedDashboardTrouble[farDashboardID] == .down,
+              let retry = combinedDashboardRetries[farDashboardID],
+              retry.task != nil else { return false }
+        return retry.attempt < Self.quietReconnectAttempts
+    }
+
+    /// Whether the chat on screen hides a brief reconnect indicator while
+    /// returning to the foreground.
+    var chatHidesBriefReconnect: Bool {
+        guard farChatDashboardID != nil else { return hidesBriefReconnect }
+        return isReturningQuietly && networkPathUsable && chatIsRecoveringConnection
+    }
+
     /// The bots' work for the chat on screen: this dashboard's store when
     /// local, or the far chat's own dashboard's store (an empty inert store
     /// while that kept connection is gone, never the screen's).
