@@ -124,7 +124,7 @@ extension AppState {
             ?? act(onRuntime: runtime) { pulseHomeProfile }
         guard target.profile.map({ profilesMatch($0, pulseProfile) }) ?? true else { return nil }
         guard combinedDashboardPulse[dashboardID] != nil
-            || act(onRuntime: runtime) { showsPulseScreen } else { return nil }
+            || act(onRuntime: runtime, { showsPulseScreen }) else { return nil }
         openCombinedPulse(dashboardID)
         openPulse(card: nil)
         discardNotificationRouteFailure(for: target)
@@ -139,6 +139,7 @@ extension AppState {
         guard target.call == nil, target.roomID == nil else { return nil }
         let viewport = chatViewportTransitionGeneration
         let roomEpoch = groupRoomEpoch
+        var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
         let rawIDs = Set([target.sessionId, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty })
         let normalizedIDs = Set([target.sessionId, target.durableSessionID].compactMap(ChatScrollIdentityNormalization.sessionID))
         let pulseHomes = farPulseHomes(in: dashboardID)
@@ -149,15 +150,14 @@ extension AppState {
         if case .approval(let sessionKey, _, _) = target.decision {
             await readKeptPluginStatusIfUnknown(dashboardID)
             guard !Task.isCancelled else { return .retry }
-            guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+            guard !superseded else { return .failed }
             guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected else { return nil }
             if act(onRuntime: currentKept.runtime, { canAnswerRoomApprovals }) {
                 let keys = [sessionKey, target.durableSessionID, target.sessionId].compactMap { $0 }
-                if await actAcrossAwaits(onRuntime: currentKept.runtime, { await roomApproval(matching: keys) }) != nil {
-                    return nil
-                }
+                let approval = await actAcrossAwaits(onRuntime: currentKept.runtime, { await roomApproval(matching: keys) })
                 guard !Task.isCancelled else { return .retry }
-                guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+                guard !superseded else { return .failed }
+                if approval != nil { return nil }
             }
         }
         guard let initialKept = keptDashboardRuntimes[dashboardID], initialKept.client.isConnected else { return nil }
@@ -174,24 +174,24 @@ extension AppState {
                 }
             } catch {
                 guard !Task.isCancelled else { return .retry }
-                guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+                guard !superseded else { return .failed }
                 return nil
             }
             guard !Task.isCancelled else { return .retry }
-            guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+            guard !superseded else { return .failed }
             if pushesCanonicalChat {
                 var owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
                 if owner == nil, let refreshedKept = keptDashboardRuntimes[dashboardID], refreshedKept.client.isConnected {
                     await actAcrossAwaits(onRuntime: refreshedKept.runtime) { await refreshBotRoster() }
                     guard !Task.isCancelled else { return .retry }
-                    guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+                    guard !superseded else { return .failed }
                     owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
                 }
                 guard let owner else { return nil }
                 return await openFarBotChatNotification(target, of: owner, in: dashboardID)
             }
         }
-        guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+        guard !superseded else { return .failed }
         guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected,
               let runtime = keptRuntime(dashboardID, on: targetProfile) else { return nil }
         let requested = target.sessionId

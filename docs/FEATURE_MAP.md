@@ -8356,7 +8356,7 @@ then the rest) · Needs you (stage 4a: the other dashboards' waits in the list a
 (the group is one row) · Face ID for saved dashboards (the launch's one unlock
 covers the group) · a push or chat link from a combined dashboard (done: a
 chat's opens in place on that dashboard's runtime, no switch, #3053, and a
-Bot Chat's, #3192; a room's, a call's and its Pulse's still switch; see
+Bot Chat's, #3192; a call's and a peer-hosted room approval still switch; a room's, its Pulse's and an unlisted chat's open in place too, #3204; see
 Notifications) · a widget's, Siri's or Spotlight's chat (done: opens in place,
 #3063, a Bot Chat too, #3192; a widget's New Chat and Talk switch; see
 Launcher widgets) · the chat pane and chat windows (done: their chat and its let-go are the dashboard in scope's when one id names chats on two, an id Hermes bound to it included, #3056, #3064, #3073; see A chat beside the open one) · the Combine Dashboards caption · Tasks › Scheduled and Board (the phone's show only the dashboard on screen's, not needed; the desktop's reach the group, see the Desktop app line, desktop#342) · Artifacts (done: the page lists every combined dashboard's through its kept connection, All on or off, a chip each; see Artifacts) · New Bot (done: its sheet picks the dashboard it's made on) · README.md · Siri,
