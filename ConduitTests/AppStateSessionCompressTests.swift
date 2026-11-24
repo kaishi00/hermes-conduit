@@ -975,6 +975,13 @@ final class AppStateSessionCompressTests: XCTestCase {
         state.activeSessionId = "composer-origin"
         // A previous complete transcript admits both calls. Compression must
         // reconsider membership, but must never delete these saved links.
+        state.messages = MessageNormalizer.normalizeMessages(compressedRows.map(AnyCodable.from))
+        state.persistedTranscriptWindow = PersistedTranscriptWindowState(
+            requestedSessionID: "composer-origin", profile: "default", pageSize: 120,
+            resolvedSessionID: "composer-origin", runtimeSessionID: "composer-origin",
+            nextOffset: compressedRows.count, canLoadEarlier: false, reachedBeginning: true,
+            oldestLoadedTimestamp: PersistedTranscriptWindow.timestampLowerBound(in: state.messages)
+        )
         let calls = [
             VoiceHostChatCall(callID: "before-compressed", chatID: "composer-origin", startedAt: epoch, endedAt: epoch),
             VoiceHostChatCall(callID: "inside-older-visible", chatID: "composer-origin", startedAt: epoch.addingTimeInterval(90), endedAt: epoch.addingTimeInterval(90))
@@ -982,6 +989,8 @@ final class AppStateSessionCompressTests: XCTestCase {
         state.adoptHostChatCalls(calls, profile: "default")
         let links = state.voiceCallChatLinks.links
         XCTAssertEqual(links.count, 2)
+        XCTAssertEqual(state.messages.filter { $0.id == "voice-call-before-compressed" }.count, 1,
+            "The before-first marker must actually be displayed before compression removes it")
         let submitted = await state.submitComposer(text: "/compress")
         XCTAssertTrue(submitted)
         XCTAssertEqual(reads, 1)
@@ -990,6 +999,10 @@ final class AppStateSessionCompressTests: XCTestCase {
             "COMPRESSION_ORDINARY_ORDER: compression must preserve ordinary row order")
         XCTAssertEqual(state.messages.filter { $0.id == "voice-call-inside-older-visible" }.count, 1,
             "COMPRESSION_VISIBLE_PREFIX: a call inside retained compressed rows must survive the newest-120 hydration")
+        let insideMarker = try XCTUnwrap(state.messages.firstIndex { $0.id == "voice-call-inside-older-visible" })
+        XCTAssertEqual(Array(state.messages.dropFirst(max(0, insideMarker - 1)).prefix(3)).map(\.id),
+            ["1", "voice-call-inside-older-visible", "2"],
+            "The visible call belongs between compressed rows 1 and 2, without moving ordinary rows")
         let complete = outcome == nil && !partial
         XCTAssertEqual(state.messages.contains { $0.id == "voice-call-before-compressed" }, complete,
             "COMPRESSION_ADMISSION: only validated complete history admits calls before every compressed row")

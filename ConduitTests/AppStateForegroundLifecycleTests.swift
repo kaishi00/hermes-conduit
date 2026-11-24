@@ -1741,9 +1741,15 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         state.activeSessionId = active.id
         let opened = await state.openSession(active.id)
         XCTAssertTrue(opened)
-        state.adoptHostChatCalls([VoiceHostChatCall(callID: "foreground-before-first", chatID: "stored-a", startedAt: epoch, endedAt: epoch)], profile: "default")
+        let retainedCallTime = epoch.addingTimeInterval(90)
+        state.adoptHostChatCalls([
+            VoiceHostChatCall(callID: "foreground-before-first", chatID: "stored-a", startedAt: epoch, endedAt: epoch),
+            VoiceHostChatCall(callID: "foreground-retained-prefix", chatID: "stored-a", startedAt: retainedCallTime, endedAt: retainedCallTime)
+        ], profile: "default")
         let links = state.voiceCallChatLinks.links
         XCTAssertEqual(state.messages.contains { $0.id == "voice-call-foreground-before-first" }, !partial)
+        XCTAssertEqual(state.messages.filter { ["1", "2", "voice-call-foreground-retained-prefix"].contains($0.id) }.map(\.id),
+            ["1", "voice-call-foreground-retained-prefix", "2"])
         state.handleScenePhase(.background)
         await runSceneActivation(harness)
         XCTAssertEqual(reads, 2, "Exactly one foreground tail read")
@@ -1751,6 +1757,10 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id), (1..<(partial ? 123 : 5)).map(String.init))
         XCTAssertEqual(state.messages.filter { $0.id == "voice-call-foreground-before-first" }.count, partial ? 0 : 1,
             "FOREGROUND_VOICE_COVERAGE: before-first calls remain visible only on complete history")
+        let retainedMarker = try XCTUnwrap(state.messages.firstIndex { $0.id == "voice-call-foreground-retained-prefix" })
+        XCTAssertEqual(Array(state.messages.dropFirst(max(0, retainedMarker - 1)).prefix(3)).map(\.id),
+            ["1", "voice-call-foreground-retained-prefix", "2"],
+            "A call in the retained prefix stays bracketed after the real page advances to rows 3...122")
         XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, !partial)
         XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, partial ? 120 : 4)
         XCTAssertEqual(state.voiceCallChatLinks.links, links)
@@ -10208,5 +10218,90 @@ extension AppStateForegroundLifecycleTests {
             "the message doesn't just vanish"
         )
         box.client.disconnect()
+    }
+}
+
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    func testForegroundRotatedTailDoesNotAdmitCallBeforeRetainedRows() async throws {
+        let active = session("stored-a")
+        let epoch = Date(timeIntervalSince1970: 1_800_000_000)
+        let iso = ISO8601DateFormatter()
+        var reads = 0
+        var resumes = 0
+        var offsets: [Int] = []
+        func rows(_ ids: [Int]) -> [[String: Any]] {
+            ids.map { id in ["id": String(id), "role": id.isMultiple(of: 2) ? "assistant" : "user",
+                "content": "Rotated foreground row \(id)",
+                "timestamp": iso.string(from: epoch.addingTimeInterval(Double(id * 60)))] }
+        }
+        let initialRows = rows(Array(121...240))
+        let rotatedRows = rows(Array(120...237) + [241, 242])
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, id, _ in
+                resumes += 1
+                return SessionResumeResult(sessionId: id, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                reads += 1
+                let page = reads == 1 ? initialRows : rotatedRows
+                return .payload(["session_id": "stored-a", "messages": page,
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": page.count]])
+            },
+            loadEarlierTranscriptPage: { id, profile, offset in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                offsets.append(offset)
+                return .payload(["session_id": "stored-a", "messages": rows(Array(1...120)),
+                    "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": 120]])
+            },
+            refreshContext: { _, _ in }, verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [LiveSessionStatus(runtimeSessionId: "stored-a", storedSessionId: "stored-a", status: "idle")] }
+        ))
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [active]
+        state.activeSessionId = active.id
+        let opened = await state.openSession(active.id)
+        XCTAssertTrue(opened)
+        let ordinary = state.messages
+        XCTAssertEqual(ordinary.map(\.id), (121...240).map(String.init))
+        let callTime = epoch.addingTimeInterval(120.5 * 60)
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "unadopted-row-120", chatID: "stored-a",
+            startedAt: callTime, endedAt: callTime)], profile: "default")
+        let links = state.voiceCallChatLinks
+        XCTAssertFalse(state.messages.contains { $0.id == "voice-call-unadopted-row-120" })
+
+        state.handleScenePhase(.background)
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(resumes, 1, "ROTATED_REAL_ADVANCEMENT: anchor 237 must append, not manufacture a resume or direct advancement input")
+        XCTAssertTrue(offsets.isEmpty)
+        XCTAssertEqual(Array(state.messages.filter { $0.role != .system }.prefix(120)), ordinary,
+            "Append-only foreground retains rows 121...240 with exact metadata and order")
+        XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id), (121...242).map(String.init))
+        XCTAssertFalse(state.messages.contains { $0.id == "120" }, "Raw page row120 was not adopted")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120, "Raw page remains the paging source of truth")
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.oldestLoadedTimestamp, epoch.addingTimeInterval(121 * 60),
+            "ROTATED_DISPLAYED_COVERAGE: an unadopted older raw row cannot extend displayed coverage")
+        XCTAssertFalse(state.messages.contains { $0.id == "voice-call-unadopted-row-120" },
+            "ROTATED_CALL_ADMISSION: call120.5 must remain deferred before the first displayed row121")
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertEqual(state.shownChat.durablePersistedRowIDs,
+            Set((Array(120...237) + [241, 242]).map(String.init)), "Do not redefine accepted-page provenance")
+
+        let prepended = await state.loadEarlierMessages()
+        XCTAssertTrue(prepended)
+        XCTAssertEqual(offsets, [120])
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id), (1...242).map(String.init))
+        let marker = try XCTUnwrap(state.messages.firstIndex { $0.id == "voice-call-unadopted-row-120" })
+        XCTAssertEqual(state.messages[marker - 1].id, "120")
+        XCTAssertEqual(state.messages[marker + 1].id, "121")
+        XCTAssertEqual(state.voiceCallChatLinks, links, "Backfill reveals the marker without rewriting saved links")
     }
 }

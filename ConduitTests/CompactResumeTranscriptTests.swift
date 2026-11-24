@@ -3182,8 +3182,8 @@ extension CompactResumeTranscriptTests {
         XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
         XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, true)
         let iso = ISO8601DateFormatter()
-        let calls = [12, 13].map { day -> VoiceHostChatCall in
-            let start = iso.date(from: "2026-11-\(day)T12:00:00Z")!
+        let calls = try [12, 13].map { day -> VoiceHostChatCall in
+            let start = try XCTUnwrap(iso.date(from: "2026-11-\(day)T12:00:00Z"))
             return VoiceHostChatCall(callID: "synthetic-nov\(day)", chatID: "chronology-stored", startedAt: start, endedAt: start.addingTimeInterval(60))
         }
         state.adoptHostChatCalls(calls, profile: "default")
@@ -3193,8 +3193,8 @@ extension CompactResumeTranscriptTests {
         let oldIDs = Set(calls.map { "voice-call-\($0.callID)" })
         XCTAssertTrue(oldIDs.isDisjoint(with: state.messages.map(\.id)),
             "INITIAL_OPEN_WINDOW_ACCEPTANCE: older call markers must not be injected before a partial latest window, prior to any earlier-page load")
-        let visible = ["in-window", "new"].enumerated().map { index, id in
-            let start = iso.date(from: index == 0 ? "2026-11-20T10:01:30Z" : "2026-11-21T12:00:00Z")!
+        let visible = try ["in-window", "new"].enumerated().map { index, id in
+            let start = try XCTUnwrap(iso.date(from: index == 0 ? "2026-11-20T10:01:30Z" : "2026-11-21T12:00:00Z"))
             return VoiceHostChatCall(callID: id, chatID: "chronology-stored", startedAt: start, endedAt: start)
         }
         state.adoptHostChatCalls(visible, profile: "default")
@@ -3272,8 +3272,8 @@ extension CompactResumeTranscriptTests {
         state.client = HermesClient(connection: connection, profile: "default")
         state.sessions = [session("chronology-stored", alternateIDs: ["chronology-runtime"])]
         let iso = ISO8601DateFormatter()
-        let calls = [12, 13].map { day -> VoiceHostChatCall in
-            let start = iso.date(from: "2026-11-\(day)T12:00:00Z")!
+        let calls = try [12, 13].map { day -> VoiceHostChatCall in
+            let start = try XCTUnwrap(iso.date(from: "2026-11-\(day)T12:00:00Z"))
             return VoiceHostChatCall(callID: "synthetic-nov\(day)", chatID: "chronology-stored", startedAt: start, endedAt: start.addingTimeInterval(60))
         }
         state.adoptHostChatCalls(calls, profile: "default")
@@ -3464,10 +3464,10 @@ extension CompactResumeTranscriptTests {
             },
             persistedTranscript: { _, _, _ in
                 reads += 1
-                let rows = self.syntheticRows(refreshed ? (partial ? 2..<122 : 2..<4) : 1..<4).map { row in
-                    var row = row
-                    row["id"] = String(row["id"] as! Int)
-                    return row
+                let rows = (refreshed ? (partial ? 2..<122 : 2..<4) : 1..<4).map { index -> [String: Any] in
+                    ["id": String(index), "role": index.isMultiple(of: 2) ? "user" : "assistant",
+                     "content": "Row \(index)",
+                     "timestamp": String(format: "2026-09-01T%02d:%02d:00Z", 10 + (index / 60) % 10, index % 60)]
                 }
                 if refreshed && legacy {
                     return .payload(["session_id": "stored-a", "messages": rows])
@@ -3562,5 +3562,127 @@ extension CompactResumeTranscriptTests {
         XCTAssertFalse(harness.appState.messages.contains { $0.id == "voice-call-removed-skew-bound" },
             "RETAINED_COVERAGE_ADMISSION: calls older than all retained persisted rows must be deferred")
         XCTAssertEqual(harness.appState.voiceCallChatLinks.links.count, 1, "Deferral must not delete the durable link")
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testInitialHiddenPartialPageDefersCallsUntilVisibleBackfill() async throws {
+        try await hiddenPartialVoiceFixture(terminal: false)
+    }
+
+    func testInitialHiddenPartialPageDefersCallsUntilTerminalBackfill() async throws {
+        try await hiddenPartialVoiceFixture(terminal: true)
+    }
+
+    func testHiddenPartialBackfillDoesNotSeedTranscriptChangedDuringRead() async throws {
+        try await hiddenPartialVoiceFixture(terminal: false, clearDuringRead: true)
+    }
+
+    private func hiddenPartialVoiceFixture(terminal: Bool, clearDuringRead: Bool = false) async throws {
+        var tailReads = 0
+        var offsets: [Int] = []
+        var clearTranscript: (() -> Void)?
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        XCTAssertTrue(MessageNormalizer.normalizeMessages(hidden.map(AnyCodable.from)).isEmpty,
+            "HIDDEN_NORMALIZATION: valid raw rows establish no displayed timestamp coverage")
+        let visible = voiceWindowRows(0..<120)
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                tailReads += 1
+                return self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0)
+            },
+            loadEarlierTranscriptPage: { id, profile, offset in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                offsets.append(offset)
+                if clearDuringRead { clearTranscript?() }
+                return self.tailPagePayload(sessionId: "stored-a", rows: terminal ? [] : visible, offset: offset)
+            }
+        )
+        let state = harness.appState
+        clearTranscript = { [weak state] in state?.messages = [] }
+        defer { clearTranscript = nil }
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let epoch = Date(timeIntervalSince1970: 1_788_256_800)
+        let saved = VoiceHostChatCall(callID: "hidden-saved", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(30), endedAt: epoch.addingTimeInterval(30))
+        state.adoptHostChatCalls([saved], profile: "default")
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(tailReads, 1)
+        XCTAssertTrue(offsets.isEmpty, "INITIAL_HIDDEN_OPEN: zero earlier-page requests")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
+        XCTAssertTrue(state.messages.isEmpty,
+            "HIDDEN_INITIAL_ADMISSION: unknown partial coverage must not admit preexisting chat calls")
+        let newCall = VoiceHostChatCall(callID: "hidden-new", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(90), endedAt: epoch.addingTimeInterval(90))
+        state.adoptHostChatCalls([saved, newCall], profile: "default")
+        XCTAssertTrue(state.messages.isEmpty,
+            "HIDDEN_LATER_ADOPTION: no timestamp coverage must also defer newly discovered calls")
+        let links = state.voiceCallChatLinks
+        XCTAssertEqual(links.links.count, 2)
+        XCTAssertEqual(VoiceCallChatLinks.load(from: harness.defaults), links)
+
+        let prepended = await state.loadEarlierMessages()
+        XCTAssertEqual(prepended, !terminal && !clearDuringRead)
+        XCTAssertEqual(offsets, [120], "Raw hidden rows, not normalized count, control paging")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, terminal ? 120 : 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, terminal)
+        if clearDuringRead {
+            XCTAssertTrue(state.messages.isEmpty,
+                "An otherwise owned hidden-only window cannot seed a transcript written during the fetch")
+            XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
+            XCTAssertEqual(state.voiceCallChatLinks, links)
+            return
+        }
+        for call in [saved, newCall] {
+            XCTAssertEqual(state.messages.filter { $0.id == "voice-call-\(call.callID)" }.count, 1,
+                "HIDDEN_BACKFILL_ADMISSION: accepted visible coverage or terminal history reveals deferred calls")
+        }
+        XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.map(\.id),
+            terminal ? [] : (1...120).map(String.init))
+        if !terminal {
+            XCTAssertEqual(Array(state.messages.prefix(3)).map(\.id), ["1", "voice-call-hidden-saved", "2"])
+        }
+        XCTAssertEqual(state.voiceCallChatLinks, links, "Deferral must preserve stored links")
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testInitialHiddenPartialStandaloneCallKeepsOriginCard() async throws {
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        let harness = try makeHarness(
+            openSession: { _, _, _ in SessionResumeResult(sessionId: "runtime-call", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-call", rows: hidden, offset: 0) }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-call", alternateIDs: ["runtime-call"])]
+        let start = Date(timeIntervalSince1970: 1_000)
+        let link = VoiceCallChatLink(callID: "hidden-standalone", callSessionID: "stored-call",
+            chatRuntimeSessionID: "source-chat", chatStoredSessionID: "source-stored",
+            chatTitle: "Synthetic origin", profile: "default", startedAt: start, endedAt: start, resumed: false)
+        state.voiceCallChatLinks.add(link)
+        let opened = await state.openSession("stored-call")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
+        XCTAssertEqual(state.messages.map(\.id), [link.originMarkerID],
+            "HIDDEN_STANDALONE_ORIGIN: lack of chat coverage must not hide the call's way back")
+        XCTAssertEqual(state.voiceCallChatLinks.links, [link])
     }
 }

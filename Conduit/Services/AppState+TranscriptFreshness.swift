@@ -682,8 +682,13 @@ extension AppState {
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
                 reachedBeginning: priorOwned?.reachedBeginning == true
                     || !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
+                // Prior coverage stays because advancement retains its rows.
+                // Only displayed durable rows can extend it, not an older raw
+                // page row that fell before the append anchor and never landed.
                 oldestLoadedTimestamp: [priorOwned?.oldestLoadedTimestamp,
-                    PersistedTranscriptWindow.timestampLowerBound(in: transcript.messages)].compactMap { $0 }.min(),
+                    PersistedTranscriptWindow.timestampLowerBound(in: merged.filter {
+                        transcript.durableRowIDs.contains($0.id)
+                    })].compactMap { $0 }.min(),
                 hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false,
                 loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? []
             )

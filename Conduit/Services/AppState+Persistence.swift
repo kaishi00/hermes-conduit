@@ -193,7 +193,8 @@ extension AppState {
             chatIDs: ownIDs,
             openIDs: openIDs,
             profile: activeProfile,
-            loadedAfter: lowerBound
+            loadedAfter: lowerBound,
+            hasLoadedCoverage: ownedWindow?.reachedBeginning != false || lowerBound != nil
         )
     }
 

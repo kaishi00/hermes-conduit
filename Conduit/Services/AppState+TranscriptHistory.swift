@@ -568,6 +568,14 @@ extension AppState {
         let requestedSessionId = window.requestedSessionID
         let profile = window.profile
         let offset = window.nextOffset
+        // A validated hidden-only hydration can legitimately display no rows.
+        // Only that unchanged, still-owned empty transcript may be seeded by
+        // backfill; a transcript cleared or replaced during the read may not.
+        let emptyTranscriptRevision = shownChat.transcriptRevision
+        let canSeedEmptyTranscript = messages.isEmpty
+            && !window.reachedBeginning && window.oldestLoadedTimestamp == nil
+            && !window.hasBackfilledPrefix && window.loadedPageStarts.isEmpty
+            && !shownChat.durablePersistedRowIDs.isEmpty
         var arming = window
         arming.isLoadingEarlier = true
         persistedTranscriptWindow = arming
@@ -689,7 +697,12 @@ extension AppState {
                     held: messages
                 )
                 let merged: [ChatMessage]?
-                if foldedFromHeld > 0 {
+                if canSeedEmptyTranscript, messages.isEmpty,
+                   shownChat.transcriptRevision == emptyTranscriptRevision {
+                    var seenIDs: Set<String> = []
+                    let fresh = normalizedPage.filter { seenIDs.insert($0.id).inserted }
+                    merged = fresh.isEmpty ? nil : fresh
+                } else if foldedFromHeld > 0 {
                     // The folded result rows go; a page start on one moves
                     // to the call card that took it in (issue 1828).
                     foldedPageStart = PersistedTranscriptWindow.foldedPageStart(
