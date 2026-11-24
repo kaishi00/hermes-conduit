@@ -139,7 +139,13 @@ extension AppState {
         guard target.call == nil, target.roomID == nil else { return nil }
         let viewport = chatViewportTransitionGeneration
         let roomEpoch = groupRoomEpoch
-        var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
+        func cancelledOrSupersededOutcome() -> NotificationOpenOutcome? {
+            if Task.isCancelled { return .retry }
+            if chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch {
+                return .failed
+            }
+            return nil
+        }
         let rawIDs = Set([target.sessionId, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty })
         let normalizedIDs = Set([target.sessionId, target.durableSessionID].compactMap(ChatScrollIdentityNormalization.sessionID))
         let pulseHomes = farPulseHomes(in: dashboardID)
@@ -149,14 +155,12 @@ extension AppState {
               rawIDs.isDisjoint(with: botChats), normalizedIDs.isDisjoint(with: botChats) else { return nil }
         if case .approval(let sessionKey, _, _) = target.decision {
             await readKeptPluginStatusIfUnknown(dashboardID)
-            guard !Task.isCancelled else { return .retry }
-            guard !superseded else { return .failed }
+            if let abort = cancelledOrSupersededOutcome() { return abort }
             guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected else { return nil }
             if act(onRuntime: currentKept.runtime, { canAnswerRoomApprovals }) {
                 let keys = [sessionKey, target.durableSessionID, target.sessionId].compactMap { $0 }
                 let approval = await actAcrossAwaits(onRuntime: currentKept.runtime, { await roomApproval(matching: keys) })
-                guard !Task.isCancelled else { return .retry }
-                guard !superseded else { return .failed }
+                if let abort = cancelledOrSupersededOutcome() { return abort }
                 if approval != nil { return nil }
             }
         }
@@ -173,25 +177,22 @@ extension AppState {
                     try await notificationTargetIsCanonicalChat(target, of: targetProfile)
                 }
             } catch {
-                guard !Task.isCancelled else { return .retry }
-                guard !superseded else { return .failed }
+                if let abort = cancelledOrSupersededOutcome() { return abort }
                 return nil
             }
-            guard !Task.isCancelled else { return .retry }
-            guard !superseded else { return .failed }
+            if let abort = cancelledOrSupersededOutcome() { return abort }
             if pushesCanonicalChat {
                 var owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
                 if owner == nil, let refreshedKept = keptDashboardRuntimes[dashboardID], refreshedKept.client.isConnected {
                     await actAcrossAwaits(onRuntime: refreshedKept.runtime) { await refreshBotRoster() }
-                    guard !Task.isCancelled else { return .retry }
-                    guard !superseded else { return .failed }
+                    if let abort = cancelledOrSupersededOutcome() { return abort }
                     owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
                 }
                 guard let owner else { return nil }
                 return await openFarBotChatNotification(target, of: owner, in: dashboardID)
             }
         }
-        guard !superseded else { return .failed }
+        if let abort = cancelledOrSupersededOutcome() { return abort }
         guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected,
               let runtime = keptRuntime(dashboardID, on: targetProfile) else { return nil }
         let requested = target.sessionId

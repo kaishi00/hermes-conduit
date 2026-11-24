@@ -549,7 +549,7 @@ extension AppState {
     /// own takes its profile's rows from the Chats list's read of that
     /// dashboard, and one whose kept list lacks the row (kept before the
     /// chat was made) takes the row itself.
-    private func seedFarChatList(_ runtime: DashboardRuntime, from dashboardID: UUID, with session: SessionSummary) {
+    func seedFarChatList(_ runtime: DashboardRuntime, from dashboardID: UUID, with session: SessionSummary? = nil) {
         func local(_ row: SessionSummary) -> SessionSummary {
             var row = row
             row.combinedDashboardID = nil
@@ -559,7 +559,7 @@ extension AppState {
             let profile = runtime.activeProfile
             runtime.sessions = read.sessions.filter { ($0.profile ?? "default") == profile }.map(local)
         }
-        guard !runtime.sessions.contains(where: { $0.id == session.id }) else { return }
+        guard let session, !runtime.sessions.contains(where: { $0.id == session.id }) else { return }
         runtime.sessions.insert(local(session), at: 0)
     }
 
