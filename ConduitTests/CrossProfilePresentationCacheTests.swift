@@ -4462,11 +4462,18 @@ extension CrossProfilePresentationCacheTests {
         plainWait.relayGatewayID = "gw-far"
         appState.needsYou.apply([], profile: "default", dashboardID: vps.id) { _ in false }
         appState.needsYou.applyOther([plainWait], profile: "default", dashboardID: mac.id) { _ in false }
+        XCTAssertTrue(appState.needsYouOpensViaSwitch(plainWait), "unread Pulse keeps plain far waits on switch")
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(
+            bridge: ObjectIdentifier(try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.bridge)),
+            unseen: 0,
+            at: Date()
+        )
         XCTAssertFalse(appState.needsYouOpensViaSwitch(plainWait))
 
         appState.isNativeHermesCallActive = true
         appState.openNeedsYou(plainWait)
         XCTAssertNil(appState.errorMessage, "in-place far Needs you does not refuse during a call")
+        XCTAssertNil(appState.pinSyncNotice)
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-stored")
         await waitUntil { appState.activeSessionId == "far-runtime" && appState.messages.contains { $0.id == "msg-far-stored" } }
         appState.isNativeHermesCallActive = false
@@ -4506,7 +4513,8 @@ extension CrossProfilePresentationCacheTests {
         appState.openNeedsYou(botWait)
         await waitUntil { appState.activeSessionId == "far-atlas" && appState.messages.contains { $0.id == "msg-far-atlas" } }
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for far Bot Chat wait")
-        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        XCTAssertEqual(appState.activeBotChatProfile, "atlas")
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-atlas")
         XCTAssertEqual(seen.looked.last?.1, "atlas")
 
@@ -4539,9 +4547,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.needsYouOpensViaSwitch(plainWait))
         appState.isNativeHermesCallActive = true
         appState.errorMessage = nil
+        appState.pinSyncNotice = nil
         appState.openNeedsYou(plainWait)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "call refuses fallback switch")
-        XCTAssertNotNil(appState.errorMessage)
+        XCTAssertNotNil(appState.pinSyncNotice?.message ?? appState.errorMessage)
         appState.isNativeHermesCallActive = false
         appState.openNeedsYou(plainWait)
         await waitUntil { appState.activeDashboardID == mac.id }

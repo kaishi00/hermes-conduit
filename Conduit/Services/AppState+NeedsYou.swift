@@ -498,6 +498,7 @@ extension AppState {
            farBotChatRuntime(in: dashboardID) != nil {
             return .botChat(bot)
         }
+        guard combinedDashboardPulse[dashboardID] != nil || !pulseHomes.isEmpty else { return nil }
         let clientProfile = kept.client.profile ?? "default"
         if let row = farNeedsYouListedRow(for: item, in: dashboardID, ids: ids) {
             guard !isFarBotChat(row, in: dashboardID) else { return nil }
@@ -532,14 +533,27 @@ extension AppState {
             dismissSidebarDrawer()
             let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
             Task { @MainActor [weak self] in
-                guard let self,
-                      self.chatViewportTransitionGeneration == viewport,
-                      self.groupRoomEpoch == roomEpoch,
-                      let outcome = await self.openFarBotChatNotification(target, of: bot, in: dashboardID) else { return }
+                guard let self else { return }
+                guard self.chatViewportTransitionGeneration == viewport,
+                      self.groupRoomEpoch == roomEpoch else {
+                    if let reveal, self.pendingNeedsYouReveal?.opening == reveal.opening {
+                        self.pendingNeedsYouReveal = nil
+                    }
+                    return
+                }
+                guard let outcome = await self.openFarBotChatNotification(target, of: bot, in: dashboardID) else {
+                    if let reveal, self.pendingNeedsYouReveal?.opening == reveal.opening {
+                        self.pendingNeedsYouReveal = nil
+                    }
+                    if self.errorMessage == nil {
+                        self.errorMessage = unavailable
+                    }
+                    return
+                }
                 if outcome == .opened {
                     self.showWaitingQuestionCards()
                 } else {
-                    if let reveal, self.pendingNeedsYouReveal == reveal {
+                    if let reveal, self.pendingNeedsYouReveal?.opening == reveal.opening {
                         self.pendingNeedsYouReveal = nil
                     }
                     if outcome == .retry {
