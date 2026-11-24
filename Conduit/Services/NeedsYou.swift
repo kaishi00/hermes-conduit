@@ -247,6 +247,7 @@ final class NeedsYouStore: ObservableObject {
         let decisionKey: String
         let presentationProfile: String
         let cacheSessionIDs: [String]
+        var dashboardID: UUID? = nil
     }
 
     private(set) var cardsDrawnHere: [String: DrawnCard] = [:]
@@ -259,10 +260,18 @@ final class NeedsYouStore: ObservableObject {
     /// no longer names, forgotten as they're handed back: the plugin gave
     /// the question up (it ran out, or was answered elsewhere), and an
     /// answer would be refused.
-    func takeCardsNoLongerListed(profile: String) -> [DrawnCard] {
+    func takeCardsNoLongerListed(profile: String, dashboardID: UUID? = nil) -> [DrawnCard] {
         // A profile matches its own spelling in any case (issue 2726).
-        let listed = Set(items.filter { AppState.profilesMatch($0.profile, profile) }.compactMap { $0.card?.requestID })
-        let gone = cardsDrawnHere.values.filter { AppState.profilesMatch($0.profile, profile) && !listed.contains($0.requestID) }
+        let targetDashboard = dashboardID ?? self.dashboardID
+        let source = (targetDashboard != nil && targetDashboard != self.dashboardID)
+            ? (targetDashboard.flatMap { otherDashboards[$0] } ?? [])
+            : items
+        let listed = Set(source.filter { AppState.profilesMatch($0.profile, profile) }.compactMap { $0.card?.requestID })
+        let gone = cardsDrawnHere.values.filter {
+            ($0.dashboardID ?? self.dashboardID) == targetDashboard
+                && AppState.profilesMatch($0.profile, profile)
+                && !listed.contains($0.requestID)
+        }
         for card in gone { cardsDrawnHere[card.requestID] = nil }
         return gone.sorted { $0.requestID < $1.requestID }
     }
