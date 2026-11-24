@@ -167,9 +167,13 @@ extension AppState {
     /// A far chat goes by its ids on its own dashboard, read in its scope.
     var activeChatArtifactSessionIDs: [String] {
         guard chatOnScreenIsInScope else { return onChatRuntimeValue(unreachable: []) { activeChatArtifactSessionIDs } }
-        if let session = activeChatSessionSummary {
+        // Another dashboard's chat leaves the Cron rows out: they're the
+        // screen's, and one under the far chat's id would add its stored
+        // id to these addresses (as the title menu's lookup, #3169).
+        let far = !actingOnRuntimeOnScreen
+        if let session = far ? uncachedActiveChatSessionSummary(includingCronRuns: false) : activeChatSessionSummary {
             let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
-            return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
+            return Array(chatOwnSessionIDs(for: session.id, includingCronRuns: !far).union(seeds)).sorted()
         }
         guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
               let sessionID = activeSessionId, !sessionID.isEmpty else { return [] }
@@ -179,7 +183,7 @@ extension AppState {
         // The open id is the runtime one; its store keeps the durable id,
         // confirmed under the bot's profile even when the registry hasn't
         // noted the chat yet (after a relaunch).
-        var ids = chatOwnSessionIDs(for: sessionID)
+        var ids = chatOwnSessionIDs(for: sessionID, includingCronRuns: !far)
         if let durable = ChatScrollIdentityNormalization.sessionID(
             confirmedDurableSessionID(forRuntime: sessionID, profile: profile)
         ) {
@@ -194,7 +198,7 @@ extension AppState {
     /// A workstream's chat by its ids, when it's open on its bot's profile,
     /// the store its checklists, taps and files are kept in; else none.
     private func activeWorkstreamChatIDs(_ sessionID: String) -> [String] {
-        var ids = chatOwnSessionIDs(for: sessionID).union([sessionID])
+        var ids = chatOwnSessionIDs(for: sessionID, includingCronRuns: actingOnRuntimeOnScreen).union([sessionID])
         guard let profile = botWork.workstreamProfile(forSession: ids),
               Self.profilesMatch(profile, activeProfile) else { return [] }
         if let durable = ChatScrollIdentityNormalization.sessionID(

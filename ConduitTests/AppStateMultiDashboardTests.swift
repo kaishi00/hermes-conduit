@@ -2324,6 +2324,48 @@ extension AppStateMultiDashboardTests {
         ].joined(separator: "\n"), "the earlier file's failure, then the stop")
     }
 
+    /// An upload whose tab moved to another folder while the first file
+    /// went sends nothing after it, and the stop is said before the next
+    /// file is read at all: a file past the move that can't be opened
+    /// doesn't put its own message in the stop's place (issue 3178).
+    func testAnUploadStoppedByAnotherFolderStopsBeforeReadingTheNextFile() async throws {
+        let (explorer, held, appState) = try await openedFolder()
+        defer { withExtendedLifetime(appState) {} }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appendingPathComponent("one.txt")
+        let missing = folder.appendingPathComponent("gone.txt")
+        let second = folder.appendingPathComponent("two.txt")
+        try Data("one".utf8).write(to: first)
+        try Data("two".utf8).write(to: second)
+
+        let upload = Task { await explorer.upload([first, missing, second], into: "/w/app") }
+        try await held.waitForRequests(3)
+        // The tab moves to another folder while the first file sends.
+        explorer.close()
+        let other = Task { await explorer.open(root: "/w/other", profile: appState.activeProfile) }
+        try await held.waitForRequests(5)
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        await other.value
+        try await held.answer(["ok": true], toPathEnding: "/workspace/upload")
+        // The refresh after the sent file reads the folder now open.
+        try await held.waitForRequests(6)
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/list")
+        try await held.waitForRequests(7)
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        let failure = await upload.value
+
+        let paths = held.sent.dropFirst(2).map(\.path)
+        XCTAssertEqual(paths.filter { $0.hasSuffix("/workspace/upload") }.count, 1, "nothing goes to the other folder")
+        XCTAssertEqual(
+            failure,
+            AppLocalization.string("The remaining files weren't uploaded, since the folder or connection changed.", table: .chat),
+            "only the stop: the file after the move was never read, so it has no failure of its own"
+        )
+    }
+
     /// A picture sent into a room is read back through the plugin's room
     /// files (issue 2035), only from a plugin that serves it, and a refusal
     /// says the file is gone rather than that the host was out of reach.

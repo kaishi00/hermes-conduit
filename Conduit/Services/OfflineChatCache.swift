@@ -531,6 +531,10 @@ final class OfflineChatCacheStore {
     /// in flight across one keeps nothing (#1525).
     var removals: Int { memoryLock.withLock { removalCount } }
     private var removalCount = 0
+    /// Tests only: when set, a read's answer waits here on the main thread
+    /// until the test hands it on, so a test can act between a read's
+    /// start and its answer (a far chat's dashboard dropping mid-read).
+    var readAnswersHeldForTesting: [@MainActor () -> Void]?
 
     init(
         directory: URL,
@@ -661,7 +665,14 @@ final class OfflineChatCacheStore {
             // Weighed on the main queue, after any removal the main thread
             // made while the file was read.
             DispatchQueue.main.async { [self] in
-                completion(removals == removalsBefore ? transcript : nil)
+                let answer: @MainActor () -> Void = { [self] in
+                    completion(removals == removalsBefore ? transcript : nil)
+                }
+                if readAnswersHeldForTesting != nil {
+                    readAnswersHeldForTesting?.append(answer)
+                } else {
+                    answer()
+                }
             }
         }
     }

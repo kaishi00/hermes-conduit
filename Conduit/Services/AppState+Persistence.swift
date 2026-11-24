@@ -206,7 +206,7 @@ extension AppState {
         // only the screen's list.
         let cacheable = actingOnRuntimeOnScreen && includingCronRuns
         if cacheable, let cached = chatOwnSessionIDsCache[key] { return cached }
-        let ids = Self.ownSessionIDs(for: seeds, in: [sessions, includingCronRuns ? cronSessions : []].joined())
+        let ids = Self.ownSessionIDs(for: seeds, in: includingCronRuns ? sessions + cronSessions : sessions)
         guard cacheable else { return ids }
         if chatOwnSessionIDsCache.count >= 8 { chatOwnSessionIDsCache.removeAll() }
         chatOwnSessionIDsCache[key] = ids
