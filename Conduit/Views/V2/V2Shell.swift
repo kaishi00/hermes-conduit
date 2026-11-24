@@ -1393,13 +1393,13 @@ struct V2Shell: View {
             }
             // The tapped portrait's chat lands after the push (#1700); a
             // room has landed by its push.
-            .onChange(of: appState.botZoomRoomKey ?? appState.activeBotChatProfile) { _, open in
+            .onChange(of: appState.botZoomOpenKey) { _, open in
                 appState.botZoom.opened(open)
             }
             // The tapped portrait's chat has left: the next open pushes.
             .onChange(of: botsPath) { old, path in
                 if path == [.conversation], !old.contains(.conversation) {
-                    appState.botZoom.pushed(open: appState.botZoomRoomKey ?? appState.activeBotChatProfile)
+                    appState.botZoom.pushed(open: appState.botZoomOpenKey)
                 } else if !path.contains(.conversation) {
                     appState.botZoom.left()
                 }
