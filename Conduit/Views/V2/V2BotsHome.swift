@@ -2255,7 +2255,7 @@ struct BotZoomDestination: ViewModifier {
         // screen: it counts as its bot's, so the zoom holds through the
         // visit and Back still shrinks the Bot Chat home. A transition
         // changed on a pushed screen leaves Back with no animation.
-        let open = appState.botZoomRoomKey ?? appState.activeBotChatProfile ?? appState.activeWorkstream?.profile
+        let open = appState.botZoomOpenKey ?? appState.botZoomKey(forBot: appState.activeWorkstream?.profile)
         let armed = route == .conversation && fromHome && !reduceMotion ? appState.botZoom.source(open: open) : nil
         let held = reduceMotion ? nil : landedSource.flatMap { source in
             open?.caseInsensitiveCompare(source) == .orderedSame ? source : nil
@@ -2363,6 +2363,23 @@ extension AppState {
     /// the chat under it, so it comes before the open Bot Chat.
     var botZoomRoomKey: String? {
         activeRoomSurface.map { BotZoomArm.roomKey($0.room.roomID) }
+    }
+
+    /// The zoom key of the portrait a bot's chat on screen grows from: its
+    /// name on this dashboard, or its combined key
+    /// (`CombinedBotsHomeOrder.key`) when the chat is another combined
+    /// dashboard's, open in place, whose portrait stays in that
+    /// dashboard's section of the grid.
+    func botZoomKey(forBot profile: String?) -> String? {
+        guard let profile else { return nil }
+        if let far = farChatDashboardID { return CombinedBotsHomeOrder.key(far, profile) }
+        return profile
+    }
+
+    /// What the Bots stack's zoom takes as open: the room over the chat,
+    /// else the open Bot Chat's portrait key.
+    var botZoomOpenKey: String? {
+        botZoomRoomKey ?? botZoomKey(forBot: chatBotChatProfile)
     }
 }
 

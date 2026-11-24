@@ -7,8 +7,8 @@
 //  shown in the same grid as the dashboard on screen's, mixed in one order
 //  for the group kept on this phone (until arranged, each dashboard's in
 //  Saved Dashboards order), every portrait with its badge. A portrait's tap
-//  switches to that dashboard (through the kept connection) and opens the
-//  bot's chat; the portrait stays where it was.
+//  opens the bot's chat in place through the kept connection, or switches
+//  to that dashboard when it was let go; the portrait stays where it was.
 //
 
 import Foundation
@@ -457,12 +457,15 @@ extension AppState {
         }
     }
 
-    /// Opens another combined dashboard's bot: the switch to its dashboard
-    /// (through its kept connection), then the bot's chat, as a link to it
-    /// opens.
+    /// Opens another combined dashboard's bot. Kept connected, its Bot Chat
+    /// opens in place on its own runtime, with no switch (during a call
+    /// too), as its Chats row opens it. Only a dashboard whose kept
+    /// connection was let go still switches there (through a new sign-in),
+    /// then opens the bot's chat as a link to it opens.
     /// `zooms`: the chat grows out of the portrait (not when it opens
     /// beside the grid).
     func openCombinedBot(_ bot: BotProfile, in dashboardID: UUID, zooms: Bool = true) {
+        if openCombinedBotInPlace(bot, in: dashboardID, zooms: zooms) { return }
         guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
         // The chat grows out of the portrait as this dashboard's do: the
         // portrait stays where it is through the switch (the group's one
@@ -495,6 +498,53 @@ extension AppState {
             // count (issue 2792).
             self.openLinkedBotChat(bot.name, inDashboard: dashboardID, counted: request)
         }
+    }
+
+    /// The portrait's tap, in place: the bot as its own dashboard names it
+    /// (its kept runtime's roster, else Bots Home's read), its Bot Chat
+    /// opened on that dashboard's runtime across its awaits. The chat grows
+    /// out of the portrait where it stands, under its combined key, since
+    /// no switch makes it one of this dashboard's. False when its dashboard
+    /// isn't kept connected: the tap switches.
+    private func openCombinedBotInPlace(_ bot: BotProfile, in dashboardID: UUID, zooms: Bool) -> Bool {
+        guard let runtime = farBotChatRuntime(in: dashboardID) else { return false }
+        let far = Self.linkedBot(named: bot.name, in: farBotRoster(in: dashboardID)) ?? bot
+        let zoomKey = CombinedBotsHomeOrder.key(dashboardID, bot.name)
+        ensureKeptPluginReport(for: dashboardID)
+        widgetLaunchCoordinator.supersede()
+        if zooms { botZoom.tap(zoomKey) }
+        // Each tap counts: an open still waiting on a switch or a link
+        // stands down for this one.
+        botChatOpenRequests &+= 1
+        let request = botChatOpenRequests
+        let writes = errorMessageWrites
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await self.actAcrossAwaits(onRuntime: runtime) {
+                await self.openBotChatOutcome(for: far)
+            }
+            switch outcome {
+            case .opened:
+                // Its chat comes forward over the grid, as a link's does.
+                self.dismissSidebarDrawer()
+            case .superseded:
+                // A newer tap owns the zoom, its own arm included.
+                if zooms, request == self.botChatOpenRequests { self.botZoom.openFailed(zoomKey) }
+            case .failed:
+                // A newer tap owns the zoom and what the grid says.
+                guard request == self.botChatOpenRequests else { return }
+                if zooms { self.botZoom.openFailed(zoomKey) }
+                // The grid still shows: it says why, as this dashboard's
+                // portraits do (`openBotChatFromList`).
+                if let error = self.errorMessage, self.errorMessageWrites != writes {
+                    self.botsListNotice = error
+                    self.errorMessage = nil
+                } else {
+                    self.botsListNotice = AppLocalization.string("Could not open \(far.displayLabel)'s Bot Chat.")
+                }
+            }
+        }
+        return true
     }
 
     /// What another combined dashboard's plugin serves, read once per kept
@@ -597,15 +647,29 @@ extension AppState {
         return combinedBotChatWaits(bot, in: id).first
     }
 
-    /// Another combined dashboard's bot's overview: the switch to its
-    /// dashboard, then `show` with the bot as that dashboard lists it.
-    func openCombinedBotOverview(_ bot: BotProfile, in dashboardID: UUID, show: @escaping (BotProfile) -> Void) {
+    /// Another combined dashboard's bot's overview. Kept connected, it shows
+    /// in place, with no switch (during a call too): `show` gets the bot as
+    /// its own dashboard names it and that dashboard's id, and the sheet
+    /// reads and acts on its work through its kept connection. Only a
+    /// dashboard whose kept connection was let go switches there first,
+    /// and then `show` gets the bot as that dashboard, now on screen,
+    /// lists it, with no id.
+    func openCombinedBotOverview(
+        _ bot: BotProfile,
+        in dashboardID: UUID,
+        show: @escaping (BotProfile, UUID?) -> Void
+    ) {
+        if farBotChatRuntime(in: dashboardID) != nil {
+            ensureKeptPluginReport(for: dashboardID)
+            show(Self.linkedBot(named: bot.name, in: farBotRoster(in: dashboardID)) ?? bot, dashboardID)
+            return
+        }
         guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.switchToCombinedDashboardUntilSettled(dashboardID)
             guard self.activeDashboardID == dashboardID else { return }
-            show(self.shownBotRoster.first { $0.name.caseInsensitiveCompare(bot.name) == .orderedSame } ?? bot)
+            show(self.shownBotRoster.first { $0.name.caseInsensitiveCompare(bot.name) == .orderedSame } ?? bot, nil)
         }
     }
 
