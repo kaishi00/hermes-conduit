@@ -198,6 +198,17 @@ extension AppState {
     /// create is under way, which keeps the copy that one followed.
     @discardableResult
     func followChatBeingLeft(turnWasRunning: Bool, joiningCreation: Bool = false) -> Set<String>? {
+        // Another combined dashboard's chat, open in place, is followed on
+        // its own runtime, under its own dashboard and profile, as an open
+        // leaves it (`setActiveSessionState`). Followed in the screen's
+        // scope, its copy would be the screen's dashboard's: its events,
+        // which come on its own runtime, would never reach it, and it would
+        // stay running for good (issue 3217).
+        guard chatOnScreenIsInScope else {
+            return onChatRuntimeValue(unreachable: nil) {
+                followChatBeingLeft(turnWasRunning: turnWasRunning, joiningCreation: joiningCreation)
+            }
+        }
         guard let oldID = activeSessionId else { return nil }
         let ids = followedSessionIDs(forChatOpenAs: oldID)
         if joiningCreation, followedChat(answering: ids) != nil { return nil }
