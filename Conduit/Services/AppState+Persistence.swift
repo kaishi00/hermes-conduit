@@ -170,6 +170,18 @@ extension AppState {
 
     /// The chat's "Voice call" markers for calls started from it.
     func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
+        mergeVoiceCallMarkers(into: history, sessionId: sessionId, window: persistedTranscriptWindow)
+    }
+
+    /// With the paging window the history stands in: while it has older
+    /// pages to load, a call from before the loaded rows waits for its page
+    /// (#3196). Load earlier passes the window it's about to publish, and a
+    /// transcript no window describes (a compression's) passes none.
+    func mergeVoiceCallMarkers(
+        into history: [ChatMessage], sessionId: String, window: PersistedTranscriptWindowState?
+    ) -> [ChatMessage] {
+        let lowerBound = window?.canLoadEarlier == true
+            ? PersistedTranscriptWindow.timestampLowerBound(in: history) : nil
         let ownIDs = chatOwnSessionIDs(for: sessionId)
         var openIDs = ownIDs
         if let call = voiceCallSessionID(ownIDs: ownIDs) { openIDs.insert(call) }
@@ -177,7 +189,8 @@ extension AppState {
             into: history,
             chatIDs: ownIDs,
             openIDs: openIDs,
-            profile: activeProfile
+            profile: activeProfile,
+            loadedAfter: lowerBound
         )
     }
 
@@ -380,7 +393,8 @@ extension AppState {
     private func showVoiceCallMarkersInOpenChat(profile: String) {
         guard profile == activeProfile, let sessionID = activeSessionId else { return }
         let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
-        guard merged.count != messages.count else { return }
+        // A card can move without the count changing.
+        guard merged != messages else { return }
         messages = merged
         cacheMessagePresentation()
     }

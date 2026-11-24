@@ -809,6 +809,48 @@ extension HermesVoiceGatewayTimeoutTests {
         )
     }
 
+    func testVoiceCallMarkerReplacementPreservesOrdinaryOrderAndTimestampTies() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "tie-a", row: "", chat: "chat", at: start))
+        links.add(chatLink(call: "tie-b", row: "", chat: "chat", at: start))
+        links.add(chatLink(call: "foreign", row: "", chat: "other-chat", at: start))
+        links.add(chatLink(call: "profile", row: "", chat: "chat", at: start, profile: "work"))
+        let ordinary = [
+            ChatMessage(id: "unknown", role: .user, content: "unknown", timestamp: "unknown"),
+            ChatMessage(id: "equal", role: .assistant, content: "equal", timestamp: "1000"),
+            ChatMessage(id: "later", role: .user, content: "later", timestamp: "1060"),
+            ChatMessage(id: "clock-skew", role: .assistant, content: "clock-skew", timestamp: "900"),
+        ]
+        let merged = links.merge(into: ordinary + [links.links[0].marker, links.links[1].marker], chatIDs: ["chat"], openIDs: ["chat"], profile: "default")
+        XCTAssertEqual(merged.map(\.id), ["unknown", "equal", "voice-call-tie-a", "voice-call-tie-b", "later", "clock-skew"])
+        XCTAssertEqual(links.merge(into: merged, chatIDs: ["chat"], openIDs: ["chat"], profile: "default").map(\.id), merged.map(\.id))
+        XCTAssertEqual(links.merge(into: ordinary, chatIDs: ["chat"], openIDs: ["chat"], profile: "work").map(\.id), ["unknown", "equal", "voice-call-profile", "later", "clock-skew"])
+    }
+
+    func testVoiceCallMarkersReanchorAfterBackfillAndRepeatedMerge() {
+        let start = Date(timeIntervalSince1970: 1_788_256_800)
+        let iso = ISO8601DateFormatter()
+        func row(_ id: String, _ offset: Double) -> ChatMessage {
+            ChatMessage(id: id, role: .user, content: id, timestamp: iso.string(from: start.addingTimeInterval(offset)))
+        }
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "backfill", row: "call-row", chat: "chat", at: start))
+        let tail = links.merge(into: [row("tail", 600)], chatIDs: ["chat"], openIDs: ["chat"], profile: "default")
+        // Older pages arrive before the synthetic marker that led the tail.
+        let backfilled = [row("before", -60), row("after", 60)] + tail
+        let merged = links.merge(into: backfilled, chatIDs: ["chat"], openIDs: ["chat"], profile: "default")
+        XCTAssertEqual(merged.map(\.id), ["before", "voice-call-backfill", "after", "tail"])
+        XCTAssertEqual(links.merge(into: merged, chatIDs: ["chat"], openIDs: ["chat"], profile: "default").map(\.id), merged.map(\.id))
+        var duplicated = links
+        duplicated.links.append(links.links[0])
+        XCTAssertEqual(duplicated.merge(into: merged, chatIDs: ["chat"], openIDs: ["chat"], profile: "default").map(\.id), merged.map(\.id), "Repeated link identities never duplicate markers")
+        let ownTail = links.merge(into: [row("tail", 600)], chatIDs: ["chat", "call-row"], openIDs: ["call-row"], profile: "default")
+        let ownMerged = links.merge(into: [row("before", -60), row("after", 60)] + ownTail, chatIDs: ["chat", "call-row"], openIDs: ["call-row"], profile: "default")
+        XCTAssertEqual(ownMerged.map(\.id), ["before", "voice-call-from-backfill", "after", "tail"], "A call transcript reanchors its origin, not the chat's call card")
+        XCTAssertEqual(links.merge(into: ownMerged, chatIDs: ["chat", "call-row"], openIDs: ["call-row"], profile: "default").map(\.id), ownMerged.map(\.id))
+    }
+
     func testVoiceCallMarkerLandsWhereTheCallStartedInItsOwnChatOnly() {
         let start = Date(timeIntervalSince1970: 1_000)
         let iso = ISO8601DateFormatter()
@@ -1642,5 +1684,39 @@ extension HermesVoiceGatewayTimeoutTests {
         let turns = try XCTUnwrap(script.calls.last?.body?["turns"] as? [[String: Any]])
         let sent = try XCTUnwrap(turns.last?["cards"] as? [[String: Any]])
         XCTAssertEqual((sent.first?["places"] as? [[String: Any]])?.first?["name"] as? String, "Tartine")
+    }
+}
+
+extension HermesVoiceGatewayTimeoutTests {
+    func testPartialVoiceWindowDefersCardsButKeepsOriginsAndTimestampTies() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var links = VoiceCallChatLinks()
+        links.add(chatLink(call: "old", row: "call-row", chat: "chat", at: start.addingTimeInterval(-60)))
+        links.add(chatLink(call: "tie", row: "", chat: "chat", at: start))
+        links.add(chatLink(call: "future", row: "", chat: "chat", at: start.addingTimeInterval(60)))
+        links.add(chatLink(call: "foreign-profile", row: "", chat: "chat", at: start, profile: "work"))
+        let rows = [
+            ChatMessage(id: "unknown", role: .user, content: "unknown", timestamp: "unknown"),
+            ChatMessage(id: "equal", role: .assistant, content: "equal", timestamp: "1000"),
+            ChatMessage(id: "later", role: .user, content: "later", timestamp: "1030")
+        ]
+        let partial = links.merge(into: [links.links[0].marker] + rows, chatIDs: ["chat"], openIDs: ["chat"], profile: "default", loadedAfter: start)
+        XCTAssertEqual(partial.map(\.id), ["unknown", "equal", "voice-call-tie", "later", "voice-call-future"])
+        XCTAssertEqual(links.merge(into: partial, chatIDs: ["chat"], openIDs: ["chat"], profile: "default", loadedAfter: start), partial)
+        XCTAssertEqual(links.links.count, 4, "Deferring a display marker never deletes its link")
+        let origin = links.merge(into: rows, chatIDs: ["chat", "call-row"], openIDs: ["call-row"], profile: "default", loadedAfter: start)
+        XCTAssertEqual(origin.map(\.id), ["unknown", "voice-call-from-old", "equal", "later"], "A standalone transcript keeps its way back even when its origin predates the page")
+        let complete = links.merge(into: rows, chatIDs: ["chat"], openIDs: ["chat"], profile: "default")
+        XCTAssertTrue(complete.contains { $0.id == "voice-call-old" }, "Complete and unknown-time contexts retain the unbounded fallback")
+    }
+
+    func testPersistedVoiceCoverageIgnoresLocalDecorationAndUnknownTimes() {
+        let stored = ChatMessage(id: "1", role: .user, content: "persisted", timestamp: "1000")
+        let review = ChatMessage(id: "review-summary-old", role: .system, content: "cached review", timestamp: "100")
+        let note = ChatMessage(id: "slash-old", role: .system, content: "local note", timestamp: "200")
+        let marker = chatLink(call: "old", row: "", chat: "chat", at: Date(timeIntervalSince1970: 300)).marker
+        let unknown = ChatMessage(id: "unknown", role: .user, content: "unknown", timestamp: "not a date")
+        XCTAssertEqual(PersistedTranscriptWindow.timestampLowerBound(in: [review, note, marker, unknown, stored]), Date(timeIntervalSince1970: 1_000))
+        XCTAssertNil(PersistedTranscriptWindow.timestampLowerBound(in: [review, note, marker, unknown]))
     }
 }
