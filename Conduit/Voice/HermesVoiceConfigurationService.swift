@@ -428,7 +428,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
                 // A plugin before 0.195.8: the key stays, as before.
             } catch {
-                errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))", table: .voice)
+                errorMessage = AppLocalization.string("Saved, but the old gateway routing (\(sectionKey).use_gateway) couldn't be removed: \(UserFacingError.message(for: error))", table: .voice)
                 return false
             }
             return true
