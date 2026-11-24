@@ -31,8 +31,9 @@ extension AppState {
             guard chatMutes.dashboardID == activeDashboardID else { return nil }
             return chatMutes.mute(for: session, profile: rowProfile(session), now: now)
         }
-        guard let mutes = farChatMutes[far], let home = chatMarksHome(session) else { return nil }
-        return mutes.mute(for: home.session, profile: home.profile, now: now)
+        guard far != dashboardIDOnScreen, let mutes = farChatMutes[far] else { return nil }
+        let (row, profile) = farChatMarksRow(session, in: far)
+        return mutes.mute(for: row, profile: profile, now: now)
     }
 
     /// Mutes the chat for `duration`, or unmutes it (nil): at once here,

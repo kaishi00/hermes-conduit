@@ -31,8 +31,9 @@ extension AppState {
             guard chatDoneMarks.dashboardID == activeDashboardID else { return false }
             return chatDoneMarks.isDone(session, profile: rowProfile(session))
         }
-        guard let marks = farChatDoneMarks[far], let home = chatMarksHome(session) else { return false }
-        return marks.isDone(home.session, profile: home.profile)
+        guard far != dashboardIDOnScreen, let marks = farChatDoneMarks[far] else { return false }
+        let (row, profile) = farChatMarksRow(session, in: far)
+        return marks.isDone(row, profile: profile)
     }
 
     func toggleSessionDone(_ session: SessionSummary) {

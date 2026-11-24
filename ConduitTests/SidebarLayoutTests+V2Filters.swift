@@ -507,12 +507,13 @@ extension SidebarLayoutTests {
         XCTAssertFalse(appState.canMarkSessionDone(screenChat), "this dashboard's chat still isn't marked")
         XCTAssertTrue(appState.canMarkSessionDone(chat))
 
-        // Let go: nothing is offered or shown.
+        // Dropped: its row keeps the marks read last, and offers no change.
         appState.keptDashboardRuntimes[far] = nil
         XCTAssertFalse(appState.canMarkSessionDone(chat))
         XCTAssertFalse(appState.canMuteSession(chat))
-        XCTAssertFalse(appState.isSessionDone(chat))
-        XCTAssertNil(appState.sessionMute(chat))
+        XCTAssertTrue(appState.isSessionDone(chat))
+        XCTAssertNotNil(appState.sessionMute(chat))
+        // Out of the group: its marks go.
         appState.dropFarChatMarksOutsideTheGroup()
         XCTAssertTrue(appState.farChatDoneMarks.isEmpty)
         XCTAssertTrue(appState.farChatMutes.isEmpty)

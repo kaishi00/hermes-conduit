@@ -32,13 +32,23 @@ extension AppState {
                                  session: session, plugin: notifierPlugin)
         }
         guard far != dashboardIDOnScreen, let kept = keptDashboardRuntimes[far] else { return nil }
-        var row = session
-        row.combinedDashboardID = nil
-        // Spelled as that dashboard lists its profiles, which its reads use.
-        let owner = session.profile.flatMap { $0.isEmpty ? nil : $0 } ?? kept.runtime.activeProfile
-        let profile = keptDashboardProfiles[far]?.profiles.first { Self.profilesMatch($0, owner) } ?? owner
+        let (row, profile) = farChatMarksRow(session, in: far)
         return ChatMarksHome(dashboardID: far, bridge: kept.bridge, profile: profile, session: row,
                              plugin: kept.runtime.notifierPlugin)
+    }
+
+    /// Another combined dashboard's row as its own dashboard lists it, and
+    /// its profile spelled as that dashboard lists its profiles, which its
+    /// reads use. Needs no connection: a dashboard that dropped keeps its
+    /// rows, and they keep the marks read last.
+    func farChatMarksRow(_ session: SessionSummary, in far: UUID) -> (row: SessionSummary, profile: String) {
+        var row = session
+        row.combinedDashboardID = nil
+        let owner = session.profile.flatMap { $0.isEmpty ? nil : $0 }
+            ?? keptDashboardRuntimes[far]?.runtime.activeProfile
+            ?? rememberedActiveProfile(for: far) ?? "default"
+        let profile = keptDashboardProfiles[far]?.profiles.first { Self.profilesMatch($0, owner) } ?? owner
+        return (row, profile)
     }
 
     /// A dashboard's bridge as it's connected now: the one on screen's, or
