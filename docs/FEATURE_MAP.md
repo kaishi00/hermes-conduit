@@ -1062,7 +1062,7 @@ under the list key on the tab, not its place), the drawer shell (no tabs;
 its own "Open to"), Watch and CarPlay (no tabs), the notifier (its prefs
 store takes any key)
 
-**Desktop app:** partly: no tab bar to order, but a launch opens on the first tab of the synced layout, read as `app.tabs` and kept per dashboard (`desktop/src/renderer/src/state/launchTab.ts`, desktop#160), and Settings > Appearance > Open on picks that tab on the desktop with no phone needed, moving it to the front of the same `app.tabs` and hiding past five shown as the phone does (`desktop/src/renderer/src/components/AppearancePage.tsx`, desktop#164).
+**Desktop app:** partly: the window's leading rail holds Bots, Chats, Tasks, Pulse, Artifacts and Needs you, all six shown until the user changes it; right-clicking the rail pins or unpins them (Chats and Settings stay), dragging reorders them, and a hidden one something else opens stands in its place while it shows, with no key. The rail's layout is kept on that computer, not in `app.tabs`, since the phone's defaults and five-tab cap would hide sections the desktop shows: a departure from "One list is the whole setting" left for Eric's call on desktop#458. A launch opens on the first tab of the synced layout, read as `app.tabs` and kept per dashboard (`desktop/src/renderer/src/state/launchTab.ts`, desktop#160), or the rail's first pinned section when that tab is unpinned there (desktop#458), and Settings > Appearance > Open on picks that tab on the desktop with no phone needed, moving it to the front of the same `app.tabs` and hiding past five shown as the phone does (`desktop/src/renderer/src/components/AppearancePage.tsx`, desktop#164).
 
 **Code**
 - The layout and its store: `Conduit/Views/V2/V2TabLayout.swift` (V2TabLayout: stored, shown, first(without:), bar(selected:without:), madeAtLaunch, alwaysShown, optional, mostShown, canShow; V2TabLayoutStore with tabs, unavailable and setAvailable; V2TabsOrderSheet)
@@ -4503,7 +4503,7 @@ system's Paste) · not needed: group rooms' ⌘. (a room has no Stop
 of its own), the model picker's, image gallery's and suggestion list's own
 keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 
-**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224).
+**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘1 to ⌘6 (Ctrl+1 to Ctrl+6) follow the rail's pinned sections in the user's order, the Mac's View menu and the sheet's Go to rows with them, and an unpinned section has no key (desktop#458); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224).
 
 **Code**
 - Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
