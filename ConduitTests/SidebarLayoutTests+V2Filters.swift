@@ -449,7 +449,8 @@ extension SidebarLayoutTests {
         let (appState, held) = try chatMuteAppState()
         defer { held.shutdown() }
         let far = UUID()
-        let farHeld = HeldDashboardRequests(baseURL: "http://127.0.0.2:1", dashboardID: far)
+        // No dashboard id on its bridge: one reads a WebKit store of its own first.
+        let farHeld = HeldDashboardRequests(baseURL: "http://127.0.0.2:1")
         defer { farHeld.shutdown() }
         let connection = HermesConnection(baseUrl: "http://127.0.0.2:1", ticket: "held")
         let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
