@@ -43,6 +43,7 @@ struct V2BesideChatPaneInputs: Equatable {
     /// The backdrop's glow, the chat's profile's color. Drawn here rather
     /// than by `V2Backdrop`, which observes AppState itself.
     var glowTint: Color?
+    var dashboardBadge: V2DashboardBadge?
     /// The chat's notice and media resolver, compared by instance.
     @IdentityEquatable var live: BesideChatLive.Chat
     @IdentityEquatable var gatewayResolver: GatewayMediaDataURLResolver
@@ -54,9 +55,13 @@ struct V2BesideChatPaneInputs: Equatable {
     @MainActor
     init(appState: AppState, chat: BackgroundChat) {
         title = chat.title
-        glowTint = appState.profileGlowTint(chat.profile)
+        glowTint = appState.readingKeptChatRuntime(chat) { appState.profileGlowTint(chat.profile) }
+        if chat.dashboardID != appState.dashboardIDOnScreen,
+           let badge = appState.combinedDashboardBadge(chat.dashboardID) {
+            dashboardBadge = V2DashboardBadge(letter: badge.letter, colorIndex: badge.colorIndex, name: badge.name)
+        }
         live = appState.besideChatLive.notice(for: chat)
-        gatewayResolver = appState.gatewayMediaResolver(for: chat.profile)
+        gatewayResolver = appState.readingKeptChatRuntime(chat) { appState.gatewayMediaResolver(for: chat.profile) }
         canMoveToWindow = appState.canMoveBesideChatToWindow
         takesMessages = appState.keptChatTakesMessages(chat)
     }
@@ -77,6 +82,7 @@ private struct V2BesideChatPaneContent: View, Equatable {
             VStack(spacing: 0) {
                 V2BesideChatPaneHeader(
                     title: inputs.title,
+                    dashboardBadge: inputs.dashboardBadge,
                     windowKey: windowKey,
                     canMoveToWindow: inputs.canMoveToWindow,
                     appState: appState
@@ -93,6 +99,7 @@ private struct V2BesideChatPaneContent: View, Equatable {
 /// The pane's title and buttons, or a chat window's.
 private struct V2BesideChatPaneHeader: View {
     let title: String
+    let dashboardBadge: V2DashboardBadge?
     let windowKey: String?
     let canMoveToWindow: Bool
     /// Held for the buttons, not observed.
@@ -105,7 +112,11 @@ private struct V2BesideChatPaneHeader: View {
     }
 
     private var header: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
+            if let dashboardBadge {
+                CombinedDashboardBadge.Mark(badge: dashboardBadge, size: 16)
+                    .accessibilityHidden(true)
+            }
             Text(verbatim: title)
                 .scaledFont(.headline)
                 .foregroundStyle(.primary)
@@ -279,6 +290,7 @@ struct V2ChatWindow: View {
         }
         .onAppear { closeWithoutAChat() }
         .onChange(of: appState.windowChatIDs) { _, _ in closeWithoutAChat() }
+        .onChange(of: appState.windowChatOwners) { _, _ in closeWithoutAChat() }
         // On screen, it keeps the app's connection live while the main
         // window is behind it.
         .onChange(of: scenePhase, initial: true) { _, phase in

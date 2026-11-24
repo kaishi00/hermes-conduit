@@ -63,20 +63,23 @@ final class BesideChatLive {
 }
 
 extension AppState {
-    /// The followed chat the pane draws: the one kept beside, of this
-    /// dashboard and profile. Nil with no pane.
+    /// The followed chat the pane draws: the one kept beside, on its own
+    /// dashboard and profile (the screen's, or another combined dashboard's
+    /// opened in place). Nil with no pane.
     var besideChat: BackgroundChat? {
         guard let ids = besideChatIDs else { return nil }
+        let ownerDashboard = besideChatOwner?.dashboardID ?? dashboardIDOnScreen
+        let ownerProfile = besideChatOwner?.profile ?? runtimeOnScreen.activeProfile
         return backgroundChats.first {
-            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
+            $0.dashboardID == ownerDashboard && $0.profile == ownerProfile
                 && !$0.sessionIDs.isDisjoint(with: ids)
         }
     }
 
-    /// Whether the chat acted on (`act(on:)`) is the one kept beside.
+    /// Whether the chat acted on (`act(on:)`) is the one kept beside or in a window.
     var actingOnBesideChat: Bool {
-        guard let ids = keptChatIDs, let scope = liveChatScope else { return false }
-        return !scope.sessionIDs.isDisjoint(with: ids)
+        guard let scope = liveChatScope else { return false }
+        return isKeptChat(dashboardID: activeDashboardID, profile: scope.profile, answering: scope.sessionIDs)
     }
 
     /// A message another device or process sent to the pane's chat, or a
@@ -118,41 +121,85 @@ extension AppState {
     }
 
     /// Whether the chat on screen can stay beside another: an ordinary
-    /// chat, live from Hermes, with rows to show. A Bot Chat, a group room
-    /// and a saved copy still opening can't.
+    /// chat, live from Hermes, with rows to show (on screen or on its
+    /// kept combined runtime). A Bot Chat, a group room and a saved copy
+    /// still opening can't.
     var canKeepChatOnScreenBeside: Bool {
-        guard isConnected, activeRoomSurface == nil, offlineChatPresentation == nil,
-              activeBotChatProfile == nil, !messages.isEmpty,
-              let id = activeSessionId, !id.isEmpty else { return false }
-        return botStoreProfile(forSessionIDs: Array(knownSessionIDs(for: id).union([id]))) == nil
+        onChatRuntimeValue(unreachable: false) {
+            guard isConnected, activeRoomSurface == nil, offlineChatPresentation == nil,
+                  activeBotChatProfile == nil, !messages.isEmpty,
+                  let id = activeSessionId, !id.isEmpty else { return false }
+            if let farOwner = farChat, farBotChatProfile(in: farOwner.dashboardID) != nil {
+                return false
+            }
+            return botStoreProfile(forSessionIDs: Array(knownSessionIDs(for: id).union([id]))) == nil
+        }
     }
 
     /// Whether a chat's row offers Open Beside: another chat of this
-    /// profile, in Hermes' own list, while the chat on screen can stay
-    /// beside it.
+    /// profile or another kept combined dashboard's openable chat, while
+    /// the chat on screen can stay beside it.
     func canOpenBeside(_ session: SessionSummary) -> Bool {
-        guard canKeepChatOnScreenBeside, !isShowingSavedChatList, !isOtherProfileRow(session),
+        guard canKeepChatOnScreenBeside, !isShowingSavedChatList,
               !isSavedChatRow(session), let active = activeSessionId else { return false }
-        let open = knownSessionIDs(for: active).union([active])
-        return open.isDisjoint(with: session.nestingIDs) && !open.contains(session.id)
+        if let farDashboard = session.combinedDashboardID, farDashboard != dashboardIDOnScreen {
+            guard isInCombinedGroup(farDashboard),
+                  let kept = keptDashboardRuntimes[farDashboard], kept.client.isConnected,
+                  !isFarBotChat(session, in: farDashboard) else { return false }
+            let targetProfile = session.profile ?? "default"
+            guard profilesMatch(kept.client.profile ?? "default", targetProfile) || kept.client.canHandOffSocket else {
+                return false
+            }
+            if farChat?.dashboardID == farDashboard,
+               profilesMatch(farChat?.profile ?? "default", targetProfile) {
+                let open = onChatRuntimeValue(unreachable: Set<String>()) {
+                    knownSessionIDs(for: active).union([active])
+                }
+                return open.isDisjoint(with: session.nestingIDs) && !open.contains(session.id)
+            }
+            return true
+        }
+        guard !isOtherProfileRow(session) else { return false }
+        if farChat == nil {
+            let open = knownSessionIDs(for: active).union([active])
+            return open.isDisjoint(with: session.nestingIDs) && !open.contains(session.id)
+        }
+        return true
     }
 
     /// Opens `session` and keeps the chat on screen beside it. Where that
     /// chat can't stay beside, the row opens as a tap opens it.
     func openBeside(_ session: SessionSummary) {
         let previous = besideChatIDs
+        let previousOwner = besideChatOwner
         guard canOpenBeside(session), keepChatOnScreenBeside() else {
             openListedSession(session)
             return
         }
         let kept = besideChatIDs
+        let keptOwner = besideChatOwner
         // The chat that was beside until now gives up its place, unless
-        // it's the one opening: its open shows the copy, then lets go of it.
-        if let previous, previous.isDisjoint(with: session.nestingIDs), !previous.contains(session.id) {
-            letGoOfIdleFollowedChat(answering: previous)
+        // it's the exact chat opening on that dashboard.
+        let previousDashboard = previousOwner?.dashboardID ?? dashboardIDOnScreen
+        let openingDashboard = session.combinedDashboardID ?? dashboardIDOnScreen
+        if let previous,
+           previousDashboard != openingDashboard
+            || (previous.isDisjoint(with: session.nestingIDs) && !previous.contains(session.id)) {
+            letGoOfIdleFollowedChat(answering: previous, dashboardID: previousDashboard)
+        }
+        if let farDashboard = session.combinedDashboardID, farDashboard != dashboardIDOnScreen {
+            guard startFarChatOpen(session, in: farDashboard, onFailure: { [weak self] _ in
+                self?.besideChatOpenFailed(kept: kept, owner: keptOwner)
+            }) != nil else {
+                besideChatOpenFailed(kept: kept, owner: keptOwner)
+                openListedSession(session)
+                return
+            }
+            ensureKeptPluginReport(for: farDashboard)
+            return
         }
         requestOpenSession(session.id) { [weak self] _ in
-            self?.besideChatOpenFailed(kept: kept)
+            self?.besideChatOpenFailed(kept: kept, owner: keptOwner)
         }
     }
 
@@ -163,29 +210,60 @@ extension AppState {
     func swapBesideChat() {
         guard let beside = besideChat,
               let target = beside.durableSessionID ?? beside.sessionIDs.sorted().first else { return }
+        let targetOwner = besideChatOwner
+        if let targetOwner, keptDashboardRuntimes[targetOwner.dashboardID]?.client.isConnected != true { return }
         guard keepChatOnScreenBeside() else {
             // Landing on it lets go of the followed copy, and the pane.
-            requestOpenSession(target)
+            _ = openKeptChatInMainColumn(target: target, owner: targetOwner, onFailure: nil)
             return
         }
         let kept = besideChatIDs
-        requestOpenSession(target) { [weak self] _ in
-            self?.besideChatOpenFailed(kept: kept)
+        let keptOwner = besideChatOwner
+        if !openKeptChatInMainColumn(target: target, owner: targetOwner, onFailure: { [weak self] _ in
+            self?.besideChatOpenFailed(kept: kept, owner: keptOwner)
+        }) {
+            besideChatOpenFailed(kept: kept, owner: keptOwner)
         }
+    }
+
+    /// Opens a kept chat (beside pane or chat window) in the main column on
+    /// its own dashboard runtime. Returns `false` when a far dashboard's
+    /// kept runtime cannot open it.
+    func openKeptChatInMainColumn(
+        target: String,
+        owner: FarChatOwner?,
+        onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)?
+    ) -> Bool {
+        if let owner {
+            guard let runtime = keptRuntime(owner.dashboardID, on: owner.profile) else { return false }
+            ensureKeptPluginReport(for: owner.dashboardID)
+            widgetLaunchCoordinator.supersede()
+            act(onRuntime: runtime) {
+                requestOpenSession(target, onFailure: onFailure)
+            }
+            return true
+        }
+        requestOpenSession(target, onFailure: onFailure)
+        return true
     }
 
     /// Closes the pane. Its chat goes on being followed only while a reply
     /// still runs in it, as any chat left mid-reply.
     func closeBesideChat() {
         guard let ids = besideChatIDs else { return }
+        let owner = besideChatOwner
         besideChatIDs = nil
-        letGoOfIdleFollowedChat(answering: ids)
+        besideChatOwner = nil
+        letGoOfIdleFollowedChat(answering: ids, dashboardID: owner?.dashboardID ?? dashboardIDOnScreen)
     }
 
     /// The pane closes once its chat is followed no longer: opened in the
     /// chat's own column, deleted, or on a dashboard or profile left.
     func closeBesideChatWithoutItsChat() {
-        if besideChatIDs != nil, besideChat == nil { besideChatIDs = nil }
+        if besideChatIDs != nil, besideChat == nil {
+            besideChatIDs = nil
+            besideChatOwner = nil
+        }
         closeChatWindowsWithoutTheirChats()
     }
 
@@ -193,15 +271,20 @@ extension AppState {
     /// comes for it reaches the copy too, and leaving it takes a fresh one.
     /// False when it can't be followed, with the pane as it was.
     func keepChatOnScreenBeside() -> Bool {
-        guard canKeepChatOnScreenBeside, let id = activeSessionId else { return false }
-        // Its own row's ids, never an alias another row owns or carries
-        // too (issue 2602).
-        let ids = followedSessionIDs(forChatOpenAs: id)
+        guard canKeepChatOnScreenBeside, let id = activeSessionId,
+              let targetRuntime = farChat != nil ? chatOnScreenRuntime : runtimeOnScreen else { return false }
+        let ids = act(onRuntime: targetRuntime) { followedSessionIDs(forChatOpenAs: id) }
         let previous = besideChatIDs
+        let previousOwner = besideChatOwner
+        let owner = farChat
         besideChatIDs = ids
-        followChatOnScreen(answering: ids, openAs: id, turnRunning: turnState == .running, staysBeside: true)
+        besideChatOwner = owner
+        act(onRuntime: targetRuntime) {
+            followChatOnScreen(answering: ids, openAs: id, turnRunning: turnState == .running, staysBeside: true)
+        }
         guard besideChat != nil else {
             besideChatIDs = previous
+            besideChatOwner = previousOwner
             return false
         }
         return true
@@ -209,17 +292,21 @@ extension AppState {
 
     /// The open beside a kept chat failed and left that chat on screen:
     /// it isn't also beside itself.
-    private func besideChatOpenFailed(kept: Set<String>?) {
-        // Still the kept chat on screen: by its id, or by its row when
-        // another row owns the id it opened as (issue 2655).
-        guard let kept, besideChatIDs == kept, let active = activeSessionId,
-              kept.contains(active) || followedSessionIDs(forChatOpenAs: active) == kept else { return }
+    private func besideChatOpenFailed(kept: Set<String>?, owner: FarChatOwner?) {
+        guard let kept, besideChatIDs == kept, besideChatOwner == owner,
+              let active = activeSessionId, farChat == owner else { return }
+        let matchesKept = onChatRuntimeValue(unreachable: false) {
+            kept.contains(active) || followedSessionIDs(forChatOpenAs: active) == kept
+        }
+        guard matchesKept else { return }
+        let ownerDashboard = owner?.dashboardID ?? dashboardIDOnScreen
         besideChatIDs = nil
-        // Only this dashboard's: the same ids on another name another chat.
-        backgroundChats.removeAll { $0.dashboardID == activeDashboardID && !$0.sessionIDs.isDisjoint(with: kept) }
+        besideChatOwner = nil
+        backgroundChats.removeAll { $0.dashboardID == ownerDashboard && !$0.sessionIDs.isDisjoint(with: kept) }
     }
 
-    func letGoOfIdleFollowedChat(answering ids: Set<String>) {
-        backgroundChats.removeAll { $0.dashboardID == activeDashboardID && !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
+    func letGoOfIdleFollowedChat(answering ids: Set<String>, dashboardID: UUID? = nil) {
+        let targetDashboard = dashboardID ?? activeDashboardID
+        backgroundChats.removeAll { $0.dashboardID == targetDashboard && !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
     }
 }

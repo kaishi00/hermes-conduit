@@ -914,11 +914,17 @@ final class AppState: ObservableObject {
     /// as Open Beside is picked; the chat is followed from the moment it
     /// is left, and the pane draws it while it is.
     @Published var besideChatIDs: Set<String>?
+    /// Owning dashboard and profile when the beside pane holds another
+    /// combined dashboard's chat; nil when it holds the screen dashboard's.
+    @Published var besideChatOwner: FarChatOwner?
     /// Tells the pane beside the chat that its chat's rows or reply moved.
     let besideChatLive = BesideChatLive()
     /// The chats shown in windows of their own (AppState+ChatWindows.swift),
     /// each by the ids it answers to. Followed like the pane's chat.
     @Published var windowChatIDs: [Set<String>] = []
+    /// Owning dashboard and profile for chat windows holding another
+    /// combined dashboard's chat, keyed by the window's scene key.
+    @Published var windowChatOwners: [String: FarChatOwner] = [:]
     /// The id each kept chat's events came under last, by its key
     /// (AppState+KeptChatSend.swift): where its next message goes.
     var keptChatEventIDs: [String: String] = [:]

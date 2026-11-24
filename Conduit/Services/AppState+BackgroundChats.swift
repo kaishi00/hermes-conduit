@@ -163,8 +163,8 @@ extension AppState {
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
         // A chat kept beside the next one (the pane or a chat window,
-        // keptChatIDs) is followed whether or not a reply runs in it.
-        let staysBeside = keptChatIDs.map { !$0.isDisjoint(with: ids) } == true
+        // isKeptChat) is followed whether or not a reply runs in it.
+        let staysBeside = isKeptChat(dashboardID: activeDashboardID, profile: activeProfile, answering: ids)
         // Followed already by a New Chat under way (it follows the chat
         // before its create, and the create's adoption leaves it again):
         // that copy has taken every event since and keeps the chat's own
@@ -616,7 +616,7 @@ extension AppState {
             // A chat window still drawing it while its open lands (Open in
             // Main Window) reads its turn from the notice: a turn ending
             // now, or an open that fails, leaves its box current (#3180).
-            if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true {
+            if isKeptChat(chat) {
                 besideChatLive.moved(chat)
             }
             // Still showing the followed copy while its open is in flight:
@@ -632,7 +632,7 @@ extension AppState {
         }
         let wasRunning = chat.isRunning
         act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
-        if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true {
+        if isKeptChat(chat) {
             besideChatLive.moved(chat)
             // A turn sent from its message box has a Live Activity too.
             LiveTurnActivities.shared?.observe(event, sessionID: id)
