@@ -498,6 +498,10 @@ extension AppState {
         guard let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected else { return nil }
         let runtime = kept.runtime
         guard (kept.client.profile ?? "default") != profile else { return runtime }
+        // A call still starting on this dashboard has requests out on this
+        // client that nothing can carry yet (no call is up to carry): the
+        // socket isn't handed to another profile under it (issue 3164).
+        guard !farCallStartHolds(dashboard: dashboardID) else { return nil }
         // The socket stays the same, so the chats it opened there go on
         // streaming, to the new client.
         guard kept.client.canHandOffSocket else { return nil }

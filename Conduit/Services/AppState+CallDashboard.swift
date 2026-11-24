@@ -130,8 +130,26 @@ extension AppState {
     /// Whether this dashboard's connection holds the running call, so it's
     /// kept through what would let a kept connection go on its own (the
     /// background grace, the cap): the audio keeps Conduit running.
+    /// A call still starting there counts from its first step (issue 3164):
+    /// CarPlay's far starts begin the call well before any engine is up.
     func liveCallHolds(dashboard id: UUID) -> Bool {
-        isLiveCallUp && liveCallDashboardID == id && id != activeDashboardID
+        ((isLiveCallUp && liveCallDashboardID == id) || farCallStartHolds(dashboard: id)) && id != activeDashboardID
+    }
+
+    /// Whether a call is being started on this dashboard with no switch and
+    /// isn't up yet: nothing can carry it, so its connection isn't let go
+    /// or handed to another profile under it.
+    func farCallStartHolds(dashboard id: UUID) -> Bool {
+        (farCallStartsInFlight[id] ?? 0) > 0 && !(isLiveCallUp && liveCallDashboardID == id)
+    }
+
+    /// The call's dashboard dropped by itself (the network, the server)
+    /// while the call was still starting there: no engine is up to go on
+    /// and be signed in again for, so what the start began ends, and the
+    /// start fails as on a dropped connection.
+    func endLiveCallStartLosingItsDashboard(_ id: UUID) {
+        guard farCallStartHolds(dashboard: id), liveCallDashboardID == id else { return }
+        endEveryLiveCall()
     }
 
     /// The call's dashboard was let go (signed out, removed, left the
@@ -160,6 +178,12 @@ extension AppState {
     /// starts serializes them.
     func onFarCallDashboard<T>(_ dashboardID: UUID, profile: String, _ body: () async -> T) async -> T? {
         guard let runtime = farCallRuntime(dashboardID, profile: profile) else { return nil }
+        // Held from here to the start's end (issue 3164).
+        farCallStartsInFlight[dashboardID, default: 0] += 1
+        defer {
+            let left = (farCallStartsInFlight[dashboardID] ?? 1) - 1
+            farCallStartsInFlight[dashboardID] = left > 0 ? left : nil
+        }
         return await actAcrossAwaits(onRuntime: runtime, body)
     }
 

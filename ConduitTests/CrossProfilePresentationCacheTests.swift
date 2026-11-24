@@ -4481,7 +4481,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNotNil(inFarScope[vps.id], "the dashboard on screen has its evidence when read in the far scope")
         XCTAssertEqual(inFarScope[mac.id], inFarScope[vps.id], "so an answer given on the far twin finds the screen's copy")
         // Answered on the far twin, with the screen as its twin: both go.
-        appState.needsYou.dropAnsweredQuestion("P7", profile: "default", dashboardID: mac.id, alsoOn: [vps.id])
+        let twins = appState.act(onRuntime: kept.runtime) { appState.combinedHermesTwins(of: appState.activeDashboardID) }
+        XCTAssertEqual(twins, [vps.id], "the twins an answer in the far scope drops with its own copy")
+        XCTAssertEqual(appState.combinedHermesTwins(of: vps.id), [mac.id])
+        appState.needsYou.dropAnsweredQuestion("P7", profile: "default", dashboardID: mac.id, alsoOn: twins)
         XCTAssertFalse(appState.needsYou.items.contains { $0.waitID == "asked-P7" }, "the screen's copy goes too")
         XCTAssertNil(appState.needsYou.otherDashboards[mac.id])
 
@@ -4521,6 +4524,19 @@ extension CrossProfilePresentationCacheTests {
         appState.keptDashboardRuntimes[mac.id] = kept
         XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) })
 
+        // A call still starting there with no switch holds its connection
+        // as a running call does: not let go by the cap or the grace, and
+        // its socket not handed to another profile under the start (issue 3164).
+        XCTAssertFalse(appState.liveCallHolds(dashboard: mac.id))
+        appState.farCallStartsInFlight[mac.id] = 1
+        XCTAssertTrue(appState.farCallStartHolds(dashboard: mac.id))
+        XCTAssertTrue(appState.liveCallHolds(dashboard: mac.id))
+        XCTAssertNil(appState.keptRuntime(mac.id, on: "another-profile"), "its socket stays on the start's profile")
+        XCTAssertTrue(appState.keptRuntime(mac.id, on: kept.runtime.activeProfile) === kept.runtime)
+        XCTAssertFalse(appState.liveCallHolds(dashboard: vps.id), "only the dashboard the call starts on")
+        appState.farCallStartsInFlight[mac.id] = nil
+        XCTAssertFalse(appState.liveCallHolds(dashboard: mac.id))
+
         // Let go, its runtime stops saying it's connected to a scope that
         // still holds it, and its answers no longer stand.
         XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.isConnected })
@@ -4549,6 +4565,55 @@ extension CrossProfilePresentationCacheTests {
             XCTAssertEqual(groups[mac.id], groups[third.id], "two kept dashboards of the group are still found to be one Hermes")
             XCTAssertNil(groups[vps.id], "the dashboard on screen, outside the group, has no evidence")
         }
+        // Sharing only a Bot Chat, they are still one Hermes: their bots as
+        // last read count, with no grid on screen to show them.
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.combinedDashboardChats[third.id] = nil
+        XCTAssertNil(appState.combinedHermesGroups[mac.id])
+        let raiden = BotProfile(
+            name: "raiden", botTitle: nil, displayName: "raiden", profileDescription: "", model: nil,
+            provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "stored-raiden", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        for id in [mac.id, third.id] {
+            appState.combinedDashboardBots[id] = CombinedDashboardBots(
+                client: ObjectIdentifier(kept.bridge), bots: [raiden], avatars: [:], at: Date()
+            )
+        }
+        XCTAssertEqual(appState.combinedHermesTwins(of: mac.id), [third.id])
+        XCTAssertEqual(appState.combinedHermesTwins(of: vps.id), [])
+    }
+
+    /// A far chat left mid-reply by New Chat or by a profile switch on the
+    /// screen's dashboard is followed under its own dashboard and profile,
+    /// where its events come, not under the screen's (issue 3217).
+    func testAFarChatLeftByNewChatOrAProfileSwitchIsFollowedOnItsOwnDashboard() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.backgroundChats = []
+        appState.activeSessionId = "far-s"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: kept.runtime.activeProfile)
+        appState.messages = [ChatMessage(id: "u1", role: .user, content: "Go", timestamp: "ts-u1")]
+
+        // What both a profile switch and New Chat call before they change anything.
+        let followed = appState.followChatBeingLeft(turnWasRunning: true)
+        XCTAssertEqual(followed?.contains("far-s"), true)
+        XCTAssertEqual(appState.backgroundChats.map(\.dashboardID), [mac.id], "its own dashboard's copy, not the screen's")
+        XCTAssertNotEqual(appState.backgroundChats.first?.dashboardID, vps.id)
+        XCTAssertEqual(appState.backgroundChats.first?.profile, kept.runtime.activeProfile)
+        XCTAssertEqual(appState.backgroundChats.first?.isRunning, true)
+
+        // A New Chat that started nothing lets go of it on its own runtime too.
+        appState.onChatRuntimeNow { appState.releaseFollowedChat(answering: ["far-s"]) }
+        XCTAssertTrue(appState.backgroundChats.isEmpty)
+
+        // Its dashboard gone, nothing is followed under the screen's.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertNil(appState.followChatBeingLeft(turnWasRunning: true))
+        XCTAssertTrue(appState.backgroundChats.isEmpty)
     }
 
     /// `botWorkClient` and `botWorkSettingsClient` send to the kept

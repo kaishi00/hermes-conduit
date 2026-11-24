@@ -327,12 +327,25 @@ extension AppState {
         for bot in shownBotRoster where isInCombinedGroup(activeDashboardID) {
             if let id = bot.canonicalSession?.id { evidence[activeDashboardID, default: []].insert(id) }
         }
-        for section in otherCombinedDashboardsBots {
-            for bot in section.bots {
-                if let id = bot.canonicalSession?.id { evidence[section.dashboardID, default: []].insert(id) }
+        // Each kept dashboard's bots as last read, the grid's sections or
+        // not: with the screen outside the group the grid shows none, and
+        // two kept dashboards sharing only a Bot Chat are still one Hermes.
+        for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID && isInCombinedGroup(dashboard.id) {
+            for bot in combinedDashboardBots[dashboard.id]?.bots ?? [] {
+                if let id = bot.canonicalSession?.id { evidence[dashboard.id, default: []].insert(id) }
             }
         }
         return Self.oneHermesGroups(evidence)
+    }
+
+    /// The other dashboards of the group that are the same Hermes as `id`:
+    /// an answer given on one leaves each one's Needs you.
+    func combinedHermesTwins(of id: UUID?) -> Set<UUID> {
+        let hermes = combinedHermesGroups
+        guard let group = hermes[id] else { return [] }
+        return Set(hermes.compactMap { other, otherGroup in
+            other.flatMap { $0 != id && otherGroup == group ? $0 : nil }
+        })
     }
 
     /// One chip per profile per Hermes: the dashboard on screen's copy,
