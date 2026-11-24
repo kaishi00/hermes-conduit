@@ -4303,6 +4303,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertEqual(appState.farChatDashboardID, mac.id)
 
+        // Clear the shared seed session so mac and vps are distinct Hermes hosts, not twins.
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.runtimeOnScreen.sessions = []
+
         // ChatAskedQuestionBar reads the far chat's own dashboard waits and
         // ignores a same-session wait on the dashboard on screen (#3199).
         var farAsked = NeedsYouItem(waitID: "asked-P11", profile: "delayed", kind: .question, sessionIDs: ["delayed-chat"],
