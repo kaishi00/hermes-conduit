@@ -2876,6 +2876,11 @@ final class AppState: ObservableObject {
                 await self?.loadSessions(forceRefresh: true)
             }
         }
+        // Its chats are the call's dashboard's: a chat deleted on another
+        // combined dashboard under the same id isn't the call's.
+        supervisor.callDashboard = { [weak self] in
+            self.map { Self.dashboardPreferenceBucket($0.callChatsDashboardID) } ?? ""
+        }
         self.scheduleVoiceJobLedgerRestore()
         return supervisor
     }()

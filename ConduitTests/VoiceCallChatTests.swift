@@ -514,6 +514,30 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.deletedLiveThread, "hanging up forgets it")
     }
 
+    /// Issue 3147: another combined dashboard's chat can share an id with
+    /// the call's. Deleted there, the call keeps its chat; the id is gone
+    /// only on the dashboard it was deleted on.
+    func testAChatDeletedOnAnotherDashboardLeavesTheCallsChatUnderItsId() {
+        let (supervisor, _) = makeAttachedCall()
+        var callsDashboard = "mac"
+        supervisor.callDashboard = { callsDashboard }
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+
+        supervisor.noteChatDeleted(["st-chat"], dashboard: "vps")
+        XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-chat", "the VPS's chat under its id isn't the call's")
+        XCTAssertFalse(supervisor.isDeletedChat(chat))
+        XCTAssertNil(supervisor.deletedLiveThread)
+
+        // A call there never pins the chat deleted there.
+        callsDashboard = "vps"
+        XCTAssertTrue(supervisor.isDeletedChat(chat))
+        callsDashboard = "mac"
+
+        supervisor.noteChatDeleted(["st-chat"], dashboard: "mac")
+        XCTAssertNil(supervisor.liveThread, "deleted on its own dashboard, the call lets go of it")
+        XCTAssertTrue(supervisor.isDeletedChat(chat))
+    }
+
     func testABotChatCallWhoseChatIsDeletedGoesOnInANewChatOnItsBot() async {
         let fake = FakeVoiceJobBackend()
         let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))

@@ -2211,10 +2211,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         while dropped < 256, takePendingNotice() != nil { dropped += 1 }
     }
 
-    /// Chats deleted while the app ran, by any of their ids: here, from
-    /// another profile's row, or found gone when a call's turn went to
-    /// resume one (a Desktop delete). A call never pins one again (issue 1797).
-    private var deletedChatIDs: Set<String> = []
+    /// Chats deleted while the app ran, by any of their ids, under the
+    /// dashboard each was deleted on: here, from another profile's row, or
+    /// found gone when a call's turn went to resume one (a Desktop delete).
+    /// A call never pins one again (issue 1797).
+    private var deletedChatIDs: [String: Set<String>] = [:]
+
+    /// The dashboard the call's chats are on, as a preference bucket: the
+    /// live call's own, else the one on screen. Another combined
+    /// dashboard's chat can share an id with the call's, so a delete there
+    /// is never the call's chat's (issue 3147). Alone (tests), every chat
+    /// is one dashboard's.
+    var callDashboard: @MainActor () -> String = { "" }
 
     /// The chat the call was attached to until it was deleted: the call's
     /// new chat is made on its bot. Cleared when the call leaves.
@@ -2253,7 +2261,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Whether `chat` was deleted (`noteChatDeleted`).
     func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
-        [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }
+        guard let deleted = deletedChatIDs[callDashboard()] else { return false }
+        return [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deleted.contains($0) }
     }
 
     /// The chat `sessionIDs` name was deleted. A call attached to it lets go
@@ -2262,10 +2271,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// that started with none does (#1250). Turns still queued for the
     /// deleted chat fail when they find it gone, and are said so; one
     /// already in it is let go of, as at a hang-up.
-    func noteChatDeleted(_ sessionIDs: Set<String>) {
+    /// `dashboard`: the dashboard it was deleted on, as `callDashboard`
+    /// names them; nil is the call's own. A chat deleted on another one is
+    /// only remembered there: the call's chat under the same id stays.
+    func noteChatDeleted(_ sessionIDs: Set<String>, dashboard: String? = nil) {
         let ids = sessionIDs.filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
-        deletedChatIDs.formUnion(ids)
+        let home = callDashboard()
+        deletedChatIDs[dashboard ?? home, default: []].formUnion(ids)
+        guard (dashboard ?? home) == home else { return }
         // A call's request already running in the deleted chat (a Watch
         // call's later requests included, which have no liveThread) is let
         // go of, as at a hang-up: its end, its OK or its question is never

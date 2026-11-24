@@ -2024,17 +2024,170 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(2)
 
         await appState.switchDashboard(to: vps.id)
+        // The call is the Mac's, going on across the switch.
+        appState.liveCallDashboardID = mac
+        appState.minimisedLiveVoice = .gptLive
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(callChat)
         try await held.answer()
         let deleted = await delete.value
 
         XCTAssertFalse(deleted, "the delete's result belongs to the Mac, not the dashboard now showing")
         XCTAssertTrue(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat), "the call's supervisor knows its chat is gone")
         XCTAssertNil(appState.voiceBackgroundJobSupervisor.liveThread, "and the call let go of it")
+        // Issue 3147: it was deleted on the Mac. The VPS's chat under the
+        // same id isn't gone, and a call there can be attached to it.
+        appState.minimisedLiveVoice = nil
+        appState.liveCallDashboardID = nil
+        XCTAssertFalse(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat))
         XCTAssertNil(appState.pinSyncNotice)
         XCTAssertNil(store.loadTranscript("mac-1", dashboardID: mac, profile: "default"), "the Mac's saved copy of the deleted chat still goes (#1040)")
         XCTAssertNil(store.load(dashboardID: mac, profile: "default")?.lastSessionID)
         let rows = store.keptAnswer(artifactsPage, dashboardID: mac, profile: "default")?["items"] as? [[String: Any]]
         XCTAssertEqual(rows?.compactMap { $0["session_id"] as? String }, ["mac-2"], "and its rows the Mac's kept Artifacts page (#1533)")
+    }
+
+    /// Issue 3147: another profile's chat deleted from All, answered after
+    /// a switch. What the phone keeps for the Mac follows the delete; the
+    /// VPS's chat under the same id, in a profile of the same name, keeps
+    /// its YOLO override, its star, its pins and its place in a call.
+    func testAnotherProfilesDeleteAnsweredAfterASwitchKeepsToItsDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        var row = macSession("work-1")
+        row.profile = "work"
+        let store = appState.offlineChatCacheForTesting
+        store.record(
+            dashboardID: mac,
+            profile: "work",
+            sessionID: "work-1",
+            title: "On the Mac",
+            messages: [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")],
+            sessions: [row]
+        )
+        let pin = PinnedReply(sessionID: "work-1", message: ChatMessage(id: "a", role: .assistant, content: "Plan", timestamp: ""),
+                              chatTitle: "On the Mac")
+        let macPins = PinnedReplyOwner(dashboard: AppState.dashboardPreferenceBucket(mac), profile: "work")
+        let vpsPins = PinnedReplyOwner(dashboard: AppState.dashboardPreferenceBucket(vps.id), profile: "work")
+        appState.setPinnedReplies([pin], of: macPins)
+        appState.setPinnedReplies([pin], of: vpsPins)
+        appState.persistPinnedReplies()
+        let delete = Task { await appState.deleteOtherProfileSession(row) }
+        try await held.answer()             // the mutation snapshot read
+        try await held.waitForRequests(2)   // the delete itself
+
+        await appState.switchDashboard(to: vps.id)
+        // The VPS has a chat under the same id.
+        appState.sessionYoloStore.setOverride(true, for: "work", sessionID: "work-1")
+        appState.setSessionStarred(row, starred: true, profile: "work")
+        try await held.answer()             // the Mac deleted it, after the switch
+        let deleted = await delete.value
+
+        XCTAssertFalse(deleted, "the delete's result belongs to the Mac, not the dashboard now showing")
+        XCTAssertNil(store.loadTranscript("work-1", dashboardID: mac, profile: "work"), "the Mac's saved copy goes (#1040)")
+        XCTAssertTrue(appState.pinnedReplies(of: macPins).isEmpty, "and its pinned replies there")
+        XCTAssertEqual(appState.pinnedReplies(of: vpsPins).map(\.id), [pin.id], "the VPS's pins under that id stay")
+        XCTAssertEqual(appState.sessionYoloStore.storedOverride(for: "work", sessionID: "work-1"), true)
+        XCTAssertTrue(appState.isSessionStarred(row))
+        XCTAssertNil(appState.pinSyncNotice, "nothing about the Mac's chat is said over the VPS")
+        XCTAssertFalse(
+            appState.voiceBackgroundJobSupervisor.isDeletedChat(
+                VoiceThreadTarget(runtimeSessionID: "work-1", storedSessionID: nil, title: "", profile: "work")),
+            "a call on the VPS can still be attached to its chat under that id"
+        )
+    }
+
+    /// Issue 3147: a bot deleted on the Mac, answered after a switch. Its
+    /// pinned replies go from the Mac; the VPS's profile of the same name
+    /// keeps its pins and its stars, and no failure is said over the VPS.
+    func testABotDeleteAnsweredAfterASwitchKeepsToItsDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        appState.isConnected = true
+        let bot = BotProfile(
+            name: "helper", botTitle: nil, displayName: "Helper", profileDescription: "", model: nil, provider: nil,
+            hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "helper-chat", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        XCTAssertTrue(appState.canDeleteBot(bot))
+        let pin = PinnedReply(sessionID: "helper-1", message: ChatMessage(id: "a", role: .assistant, content: "Plan", timestamp: ""),
+                              chatTitle: "Helper")
+        let macPins = PinnedReplyOwner(dashboard: AppState.dashboardPreferenceBucket(mac), profile: "helper")
+        let vpsPins = PinnedReplyOwner(dashboard: AppState.dashboardPreferenceBucket(vps.id), profile: "helper")
+        appState.setPinnedReplies([pin], of: macPins)
+        appState.setPinnedReplies([pin], of: vpsPins)
+        appState.persistPinnedReplies()
+        let delete = Task { await appState.deleteBot(bot) }
+        func deleteSent() -> Bool { held.sent.contains { $0.method == "DELETE" && $0.path.hasSuffix("/api/profiles/helper") } }
+        for _ in 0..<1_000 where !deleteSent() { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(deleteSent())
+
+        await appState.switchDashboard(to: vps.id)
+        // The VPS has a profile of the same name, with a starred chat.
+        var vpsChat = macSession("helper-1")
+        vpsChat.profile = "helper"
+        appState.setSessionStarred(vpsChat, starred: true, profile: "helper")
+        try await held.answer([String: Any](), toPathEnding: "/api/profiles/helper")   // the Mac deleted it, after the switch
+        let failure = await delete.value
+
+        XCTAssertNil(failure, "Hermes deleted it: no failure is said over the VPS")
+        XCTAssertTrue(appState.pinnedReplies(of: macPins).isEmpty, "its pinned replies go from the Mac")
+        XCTAssertEqual(appState.pinnedReplies(of: vpsPins).map(\.id), [pin.id], "the VPS's profile of that name keeps its own")
+        XCTAssertTrue(appState.isSessionStarred(vpsChat), "and its stars")
+    }
+
+    /// Issue 3147: another combined dashboard's chat deleted in place, on
+    /// its own runtime, with a chat under the same id on the dashboard on
+    /// screen. Only the far chat goes: the screen's keeps its row, its YOLO
+    /// override, its star, its place in the Archived list and its call.
+    func testAFarChatsDeleteLeavesTheScreensChatUnderItsIdAlone() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        // No dashboard id on its bridge: one reads a WebKit store of its own first.
+        let farHeld = HeldDashboardRequests(baseURL: vps.normalizedURL)
+        addTeardownBlock { @MainActor in farHeld.releaseAll() }
+        let connection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        appState.keptDashboardRuntimes[vps.id] = kept
+        let screenChat = macSession("chat-1")
+        appState.sessions = [screenChat]
+        kept.runtime.sessions = [macSession("chat-1"), macSession("chat-2")]
+        var archived = macSession("chat-2")
+        archived.isArchived = true
+        appState.archivedSessions = [archived]
+        let profile = appState.activeProfile
+        appState.sessionYoloStore.setOverride(true, for: profile, sessionID: "chat-1")
+        appState.setSessionStarred(screenChat, starred: true, profile: profile)
+        let callChat = VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: nil, title: "On the Mac")
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(callChat)
+
+        for id in ["chat-1", "chat-2"] {
+            var farRow = macSession(id)
+            farRow.combinedDashboardID = vps.id
+            let delete = Task { await appState.deleteSession(farRow) }
+            try await farHeld.answer()      // the mutation snapshot read
+            try await farHeld.answer()      // the VPS deleted it
+            let deleted = await delete.value
+            XCTAssertTrue(deleted, "\(id) is deleted on its own dashboard")
+        }
+
+        XCTAssertTrue(kept.runtime.sessions.isEmpty, "its rows leave its own dashboard's list")
+        XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
+        XCTAssertEqual(appState.sessions.map(\.id), ["chat-1"])
+        XCTAssertEqual(appState.archivedSessions.map(\.id), ["chat-2"], "the Archived list is the dashboard on screen's")
+        XCTAssertEqual(appState.sessionYoloStore.storedOverride(for: profile, sessionID: "chat-1"), true)
+        XCTAssertTrue(appState.isSessionStarred(screenChat))
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, callChat, "a call in the screen's chat stays in it")
+        XCTAssertFalse(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat))
+        // With no chat of that id here, what was kept under it was the far
+        // chat's, and goes with it.
+        appState.sessions = []
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-9"]) },
+                       ["chat-1", "chat-9"])
+        appState.sessions = [screenChat]
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-9"]) },
+                       ["chat-9"])
+        XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1"]), ["chat-1"], "deleted on screen, it is its own")
     }
 
     func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {

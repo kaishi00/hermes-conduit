@@ -587,7 +587,7 @@ extension AppState {
                 if archived {
                     sessionYoloStore.clearOverride(
                         for: profile,
-                        sessionIDs: [updated.id] + updated.alternateIds
+                        sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set([updated.id] + updated.alternateIds)))
                     )
                     removeSessionFromLiveCatalog(updated)
                     // The Archived list and the pins are the dashboard on
@@ -734,6 +734,8 @@ extension AppState {
         defer { sessionMutationID = nil }
         // One set for the success path and a delete answered after a switch.
         let deletedSessionIDs = Set(session.nestingIDs)
+        // What a call hears of it, read while its dashboard's rows are on hand.
+        let callChatIDs = idsOnlyTheDeletedChatAnswersTo(session, dashboard: Self.dashboardPreferenceBucket(dashboardID), profile: profile)
         do {
             if let widgetSessionMutationRequestOverride {
                 try await sendSessionMutation(session.id, body: nil, profile: profile, using: widgetSessionMutationRequestOverride)
@@ -752,21 +754,27 @@ extension AppState {
             // Its pinned replies go too, under the profile it was deleted in.
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // A call in it goes on in a new chat (issue 1797).
-            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
+            noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
             sessionYoloStore.clearOverride(
                 for: profile,
-                sessionIDs: Array(deletedSessionIDs)
+                sessionIDs: Array(idsKeptOnlyForTheDeletedChat(deletedSessionIDs))
             )
             revokeDeletedConversationIdentity(
                 sessionIDs: deletedSessionIDs,
                 profile: profile
             )
             removeSessionFromLiveCatalog(session)
-            archivedSessions.removeAll { sessionMatches($0, session) }
-            removePinnedState(for: session)
-            setSessionStarred(session, starred: false, profile: profile)
-            updateChatReadState { $0.forget(session, profile: profile) }
+            // The Archived list, the pins, the stars and the read ledger are
+            // the dashboard on screen's: another combined dashboard's chat,
+            // deleted on its own runtime, leaves this one's chat under the
+            // same id as it was (issue 3147).
+            if actingOnRuntimeOnScreen {
+                archivedSessions.removeAll { sessionMatches($0, session) }
+                removePinnedState(for: session)
+                setSessionStarred(session, starred: false, profile: profile)
+                updateChatReadState { $0.forget(session, profile: profile) }
+            }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
             return true
@@ -778,7 +786,7 @@ extension AppState {
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // And a call in it goes on in a new chat, as above (issue 1797).
-            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
+            noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             return false
         } catch {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
@@ -825,21 +833,67 @@ extension AppState {
     /// mappings, scroll/resume state, and cached presentation (with any
     /// pending cards) must not survive under any of its aliases.
     func revokeDeletedConversationIdentity(sessionIDs: Set<String>, profile: String) {
+        // The index is its own dashboard's.
         conversationIdentityIndex.removeSessionIDs(sessionIDs, profile: profile)
+        // The rest is kept by profile and chat id alone.
+        let kept = idsKeptOnlyForTheDeletedChat(sessionIDs)
+        guard !kept.isEmpty else { return }
         chatResumeCoordinator.removeSessions(
             profile: profile,
-            sessionIDs: Array(sessionIDs)
+            sessionIDs: Array(kept)
         )
         sessionPresentationCache.removeSessions(
             profile: profile,
-            sessionIDs: Array(sessionIDs)
+            sessionIDs: Array(kept)
         )
         // A saved copy of it on screen goes too; deleteSession removes the
         // copy's files.
         if let copy = offlineChatPresentation, copy.profile == profile,
-           !copy.chatSessionIDs.isDisjoint(with: sessionIDs) {
+           !copy.chatSessionIDs.isDisjoint(with: kept) {
             dismissOfflineChatPresentation()
         }
+    }
+
+    /// Of a deleted chat's ids, those whose state kept by profile and chat
+    /// id alone (where the list was left, the cached presentation, the YOLO
+    /// override) is its own. That state follows the dashboard on screen, so
+    /// for a chat deleted there it is all of them. Another combined
+    /// dashboard's chat, deleted on its own runtime, can share an id with a
+    /// chat this dashboard lists, whose state it would take (issue 3147):
+    /// those ids stay. One Hermes saved twice lists the same chat on both,
+    /// so its ids all go.
+    func idsKeptOnlyForTheDeletedChat(_ sessionIDs: Set<String>) -> Set<String> {
+        guard !actingOnRuntimeOnScreen else { return sessionIDs }
+        if let onScreen = dashboardIDOnScreen, combinedHermesTwins(of: activeDashboardID).contains(onScreen) {
+            return sessionIDs
+        }
+        let screen = runtimeOnScreen
+        var listed: Set<String> = []
+        for row in [screen.sessions, cronSessions, archivedSessions, screen.allProfilesCatalog.sessions].joined() {
+            listed.formUnion(row.nestingIDs)
+        }
+        // The chat open here, listed yet or not.
+        if farChat == nil, let open = activeSessionId { listed.insert(open) }
+        return sessionIDs.subtracting(listed)
+    }
+
+    /// The ids a deleted chat alone answers to: its own and its stored id,
+    /// and an alternate id only while no other row lists it, since another
+    /// chat may share one (a pin made before the chat was listed, or a
+    /// call attached then, may still name that runtime id). The rows on
+    /// hand say so only for the dashboard and profile in scope, once their
+    /// catalog has loaded: before that (right after a switch back), on
+    /// another dashboard's runtime, or for another profile's row, the
+    /// alternates stay (issue 3147).
+    func idsOnlyTheDeletedChatAnswersTo(_ session: SessionSummary, dashboard: String, profile: String) -> Set<String> {
+        let own = Set(([session.id] + [session.storedSessionId].compactMap { $0 }).filter { !$0.isEmpty })
+        guard dashboard == Self.dashboardPreferenceBucket(activeDashboardID),
+              profile.caseInsensitiveCompare(activeProfile) == .orderedSame,
+              sessionCatalogPhase == .loaded else { return own }
+        let others = (sessions + cronSessions).filter { $0.id != session.id }
+        return own.union(session.alternateIds.filter { id in
+            !id.isEmpty && !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
+        })
     }
 
     private func encodedSessionID(_ sessionID: String) -> String {
