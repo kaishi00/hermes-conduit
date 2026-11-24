@@ -7245,8 +7245,9 @@ dashboards' rows do not offer Archive.
   to its list; Delete asks before permanently removing it.
 - Voice rows the plugin auto-archived are shown in Chats instead of Archived.
   A user-archived chat stays archived until restored.
-- A far combined dashboard's row does not offer Archive until the action can
-  run against that dashboard's own state.
+- Another combined dashboard's chat is archived on its own dashboard, through
+  its kept connection, from its open chat's title and ⋯ menus (#3226); its row
+  in the Chats list carries no menu.
 
 **Open gaps**
 - Desktop does not offer Archive from a project chat row or the open chat's

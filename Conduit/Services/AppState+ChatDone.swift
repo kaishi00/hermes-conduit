@@ -32,7 +32,9 @@ extension AppState {
             return chatDoneMarks.isDone(session, profile: rowProfile(session))
         }
         guard far != dashboardIDOnScreen, let marks = farChatDoneMarks[far] else { return false }
-        let (row, profile) = farChatMarksRow(session, in: far)
+        let (row, owner) = farChatMarksRow(session, in: far)
+        // As the marks spell it: a dashboard that dropped lists no profiles.
+        let profile = marks.marksByProfile.keys.first { Self.profilesMatch($0, owner) } ?? owner
         return marks.isDone(row, profile: profile)
     }
 

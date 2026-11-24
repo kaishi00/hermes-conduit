@@ -32,7 +32,9 @@ extension AppState {
             return chatMutes.mute(for: session, profile: rowProfile(session), now: now)
         }
         guard far != dashboardIDOnScreen, let mutes = farChatMutes[far] else { return nil }
-        let (row, profile) = farChatMarksRow(session, in: far)
+        let (row, owner) = farChatMarksRow(session, in: far)
+        // As the mutes spell it: a dashboard that dropped lists no profiles.
+        let profile = mutes.mutesByProfile.keys.first { Self.profilesMatch($0, owner) } ?? owner
         return mutes.mute(for: row, profile: profile, now: now)
     }
 
