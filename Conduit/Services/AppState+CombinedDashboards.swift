@@ -585,19 +585,11 @@ extension AppState {
         // runtime kept anew later doesn't take the page over unannounced.
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         release(kept)
-        // Its runtime says so: a scope still holding it (a far call's
-        // start, a far open mid-await) reads `isConnected` from it, and
-        // would go on against the released client (issue 3165).
-        kept.runtime.isConnected = false
-        kept.runtime.isConnecting = false
         // A reply followed through its socket ends here, as its chats' do
         // when the screen's socket closes.
         settleKeptChatTurnsAfterDisconnect(of: id)
         closeKeptChats(of: id)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
-        // A surface showing it stops republishing a runtime that's gone.
-        let gone = ObjectIdentifier(kept.runtime)
-        surfaceRuntimeChanges = surfaceRuntimeChanges.filter { $0.value.runtime != gone }
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
         if !keepingLists { forgetCombinedDashboardLists(id) }
@@ -936,8 +928,19 @@ extension AppState {
         client.isConnected
     }
 
+    /// Lets a kept connection go, on every path that does: the drop, a
+    /// take-up that finds it closed, moved or out of the group, and a
+    /// socket that can't be handed to another profile.
     private func release(_ kept: KeptDashboardRuntime) {
         kept.client.disconnect()
         kept.bridge.invalidate()
+        // Its runtime says so: a scope still holding it (a far call's
+        // start, a far open mid-await) reads `isConnected` from it, and
+        // would go on against the released client (issue 3165).
+        kept.runtime.isConnected = false
+        kept.runtime.isConnecting = false
+        // A surface showing it stops republishing a runtime that's gone.
+        let gone = ObjectIdentifier(kept.runtime)
+        surfaceRuntimeChanges = surfaceRuntimeChanges.filter { $0.value.runtime != gone }
     }
 }

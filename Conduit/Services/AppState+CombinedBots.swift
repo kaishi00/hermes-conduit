@@ -208,7 +208,9 @@ extension AppState {
         // dashboard's scope, the one on screen would have none, and could
         // never be found to be that dashboard's twin (issue 3210).
         guard actingOnRuntimeOnScreen else { return act(onRuntime: runtimeOnScreen) { combinedHermesEvidence } }
-        guard isInCombinedGroup(activeDashboardID) else { return [:] }
+        // On a dashboard outside the group, the group's own are still kept
+        // and answered in place: they have their evidence, it has none.
+        let onScreenIsCombined = isInCombinedGroup(activeDashboardID)
         // A row with no id of its own goes by its place in the list
         // (normalizeSessions): a number any Hermes could give.
         func hostIDs<S: Sequence>(_ ids: S) -> Set<String> where S.Element == String {
@@ -222,9 +224,10 @@ extension AppState {
         // kept dashboard's cache is all its own, each row marked with its id.
         let catalog = allProfilesCatalog.dashboardID == activeDashboardID ? allProfilesCatalog.sessions : []
         let own = (sessions + cronSessions + catalog).filter { $0.combinedDashboardID == nil }
-        var evidence: [UUID?: Set<String>] = [
-            activeDashboardID: ids(own).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" }),
-        ]
+        var evidence: [UUID?: Set<String>] = [:]
+        if onScreenIsCombined {
+            evidence[activeDashboardID] = ids(own).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" })
+        }
         for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID && isInCombinedGroup(dashboard.id) {
             // Its cron runs count as the dashboard on screen's do (issue 2761).
             let chats = combinedDashboardChats[dashboard.id].map { ids($0.sessions).union(hostIDs($0.cronIDs)) } ?? []

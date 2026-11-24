@@ -931,8 +931,11 @@ extension CrossProfilePresentationCacheTests {
         // Kept, then the address moves on: the switch back lets it go.
         registry.dashboards[0].normalizedURL = "https://127.0.0.9:1"
         appState.savedDashboardRegistry = registry
+        let letGo = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]).runtime
+        XCTAssertTrue(letGo.isConnected)
         XCTAssertNil(appState.takeKeptDashboardRuntime(mac.id, profile: "default"))
         XCTAssertFalse(outgoing.isConnected)
+        XCTAssertFalse(letGo.isConnected, "a scope still holding its runtime reads it as dropped")
 
         let again = try await openClient("https://127.0.0.9:1")
         appState.client = again
@@ -4438,6 +4441,27 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertFalse(kept.runtime.isConnected)
         XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.isConnected })
         XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) })
+
+        // With the screen on a dashboard outside the group, the group's own
+        // twins are still found, from the screen and from a far scope, and
+        // the one on screen is nobody's twin.
+        let third = SavedDashboard(id: UUID(), label: "Third", normalizedURL: "https://127.0.0.3:1", combined: true)
+        var alone = vps
+        alone.combined = false
+        appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: [mac, alone, third])
+        var thirdRow = session("shared-1", profile: "default")
+        thirdRow.combinedDashboardID = third.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [farRow], at: Date()
+        )
+        appState.combinedDashboardChats[third.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [thirdRow], at: Date()
+        )
+        for groups in [appState.combinedHermesGroups, appState.act(onRuntime: kept.runtime) { appState.combinedHermesGroups }] {
+            XCTAssertNotNil(groups[mac.id])
+            XCTAssertEqual(groups[mac.id], groups[third.id], "two kept dashboards of the group are still found to be one Hermes")
+            XCTAssertNil(groups[vps.id], "the dashboard on screen, outside the group, has no evidence")
+        }
     }
 
     /// `botWorkClient` and `botWorkSettingsClient` send to the kept

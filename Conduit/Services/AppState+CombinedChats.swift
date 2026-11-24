@@ -324,7 +324,7 @@ extension AppState {
         // As the screen sees the group, whatever scope asks (issue 3210).
         guard actingOnRuntimeOnScreen else { return act(onRuntime: runtimeOnScreen) { combinedHermesGroups } }
         var evidence = combinedHermesEvidence
-        for bot in shownBotRoster {
+        for bot in shownBotRoster where isInCombinedGroup(activeDashboardID) {
             if let id = bot.canonicalSession?.id { evidence[activeDashboardID, default: []].insert(id) }
         }
         for section in otherCombinedDashboardsBots {
