@@ -4243,9 +4243,10 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.activeSessionId == "far-w1" && appState.messages.contains { $0.id == "msg-far-w1" } }
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
-        XCTAssertEqual(appState.keptDashboardRuntimes[mac.id]?.client.profile, "atlas")
+        let handedAtlas = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.client)
+        XCTAssertEqual(handedAtlas.profile, "atlas")
+        XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(handedAtlas))
         XCTAssertEqual(seen.opened.last?.1, "far-w1")
-        XCTAssertEqual(seen.opened.last?.2, "atlas")
 
         appState.openAppLink(.session(id: "far-w2", profile: "atlas", dashboard: mac.id.uuidString))
         await waitUntil { appState.activeSessionId == "far-w2" && appState.messages.contains { $0.id == "msg-far-w2" } }
@@ -4312,9 +4313,9 @@ extension CrossProfilePresentationCacheTests {
                                            since: Date(timeIntervalSince1970: 20))
         screenCollision.asked = BotWorkCoordination.Item(row: ["id": "P12", "kind": "proposal", "at": 20.0,
                                                                "text": "Wrong host?", "status": "open", "actions": ["approve", "decline"]])
+        XCTAssertFalse(appState.isOpenChat(screenCollision))
         appState.needsYou.apply([screenCollision], profile: "delayed", dashboardID: vps.id) { _ in false }
         appState.needsYou.applyOther([farAsked], profile: "delayed", dashboardID: mac.id) { _ in false }
-        XCTAssertFalse(appState.isOpenChat(screenCollision))
         XCTAssertEqual(ChatAskedQuestionBar.questions(in: appState.needsYou, for: appState).map(\.waitID), ["asked-P11"])
         appState.needsYou.dropAnsweredQuestion("P11", profile: "delayed", dashboardID: mac.id)
         XCTAssertTrue(ChatAskedQuestionBar.questions(in: appState.needsYou, for: appState).isEmpty)
