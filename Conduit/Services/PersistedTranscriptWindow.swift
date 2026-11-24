@@ -112,7 +112,11 @@ struct PersistedTranscriptWindowState: Equatable {
     /// Coverage captured from persisted rows BEFORE local reviews, notes or
     /// call cards decorate them. Nil keeps the legacy/unknown-time fallback.
     var oldestLoadedTimestamp: Date? = nil
-    var isLoadingEarlier = false
+    var isLoadingEarlier = false {
+        didSet { if !isLoadingEarlier { earlierRequestID = nil } }
+    }
+    /// A replaced window at the same raw offset must not inherit an old flight.
+    var earlierRequestID: UUID? = nil
     /// The visible transcript starts with rows loaded through backfill.
     /// Explicit state because the reconnect graft must keep preserving that
     /// prefix across REPEATED reconciles, while the network coverage reset
@@ -146,13 +150,19 @@ struct PersistedTranscriptWindowState: Equatable {
     /// another device), so none claims more coverage than the refreshed
     /// window does: undercounting only reads back over held rows, which
     /// dedup drops, while overcounting would skip rows.
-    func pageStartsCarried(into refreshedCoverage: Int) -> [LoadedPageStart] {
+    func pageStartsCarried(
+        into refreshedCoverage: Int,
+        includingAppendedTimestamp: Date? = nil
+    ) -> [LoadedPageStart] {
         loadedPageStarts.map {
             LoadedPageStart(
                 firstRowID: $0.firstRowID,
                 nextOffset: min($0.nextOffset, refreshedCoverage),
                 hasBackfilledPrefix: $0.hasBackfilledPrefix,
-                oldestLoadedTimestamp: $0.oldestLoadedTimestamp
+                // A positively accepted append survives every carried cut,
+                // even after its ID rotates out of the latest-page verifier.
+                oldestLoadedTimestamp: [$0.oldestLoadedTimestamp, includingAppendedTimestamp]
+                    .compactMap { $0 }.min()
             )
         }
     }
@@ -321,6 +331,7 @@ enum PersistedTranscriptWindow {
     static func trimmingLoadedHistory(
         _ messages: [ChatMessage],
         window: PersistedTranscriptWindowState,
+        durableRowIDs: Set<String>,
         keeping limit: Int
     ) -> (messages: [ChatMessage], window: PersistedTranscriptWindowState)? {
         guard messages.count > limit, !window.isLoadingEarlier else { return nil }
@@ -332,7 +343,13 @@ enum PersistedTranscriptWindow {
             trimmed.nextOffset = start.nextOffset
             trimmed.canLoadEarlier = true
             trimmed.reachedBeginning = false
-            trimmed.oldestLoadedTimestamp = start.oldestLoadedTimestamp
+            // Later accepted durable rows can have regressed clocks and
+            // still survive this cut. Local optimistic/decorative rows do
+            // not extend persisted coverage just because they are displayed.
+            trimmed.oldestLoadedTimestamp = [start.oldestLoadedTimestamp,
+                timestampLowerBound(in: messages[index...].filter {
+                    durableRowIDs.contains($0.id)
+                })].compactMap { $0 }.min()
             trimmed.hasBackfilledPrefix = start.hasBackfilledPrefix
             trimmed.loadedPageStarts = Array(window.loadedPageStarts[...position])
             return (Array(messages[index...]), trimmed)
@@ -368,11 +385,35 @@ enum PersistedTranscriptWindow {
         // them. Use the authoritative tail and let bounded backfill restore
         // whatever older history the server still exposes. Ordinary growth
         // without this replacement signal keeps its complete/backfilled prefix.
-        if previous[..<anchor].contains(where: { $0.displayKind == "model_switch" }),
-           refreshedTail.contains(where: { $0.displayKind == "model_switch" }) {
+        if modelSwitchReplacementRequiresRefresh(refreshedTail: refreshedTail, held: previous) {
             return (refreshedTail, false)
         }
         return (Array(previous[..<anchor]) + refreshedTail, true)
+    }
+
+    /// The known model-switch writer can withdraw an older active notice.
+    /// Only a genuinely new tail notice invalidates retained old notices.
+    /// Reconnect preserves only the pre-tail prefix; append-only foreground
+    /// and pre-send adoption preserve the overlap too.
+    static func modelSwitchReplacementRequiresRefresh(
+        refreshedTail: [ChatMessage], held: [ChatMessage],
+        preservingHeldOverlap: Bool = false
+    ) -> Bool {
+        let retained: ArraySlice<ChatMessage>
+        if preservingHeldOverlap {
+            retained = held[...]
+        } else {
+            guard let first = refreshedTail.first,
+                  let anchor = held.firstIndex(where: { $0.id == first.id }) else { return false }
+            retained = held[..<anchor]
+        }
+        guard retained.contains(where: { $0.displayKind == HermesDisplayKind.modelSwitch.rawValue }) else {
+            return false
+        }
+        let heldIDs = Set(held.map(\.id))
+        return refreshedTail.contains {
+            $0.displayKind == HermesDisplayKind.modelSwitch.rawValue && !heldIDs.contains($0.id)
+        }
     }
 
     /// Reconciles a tool call/result pair that a page boundary split apart.

@@ -10383,7 +10383,18 @@ extension AppStateForegroundLifecycleTests {
         let links = state.voiceCallChatLinks
         XCTAssertEqual(links.links.count, 1)
         let ordinaryBefore = state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }
+        var model = TranscriptModel()
+        var input = TranscriptModel.Input()
+        input.loadsEarlier = state.canLoadEarlierMessagesForActiveConversation
+        input.hasSavedCopy = state.offlineChatPresentation != nil
+        input.chatIsOpening = state.liveChatIsOnItsWay
+        _ = model.update(input, targets: [], disclosure: ChatRowDisclosure())
+        XCTAssertTrue(model.rows.contains { if case .loadEarlier = $0.kind { return true }; return false })
+        XCTAssertTrue(model.rows.contains { if case .empty = $0.kind { return true }; return false },
+            "Zero normalized targets draw the welcome in addition to Load earlier")
+        XCTAssertFalse(model.drawsOnlyLoadEarlier, "REAL_CAPTURE_AUTOLOAD_GUARD_IS_FALSE")
         try await captureReviewPositiveEmptyHistory(state, label: retryBeforeSend ? "pre-send-before" : "foreground-before")
+        XCTAssertEqual(reads, 1, "Mounting the real ChatView must not read earlier history or consume the injected 503")
         state.handleScenePhase(.background)
         await runSceneActivation(harness)
         XCTAssertEqual(probes, 1)
@@ -10447,5 +10458,503 @@ extension AppStateForegroundLifecycleTests {
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         let documents = try XCTUnwrap(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first)
         try XCTUnwrap(image.pngData()).write(to: documents.appendingPathComponent(name + ".png"), options: .atomic)
+    }
+}
+
+
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    private func review604ModelSwitchPages() throws -> ([String: Any], [String: Any], [String: Any]) {
+        func payload(_ json: String) throws -> [String: Any] {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        }
+        let before = try payload(#"""
+{"pagination":{"limit":120,"offset":0,"order":"latest","returned":3},"profile":"default","session_id":"20261124_160454_d1612f","messages":[
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Kept older row X","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":1,"message_uid":"eddb75f0f16b40bba612939f67bfbe7f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.3644767,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"[System: The active model for this chat has changed to fixture-model-before via provider fixture-provider. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]","display_kind":"model_switch","display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":2,"message_uid":"a4ed9014aa214426bbe43c49efd23914","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.370923,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Kept anchor B","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":3,"message_uid":"8393e2f9918c4389a52b898a80a3b1d7","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.3754544,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null}
+]}
+"""#)
+        let tail = try payload(#"""
+{"pagination":{"limit":120,"offset":0,"order":"latest","returned":120},"profile":"default","session_id":"20261124_160454_d1612f","messages":[
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Kept anchor B","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":3,"message_uid":"8393e2f9918c4389a52b898a80a3b1d7","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.3754544,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 0","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":4,"message_uid":"7cbf0ca1c27640afa14d5e25fcdffaeb","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.389395,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 1","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":5,"message_uid":"2e11cf6c0c9a4bce8c108fef37c8c74f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.3946598,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 2","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":6,"message_uid":"321fd1fd7c1c4eb9be62721b115525ac","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.3993979,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 3","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":7,"message_uid":"2bac54cea11448abb6b560b21fd3c1cc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4042659,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 4","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":8,"message_uid":"e4d39514b8bf4b31b33a36f1f82ad998","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4092014,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 5","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":9,"message_uid":"3ece6275478a4a16b1086738625639a3","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4140465,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 6","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":10,"message_uid":"0c2aa3fb45ce405a982ca9843f830083","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4186313,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 7","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":11,"message_uid":"4e49c3d414c74020999f5987fb6781da","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4235575,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 8","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":12,"message_uid":"02d7766e195544818f1831ed92de6e5d","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4292452,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 9","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":13,"message_uid":"9b81adf212684b09971306e65fdbbf49","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4342523,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 10","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":14,"message_uid":"0edbbb53645c48a4aa75aa5c492aa496","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4387698,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 11","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":15,"message_uid":"7f796721de23425ebbb38003f745a72d","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4434094,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 12","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":16,"message_uid":"849b367cc77b46efb52d86b686487a87","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4481313,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 13","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":17,"message_uid":"b5dc28bb44fe43f199ae24e0a29d3905","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4532688,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 14","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":18,"message_uid":"469af9362e2b40a4a69d897f36ef12bb","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4582617,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 15","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":19,"message_uid":"dbdf132f33834021a58c738cc0d3fb92","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4632044,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 16","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":20,"message_uid":"a4094f6cf72a49ee8ae12d8c264f4215","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.468264,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 17","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":21,"message_uid":"5d491bbbe41a4c63aee0a4efcce4cb2d","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4728267,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 18","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":22,"message_uid":"d50a380521094ac290fb3b0241e0bc1e","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4776788,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 19","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":23,"message_uid":"dea5662f815849d68fc89982b1990c03","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4829907,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 20","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":24,"message_uid":"55b5fbc3ae014772aa0c2d41881e6a42","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.488534,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 21","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":25,"message_uid":"6231d35a142540269c51cebd754a9b26","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.4936821,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 22","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":26,"message_uid":"14b7a7c0f5dc44ba82db1e460b8ecadc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.4987886,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 23","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":27,"message_uid":"9e7510e7ef2d4657946c298d033922e6","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.503766,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 24","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":28,"message_uid":"1f3d103544f74178921f760ac2ebe2ab","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5088573,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 25","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":29,"message_uid":"acdf9fe6a2294cbb92b28d387225db0f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5136847,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 26","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":30,"message_uid":"659d6bb24d40492a8dcc7c26518192f0","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5183203,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 27","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":31,"message_uid":"e2ccfc3024af4c4c94cca8be3a918e1b","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5228987,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 28","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":32,"message_uid":"b1293f12fa3a4511899c1878b89649e3","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5276902,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 29","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":33,"message_uid":"fcfb925a26b7440aa434588e18b5e4aa","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5330377,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 30","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":34,"message_uid":"0d31ad9dd1df45f0b2b009d149f7c383","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5375495,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 31","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":35,"message_uid":"8e2599445cbd4de7bf86b460f8eba8c4","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5423346,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 32","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":36,"message_uid":"ee24cdaa9d3a4795bf2a79f875583277","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.547805,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 33","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":37,"message_uid":"836ba9b90716466ca8ff0931b459ec02","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5546653,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 34","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":38,"message_uid":"71590ae41eca4c3f82277333ffbf02fc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5610118,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 35","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":39,"message_uid":"6879315ce05c4dd69c0ffd2f9d7b49a6","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5666487,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 36","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":40,"message_uid":"3b732ee5aa4f4ebaa9fc0714574e0c89","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.571568,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 37","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":41,"message_uid":"5ee50619641a474fad58be68df986f77","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5771942,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 38","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":42,"message_uid":"682683e9b5eb4bd78e01fab25d69ce5d","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5824256,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 39","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":43,"message_uid":"6b334b28199e41a0b5ffd6d1f967fe67","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.587891,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 40","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":44,"message_uid":"5d427ab5402c4b1983ed37eed3a7d267","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.5926945,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 41","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":45,"message_uid":"7ae8f427b07942858c4443fb6e379587","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.5978725,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 42","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":46,"message_uid":"a01b133738054600af1add81c0eada58","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.603003,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 43","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":47,"message_uid":"6d9d7ad1b2f346d992331386d3c56f82","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6081958,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 44","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":48,"message_uid":"88aaaeb4e27b4678aecd7064c05a95ec","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.6162002,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 45","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":49,"message_uid":"66dcbf121626460d800f5cd269518162","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6249554,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 46","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":50,"message_uid":"325ee4a4f80b46b49ecb9de6e5e38567","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.63145,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 47","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":51,"message_uid":"ada369f3949e4365b4a4a0fa39f8e52c","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6359718,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 48","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":52,"message_uid":"ce8539907a624af89faf6ba68dbbba23","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.641093,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 49","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":53,"message_uid":"0be6ef88ac664b2c8fe3d3c84f6e874e","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.645745,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 50","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":54,"message_uid":"52bb35171bce4c339f0c8c0d4fd483ec","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.6501138,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 51","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":55,"message_uid":"6b73ffeeb1284c3cb33493348b69ef43","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6548843,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 52","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":56,"message_uid":"0ddb04f5fe8b493ca899ae7e194e82f8","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.6594527,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 53","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":57,"message_uid":"2569d648b1024c7ea8e8c7bdd73acdc5","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6643925,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 54","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":58,"message_uid":"1d656d64a5614a089ebfc8ae9513f08c","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.6692057,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 55","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":59,"message_uid":"c465b9c70a454f2e98bf7d28499a8c64","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6741116,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 56","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":60,"message_uid":"7765110ce71c4ee3905f89c8e826ad61","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.67878,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 57","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":61,"message_uid":"cd667e0088064407a6942f5784ad23cc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6844132,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 58","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":62,"message_uid":"e5b88de4dd214bdcb6acb7dcbc39e382","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.6896343,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 59","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":63,"message_uid":"54025449274641d6a9e3a1d5712a3bba","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.6945107,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 60","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":64,"message_uid":"15747e1276814372aadd875851753344","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.699017,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 61","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":65,"message_uid":"a1f122172c77446db53cf8bf0b4480c0","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7038884,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 62","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":66,"message_uid":"979ab821befc4948841543ac73cb5f3c","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7090228,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 63","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":67,"message_uid":"04b19e29f719490fa10f1c2dfa2890d4","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7145617,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 64","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":68,"message_uid":"7edca7c6bfe54b2aa94f562a7dc95fcb","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.719436,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 65","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":69,"message_uid":"7e09573164504d2b85f999ff689041a7","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7243106,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 66","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":70,"message_uid":"c18aa67d32a84b84887ff5b5b64e99eb","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.729184,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 67","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":71,"message_uid":"1a94d91d11a34dddb9bdeba0de2871e9","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7341862,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 68","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":72,"message_uid":"881699c131f14288bc973456496316ef","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7387624,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 69","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":73,"message_uid":"c4d588ba948f46469dd8c64f9724aac2","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7437942,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 70","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":74,"message_uid":"17f1d8ac479449e990e62afe4f7da418","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7488315,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 71","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":75,"message_uid":"a1065eee498d40f08965fb38e43ee9eb","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7539809,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 72","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":76,"message_uid":"06cdb2dfbee24666a69bc4c6a45527bb","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7591343,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 73","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":77,"message_uid":"491945d1a04a4c4c877de4d2f86c99bc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7637794,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 74","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":78,"message_uid":"f22afbefd4b7420c8862b705a7024e0b","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7689397,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 75","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":79,"message_uid":"56bcecbad2e2468a877515ad36a80cca","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.773911,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 76","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":80,"message_uid":"65f9dea9f1fd435fb154169fcb8a095a","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7789576,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 77","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":81,"message_uid":"73b28fb5d5d34849a1081f71cc35fc8f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7838955,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 78","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":82,"message_uid":"3177eeddb67d4bc593b32db65b3ea353","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.7886453,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 79","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":83,"message_uid":"78bd804a3806461c8ce7f71fd9649d23","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.7934017,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 80","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":84,"message_uid":"1a6fcf44b22747669c0b26e7aa18d9bf","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.797215,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 81","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":85,"message_uid":"fe440a664cc245de9a415681d8609197","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8017492,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 82","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":86,"message_uid":"04b9355ce8874294a758494cdc3d5a1f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.8069208,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 83","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":87,"message_uid":"a73535db13774f1da3b992986e12f51a","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8114414,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 84","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":88,"message_uid":"5a44c7d9cd00401595297b9b0e90172a","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.816228,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 85","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":89,"message_uid":"a59cf4c3baa24e64916c798453684c6e","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.820692,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 86","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":90,"message_uid":"1ca7b433fa014a9c851c945bf4a48e92","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.825615,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 87","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":91,"message_uid":"c3204576297741e3aa38e62d02e4a3d4","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8302658,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 88","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":92,"message_uid":"1cf6b030da4b4c9ab7b793f064b37463","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.8352056,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 89","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":93,"message_uid":"02edd5508734415d823bf11caea04b62","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8403912,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 90","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":94,"message_uid":"4e4e00982c244d6b84e77311c242f0da","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.8455868,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 91","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":95,"message_uid":"2bb5e428f2bf44a29f470ee2c395f75f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8506372,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 92","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":96,"message_uid":"4bfbc205e3b74df19a61cfdeb31f02cc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.857302,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 93","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":97,"message_uid":"ce0c1c7b00754cc4a5ffc9a0b80907fe","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8641963,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 94","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":98,"message_uid":"ded053b845444694a99327660b7039fe","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.8694215,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 95","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":99,"message_uid":"c39d2a50eb014230b90617228c7d94df","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8783526,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 96","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":100,"message_uid":"4dc2f340c5eb459f99f677f4800eb6fc","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.8853126,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 97","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":101,"message_uid":"de942e2427944992bfffd5d7ae5e27a6","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.8900836,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 98","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":102,"message_uid":"6ded230fc4c043a3b99c9a228ee5ce29","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.8953807,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 99","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":103,"message_uid":"34afe803ec8d4219ac29d8461624eaad","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9003665,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 100","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":104,"message_uid":"d568026a188c4114903d0e3352799851","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.905119,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 101","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":105,"message_uid":"226dff410cf54feea47a44c90953085f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9100332,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 102","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":106,"message_uid":"ac7b38a2e1b84c389b61bc4fa9eae492","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9163015,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 103","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":107,"message_uid":"1111294229924eaaad501319626f810d","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9213681,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 104","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":108,"message_uid":"d35378f10c8d4ce2b174802cb2855fa4","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9260263,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 105","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":109,"message_uid":"db11b2cb10f74986ac07d4b5956afbc6","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9311886,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 106","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":110,"message_uid":"d2a8307d3bb84b0e95723f4202487622","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9369447,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 107","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":111,"message_uid":"7304be8fb365464ba365046d293177db","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9420018,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 108","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":112,"message_uid":"1ca35d6d4e9249f3aa29aa058c89be30","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9468267,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 109","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":113,"message_uid":"c8b5cbb2d7b94bde9380e7f6b177b57a","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.951779,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 110","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":114,"message_uid":"32019f2d708c4808b74439d159f1f2da","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9563284,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 111","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":115,"message_uid":"7b57d5fdb9e9473181528240559e9dd0","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9609833,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 112","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":116,"message_uid":"578cde59679942aa9a9c471f15c60182","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9657187,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 113","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":117,"message_uid":"19f498d548ad42f88330f9a173afba75","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9704676,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 114","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":118,"message_uid":"940fb72e0957444f9347c408c3fd3780","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9752998,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 115","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":119,"message_uid":"6a2df364875e4fe3b23dcb8b23dc82b6","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.980527,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 116","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":120,"message_uid":"c7f3e3d902e349dfb60bf5393c3b44c4","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9847736,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Remote growth 117","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":121,"message_uid":"a89213cc6f7648848e247ac385d1f305","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"assistant","session_id":"20261124_160454_d1612f","timestamp":1795536295.9894543,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null},
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"[System: The active model for this chat has changed to fixture-model-after via provider fixture-provider. From this point forward, use this runtime metadata when answering questions about what model/provider is active.]","display_kind":"model_switch","display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":122,"message_uid":"c44b35ca200546d8a37f26e83dba00c6","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.9988883,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null}
+]}
+"""#)
+        let earlier = try payload(#"""
+{"pagination":{"limit":120,"offset":120,"order":"latest","returned":1},"profile":"default","session_id":"20261124_160454_d1612f","messages":[
+{"absorbed_message_uids":null,"active":1,"api_content":null,"codex_message_items":null,"codex_reasoning_items":null,"compacted":0,"content":"Kept older row X","display_kind":null,"display_metadata":null,"effect_disposition":null,"finish_reason":null,"id":1,"message_uid":"eddb75f0f16b40bba612939f67bfbe7f","observed":0,"platform_message_id":null,"reasoning":null,"reasoning_content":null,"reasoning_details":null,"role":"user","session_id":"20261124_160454_d1612f","timestamp":1795536295.3644767,"token_count":null,"tool_call_id":null,"tool_call_uid":null,"tool_call_uids":null,"tool_calls":null,"tool_name":null}
+]}
+"""#)
+        return (before, tail, earlier)
+    }
+}
+
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    func testReview6043623895ForegroundReconcilesWithdrawnModelNotice() async throws {
+        try await assertReview604ModelSwitchRefresh(retryBeforeSend: false)
+    }
+
+    func testReview6043623895PreSendReconcilesWithdrawnModelNotice() async throws {
+        try await assertReview604ModelSwitchRefresh(retryBeforeSend: true)
+    }
+
+    func testReview6043623895ForegroundReconcilesShortOverlapModelNotice() async throws {
+        try await assertReview604ModelSwitchRefresh(retryBeforeSend: false, shortTail: true)
+    }
+
+    func testReview6043623895PreSendReconcilesShortOverlapModelNotice() async throws {
+        try await assertReview604ModelSwitchRefresh(retryBeforeSend: true, shortTail: true)
+    }
+
+    /// Generated no-growth equivalent of the pinned real writer/route receipt:
+    /// server.py1152-1194 deactivates old model_switch rows then appends one,
+    /// independently of intervening ordinary growth or the tail page size.
+    private func review604ShortOverlapModelSwitchPages() throws -> ([String: Any], [String: Any], [String: Any]) {
+        let (before, capturedTail, earlier) = try review604ModelSwitchPages()
+        let initial = try XCTUnwrap(before["messages"] as? [[String: Any]])
+        var replacement = try XCTUnwrap((capturedTail["messages"] as? [[String: Any]])?.last)
+        replacement["id"] = 4
+        var shortTail = before
+        shortTail["messages"] = [initial[0], initial[2], replacement]
+        shortTail["pagination"] = ["limit": 120, "offset": 0, "order": "latest", "returned": 3]
+        return (before, shortTail, earlier)
+    }
+
+    private func assertReview604ModelSwitchRefresh(retryBeforeSend: Bool, shortTail: Bool = false) async throws {
+        let pages: ([String: Any], [String: Any], [String: Any])
+        if shortTail { pages = try review604ShortOverlapModelSwitchPages() }
+        else { pages = try review604ModelSwitchPages() }
+        let (before, tail, earlier) = pages
+        let stored = try XCTUnwrap(before["session_id"] as? String)
+        let active = session(stored)
+        let initialRows = MessageNormalizer.normalizeMessages(try XCTUnwrap(before["messages"] as? [Any]).map(AnyCodable.from))
+        let tailRows = MessageNormalizer.normalizeMessages(try XCTUnwrap(tail["messages"] as? [Any]).map(AnyCodable.from))
+        let earlierRows = MessageNormalizer.normalizeMessages(try XCTUnwrap(earlier["messages"] as? [Any]).map(AnyCodable.from))
+        if shortTail {
+            XCTAssertEqual(initialRows.map(\.id), ["1.0", "2.0", "3.0"])
+            XCTAssertEqual(tailRows.map(\.id), ["1.0", "3.0", "4.0"])
+            XCTAssertEqual(tailRows.last?.displayKind, HermesDisplayKind.modelSwitch.rawValue)
+        }
+        var reads = 0
+        var resumes = 0
+        var sends = 0
+        var rowsAtSend: [String] = []
+        var rowsForSend: () -> [String] = { [] }
+        var offsets: [Int] = []
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [active] },
+            openSession: { _, id, _ in
+                resumes += 1
+                return SessionResumeResult(sessionId: id, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { id, profile, query in
+                XCTAssertEqual(id, stored); XCTAssertEqual(profile, "default")
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                reads += 1
+                if reads == 1 { return .payload(before) }
+                if retryBeforeSend && reads == 2 {
+                    return .failed(DashboardTicketBridgeError.http(status: 503, detail: "fixture transient"))
+                }
+                return .payload(tail)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                offsets.append(offset)
+                return .payload(earlier)
+            },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, _, _ in sends += 1; rowsAtSend = rowsForSend(); return .accepted },
+            verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [LiveSessionStatus(runtimeSessionId: stored, storedSessionId: stored, status: "idle")] }
+        ))
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [active]; state.activeSessionId = stored
+        let opened = await state.openSession(stored)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(state.messages, initialRows)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, true)
+        let links = state.voiceCallChatLinks
+        state.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        if retryBeforeSend {
+            XCTAssertTrue(state.transcriptFreshnessIsStale)
+            rowsForSend = { [weak state] in state?.messages.map(\.id) ?? [] }
+            let submitted = await state.submitComposer(text: "Prompt after remote model change")
+            XCTAssertTrue(submitted)
+            XCTAssertEqual(sends, 1)
+            XCTAssertFalse(rowsAtSend.contains("2.0"), "PRESEND_REPLACEMENT_MUST_DROP_WITHDRAWN_NOTICE_BEFORE_SEND")
+            XCTAssertEqual(Array(rowsAtSend.prefix(tailRows.count)), tailRows.map(\.id))
+        } else {
+            XCTAssertFalse(state.messages.contains { $0.id == "2.0" }, "FOREGROUND_MUST_NOT_APPEND_WITHDRAWN_NOTICE")
+            XCTAssertEqual(state.messages, tailRows, "NEW_NOTICE_REQUIRES_AUTHORITATIVE_TAIL")
+            if shortTail {
+                XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, true)
+                XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, false)
+                XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 3)
+                XCTAssertTrue(offsets.isEmpty)
+            } else {
+                try await captureReviewPositiveEmptyHistory(state, label: "review604-model-switch-after")
+                let loaded = await state.loadEarlierMessages()
+                XCTAssertTrue(loaded)
+                XCTAssertEqual(state.messages, earlierRows + tailRows)
+                XCTAssertEqual(offsets, [120])
+            }
+        }
+        XCTAssertEqual(resumes, 2, "Replacement alone uses bounded authoritative reconcile; ordinary growth controls still forbid resume")
+        XCTAssertEqual(reads, retryBeforeSend ? 4 : 3)
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertFalse(state.transcriptFreshnessIsStale)
+    }
+}
+
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    func testReview6043623895BackfillCoverageExcludesOptimisticAndUnadoptedRows() async throws {
+        let epoch = Date()
+        let iso = ISO8601DateFormatter()
+        let persistedStart = epoch.addingTimeInterval(10_000)
+        let olderStart = epoch.addingTimeInterval(9_000)
+        func rows(_ ids: ClosedRange<Int>, start: Date) -> [[String: Any]] {
+            ids.map { id in ["id": "durable-\(id)", "role": "assistant", "content": "Persisted row \(id)",
+                "timestamp": iso.string(from: start.addingTimeInterval(Double(id - ids.lowerBound)))] }
+        }
+        let initial = rows(121...240, start: persistedStart)
+        var older = rows(1...119, start: olderStart)
+        older.append(["id": "accepted-but-hidden", "role": "user", "content": "Hidden scaffolding", "display_kind": "hidden",
+            "timestamp": iso.string(from: epoch.addingTimeInterval(2_000))])
+        var offsets: [Int] = []
+        var sends = 0
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, id, _ in SessionResumeResult(sessionId: id, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in .payload(["session_id": "stored-a", "messages": initial,
+                "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 120]]) },
+            loadEarlierTranscriptPage: { _, _, offset in
+                offsets.append(offset)
+                return .payload(["session_id": "stored-a", "messages": older,
+                    "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": 120]])
+            },
+            sendPrompt: { _, _, _ in sends += 1; return .accepted }
+        ))
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [session("stored-a")]; state.activeSessionId = "stored-a"
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let durable = state.shownChat.durablePersistedRowIDs
+        let submitted = await state.submitComposer(text: "Real optimistic row on an earlier local clock")
+        XCTAssertTrue(submitted); XCTAssertEqual(sends, 1)
+        let optimistic = try XCTUnwrap(state.messages.last)
+        XCTAssertEqual(optimistic.role, .user)
+        XCTAssertFalse(durable.contains(optimistic.id), "Accepted-page IDs are provenance, not displayed-row guesses")
+        XCTAssertLessThan(try XCTUnwrap(MessageTimestampFormatter.date(from: optimistic.timestamp)), olderStart)
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "review604-too-old", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(7_500), endedAt: epoch.addingTimeInterval(7_500))], profile: "default")
+        let links = state.voiceCallChatLinks
+        XCTAssertFalse(state.messages.contains { $0.id == "voice-call-review604-too-old" })
+        let loaded = await state.loadEarlierMessages()
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(offsets, [120])
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.oldestLoadedTimestamp,
+            MessageTimestampFormatter.date(from: iso.string(from: olderStart)), "BACKFILL_PERSISTED_BOUND_MUST_EXCLUDE_LOCAL_AND_HIDDEN_ROWS")
+        XCTAssertFalse(state.messages.contains { $0.id == "voice-call-review604-too-old" }, "OPTIMISTIC_TIMESTAMP_MUST_NOT_ADMIT_OLD_CALL")
+        XCTAssertEqual(state.messages.last, optimistic)
+        XCTAssertEqual(state.messages.filter { $0.id.hasPrefix("durable-") }.map(\.id), (1...240).filter { $0 != 120 }.map { "durable-\($0)" })
+        XCTAssertFalse(state.messages.contains { $0.id == "accepted-but-hidden" })
+        XCTAssertEqual(state.shownChat.durablePersistedRowIDs, durable, "Backfill must not redefine the latest-page verifier frontier")
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+    }
+}
+
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    func testReview6043623895OldEarlierRequestCannotReleaseReplacementFlight() async throws {
+        let firstGate = LifecycleSuspension()
+        let secondGate = LifecycleSuspension()
+        defer { firstGate.resume(); secondGate.resume() }
+        let firstEntered = LifecycleGate()
+        let secondEntered = LifecycleGate()
+        var reads = 0
+        var offsets: [Int] = []
+        func rows(_ range: ClosedRange<Int>) -> [[String: Any]] {
+            range.map { ["id": "durable-\($0)", "role": "assistant", "content": "Row \($0)"] }
+        }
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, id, _ in SessionResumeResult(sessionId: id, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in
+                reads += 1
+                let page = rows(reads == 1 ? 121...240 : 123...242)
+                return .payload(["session_id": "stored-a", "messages": page,
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 120]])
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                offsets.append(offset)
+                let ordinal = offsets.count
+                if ordinal == 1 { firstEntered.signal(); await firstGate.suspend() }
+                if ordinal == 2 { secondEntered.signal(); await secondGate.suspend() }
+                return .payload(["session_id": "stored-a", "messages": rows(1...120),
+                    "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": 120]])
+            },
+            refreshContext: { _, _ in }, verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [LiveSessionStatus(runtimeSessionId: "stored-a", storedSessionId: "stored-a", status: "idle")] }
+        ))
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [session("stored-a")]; state.activeSessionId = "stored-a"
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let first = Task { await state.loadEarlierMessages() }
+        try await firstEntered.wait("first earlier request entered", timeout: 10)
+        XCTAssertEqual(state.persistedTranscriptWindow?.isLoadingEarlier, true)
+        state.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(reads, 2, "Real foreground advancement installs the replacement, not a hand-built window")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(state.persistedTranscriptWindow?.isLoadingEarlier, false)
+        let held = state.messages
+        let second = Task { await state.loadEarlierMessages() }
+        try await secondEntered.wait("replacement earlier request entered", timeout: 10)
+        let replacement = try XCTUnwrap(state.persistedTranscriptWindow)
+        firstGate.resume()
+        let oldLanded = await first.value
+        XCTAssertFalse(oldLanded, "STALE_REQUEST_MUST_NOT_ADOPT_INTO_REPLACEMENT_FLIGHT")
+        XCTAssertEqual(state.persistedTranscriptWindow, replacement, "STALE_REQUEST_MUST_NOT_RELEASE_OR_ADVANCE_NEW_FLIGHT")
+        XCTAssertEqual(state.messages, held)
+        let duplicate = await state.loadEarlierMessages()
+        XCTAssertFalse(duplicate)
+        XCTAssertEqual(offsets, [120, 120], "Single-flight must reject a third fetch while the replacement request owns it")
+        secondGate.resume()
+        let newLanded = await second.value
+        XCTAssertTrue(newLanded, "Replacement response still owns and adopts its page")
+        XCTAssertEqual(state.persistedTranscriptWindow?.isLoadingEarlier, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(state.messages.map(\.id), (1...242).map { "durable-\($0)" })
+    }
+}
+
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    func testReview6043623895ActiveTrimKeepsRetainedDurableSkewNotLocalClock() async throws {
+        try await assertReview604TrimCoverage(whenLeaving: false, rotateTail: false)
+        try await assertReview604TrimCoverage(whenLeaving: false, rotateTail: true)
+    }
+
+    func testReview6043623895LeavingTrimKeepsRetainedDurableSkewNotLocalClock() async throws {
+        try await assertReview604TrimCoverage(whenLeaving: true, rotateTail: false)
+        try await assertReview604TrimCoverage(whenLeaving: true, rotateTail: true)
+    }
+
+    private func assertReview604TrimCoverage(whenLeaving: Bool, rotateTail: Bool) async throws {
+        let epoch = Date().addingTimeInterval(10_000)
+        let iso = ISO8601DateFormatter()
+        var reads = 0
+        func rows(_ range: ClosedRange<Int>) -> [[String: Any]] {
+            range.map { id in ["id": "persisted-\(id)", "role": "assistant", "content": "Row \(id)",
+                "timestamp": iso.string(from: epoch.addingTimeInterval(Double((id == 2001 ? 600 : id) * 60)))] }
+        }
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, id, _ in SessionResumeResult(sessionId: id, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in
+                reads += 1
+                return .payload(["session_id": "stored-a", "messages": rows(reads == 1 ? 1881...2000 : reads == 2 ? 1883...2002 : 2002...2121),
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 120]])
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                .payload(["session_id": "stored-a", "messages": rows((1881 - offset)...(2000 - offset)),
+                    "pagination": ["limit": 120, "offset": offset, "order": "latest", "returned": 120]])
+            },
+            refreshContext: { _, _ in }, sendPrompt: { _, _, _ in .accepted }, verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [LiveSessionStatus(runtimeSessionId: "stored-a", storedSessionId: "stored-a", status: "idle")] }
+        ))
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [session("stored-a")]; state.activeSessionId = "stored-a"
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        for _ in 0..<9 { let loaded = await state.loadEarlierMessages(); XCTAssertTrue(loaded) }
+        XCTAssertEqual(state.messages.count, 1_200)
+        state.chatReaderIsUpInOlderRows = true
+        state.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(reads, 2)
+        let skew = try XCTUnwrap(state.messages.first { $0.id == "persisted-2001" })
+        let skewTime = try XCTUnwrap(MessageTimestampFormatter.date(from: skew.timestamp))
+        XCTAssertEqual(state.persistedTranscriptWindow?.oldestLoadedTimestamp, skewTime)
+        XCTAssertEqual(state.shownChat.durablePersistedRowIDs, Set((1883...2002).map { "persisted-\($0)" }))
+        if rotateTail {
+            state.handleScenePhase(.background)
+            await runSceneActivation(harness)
+            XCTAssertEqual(reads, 3, "Second normal idle foreground must use append-only advancement")
+            XCTAssertEqual(state.shownChat.durablePersistedRowIDs, Set((2002...2121).map { "persisted-\($0)" }))
+            XCTAssertFalse(state.shownChat.durablePersistedRowIDs.contains(skew.id), "Latest-page verifier IDs must rotate, never union")
+            XCTAssertTrue(state.messages.contains { $0.id == skew.id }, "Skewed durable row remains held after provenance rotation")
+            XCTAssertEqual(state.persistedTranscriptWindow?.oldestLoadedTimestamp, skewTime)
+        }
+        let sent = await state.submitComposer(text: "Local optimistic row on an earlier clock")
+        XCTAssertTrue(sent)
+        let local = try XCTUnwrap(state.messages.last)
+        XCTAssertFalse(state.shownChat.durablePersistedRowIDs.contains(local.id))
+        XCTAssertLessThan(try XCTUnwrap(MessageTimestampFormatter.date(from: local.timestamp)), skewTime)
+        state.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: false))
+        XCTAssertEqual(state.turnState, .idle, "Real settlement makes both trim callers lifecycle-eligible")
+        // A local decoration is not accepted persisted provenance either.
+        state.messages.append(ChatMessage(id: "review-summary-trim-local", role: .system, content: "Local decoration",
+            timestamp: iso.string(from: epoch)))
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "trim-first", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(650 * 60), endedAt: epoch.addingTimeInterval(650 * 60))], profile: "default")
+        let rawOrder = state.messages.filter { $0.id.hasPrefix("persisted-") }.map(\.id)
+        state.chatReaderIsUpInOlderRows = false
+        let window: PersistedTranscriptWindowState
+        let retained: [ChatMessage]
+        if whenLeaving {
+            state.keepLeftBackfilledTranscript()
+            let kept = try XCTUnwrap(state.leftBackfilledTranscripts.last)
+            window = kept.window; retained = kept.messages
+        } else {
+            state.trimLoadedHistoryIfLong()
+            window = try XCTUnwrap(state.persistedTranscriptWindow); retained = state.messages
+        }
+        XCTAssertLessThan(retained.count, 1_200)
+        XCTAssertEqual(window.oldestLoadedTimestamp, skewTime, "TRIM_MUST_KEEP_RETAINED_DURABLE_SKEW_WITHOUT_ADOPTING_LOCAL_CLOCK")
+        XCTAssertTrue(retained.contains { $0.id == skew.id })
+        XCTAssertEqual(retained.first?.id, rotateTail ? "persisted-1041" : "persisted-921", "Each lifecycle cut retains its known page-start suffix")
+        if rotateTail { XCTAssertFalse(state.shownChat.durablePersistedRowIDs.contains(skew.id)) }
+        XCTAssertTrue(retained.contains { $0.id == local.id }, "A real optimistic row survives but cannot widen persisted coverage")
+        let retainedIDs = retained.filter { $0.id.hasPrefix("persisted-") }.map(\.id)
+        XCTAssertEqual(retainedIDs, Array(rawOrder.suffix(retainedIDs.count)), "Trim never sorts or rewrites ordinary rows")
+        XCTAssertEqual(window.reachedBeginning, false)
+        XCTAssertTrue(window.canLoadEarlier)
+        if !whenLeaving {
+            let links = state.voiceCallChatLinks
+            state.adoptHostChatCalls([VoiceHostChatCall(callID: "trim-second", chatID: "stored-a",
+                startedAt: epoch.addingTimeInterval(651 * 60), endedAt: epoch.addingTimeInterval(651 * 60))], profile: "default")
+            XCTAssertTrue(state.messages.contains { $0.id == "voice-call-trim-second" }, "Retained skewed history must still admit an in-window saved call after remerge")
+            XCTAssertTrue(state.voiceCallChatLinks.links.count > links.links.count)
+        }
     }
 }

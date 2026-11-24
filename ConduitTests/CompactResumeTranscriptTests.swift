@@ -4181,7 +4181,7 @@ extension CompactResumeTranscriptTests {
         XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, before.nextOffset, "B_INELIGIBLE_ACTION_NO_RAW_OFFSET_MUTATION")
         XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, before.reachedBeginning, "B_INELIGIBLE_ACTION_NO_COMPLETENESS_MUTATION")
         XCTAssertEqual(state.persistedTranscriptWindow, before, "B_INELIGIBLE_ACTION_WINDOW_UNCHANGED")
-        XCTAssertTrue(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.isEmpty)
+        XCTAssertTrue(state.messages.isEmpty, "Rejected action must not admit ordinary rows or deferred call markers")
         XCTAssertEqual(state.voiceCallChatLinks, links)
         XCTAssertEqual(VoiceCallChatLinks.load(from: harness.defaults), links)
         let receipt: [String: Any] = ["selectorBeforeAction": false, "offsets": offsets,
@@ -4404,5 +4404,121 @@ extension CompactResumeTranscriptTests {
         XCTAssertEqual(reads, 3)
         XCTAssertEqual(state.messages, earlierRows + tailRows)
         XCTAssertEqual(offsets, [120])
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testReview6043623895ReconnectKeepsPrefixWhenTailNoticeIsAlreadyHeld() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        func rows(_ range: Range<Int>, notice: Int) -> [[String: Any]] {
+            self.syntheticRows(range).map { row in
+                var row = row
+                if row["id"] as? Int == notice {
+                    row["display_kind"] = "model_switch"
+                }
+                return row
+            }
+        }
+        let tail = rows(1880..<2000, notice: 1950)
+        let older = rows(1760..<1880, notice: 1800)
+        var reads = 0
+        var offsets: [Int] = []
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, query in
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                reads += 1
+                return self.tailPagePayload(sessionId: "stored-a", rows: tail, offset: 0)
+            },
+            loadEarlierTranscriptPage: { _, _, offset in
+                offsets.append(offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: older, offset: offset)
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }; ops.loadCatalog = { _, _ in [active] }
+                ops.loadProfiles = {}; ops.loadBusyInputMode = { _ in }
+                ops.loadProfileDisplayPreferences = {}; ops.loadSlashCommands = {}
+            }
+        )
+        let state = harness.appState
+        state.sessions = [active]
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let landed = await state.loadEarlierMessages()
+        XCTAssertTrue(landed)
+        let held = state.messages
+        XCTAssertEqual(held.count, 240)
+        XCTAssertEqual(held.filter { $0.displayKind == "model_switch" }.count, 2)
+        let links = state.voiceCallChatLinks
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+        for _ in 0..<2 {
+            await state.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "known-notice-control"))
+            XCTAssertEqual(state.messages, held, "KNOWN_NOTICE_RECONNECT_MUST_RETAIN_EXACT_PREFIX")
+            XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+            XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+            XCTAssertEqual(state.voiceCallChatLinks, links)
+        }
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(offsets, [120], "No speculative earlier fetch during either reconnect")
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testReview6043623895MismatchedEarlierOffsetKeepsHeldPageRetryable() async throws {
+        try await assertReview604EarlierOffsetMismatch(hiddenSeed: false)
+    }
+
+    func testReview6043623895MismatchedEarlierOffsetKeepsHiddenSeedRetryable() async throws {
+        try await assertReview604EarlierOffsetMismatch(hiddenSeed: true)
+    }
+
+    private func assertReview604EarlierOffsetMismatch(hiddenSeed: Bool) async throws {
+        let initial = voiceWindowRows(120..<240).map { raw -> [String: Any] in
+            var row = raw
+            if hiddenSeed { row["display_kind"] = "hidden" }
+            return row
+        }
+        var offsets: [Int] = []
+        let harness = try makeHarness(
+            openSession: { _, _, _ in SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])) },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-a", rows: initial, offset: 0) },
+            loadEarlierTranscriptPage: { _, _, offset in
+                offsets.append(offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(offsets.count == 1 ? 0..<2 : 0..<120),
+                    offset: offsets.count == 1 ? offset + 120 : offset)
+            }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let epoch = Date(timeIntervalSince1970: 1_788_256_800)
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "offset-saved", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(30), endedAt: epoch.addingTimeInterval(30))], profile: "default")
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        let held = state.messages
+        let window = try XCTUnwrap(state.persistedTranscriptWindow)
+        let provenance = state.shownChat.durablePersistedRowIDs
+        let links = state.voiceCallChatLinks
+        let rejected = await state.loadEarlierPage()
+        XCTAssertEqual(rejected, .failed, "WRONG_OFFSET_MUST_NOT_PUBLISH_OR_CONSUME_COVERAGE")
+        XCTAssertEqual(state.messages, held)
+        XCTAssertEqual(state.persistedTranscriptWindow, window, "Rejected page must not alter completeness, cutoff, starts or hidden seed evidence")
+        XCTAssertEqual(state.shownChat.durablePersistedRowIDs, provenance)
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        let retry = await state.loadEarlierPage()
+        XCTAssertEqual(retry, .landed)
+        XCTAssertEqual(offsets, [120, 120], "Explicit retry re-reads the same raw page; never silently skips the mismatch")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.map(\.id),
+            (hiddenSeed ? Array(1...120) : Array(1...240)).map(String.init))
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertEqual(VoiceCallChatLinks.load(from: harness.defaults), links)
     }
 }

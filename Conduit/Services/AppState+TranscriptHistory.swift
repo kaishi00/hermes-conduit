@@ -574,8 +574,10 @@ extension AppState {
         // backfill; a transcript cleared or replaced during the read may not.
         let emptyTranscriptRevision = shownChat.transcriptRevision
         let canSeedEmptyTranscript = canSeedHiddenOnlyTranscript(from: window)
+        let requestID = UUID()
         var arming = window
         arming.isLoadingEarlier = true
+        arming.earlierRequestID = requestID
         persistedTranscriptWindow = arming
 
         let outcome = await fetchOlderTranscriptPage(
@@ -588,13 +590,14 @@ extension AppState {
         // request's window (same session, same profile, still loading, and
         // no other fetch advanced it meanwhile). Anything else — session
         // switch, profile switch, disconnect re-home — discards the page.
-        // The first four conditions identify THIS armed window; only then
+        // Identity and the flight token identify THIS armed window; only then
         // may the bookkeeping below touch it.
         guard var current = persistedTranscriptWindow,
               current.requestedSessionID == requestedSessionId,
               current.profile == profile,
               current.nextOffset == offset,
-              current.isLoadingEarlier else {
+              current.isLoadingEarlier,
+              current.earlierRequestID == requestID else {
             return false
         }
         guard persistedTranscriptWindowOwnershipIsCurrent(current) else {
@@ -660,6 +663,11 @@ extension AppState {
                 current.canLoadEarlier = false
                 return false
             }
+            // A different (or missing) offset does not cover the page we
+            // asked for. Discard it before normalization or completeness
+            // adoption, release only this flight, and leave an explicit
+            // same-page retry available. Never auto-retry an uncertain page.
+            guard page.offset == offset else { return false }
             // Overlap dedup keys on the durable persisted row ID. A page
             // whose rows lack one would normalize to page-local positional
             // IDs that cannot survive across pages — refuse it before it can
@@ -739,7 +747,14 @@ extension AppState {
             }
             if didPrepend {
                 current.hasAcceptedHiddenOnlyPage = false
-                current.oldestLoadedTimestamp = PersistedTranscriptWindow.timestampLowerBound(in: messages)
+                // Coverage comes from accepted persisted IDs that actually
+                // landed, plus the prior owned bound. Held optimistic rows
+                // and raw rows normalized away are not persisted coverage.
+                let pageIDs = Set(rawRows.compactMap(Self.durablePersistedRowID(from:)))
+                current.oldestLoadedTimestamp = [current.oldestLoadedTimestamp,
+                    PersistedTranscriptWindow.timestampLowerBound(in: messages.filter {
+                        pageIDs.contains($0.id)
+                    })].compactMap { $0 }.min()
                 if let replaced = Self.replacingSavedReviews(in: messages) {
                     messages = replaced
                 }

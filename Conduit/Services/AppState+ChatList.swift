@@ -349,7 +349,7 @@ extension AppState {
               let window = persistedTranscriptWindow,
               persistedTranscriptWindowOwnershipIsCurrent(window),
               let trimmed = PersistedTranscriptWindow.trimmingLoadedHistory(
-                messages, window: window, keeping: Self.loadedHistoryRowLimit
+                messages, window: window, durableRowIDs: shownChat.durablePersistedRowIDs, keeping: Self.loadedHistoryRowLimit
               ) else { return }
         messages = trimmed.messages
         persistedTranscriptWindow = trimmed.window
@@ -377,7 +377,7 @@ extension AppState {
         leftWindow.isLoadingEarlier = false
         let trimmed = turnState == .idle && !chatReaderIsUpInOlderRows
             ? PersistedTranscriptWindow.trimmingLoadedHistory(
-                messages, window: leftWindow, keeping: Self.loadedHistoryRowLimit
+                messages, window: leftWindow, durableRowIDs: shownChat.durablePersistedRowIDs, keeping: Self.loadedHistoryRowLimit
             )
             : nil
         let kept = trimmed ?? (messages: messages, window: leftWindow)

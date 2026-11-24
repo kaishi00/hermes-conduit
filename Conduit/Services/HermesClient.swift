@@ -5889,7 +5889,7 @@ extension AnyCodable {
 /// transcript hydration; an unrecognized value is deliberately given no
 /// display semantics so a future kind can never delete or reinterpret an
 /// ordinary visible row.
-private enum HermesDisplayKind: String {
+enum HermesDisplayKind: String {
     case hidden
     case modelSwitch = "model_switch"
     case personalitySwitch = "personality_switch"

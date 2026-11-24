@@ -183,6 +183,15 @@ extension AppState {
                 // identity: never merge rows from a foreign transcript.
                 return .inconclusive
             }
+            // An append-only verdict cannot retain a notice withdrawn by
+            // the known model-switch producer. Reconcile authoritatively in
+            // both foreground and pre-send callers; ordinary growth stays fast.
+            if PersistedTranscriptWindow.modelSwitchReplacementRequiresRefresh(
+                refreshedTail: transcript.messages, held: messages,
+                preservingHeldOverlap: true
+            ) {
+                return .inconclusive
+            }
             // A positively empty page with no older rows proves the
             // conversation has no persisted rows at all: an idle runtime
             // cannot hide anything behind it, and an empty local transcript
@@ -686,6 +695,13 @@ extension AppState {
             profile: profile
         ) ? persistedTranscriptWindow : nil
         if let page = transcript.page, page.honorsTailContract {
+            // These accepted rows were appended after the held transcript,
+            // so they survive every carried page-start cut. Preserve that
+            // coverage on the cuts, not in the latest-page verifier ID set.
+            let appendedDurableIDs = Set(newRows.map(\.id)).intersection(transcript.durableRowIDs)
+            let appendedTimestamp = PersistedTranscriptWindow.timestampLowerBound(in: merged.filter {
+                appendedDurableIDs.contains($0.id)
+            })
             persistedTranscriptWindow = PersistedTranscriptWindowState(
                 requestedSessionID: requestedSessionID,
                 profile: profile,
@@ -704,7 +720,9 @@ extension AppState {
                         transcript.durableRowIDs.contains($0.id)
                     })].compactMap { $0 }.min(),
                 hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false,
-                loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? [],
+                loadedPageStarts: priorOwned?.pageStartsCarried(
+                    into: page.rawReturned, includingAppendedTimestamp: appendedTimestamp
+                ) ?? [],
                 hasAcceptedHiddenOnlyPage: merged.isEmpty
                     && transcript.messages.isEmpty && !transcript.durableRowIDs.isEmpty
             )
