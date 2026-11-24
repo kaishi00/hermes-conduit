@@ -368,13 +368,16 @@ extension AppState {
         // Its plugin report too, which a quiet sign-in's fresh runtime
         // hasn't read: the call's host tools ask it (location reads).
         if liveCallHolds(dashboard: id) {
-            keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client)
+            // A call still starting has no sessions to name yet.
+            if isLiveCallUp { keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client) }
             if kept.runtime.notifierPlugin.state == .unknown { readKeptPluginReport(kept, for: id) }
         }
         kept.client.onDisconnected = { [weak self, weak client = kept.client] in
             Task { @MainActor in
                 guard let self, let client,
                       self.keptDashboardRuntimes[id]?.client === client else { return }
+                // A call still starting on it has nothing to go on through.
+                self.endLiveCallStartLosingItsDashboard(id)
                 self.dropKeptDashboardRuntime(id, keepingLists: true)
                 // Dropped on its own (the network, the server restarting):
                 // down, and tried again while Conduit is on screen.
@@ -443,7 +446,7 @@ extension AppState {
         // A live call going on here while another dashboard shows hears its
         // jobs' and its turns' events, as it does on screen (no-switch
         // stage 2, calls and voice).
-        if liveCallHolds(dashboard: id) {
+        if isLiveCallUp, liveCallHolds(dashboard: id) {
             voiceBackgroundJobSupervisor.observe(event)
             if isLocalLiveActive { localLiveTurns.observe(event) }
         }

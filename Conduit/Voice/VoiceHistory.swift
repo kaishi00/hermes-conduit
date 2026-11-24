@@ -1157,7 +1157,15 @@ struct VoiceCallChatLinks: Codable, Equatable {
     /// started. The history's own order is kept. `openIDs` are the open
     /// session's own ids (its row's, not the aliases `chatIDs` borrows), so
     /// only a call's own row counts as its transcript.
-    func merge(into history: [ChatMessage], chatIDs: Set<String>, openIDs: Set<String>, profile: String) -> [ChatMessage] {
+    ///
+    /// A card the history already holds is placed again: it may have led a
+    /// tail that older pages since joined (Load earlier), and its place
+    /// there isn't the history's order (#3196). `loadedAfter` is the oldest
+    /// time the loaded rows reach while older pages are still unread: a
+    /// chat's card for a call before it waits for its page, its link kept.
+    /// A call's own transcript keeps its way back whatever is loaded.
+    func merge(into history: [ChatMessage], chatIDs: Set<String>, openIDs: Set<String>, profile: String,
+               loadedAfter lowerBound: Date? = nil) -> [ChatMessage] {
         var merged = history
         let profileLinks = links.filter { $0.profile == profile }
         // The open session is a call's own transcript (a resumed call has a
@@ -1180,7 +1188,10 @@ struct VoiceCallChatLinks: Codable, Equatable {
         let markers = owned.isEmpty
             ? profileLinks.filter { $0.belongs(toChat: chatIDs) }.map { ($0, $0.marker) }
             : owned.map { ($0, $0.originMarker) }
+        let markerIDs = Set(markers.map { $0.1.id })
+        merged.removeAll { markerIDs.contains($0.id) }
         for (link, marker) in markers {
+            if owned.isEmpty, let lowerBound, link.startedAt < lowerBound { continue }
             guard !merged.contains(where: { $0.id == marker.id }) else { continue }
             let index = merged.firstIndex {
                 MessageTimestampFormatter.date(from: $0.timestamp).map { $0 > link.startedAt } ?? false

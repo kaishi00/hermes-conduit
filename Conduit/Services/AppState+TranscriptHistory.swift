@@ -658,7 +658,15 @@ extension AppState {
             }
             var didPrepend = false
             var foldedPageStart: (heldIDs: Set<String>, callCardID: String)?
-            let startBeforePage = messages.first.map {
+            // A call card moves as older pages arrive, so a page start
+            // stays on a row of Hermes', where trimming cuts back to.
+            let pageStart = { (rows: [ChatMessage]) in
+                rows.first {
+                    $0.displayKind != VoiceCallChatLink.displayKind
+                        && $0.displayKind != VoiceCallChatLink.originDisplayKind
+                }
+            }
+            let startBeforePage = pageStart(messages).map {
                 PersistedTranscriptWindowState.LoadedPageStart(
                     firstRowID: $0.id,
                     nextOffset: offset,
@@ -730,7 +738,14 @@ extension AppState {
             current.nextOffset = offset + fetchedRowCount
             current.canLoadEarlier = fetchedRowCount > 0
                 && page.mayHaveOlderRows(fetchedRowCount: fetchedRowCount)
-            if didPrepend, let first = messages.first {
+            // The call cards are placed again in the longer history: one
+            // that led the rows before finds its place among the page's,
+            // and the last page brings the calls from before the first row
+            // (#3196). By the window this page leaves, not the one still
+            // published.
+            let withCalls = mergeVoiceCallMarkers(into: messages, sessionId: requestedSessionId, window: current)
+            if withCalls != messages { messages = withCalls }
+            if didPrepend, let first = pageStart(messages) {
                 if current.loadedPageStarts.isEmpty, let startBeforePage {
                     current.loadedPageStarts.append(startBeforePage)
                 }

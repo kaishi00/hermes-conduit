@@ -3783,6 +3783,12 @@ final class AppState: ObservableObject {
     /// so the call goes on through that dashboard's runtime: see
     /// `voiceCallDashboardID`.
     var liveCallDashboardID: UUID?
+    /// Calls being started on another combined dashboard with no switch
+    /// (`onFarCallDashboard`), by dashboard: from the start's first step to
+    /// its last, the window in which the call has begun and no sheet, bar
+    /// or engine says so yet (`isLiveCallUp`). That dashboard's connection
+    /// is held as a running call's is (issue 3164).
+    var farCallStartsInFlight: [UUID: Int] = [:]
     /// The ended call's dashboard while its hand-back waits.
     var callDashboardHandingBack: UUID?
 

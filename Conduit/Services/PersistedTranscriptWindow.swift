@@ -172,6 +172,18 @@ struct LegacyTranscriptOversizedError: LocalizedError {
 /// Pure algebra for older-page backfill: row merging, reconnect grafting,
 /// tool-boundary reconstruction, and conversation-identity ownership.
 enum PersistedTranscriptWindow {
+    /// The oldest time the loaded rows reach, read from Hermes' rows alone:
+    /// call cards, saved reviews and the chat's own notes are placed by
+    /// Conduit and say nothing of what's loaded. Nil when no row has a
+    /// readable time, which leaves call cards unbounded rather than hidden.
+    static func timestampLowerBound(in rows: [ChatMessage]) -> Date? {
+        rows.lazy.filter {
+            $0.displayKind != VoiceCallChatLink.displayKind
+                && $0.displayKind != VoiceCallChatLink.originDisplayKind
+                && !$0.id.hasPrefix("review-summary-") && !$0.id.hasPrefix("slash-")
+        }.compactMap { MessageTimestampFormatter.date(from: $0.timestamp) }.min()
+    }
+
     /// Whether a persisted-history window belongs to a conversation — the
     /// ONE identity rule shared by the backfill action, stale-response
     /// validation, the ChatView affordance, and the reconnect graft gate.

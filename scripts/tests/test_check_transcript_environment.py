@@ -1,5 +1,6 @@
 """Regression coverage for scripts/check-transcript-environment.py (transcript rows' environment guard)."""
 
+import os
 import unittest
 
 from _util import load_module
@@ -7,6 +8,7 @@ from _util import load_module
 check = load_module("check_transcript_environment", "check-transcript-environment.py")
 
 CELL = check.CELL_ENVIRONMENT
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 KEYS = """
 extension EnvironmentValues {
@@ -123,6 +125,51 @@ extension EnvironmentValues {
 
     def test_a_missing_cell_environment_fails(self):
         self.assertEqual(len(check.find_problems({"Conduit/Keys.swift": KEYS})), 1)
+
+
+    # A key's named setters (SET_WHERE, #3181).
+
+    WHERE = {"richCardHostDashboard": [("Conduit/Room.swift", r"\bfunc\s+roomRow\s*\(", "appState.roomDashboard")]}
+
+    def room(self, row="", elsewhere="", value="appState.roomDashboard"):
+        return {"Conduit/Room.swift": f"""
+struct Room: View {{
+    var body: some View {{
+        list{elsewhere}
+    }}
+    private func roomRow(_ row: Row) -> some View {{
+        switch row.kind {{
+        case .event: EventRow(){row.replace("VALUE", value)}
+        }}
+    }}
+}}
+"""}
+
+    def test_a_named_setter_inside_its_scope_passes(self):
+        sources = self.room(row="\n            .environment(\\.richCardHostDashboard, VALUE)")
+        self.assertEqual(check.setter_problems(sources, self.WHERE), [])
+
+    def test_a_setter_moved_above_the_row_is_reported(self):
+        sources = self.room(elsewhere=".environment(\\.richCardHostDashboard, appState.roomDashboard)")
+        found = check.setter_problems(sources, self.WHERE)
+        self.assertEqual(len(found), 1)
+        self.assertIn("Conduit/Room.swift", found[0])
+        self.assertIn("richCardHostDashboard", found[0])
+
+    def test_a_setter_naming_another_dashboard_or_only_in_a_comment_is_reported(self):
+        other = self.room(row="\n            .environment(\\.richCardHostDashboard, VALUE)", value="appState.activeDashboardID")
+        self.assertEqual(len(check.setter_problems(other, self.WHERE)), 1)
+        comment = self.room(row="\n            // .environment(\\.richCardHostDashboard, appState.roomDashboard)")
+        self.assertEqual(len(check.setter_problems(comment, self.WHERE)), 1)
+
+    def test_a_missing_file_is_reported(self):
+        found = check.setter_problems({}, self.WHERE)
+        self.assertEqual(len(found), 1)
+        self.assertIn("not found", found[0])
+
+    def test_the_repo_sets_every_named_setter(self):
+        sources = check.load_sources(REPO_ROOT)
+        self.assertEqual(check.setter_problems(sources), [])
 
 
 if __name__ == "__main__":

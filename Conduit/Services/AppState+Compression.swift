@@ -523,7 +523,11 @@ extension AppState {
         )
         // The chat's own notes aren't among the compressed rows; keep them.
         let kept = Self.keepingLocalNotes(from: messages, in: merged)
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID)
+        // The window describes the history from before the compression
+        // (it goes just below), so it bounds no call card here.
+        messages = mergeVoiceCallMarkers(
+            into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID, window: nil
+        )
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false

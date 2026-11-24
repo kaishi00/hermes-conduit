@@ -1114,7 +1114,9 @@ extension AppState {
         if activeSessionId == previousSessionID, newSessionCreationsInFlight == 1,
            offlineChatPresentation == nil,
            let followedIDs = newChatRunFollowedIDs {
-            releaseFollowedChat(answering: followedIDs)
+            // On the chat's own runtime, where it was followed: another
+            // combined dashboard's when it's open in place (issue 3217).
+            onChatRuntimeNow { releaseFollowedChat(answering: followedIDs) }
         }
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.
