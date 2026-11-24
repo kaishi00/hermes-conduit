@@ -549,6 +549,9 @@ extension AppState {
     }
 
     private func setSessionArchived(_ session: SessionSummary, archived: Bool) async -> Bool {
+        // Another combined dashboard's row is archived on its own runtime,
+        // as Rename and Delete run there.
+        if let done = await onCombinedDashboard(of: session, { await setSessionArchived($0, archived: archived) }) { return done }
         if archived, isOtherProfileRow(session) {
             return await archiveOtherProfileSession(session)
         }
@@ -587,8 +590,14 @@ extension AppState {
                         sessionIDs: [updated.id] + updated.alternateIds
                     )
                     removeSessionFromLiveCatalog(updated)
-                    archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
-                    removePinnedState(for: updated, unpinOnHost: true)
+                    // The Archived list and the pins are the dashboard on
+                    // screen's: another dashboard's chat, archived through
+                    // its kept connection, joins its own Archived list at
+                    // that list's next read there.
+                    if actingOnRuntimeOnScreen {
+                        archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
+                        removePinnedState(for: updated, unpinOnHost: true)
+                    }
                     clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
                     archivedSessions.removeAll { sessionMatches($0, updated) }

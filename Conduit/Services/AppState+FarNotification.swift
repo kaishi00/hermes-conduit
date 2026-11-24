@@ -165,7 +165,12 @@ extension AppState {
             }
         }
         guard let initialKept = keptDashboardRuntimes[dashboardID], initialKept.client.isConnected else { return nil }
-        let scopedProfile = act(onRuntime: initialKept.runtime) { notificationProfileID(target.profile) }
+        // Its default profile is the one that dashboard named, never the
+        // one on screen's.
+        let farDefault = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
+        let scopedProfile = act(onRuntime: initialKept.runtime) {
+            notificationProfileID(target.profile, defaultName: farDefault)
+        }
         let listedProfile = scopedProfile.flatMap { name in
             combinedDashboardChats[dashboardID]?.profiles.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
         }

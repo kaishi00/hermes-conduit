@@ -4030,6 +4030,26 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         if let target = service.pendingTarget { service.clearPendingTarget(target) }
         appState.pendingArtifactReveal = nil
+        // The card's profile is spelled by Mac's own default name, never
+        // the screen's: "work" stays Mac's work profile though the screen
+        // calls its default that, and Mac's own name for its default is
+        // its default.
+        let screensDefault = appState.defaultProfileName
+        appState.defaultProfileName = "work"
+        appState.profileAppearanceStore.saveDefaultName("Home", dashboardID: mac.id)
+        XCTAssertTrue(appState.openFarPulseCardChat(farPage.cards[0], for: mac.id))
+        XCTAssertEqual(service.pendingTarget?.profile, "work", "Mac's work profile, not the screen's default")
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        let homeJSON: [String: Any] = ["home_chat_id": "pulse_chat", "cards": [
+            ["id": 4, "kind": "followup", "level": "push", "news": "Deck", "chat_id": "far-home", "profile": "home"] as [String: Any],
+        ]]
+        let homeCard = try XCTUnwrap(PulseFeedPage(json: homeJSON)?.cards.first)
+        XCTAssertTrue(appState.openFarPulseCardChat(homeCard, for: mac.id))
+        XCTAssertEqual(service.pendingTarget?.profile, "default", "Mac's own name for its default")
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        appState.defaultProfileName = screensDefault
+        appState.profileAppearanceStore.saveDefaultName("", dashboardID: mac.id)
+        appState.pendingArtifactReveal = nil
         let stepGoes = await appState.switchForFarPulseStep(for: mac.id)
         XCTAssertTrue(stepGoes)
         XCTAssertEqual(appState.activeDashboardID, mac.id)
