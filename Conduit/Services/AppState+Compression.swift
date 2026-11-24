@@ -607,7 +607,9 @@ extension AppState {
                 // but does not replace the compressed rows still on screen.
                 // Bound calls by those retained rows, not only the latest page.
                 oldestLoadedTimestamp: shownChat.compressedVoiceCallLowerBound,
-                hasBackfilledPrefix: false
+                hasBackfilledPrefix: false,
+                hasAcceptedHiddenOnlyPage: messages.isEmpty
+                    && transcript.messages.isEmpty && !transcript.durableRowIDs.isEmpty
             )
         } else {
             // Legacy one-shot hydration: the whole persisted history is on

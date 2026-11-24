@@ -737,6 +737,7 @@ extension AppState {
                 }
             }
             if didPrepend {
+                current.hasAcceptedHiddenOnlyPage = false
                 current.oldestLoadedTimestamp = PersistedTranscriptWindow.timestampLowerBound(in: messages)
                 if let replaced = Self.replacingSavedReviews(in: messages) {
                     messages = replaced
@@ -864,7 +865,7 @@ extension AppState {
         messages.isEmpty
             && !window.reachedBeginning && window.oldestLoadedTimestamp == nil
             && !window.hasBackfilledPrefix && window.loadedPageStarts.isEmpty
-            && !shownChat.durablePersistedRowIDs.isEmpty
+            && window.hasAcceptedHiddenOnlyPage
     }
 
     /// Whether "Load earlier messages" may be offered AND executed right

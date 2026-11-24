@@ -2292,7 +2292,9 @@ extension AppState {
                     // to (issue 1828), covering no more than this page.
                     loadedPageStarts: graftedBackfilledPrefix
                         ? (priorWindowForGraft?.pageStartsCarried(into: page.rawReturned) ?? [])
-                        : []
+                        : [],
+                    hasAcceptedHiddenOnlyPage: rowsSource == .stored
+                        && transcript.messages.isEmpty && !transcript.durableRowIDs.isEmpty
                 )
             } else if keepsRowsOnScreen {
                 // The rows kept from the screen keep their paging window:

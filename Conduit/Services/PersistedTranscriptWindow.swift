@@ -127,6 +127,12 @@ struct PersistedTranscriptWindowState: Equatable {
     /// A window a reconcile builds starts without any.
     var loadedPageStarts: [LoadedPageStart] = []
 
+    /// Accepted durable rows normalized to no displayed history. This is
+    /// evidence owned by this paging window, not the reconcile transaction's
+    /// ordering-verifier IDs. Retain it when a failed read retains the window;
+    /// retire it once visible rows land or a fresh window replaces this one.
+    var hasAcceptedHiddenOnlyPage = false
+
     struct LoadedPageStart: Equatable {
         let firstRowID: String
         let nextOffset: Int

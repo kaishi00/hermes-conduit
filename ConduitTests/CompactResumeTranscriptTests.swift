@@ -3726,9 +3726,13 @@ extension CompactResumeTranscriptTests {
         XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, false)
         XCTAssertTrue(try XCTUnwrap(state.persistedTranscriptWindow).loadedPageStarts.isEmpty)
         XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
-        state.shownChat.durablePersistedRowIDs = []
+        var withoutProvenance = try XCTUnwrap(state.persistedTranscriptWindow)
+        XCTAssertTrue(withoutProvenance.hasAcceptedHiddenOnlyPage)
+        withoutProvenance.hasAcceptedHiddenOnlyPage = false
+        state.persistedTranscriptWindow = withoutProvenance
         XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation, "An arbitrary empty transcript has no seed provenance")
-        state.shownChat.durablePersistedRowIDs = provenance
+        withoutProvenance.hasAcceptedHiddenOnlyPage = true
+        state.persistedTranscriptWindow = withoutProvenance
         let eligibleWindow = try XCTUnwrap(state.persistedTranscriptWindow)
         var disallowed = eligibleWindow
         disallowed.hasBackfilledPrefix = true
@@ -3881,5 +3885,251 @@ extension CompactResumeTranscriptTests {
         rows.name = "hidden-history-\(label)-rows"
         rows.lifetime = .keepAlways
         add(rows)
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testHiddenSeedEvidenceRetiresWhenVisibleTranscriptIsWiped() async throws {
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0) }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let accepted = try XCTUnwrap(state.persistedTranscriptWindow)
+        XCTAssertTrue(accepted.hasAcceptedHiddenOnlyPage)
+        // Matching identity/offset and verifier IDs alone cannot invent the
+        // accepted-window evidence; a newly made arbitrary empty window refuses.
+        state.persistedTranscriptWindow = PersistedTranscriptWindowState(
+            requestedSessionID: "stored-a", profile: "default", pageSize: 120,
+            resolvedSessionID: "stored-a", runtimeSessionID: "runtime-a",
+            nextOffset: 120, canLoadEarlier: true)
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+        XCTAssertFalse(try XCTUnwrap(state.persistedTranscriptWindow).hasAcceptedHiddenOnlyPage)
+        XCTAssertFalse(state.shownChat.durablePersistedRowIDs.isEmpty)
+        state.persistedTranscriptWindow = accepted
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        state.messages = [ChatMessage(id: "local-visible", role: .user, content: "Local row", timestamp: "2026-09-01T10:00:00Z")]
+        XCTAssertFalse(try XCTUnwrap(state.persistedTranscriptWindow).hasAcceptedHiddenOnlyPage)
+        state.messages = []
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation,
+            "Wiping visible history must not revive an obsolete hidden-only seed")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, false)
+        XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
+        state.persistedTranscriptWindow = nil
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+    }
+
+    func testHiddenSeedEvidenceDoesNotSurviveAcceptedReplacement() async throws {
+        for replacement in ["visible-partial", "complete-empty", "legacy-empty"] {
+            let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+                var row = row
+                row["display_kind"] = "hidden"
+                return row
+            }
+            var reads = 0
+            let harness = try makeHarness(
+                openSession: { _, _, _ in
+                    SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+                },
+                persistedTranscript: { _, _, _ in
+                    reads += 1
+                    if reads == 1 { return self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0) }
+                    if replacement == "legacy-empty" { return .payload(["session_id": "stored-a", "messages": []]) }
+                    return self.tailPagePayload(sessionId: "stored-a",
+                        rows: replacement == "visible-partial" ? self.voiceWindowRows(0..<120) : [], offset: 0)
+                }
+            )
+            let state = harness.appState
+            state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+            let opened = await state.openSession("stored-a")
+            XCTAssertTrue(opened)
+            XCTAssertTrue(try XCTUnwrap(state.persistedTranscriptWindow).hasAcceptedHiddenOnlyPage)
+            let client = try XCTUnwrap(state.client)
+            let reconciled = await state.reconcile(sessionId: "stored-a", using: client, token: state.beginReconciliation())
+            XCTAssertTrue(reconciled, replacement)
+            XCTAssertEqual(reads, 2)
+            if replacement == "legacy-empty" {
+                XCTAssertNil(state.persistedTranscriptWindow)
+            } else {
+                XCTAssertFalse(try XCTUnwrap(state.persistedTranscriptWindow).hasAcceptedHiddenOnlyPage, replacement)
+                XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, replacement == "complete-empty")
+            }
+            state.messages = []
+            XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation, replacement)
+        }
+    }
+
+    func testHiddenPartialFailedReconcileRejectsStaleOwnershipAndRetriesRevision() async throws {
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        var reads = 0
+        var offsets: [Int] = []
+        var interrupt: (() -> Void)?
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                reads += 1
+                if reads > 1 { return .failed(DashboardTicketBridgeError.http(status: 503, detail: "Synthetic transient history failure")) }
+                return self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0)
+            },
+            loadEarlierTranscriptPage: { id, profile, offset in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                offsets.append(offset)
+                interrupt?()
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(0..<120), offset: offset)
+            }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let client = try XCTUnwrap(state.client)
+        let reconciled = await state.reconcile(sessionId: "stored-a", using: client, token: state.beginReconciliation())
+        XCTAssertFalse(reconciled)
+        XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty)
+        let retained = try XCTUnwrap(state.persistedTranscriptWindow)
+        XCTAssertTrue(retained.hasAcceptedHiddenOnlyPage)
+        for staleID in [nil, "runtime-foreign"] as [String?] {
+            state.activeSessionId = staleID
+            XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+            let refused = await state.loadEarlierPage()
+            XCTAssertEqual(refused, .failed)
+            XCTAssertEqual(state.persistedTranscriptWindow, retained)
+        }
+        state.activeSessionId = "runtime-a"
+        state.activeProfile = "work"
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+        let foreignProfile = await state.loadEarlierPage()
+        XCTAssertEqual(foreignProfile, .failed)
+        XCTAssertTrue(offsets.isEmpty)
+        state.activeProfile = "default"
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        // Ownership lost after the read starts must release single flight
+        // without adopting the page, its raw offset or completeness.
+        interrupt = { [weak state] in state?.activeSessionId = nil }
+        let stale = await state.loadEarlierPage()
+        XCTAssertEqual(stale, .failed)
+        XCTAssertEqual(state.persistedTranscriptWindow, retained)
+        state.activeSessionId = "runtime-a"
+        // A write during a legitimate empty seed refuses only this response;
+        // accepted window evidence and raw120 stay available for the retry.
+        interrupt = { [weak state] in state?.messages = [] }
+        let changed = await state.loadEarlierPage()
+        XCTAssertEqual(changed, .failed)
+        XCTAssertEqual(state.persistedTranscriptWindow, retained)
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        interrupt = nil
+        let retry = await state.loadEarlierPage()
+        XCTAssertEqual(retry, .landed)
+        XCTAssertEqual(offsets, [120, 120, 120])
+        XCTAssertEqual(state.messages.map(\.id), (1...120).map(String.init))
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertFalse(try XCTUnwrap(state.persistedTranscriptWindow).hasAcceptedHiddenOnlyPage)
+        XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty)
+    }
+
+    func testHiddenPartialWindowSurvivesSameChatFailedReconcile() async throws {
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        var reads = 0
+        var resumeCount = 0
+        var offsets: [Int] = []
+        let harness = try makeHarness(
+            openSession: { _, id, compact in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertTrue(compact, "A transient history error must not trigger a legacy resume")
+                resumeCount += 1
+                return SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { id, profile, _ in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                reads += 1
+                if reads > 1 {
+                    return .failed(DashboardTicketBridgeError.http(status: 503, detail: "Synthetic transient history failure"))
+                }
+                return self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0)
+            },
+            loadEarlierTranscriptPage: { id, profile, offset in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                offsets.append(offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(0..<120), offset: offset)
+            }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let epoch = Date(timeIntervalSince1970: 1_788_256_800)
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "reconcile-hidden-saved", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(30), endedAt: epoch.addingTimeInterval(30))], profile: "default")
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertEqual(state.shownChat.durablePersistedRowIDs, Set((121...240).map(String.init)))
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        let priorWindow = try XCTUnwrap(state.persistedTranscriptWindow)
+        let links = state.voiceCallChatLinks
+        let client = try XCTUnwrap(state.client)
+        let reconciled = await state.reconcile(sessionId: "stored-a", using: client, token: state.beginReconciliation())
+        XCTAssertFalse(reconciled)
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(resumeCount, 2)
+        XCTAssertNotNil(state.chatSyncErrorMessage)
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertEqual(state.persistedTranscriptWindow, priorWindow, "The failed reconcile retains its accepted owned hidden-only window")
+        XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty, "Verifier evidence must stay transaction-local; do not restore it as a repair")
+        XCTAssertEqual(state.activeSessionId, "runtime-a")
+        XCTAssertEqual(state.activeProfile, "default")
+        let offered = state.canLoadEarlierMessagesForActiveConversation
+        XCTAssertTrue(offered, "FAILED_RECONCILE_UI: retained accepted hidden-only history must keep Load earlier")
+        var model = TranscriptModel()
+        var input = TranscriptModel.Input()
+        input.loadsEarlier = offered
+        input.hasSavedCopy = state.offlineChatPresentation != nil
+        input.chatIsOpening = state.liveChatIsOnItsWay
+        _ = model.update(input, targets: [], disclosure: ChatRowDisclosure())
+        XCTAssertTrue(model.rows.contains { if case .loadEarlier(isLoading: false) = $0.kind { return true }; return false },
+            "FAILED_RECONCILE_MODEL: use the actual selector, not fabricated load eligibility")
+        XCTAssertFalse(model.drawsOnlyLoadEarlier)
+        try await captureHiddenHistory(state, label: "failed-reconcile")
+        XCTAssertTrue(offsets.isEmpty)
+        let outcome = await state.loadEarlierPage()
+        XCTAssertEqual(outcome, .landed, "FAILED_RECONCILE_ACTION: visible older rows must seed the unchanged owned empty transcript")
+        XCTAssertEqual(offsets, [120])
+        XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.map(\.id), (1...120).map(String.init),
+            "FAILED_RECONCILE_VISIBLE: preserve every ordinary row in exact order")
+        XCTAssertEqual(Array(state.messages.prefix(3)).map(\.id), ["1", "voice-call-reconcile-hidden-saved", "2"])
+        XCTAssertEqual(state.messages.filter { $0.id == "voice-call-reconcile-hidden-saved" }.count, 1)
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertEqual(VoiceCallChatLinks.load(from: harness.defaults), links)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+        XCTAssertEqual(state.persistedTranscriptWindow?.loadedPageStarts.map(\.firstRowID), ["1"])
+        XCTAssertEqual(state.persistedTranscriptWindow?.oldestLoadedTimestamp, epoch)
+        XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty)
+        try await captureHiddenHistory(state, label: "failed-reconcile-backfilled")
     }
 }

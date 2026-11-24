@@ -690,7 +690,9 @@ extension AppState {
                         transcript.durableRowIDs.contains($0.id)
                     })].compactMap { $0 }.min(),
                 hasBackfilledPrefix: priorOwned?.hasBackfilledPrefix ?? false,
-                loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? []
+                loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? [],
+                hasAcceptedHiddenOnlyPage: merged.isEmpty
+                    && transcript.messages.isEmpty && !transcript.durableRowIDs.isEmpty
             )
         }
         let withCalls = mergeVoiceCallMarkers(into: messages, sessionId: runtimeSessionID)

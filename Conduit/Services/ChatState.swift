@@ -38,6 +38,12 @@ final class ChatState: ObservableObject {
     @Published var messages: [ChatMessage] = [] {
         didSet {
             transcriptRevision &+= 1
+            // Once visible rows existed, clearing them cannot reuse an old
+            // hidden-only seed. Empty-to-empty writes remain retryable after
+            // the backfill action's revision guard rejects an in-flight page.
+            if !messages.isEmpty, persistedTranscriptWindow?.hasAcceptedHiddenOnlyPage == true {
+                persistedTranscriptWindow?.hasAcceptedHiddenOnlyPage = false
+            }
             let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
             if pendingClarifyMessageID != pendingClarify {
                 pendingClarifyMessageID = pendingClarify
