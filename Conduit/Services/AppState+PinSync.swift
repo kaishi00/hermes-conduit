@@ -99,7 +99,8 @@ extension AppState {
             stored: stored,
             transcriptRevision: chatTranscriptRevision,
             sessionsRevision: sessionsRevision,
-            cronSessionsRevision: cronSessionsRevision
+            cronSessionsRevision: cronSessionsRevision,
+            identityRevision: chatOnScreenRuntime?.conversationIdentityIndex.revision ?? 0
         )
         if let cached = openChatPinnedRepliesCache, cached.key == key { return cached.value }
         let own = openChatPinIDs().own
@@ -112,30 +113,41 @@ extension AppState {
     /// The id a pin made now is kept under (the chat's row id, else its
     /// durable id, else the open id), and every id the open chat is known
     /// by. Never its row's alternate ids, which another row can share, so
-    /// another chat's pins never show in this one's bar.
+    /// another chat's pins never show in this one's bar. Runs in the open
+    /// chat's own runtime scope so a far chat resolves against its own
+    /// dashboard's catalog and identity index.
     func openChatPinIDs() -> (store: String, own: Set<String>) {
         guard let active = activeSessionId, !active.isEmpty else { return ("", []) }
-        // Another combined dashboard's chat: this dashboard's rows and ids
-        // aren't its own, and one id can name chats on both.
-        guard chatOnScreenIsInScope else { return (active, [active]) }
-        let durable = confirmedDurableSessionID(forRuntime: active)
-        let summary = activeChatSessionSummary
-        var own = chatOwnSessionIDs(for: active)
-        own.insert(active)
-        if let durable { own.insert(durable) }
-        if let summary {
-            own.insert(summary.id)
-            if let stored = summary.storedSessionId { own.insert(stored) }
+        let targetProfile = composerOwnerProfile
+        return onChatRuntimeValue(unreachable: (active, [active])) {
+            let matchesRuntimeProfile = farChat == nil || activeProfile == targetProfile
+            let durable = (matchesRuntimeProfile ? confirmedDurableSessionID(forRuntime: active) : nil)
+                ?? confirmedDurableSessionID(forRuntime: active, profile: targetProfile)
+            let summary = matchesRuntimeProfile ? activeChatSessionSummary : nil
+            var own = matchesRuntimeProfile ? chatOwnSessionIDs(for: active) : Set<String>()
+            own.insert(active)
+            if let durable { own.insert(durable) }
+            if let summary {
+                own.insert(summary.id)
+                if let stored = summary.storedSessionId { own.insert(stored) }
+            }
+            return (summary?.id ?? durable ?? active, own)
         }
-        return (summary?.id ?? durable ?? active, own)
     }
 
     /// Whether a pin belongs to the chat known by `ownIDs`: its id is one
-    /// of them, or a runtime id Hermes has since confirmed as one.
+    /// of them, or a runtime id Hermes has since confirmed as one on this
+    /// chat's own dashboard.
     func pinBelongs(_ pin: PinnedReply, toOwnIDs ownIDs: Set<String>) -> Bool {
         if ownIDs.contains(pin.sessionID) { return true }
-        guard let durable = confirmedDurableSessionID(forRuntime: pin.sessionID) else { return false }
-        return ownIDs.contains(durable)
+        let targetProfile = composerOwnerProfile
+        return onChatRuntimeValue(unreachable: false) {
+            let matchesRuntimeProfile = farChat == nil || activeProfile == targetProfile
+            let durable = (matchesRuntimeProfile ? confirmedDurableSessionID(forRuntime: pin.sessionID) : nil)
+                ?? confirmedDurableSessionID(forRuntime: pin.sessionID, profile: targetProfile)
+            guard let durable else { return false }
+            return ownIDs.contains(durable)
+        }
     }
 
     /// Signed out or reset: pinned replies belong to the chats that went.

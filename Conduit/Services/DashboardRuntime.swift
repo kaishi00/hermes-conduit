@@ -131,6 +131,10 @@ final class DashboardRuntime: ObservableObject {
     /// Bot Chat's Work panel, its runtime in scope); the one on screen's is
     /// AppState's `screenBotWork` (`AppState.botWork` picks).
     lazy var botWork = BotWorkStore()
+    /// Confirmed runtime-to-durable session identity mappings for this
+    /// dashboard only, so runtime ids that collide across dashboards never
+    /// cross-resolve or clear each other.
+    let conversationIdentityIndex: ConversationIdentityIndex
     /// Whether the roster on hand was verified since the CURRENT connection
     /// began. Cleared whenever a connection (or reconnect) is established, so
     /// absence evidence can never outlive the socket that produced it.
@@ -454,8 +458,12 @@ final class DashboardRuntime: ObservableObject {
 
     /// `notifierPlugin`: what it starts from before its plugin answers (the
     /// saved Update notices choice).
-    init(notifierPlugin: NotifierPluginStatus = NotifierPluginStatus()) {
+    init(
+        notifierPlugin: NotifierPluginStatus = NotifierPluginStatus(),
+        conversationIdentityIndex: ConversationIdentityIndex? = nil
+    ) {
         self.notifierPlugin = notifierPlugin
+        self.conversationIdentityIndex = conversationIdentityIndex ?? ConversationIdentityIndex()
     }
 
     /// What a combined dashboard switched away from keeps of the runtime on
@@ -505,5 +513,6 @@ final class DashboardRuntime: ObservableObject {
         slashSubcommands = other.slashSubcommands
         lastSlashCatalogPayload = other.lastSlashCatalogPayload
         canGeneratePictures = other.canGeneratePictures
+        conversationIdentityIndex.replaceAll(with: other.conversationIdentityIndex)
     }
 }

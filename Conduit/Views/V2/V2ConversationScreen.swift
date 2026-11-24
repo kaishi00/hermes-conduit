@@ -740,9 +740,9 @@ struct V2ConversationScreen: View {
                     }
                     V2ConnectionLine()
                 }
-                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
-                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
-                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.hidesBriefReconnect)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatIsConnected)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatIsRecoveringConnection)
+                .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.chatHidesBriefReconnect)
             }
         }
         // The big button does something else: a live call stays one
@@ -924,8 +924,8 @@ private struct V2ConnectionLine: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        if !appState.chatIsConnected, !appState.hidesBriefReconnect {
-            let connecting = appState.isRecoveringConnection
+        if !appState.chatIsConnected, !appState.chatHidesBriefReconnect {
+            let connecting = appState.chatIsRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
                     .scaledFont(.caption2.weight(.bold))
@@ -996,13 +996,13 @@ private struct V2ConversationMenu: View {
     /// anyone who opens it (#1624).
     private var statusColor: Color {
         if appState.chatIsConnected { return .green }
-        if appState.hidesBriefReconnect { return .secondary }
-        return appState.isRecoveringConnection ? .orange : .red
+        if appState.chatHidesBriefReconnect { return .secondary }
+        return appState.chatIsRecoveringConnection ? .orange : .red
     }
 
     private var statusWord: String {
         if appState.chatIsConnected { return AppLocalization.string("Connected") }
-        return appState.isRecoveringConnection ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
+        return appState.chatIsRecoveringConnection ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
     }
 
     var body: some View {

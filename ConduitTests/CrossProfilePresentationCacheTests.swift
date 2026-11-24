@@ -101,6 +101,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations,
         groups: GroupChatLifecycleOperations = .live,
+        offlineChatCache: OfflineChatCacheStore? = nil,
         park: @escaping @Sendable (Duration) async throws -> Void
     ) -> (
         appState: AppState,
@@ -129,6 +130,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             chatResumeLifecycleOperations: lifecycleOperations,
             groupChatOperations: groups,
             sessionPresentationCache: cache,
+            offlineChatCache: offlineChatCache,
             presentationCacheDebounceSuspension: park
         )
         return (appState, coordinator, cache, defaults, suiteName)
@@ -601,11 +603,18 @@ extension CrossProfilePresentationCacheTests {
     /// that stays open until the test closes it.
     private func combinedDashboards(
         operations: ChatResumeLifecycleOperations,
-        groups: GroupChatLifecycleOperations = .live
+        groups: GroupChatLifecycleOperations = .live,
+        offlineChatCache: OfflineChatCacheStore? = nil,
+        park: @escaping @Sendable (Duration) async throws -> Void = { _ in }
     ) async throws -> (appState: AppState, mac: SavedDashboard, vps: SavedDashboard, outgoing: HermesClient, socket: ClarifyFakeSocket) {
         KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
         addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
-        let harness = makeHarness(lifecycleOperations: operations, groups: groups) { _ in }
+        let harness = makeHarness(
+            lifecycleOperations: operations,
+            groups: groups,
+            offlineChatCache: offlineChatCache,
+            park: park
+        )
         let appState = harness.appState
         let mac = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
         let vps = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
@@ -2492,11 +2501,14 @@ extension CrossProfilePresentationCacheTests {
         appState.updateChatModelQuickPicks { $0.recordSwitch(to: ModelQuickPick(provider: "mac-provider", model: "mac-later"), from: nil) }
         XCTAssertEqual(appState.storedModelQuickPicks()[AppState.dashboardPreferenceBucket(mac.id)]?.recent.first?.model, "mac-later")
         XCTAssertEqual(appState.modelQuickPicks, screenPicks, "the dashboard on screen's Quick picks are untouched")
-        // Unreachable, its rows still save under its own profile.
+        // Unreachable, its rows still stay on screen and save under its own profile.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
         XCTAssertEqual(appState.activeSessionId, "mac-1")
-        // Its rows as they stand when the flush runs.
-        appState.messages = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")]
+        await Task.yield()
+        XCTAssertTrue(appState.messages.contains { $0.id == "far-1" },
+                      "its rows stay on screen after send and runtime drop")
+        XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "Ship it" },
+                      "its sent message stays on screen after runtime drop")
         guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("its dashboard is gone") }
         appState.flushPendingPresentationCache()
         appState.sessionPresentationCache.waitForPendingWrites()
@@ -5008,5 +5020,390 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.windowChatOwners.isEmpty)
         XCTAssertNotNil(appState.windowChat(localWindowKey), "local window stays open")
         XCTAssertEqual(appState.windowChatIDs.count, 1)
+    }
+
+    // MARK: - No-switch owed items (5.1 – 5.6)
+
+    /// Switching dashboards while a far chat or a far Bot Chat is open saves its
+    /// offline transcript copy and Bot Chat copy under the far dashboard and
+    /// profile, never the outgoing screen dashboard's.
+    func testSwitchingDashboardsWhileAFarChatOrBotChatIsOpenSavesCopyUnderFarDashboard() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        let third = SavedDashboard(id: UUID(), label: "Lab", normalizedURL: "https://127.0.0.3:1", combined: true)
+        appState.savedDashboardRegistry = SavedDashboardRegistry(
+            activeDashboardID: mac.id,
+            dashboards: [mac, vps, third]
+        )
+
+        // Move screen to VPS while Mac stays kept.
+        await appState.switchDashboard(to: vps.id)
+        let keptMac = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        // 1. Ordinary far chat on Mac ("work") open in place while screen is VPS ("default").
+        appState.act(onRuntime: keptMac.runtime) {
+            appState.activeProfile = "work"
+            appState.sessions = [session("mac-chat-1", profile: "work")]
+        }
+        appState.setActiveSessionState(id: "mac-chat-1", title: "Mac work chat")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        appState.turnState = .idle
+        appState.offlineChatPresentation = nil
+        appState.messages = [ChatMessage(id: "far-copy-1", role: .assistant, content: "Far saved row", timestamp: "ts-fc1")]
+
+        await appState.switchDashboard(to: third.id)
+
+        XCTAssertEqual(appState.offlineChatCache.loadTranscript("mac-chat-1", dashboardID: mac.id, profile: "work")?.messages.map(\.id),
+                       ["far-copy-1"],
+                       "far chat copy saves under the far dashboard and profile")
+        XCTAssertNil(appState.offlineChatCache.loadTranscript("mac-chat-1", dashboardID: vps.id, profile: "default"),
+                     "nothing saves under the outgoing screen dashboard")
+
+        // 2. Far Bot Chat on Mac ("atlas") open in place while screen is on another dashboard.
+        let fourth = SavedDashboard(id: UUID(), label: "Mini", normalizedURL: "https://127.0.0.4:1", combined: true)
+        appState.savedDashboardRegistry = SavedDashboardRegistry(
+            activeDashboardID: appState.activeDashboardID,
+            dashboards: [mac, vps, third, fourth]
+        )
+        let atlas = BotProfile(
+            name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "",
+            model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        let keptMacForBot = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.act(onRuntime: keptMacForBot.runtime) {
+            appState.activeProfile = "default"
+            appState.botModePhase = .available
+            appState.botRoster = [atlas]
+            appState.noteBotChatSession("atlas-chat", profile: "atlas", label: "Atlas")
+        }
+        appState.setActiveSessionState(id: "atlas-chat", title: "Atlas")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        appState.turnState = .idle
+        appState.offlineChatPresentation = nil
+        appState.messages = [ChatMessage(id: "far-bot-1", role: .assistant, content: "Atlas kept row", timestamp: "ts-fb1")]
+
+        let outgoingDashboardID = try XCTUnwrap(appState.activeDashboardID)
+        await appState.switchDashboard(to: fourth.id)
+
+        XCTAssertEqual(appState.offlineChatCache.loadBotChatCopy(dashboardID: mac.id, bot: "atlas")?.transcript.messages.map(\.id),
+                       ["far-bot-1"],
+                       "far Bot Chat copy saves under the far dashboard and bot")
+        XCTAssertNil(appState.offlineChatCache.loadBotChatCopy(dashboardID: outgoingDashboardID, bot: "atlas"),
+                     "nothing saves under the outgoing screen dashboard for the Bot Chat")
+    }
+
+    /// An async disk read of a far chat's saved copy (`readTranscript` over
+    /// `ioQueue`) returns onto the main queue outside `RuntimeScope`, yet still
+    /// evaluates against the far chat's runtime and shows on screen while opening.
+    func testAFarChatReadsSavedOfflineCopyIntoScopeWhileOpeningAsync() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FarAsyncOfflineCopy-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+
+        final class OpenGate: @unchecked Sendable {
+            private let lock = NSLock()
+            private var cont: CheckedContinuation<Void, Never>?
+            private var released = false
+            func wait() async {
+                await withCheckedContinuation { c in
+                    lock.lock()
+                    if released {
+                        lock.unlock()
+                        c.resume()
+                        return
+                    }
+                    cont = c
+                    lock.unlock()
+                }
+            }
+            func release() {
+                lock.lock()
+                released = true
+                let pending = cont
+                cont = nil
+                lock.unlock()
+                pending?.resume()
+            }
+        }
+        let openGate = OpenGate()
+        addTeardownBlock { openGate.release() }
+
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.openSession = { _, sessionID, _ in
+            await openGate.wait()
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "live-1", role: .assistant, content: "Live from Mac", timestamp: "ts-live")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+
+        // Write with one synchronous store so the async reader's in-memory map
+        // is empty and `readTranscript` must hop through `ioQueue` + `DispatchQueue.main.async`.
+        let writer = OfflineChatCacheStore(directory: dir, writesAsynchronously: false)
+        let reader = OfflineChatCacheStore(directory: dir, writesAsynchronously: true)
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(
+            operations: operations,
+            offlineChatCache: reader
+        )
+        writer.record(
+            dashboardID: mac.id,
+            profile: "default",
+            sessionID: "mac-1",
+            identities: ["mac-1"],
+            title: "Saved far chat",
+            messages: [ChatMessage(id: "saved-far-1", role: .assistant, content: "Cached on Mac", timestamp: "ts-s1")],
+            sessions: [session("mac-1", profile: "default")]
+        )
+
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = session("mac-1", profile: "default")
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        XCTAssertTrue(kept.client === outgoing)
+
+        appState.openCombinedChat(row, in: mac.id)
+        await waitUntil {
+            appState.activeSessionId == "mac-1"
+                && appState.farChatDashboardID == mac.id
+                && appState.offlineChatPresentation != nil
+        }
+        XCTAssertEqual(appState.offlineChatPresentation?.dashboardID, mac.id)
+        XCTAssertEqual(appState.offlineChatPresentation?.profile, "default")
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["saved-far-1"],
+                       "async disk read runs inside the far runtime scope and shows the saved copy while opening")
+
+        openGate.release()
+        await waitUntil { appState.messages.contains { $0.id == "live-1" } }
+    }
+
+    /// A far chat's header recovery state follows its own dashboard's quiet
+    /// reconnect rather than the screen dashboard's connection state.
+    func testFarChatConnectionRecoveryStateFollowsItsOwnDashboard() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        appState.isConnected = true
+        appState.isConnecting = false
+        appState.networkPathUsable = true
+        appState.isReturningQuietly = false
+
+        appState.activeSessionId = "mac-1"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        XCTAssertTrue(appState.chatIsConnected)
+        XCTAssertFalse(appState.chatIsRecoveringConnection)
+        XCTAssertFalse(appState.chatHidesBriefReconnect)
+
+        // Mac drops while screen VPS stays connected.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertFalse(appState.chatIsConnected)
+        XCTAssertFalse(appState.chatIsRecoveringConnection)
+        XCTAssertFalse(appState.isRecoveringConnection)
+
+        // Mac begins quiet sign-in: the far chat shows recovering even while screen VPS is idle.
+        appState.combinedSignInsUnderWay.insert(mac.id)
+        XCTAssertTrue(appState.chatIsRecoveringConnection)
+        XCTAssertFalse(appState.isRecoveringConnection, "screen dashboard state is untouched")
+        XCTAssertFalse(appState.chatHidesBriefReconnect)
+
+        // Returning quietly hides the brief reconnect until isReturningQuietly clears.
+        appState.isReturningQuietly = true
+        XCTAssertTrue(appState.chatHidesBriefReconnect)
+        appState.isReturningQuietly = false
+        XCTAssertFalse(appState.chatHidesBriefReconnect)
+
+        // Without network, the far chat does not claim to be reconnecting.
+        appState.networkPathUsable = false
+        XCTAssertFalse(appState.chatIsRecoveringConnection)
+        XCTAssertFalse(appState.chatHidesBriefReconnect)
+
+        // Leaving the far chat falls back to the screen dashboard's recovery state.
+        appState.networkPathUsable = true
+        appState.farChat = nil
+        XCTAssertFalse(appState.chatIsRecoveringConnection)
+        appState.isConnecting = true
+        XCTAssertTrue(appState.chatIsRecoveringConnection)
+        appState.isReturningQuietly = true
+        XCTAssertTrue(appState.chatHidesBriefReconnect)
+    }
+
+    /// A parked deferred flush whose kept runtime drops before it wakes skips
+    /// writing when either `farChat.profile` or `presentationCacheProfileEpoch`
+    /// changed in between, and writes under `farChat.profile` when unchanged.
+    func testParkedUnreachableFarFlushSkipsWhenProfileOrEpochChanges() async throws {
+        // Case A: `farChat.profile` changes while parked and unreachable -> skip.
+        do {
+            let (gate, park) = makeGatePark()
+            let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+            let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations, park: park)
+            await appState.switchDashboard(to: vps.id)
+
+            appState.activeSessionId = "far-u1"
+            appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+            appState.messages = [ChatMessage(id: "u1", role: .assistant, content: "Far u1", timestamp: "ts-u1")]
+            appState.schedulePresentationCacheFlush(for: "far-u1")
+            await gate.waitUntilEngaged()
+
+            appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+            appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "other")
+            gate.release()
+            await appState.presentationCacheFlushOperationForTesting?.value
+            appState.sessionPresentationCache.waitForPendingWrites()
+
+            let probe = [ChatMessage(id: "u1", role: .assistant, content: "Far u1", timestamp: "")]
+            let ids = appState.presentationCacheSessionIDs(for: "far-u1")
+            XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: ids).first?.timestamp, "",
+                           "must not write under old profile once farChat moved")
+            XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "other", sessionIDs: ids).first?.timestamp, "",
+                           "must not write under new profile either")
+        }
+
+        // Case B: `presentationCacheProfileEpoch` bumps while parked and unreachable -> skip.
+        do {
+            let (gate, park) = makeGatePark()
+            let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+            let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations, park: park)
+            await appState.switchDashboard(to: vps.id)
+
+            appState.activeSessionId = "far-u2"
+            appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+            appState.messages = [ChatMessage(id: "u2", role: .assistant, content: "Far u2", timestamp: "ts-u2")]
+            appState.schedulePresentationCacheFlush(for: "far-u2")
+            await gate.waitUntilEngaged()
+
+            appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+            appState.presentationCacheProfileEpoch &+= 1
+            gate.release()
+            await appState.presentationCacheFlushOperationForTesting?.value
+            appState.sessionPresentationCache.waitForPendingWrites()
+
+            let probe = [ChatMessage(id: "u2", role: .assistant, content: "Far u2", timestamp: "")]
+            let ids = appState.presentationCacheSessionIDs(for: "far-u2")
+            XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: ids).first?.timestamp, "",
+                           "must not write after epoch fence bumped while unreachable")
+        }
+
+        // Control: dropped while parked with unchanged farChat.profile and epoch -> writes under farChat.profile.
+        do {
+            let (gate, park) = makeGatePark()
+            let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+            let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations, park: park)
+            await appState.switchDashboard(to: vps.id)
+
+            appState.activeSessionId = "far-u3"
+            appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+            appState.messages = [ChatMessage(id: "u3", role: .assistant, content: "Far u3", timestamp: "ts-u3")]
+            appState.schedulePresentationCacheFlush(for: "far-u3")
+            await gate.waitUntilEngaged()
+
+            appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+            gate.release()
+            await appState.presentationCacheFlushOperationForTesting?.value
+            appState.sessionPresentationCache.waitForPendingWrites()
+
+            let probe = [ChatMessage(id: "u3", role: .assistant, content: "Far u3", timestamp: "")]
+            let ids = appState.presentationCacheSessionIDs(for: "far-u3")
+            XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: ids).first?.timestamp, "ts-u3",
+                           "writes under farChat.profile when dropped mid-debounce with matching profile and epoch")
+        }
+    }
+
+    /// Each dashboard keeps its own `conversationIdentityIndex`, so a far chat's
+    /// pinned replies match across runtime-id rebinds on its own dashboard (even
+    /// on another profile), and a same-profile rebind or reset on the screen
+    /// dashboard never leaks into or clears the far dashboard's pin lookups.
+    func testFarChatPinRuntimeIDRebindFollowsOwnDashboardAndNeverLeaksFromScreen() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        _ = appState.prepareChatResumeForConnection(to: mac.normalizedURL, dashboardID: mac.id)
+        // Record a screen-dashboard mapping on Mac before switching away to VPS,
+        // so we can verify switch-away isolation AND switch-back restoration.
+        appState.conversationIdentityIndex.recordAuthoritative(
+            runtimeID: "mac-keep-rt",
+            durableID: "mac-keep-dur",
+            profile: "default",
+            source: .resume
+        )
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.conversationIdentityIndex.durableID(forRuntime: "mac-keep-rt", profile: "default"),
+                     "VPS's screen index was cleared at the switch boundary")
+        let keptMac = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        // 1. Rebind both an old runtime ID and the open runtime ID to "mac-dur-1"
+        // on Mac's kept runtime under profile "work".
+        appState.act(onRuntime: keptMac.runtime) {
+            appState.activeProfile = "work"
+            appState.conversationIdentityIndex.recordAuthoritative(
+                runtimeID: "mac-rt-1",
+                durableID: "mac-dur-1",
+                profile: "work",
+                source: .resume
+            )
+            appState.conversationIdentityIndex.recordAuthoritative(
+                runtimeID: "mac-rt-2",
+                durableID: "mac-dur-1",
+                profile: "work",
+                source: .resume
+            )
+        }
+        // Conflicting/unrelated mapping on the screen dashboard (VPS) under the
+        // SAME profile name and SAME runtime ID must not interfere.
+        appState.setActiveProfileForTesting("work")
+        appState.conversationIdentityIndex.recordAuthoritative(
+            runtimeID: "mac-rt-2",
+            durableID: "vps-intruder",
+            profile: "work",
+            source: .resume
+        )
+        appState.conversationIdentityIndex.recordAuthoritative(
+            runtimeID: "vps-rt-only",
+            durableID: "vps-rt-dur",
+            profile: "work",
+            source: .resume
+        )
+
+        let m1 = ChatMessage(id: "m1", role: .assistant, content: "Pinned on Mac durable", timestamp: "ts-1")
+        let m2 = ChatMessage(id: "m2", role: .assistant, content: "Pinned under old runtime", timestamp: "ts-2")
+        let m3 = ChatMessage(id: "m3", role: .assistant, content: "Screen decoy", timestamp: "ts-3")
+        let farDurablePin = PinnedReply(sessionID: "mac-dur-1", message: m1, chatTitle: "Mac work")
+        let farReboundPin = PinnedReply(sessionID: "mac-rt-1", message: m2, chatTitle: "Mac work")
+        let screenIntruderPin = PinnedReply(sessionID: "vps-intruder", message: m3, chatTitle: "VPS decoy")
+        appState.setPinnedReplies(
+            [farDurablePin, farReboundPin, screenIntruderPin],
+            of: PinnedReplyOwner(dashboard: mac.id.uuidString, profile: "work")
+        )
+
+        appState.activeSessionId = "mac-rt-2"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        appState.messages = [m1, m2, m3]
+
+        let pinIDs = appState.openChatPinIDs()
+        XCTAssertTrue(pinIDs.own.contains("mac-dur-1"), "far chat resolves durable id from its own dashboard's index")
+        XCTAssertFalse(pinIDs.own.contains("vps-intruder"), "screen dashboard's same-profile index never leaks into far chat")
+        XCTAssertEqual(Set(appState.openChatPinnedReplies.map(\.id)), Set([farDurablePin.id, farReboundPin.id]),
+                       "matches pins saved under both the durable id and the prior rebound runtime id")
+        XCTAssertFalse(appState.pinBelongs(screenIntruderPin, toOwnIDs: pinIDs.own))
+
+        // 2. Clearing the screen dashboard's index never wipes Mac's kept index.
+        appState.conversationIdentityIndex.removeAll()
+        XCTAssertNil(appState.conversationIdentityIndex.durableID(forRuntime: "vps-rt-only", profile: "work"))
+        XCTAssertEqual(Set(appState.openChatPinnedReplies.map(\.id)), Set([farDurablePin.id, farReboundPin.id]),
+                       "Mac's kept index remains intact after screen index clears")
+
+        // 3. Switching back to Mac restores Mac's kept identity index across resetForDashboard.
+        appState.farChat = nil
+        appState.setActiveProfileForTesting("default")
+        await appState.switchDashboard(to: mac.id)
+        XCTAssertEqual(appState.conversationIdentityIndex.durableID(forRuntime: "mac-keep-rt", profile: "default"),
+                       "mac-keep-dur",
+                       "switching back restores Mac's kept identity index")
     }
 }
