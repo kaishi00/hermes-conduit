@@ -176,6 +176,7 @@ extension AppState {
         in dashboardID: UUID
     ) async -> NotificationOpenOutcome? {
         guard let runtime = farBotChatRuntime(in: dashboardID) else { return nil }
+        ensureKeptPluginReport(for: dashboardID)
         // An approval's or a question's push lands on its card, as on screen.
         if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
             pendingNeedsYouReveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)

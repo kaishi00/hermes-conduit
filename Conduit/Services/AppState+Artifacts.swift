@@ -49,19 +49,27 @@ extension AppState {
     /// is connected: a far chat's own dashboard's (another combined
     /// dashboard's chat open in place), else the one on screen's.
     func artifactsHost(for scope: ArtifactScope) -> (plugin: NotifierPluginStatus, isConnected: Bool) {
-        if case .chat(_, let far?) = scope, far.dashboardID != activeDashboardID {
+        switch scope {
+        case .chat(_, let far?) where far.dashboardID != activeDashboardID:
             guard let runtime = runtime(for: far.dashboardID) else { return (NotifierPluginStatus(), false) }
             return (runtime.notifierPlugin, runtime.isConnected)
+        case .bot(_, let far?) where far != activeDashboardID:
+            guard let runtime = runtime(for: far) else { return (NotifierPluginStatus(), false) }
+            return (runtime.notifierPlugin, runtime.isConnected)
+        default:
+            return (notifierPlugin, isConnected)
         }
-        return (notifierPlugin, isConnected)
     }
 
     /// Whether a list's feed is the dashboard on screen's: only then does
     /// it offer Saved (pins are that dashboard's) or ask for its plugin's
     /// status again.
     func artifactsHostIsOnScreen(_ scope: ArtifactScope) -> Bool {
-        guard case .chat(_, let far?) = scope else { return true }
-        return far.dashboardID == activeDashboardID
+        switch scope {
+        case .chat(_, let far?): return far.dashboardID == activeDashboardID
+        case .bot(_, let far?): return far == activeDashboardID
+        default: return true
+        }
     }
 
     var artifactsClient: ArtifactsClient {
@@ -216,7 +224,15 @@ extension AppState {
                 return [ArtifactSource(profile: activeProfile, sessionIDs: ids)]
             }
             return [ArtifactSource(profile: bot, sessionIDs: ids, label: botLabel(bot), isBotChat: true)]
-        case .bot(let name):
+        case .bot(let name, let far):
+            if let far, far != activeDashboardID {
+                let bot = farBotRoster(in: far).first { Self.profilesMatch($0.name, name) }
+                return [ArtifactSource(profile: name, sessionIDs: [],
+                                       label: bot?.displayLabel ?? farBotName(name, on: far),
+                                       botChatIDs: bot.map(Self.botChatIDs) ?? [],
+                                       botLabel: bot?.displayLabel,
+                                       dashboardID: far)]
+            }
             // The bot's whole profile, as `.profile` reads the one in use.
             let bot = botRoster.first { Self.profilesMatch($0.name, name) }
             let inUse = Self.profilesMatch(name, activeProfile)

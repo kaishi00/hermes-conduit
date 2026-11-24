@@ -948,7 +948,7 @@ struct ChatView: View {
                 pinnedReplyBar
                 // A question the bot asked here that waits past its turn.
                 if !showsOfflineCopy, !appState.showsPendingNewChat {
-                    ChatAskedQuestionBar(store: appState.needsYou, botWork: appState.botWork)
+                    ChatAskedQuestionBar(store: appState.needsYou, botWork: appState.chatBotWork)
                 }
             }
         }
@@ -1348,10 +1348,11 @@ struct MessageBubble: View, Equatable {
     /// links each ref to that workstream's chat once the bot's work list has it.
     @ViewBuilder
     private func botChatReply(_ message: ChatMessage) -> some View {
-        if let profile = appState.activeBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
+        if let profile = appState.chatBotChatProfile, BotWorkLinks.mayNameWork(message.content) {
             BotChatWorkReply(
-                work: appState.botWork,
+                work: appState.chatBotWork,
                 profile: profile,
+                dashboardID: appState.farChatDashboardID,
                 message: message,
                 readAloudController: appState.messageReadAloudController,
                 gatewayResolver: gatewayResolver,
@@ -1448,9 +1449,17 @@ struct MessageBubble: View, Equatable {
                     botChatReply(message.withContent(split.text))
                 }
                 ForEach(split.links, id: \.ref) { link in
-                    BotWorkLinkCard(work: appState.botWork, link: link,
-                                    profile: link.profile ?? appState.activeProfile) {
-                        openURL(link.url)
+                    BotWorkLinkCard(work: appState.chatBotWork, link: link,
+                                    profile: link.profile ?? appState.composerOwnerProfile) {
+                        if let farID = appState.farChatDashboardID {
+                            _ = appState.openFarWorkstreamInPlace(
+                                link.sessionID,
+                                profile: link.profile ?? appState.composerOwnerProfile,
+                                in: farID
+                            )
+                        } else {
+                            openURL(link.url)
+                        }
                     }
                     .frame(maxWidth: 560, alignment: .leading)
                 }
@@ -3104,6 +3113,7 @@ struct ReadAloudButton: View {
 struct BotChatWorkReply: View {
     @ObservedObject var work: BotWorkStore
     let profile: String
+    var dashboardID: UUID? = nil
     let message: ChatMessage
     let readAloudController: MessageReadAloudController
     let gatewayResolver: GatewayMediaDataURLResolver?
@@ -3113,7 +3123,7 @@ struct BotChatWorkReply: View {
         let items = (work.snapshot(profile)?.items ?? []) + (work.resolvedList(profile)?.items ?? [])
         let shown = BotWorkLinks.linkingNamedRefs(message.content) { ref in
             guard let item = items.first(where: { $0.ref == ref && !$0.sessionID.isEmpty }) else { return nil }
-            return ConduitAppLink.session(id: item.sessionID, profile: profile).url
+            return ConduitAppLink.session(id: item.sessionID, profile: profile, dashboard: dashboardID?.uuidString).url
         }
         AssistantBubble(
             message: message,
@@ -3898,8 +3908,8 @@ private struct SettledToolCardContent: View, Equatable {
                             // 7.6G free"), so its answer needn't repeat it.
                             if !expanded, !running, work?.tool == .start, let ref = work?.ref,
                                let appState = rowActions?.appState,
-                               let profile = work?.profile ?? appState.activeBotChatProfile {
-                                WorkStartStatusLine(work: appState.botWork, profile: profile, ref: ref,
+                               let profile = work?.profile ?? appState.chatBotChatProfile {
+                                WorkStartStatusLine(work: appState.chatBotWork, profile: profile, ref: ref,
                                                     fallback: label.action ?? ChatStepSubject.line(from: tool.input))
                                     .transition(.rowFoldSwap)
                             } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
@@ -3946,7 +3956,15 @@ private struct SettledToolCardContent: View, Equatable {
                             // The workstream it started or reached, opened on its bot's profile.
                             Button {
                                 Haptics.light()
-                                rowActions?.appState.openAppLink(.session(id: session, profile: work.profile))
+                                if let appState = rowActions?.appState, let farID = appState.farChatDashboardID {
+                                    _ = appState.openFarWorkstreamInPlace(
+                                        session,
+                                        profile: work.profile ?? appState.composerOwnerProfile,
+                                        in: farID
+                                    )
+                                } else {
+                                    rowActions?.appState.openAppLink(.session(id: session, profile: work.profile))
+                                }
                             } label: {
                                 Label(AppLocalization.string("Open \(ref)"), systemImage: "arrow.up.right.square")
                                     .scaledFont(.caption.weight(.semibold))

@@ -423,10 +423,19 @@ extension AppState {
             let hermes = combinedHermesGroups
             return hermes[surface.dashboardID] != nil && hermes[surface.dashboardID] == hermes[dashboard]
         }
+        let openDashboard = farChatDashboardID ?? dashboardIDOnScreen
+        let waitDashboard = item.dashboardID ?? dashboardIDOnScreen
+        if openDashboard != waitDashboard {
+            let hermes = combinedHermesGroups
+            guard hermes[openDashboard] != nil, hermes[openDashboard] == hermes[waitDashboard] else { return false }
+        }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),
               let active = activeSessionId, !active.isEmpty else { return false }
-        let own = chatOwnSessionIDs(for: active).union([active])
+        let includeCronRuns = farChatDashboardID == nil
+        let own = onChatRuntimeValue(unreachable: Set([active])) {
+            chatOwnSessionIDs(for: active, includingCronRuns: includeCronRuns).union([active])
+        }
         return item.sessionIDs.contains(where: own.contains)
     }
 

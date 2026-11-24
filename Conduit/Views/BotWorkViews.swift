@@ -23,6 +23,7 @@ private struct BotWorkRefresh: ViewModifier {
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
     let profile: String
+    var farDashboardID: UUID? = nil
     /// In a chat, so covering the chat hides it. Bots Home's overview isn't.
     let inChat: Bool
     /// Off for a bot this dashboard's store doesn't keep (another combined
@@ -35,14 +36,19 @@ private struct BotWorkRefresh: ViewModifier {
     func body(content: Content) -> some View {
         // Keyed on the bot's work being on too: turned on in Edit Bot,
         // its reads start again.
-        let isOn = appState.botWork.snapshot(profile)?.isOn ?? true
+        let work = appState.workStore(for: farDashboardID)
+        let connected = appState.workDashboardIsConnected(for: farDashboardID)
+        let serves = appState.workDashboardServesWorkstreams(for: farDashboardID)
+        let isOn = work.snapshot(profile)?.isOn ?? true
         let shows = enabled && shell.isTabActive && scenePhase != .background
             && !(inChat && appState.showSidebar && !shell.hasChatBeside)
-        content.task(id: "\(profile)\u{1F}\(appState.isConnected)\u{1F}\(appState.servesBotWorkstreams)\u{1F}\(isOn)\u{1F}\(shows)") {
+        content.task(id: "\(farDashboardID?.uuidString ?? "")\u{1F}\(profile)\u{1F}\(connected)\u{1F}\(serves)\u{1F}\(isOn)\u{1F}\(shows)") {
             guard shows else { return }
             while !Task.isCancelled {
-                await appState.refreshBotWork(profile: profile)
-                let snapshot = appState.botWork.snapshot(profile)
+                await appState.runOnWorkDashboard(farDashboardID) {
+                    await appState.refreshBotWork(profile: profile)
+                }
+                let snapshot = work.snapshot(profile)
                 // Off: nothing to watch until the chat opens again.
                 if snapshot?.isOn == false { return }
                 let busy = (snapshot?.workingCount ?? 0) > 0 || (snapshot?.items.contains { $0.status == "starting" } ?? false)
@@ -53,8 +59,8 @@ private struct BotWorkRefresh: ViewModifier {
 }
 
 extension View {
-    func refreshesBotWork(profile: String, inChat: Bool = true, enabled: Bool = true) -> some View {
-        modifier(BotWorkRefresh(profile: profile, inChat: inChat, enabled: enabled))
+    func refreshesBotWork(profile: String, farDashboardID: UUID? = nil, inChat: Bool = true, enabled: Bool = true) -> some View {
+        modifier(BotWorkRefresh(profile: profile, farDashboardID: farDashboardID, inChat: inChat, enabled: enabled))
     }
 }
 
@@ -140,6 +146,7 @@ enum BotWorkLook {
 struct BotWorkTitleLine: View {
     @ObservedObject var work: BotWorkStore
     let profile: String
+    var farDashboardID: UUID? = nil
     let isPanelOpen: Bool
     let onOpen: () -> Void
 
@@ -178,7 +185,7 @@ struct BotWorkTitleLine: View {
                 .accessibilityIdentifier("botWork.titleLine")
             }
         }
-        .refreshesBotWork(profile: profile)
+        .refreshesBotWork(profile: profile, farDashboardID: farDashboardID)
     }
 }
 
@@ -189,9 +196,10 @@ struct WorkstreamTitleLine: View {
     @ObservedObject var work: BotWorkStore
     let profile: String
     let item: BotWorkItem
+    var farDashboardID: UUID? = nil
 
     private var botName: String {
-        work.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+        appState.workBotDisplayName(profile: profile, work: work, farDashboardID: farDashboardID)
     }
 
     var body: some View {
@@ -228,14 +236,15 @@ struct WorkstreamTitleLine: View {
 struct BotWorkTitleStatus: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var work: BotWorkStore
+    var farDashboardID: UUID? = nil
     let isPanelOpen: Bool
     let onOpenPanel: () -> Void
 
     var body: some View {
-        if let profile = appState.activeBotChatProfile {
-            BotWorkTitleLine(work: work, profile: profile, isPanelOpen: isPanelOpen, onOpen: onOpenPanel)
+        if let profile = appState.chatBotChatProfile {
+            BotWorkTitleLine(work: work, profile: profile, farDashboardID: farDashboardID, isPanelOpen: isPanelOpen, onOpen: onOpenPanel)
         } else if let workstream = appState.activeWorkstream {
-            WorkstreamTitleLine(work: work, profile: workstream.profile, item: workstream.item)
+            WorkstreamTitleLine(work: work, profile: workstream.profile, item: workstream.item, farDashboardID: farDashboardID)
         }
     }
 }
@@ -247,6 +256,7 @@ struct BotWorkPanel: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var work: BotWorkStore
     let profile: String
+    var farDashboardID: UUID? = nil
     let onClose: () -> Void
     /// The Bot Overview draws the bot's own header above the list.
     var showsHeader = true
@@ -267,12 +277,17 @@ struct BotWorkPanel: View {
     static let recentShown = 3
 
     private var botName: String {
-        work.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+        appState.workBotDisplayName(profile: profile, work: work, farDashboardID: farDashboardID)
+    }
+
+    private var targetIsConnected: Bool {
+        appState.workDashboardIsConnected(for: farDashboardID)
     }
 
     private func row(_ item: BotWorkItem) -> some View {
         BotWorkRow(
-            item: item, profile: profile, isActing: work.isActing(item.ref, profile: profile),
+            work: work, item: item, profile: profile, farDashboardID: farDashboardID,
+            isActing: work.isActing(item.ref, profile: profile),
             expanded: Binding(
                 get: { expanded.contains(item.ref) },
                 set: { if $0 { expanded.insert(item.ref) } else { expanded.remove(item.ref) } }
@@ -309,7 +324,7 @@ struct BotWorkPanel: View {
             if item.kind == .workstream, !item.sessionID.isEmpty {
                 Button {
                     onWillOpen?()
-                    appState.openWorkstream(item, profile: profile)
+                    appState.openWorkstream(item, profile: profile, in: farDashboardID)
                 } label: {
                     Label(AppLocalization.string("Open \(item.ref)’s chat", table: .bots), systemImage: "bubble.left.and.bubble.right")
                 }
@@ -330,12 +345,16 @@ struct BotWorkPanel: View {
         }()
         return Button {
             Haptics.light()
-            Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+            Task {
+                await appState.runOnWorkDashboard(farDashboardID) {
+                    await appState.actOnWorkstream(item, profile: profile, action: action)
+                }
+            }
         } label: {
             Label(title, systemImage: symbol)
         }
         .tint(tint)
-        .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
+        .disabled(work.isActing(item.ref, profile: profile) || !targetIsConnected)
     }
 
     /// Settings' group name over its cards (see Sheets in Settings' look),
@@ -385,7 +404,7 @@ struct BotWorkPanel: View {
         .background {
             if showsHeader { SettingsBackdrop().ignoresSafeArea() }
         }
-        .refreshesBotWork(profile: profile, inChat: showsHeader)
+        .refreshesBotWork(profile: profile, farDashboardID: farDashboardID, inChat: showsHeader)
         // A refusal belongs to the panel it was tapped in. The Resolved
         // list stays, so a resolved workstream opened from it knows its
         // chat; it's read again when it shows.
@@ -415,7 +434,8 @@ struct BotWorkPanel: View {
                 ProfileAvatarView(
                     profile: profile,
                     displayName: botName,
-                    url: appState.profileAvatarURL(for: profile),
+                    url: farDashboardID.map { appState.farAvatarURL(for: profile, on: $0) }
+                        ?? appState.profileAvatarURL(for: profile),
                     size: 36
                 )
                 .background(Circle().fill(Color.conduitAccent.opacity(0.14)))
@@ -504,7 +524,7 @@ struct BotWorkPanel: View {
                     sectionHeader(AppLocalization.string("Asked you", table: .bots), symbol: "questionmark.bubble.fill", tint: .orange)
                     ForEach(questions) { question in
                         BotWorkQuestionCard(
-                            question: question, profile: profile,
+                            question: question, profile: profile, farDashboardID: farDashboardID,
                             isActing: work.isActing(question.id, profile: profile),
                             onWhy: { whyItem = question }
                         )
@@ -618,7 +638,11 @@ struct BotWorkPanel: View {
                     Button(AppLocalization.string("Try Again")) {
                         Haptics.light()
                         work.retryReading(profile)
-                        Task { await appState.refreshBotWork(profile: profile) }
+                        Task {
+                            await appState.runOnWorkDashboard(farDashboardID) {
+                                await appState.refreshBotWork(profile: profile)
+                            }
+                        }
                     }
                     .buttonStyle(.settings)
                     .accessibilityIdentifier("botWork.retry")
@@ -721,7 +745,11 @@ struct BotWorkPanel: View {
             // Also after a failed page, so it can be tried again.
             if list?.isLoading == false, list?.more == true {
                 Button {
-                    Task { await appState.loadResolvedWork(profile: profile, more: true) }
+                    Task {
+                        await appState.runOnWorkDashboard(farDashboardID) {
+                            await appState.loadResolvedWork(profile: profile, more: true)
+                        }
+                    }
                 } label: {
                     Text("Show more")
                         .scaledFont(.subheadline.weight(.semibold))
@@ -734,8 +762,10 @@ struct BotWorkPanel: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .task(id: "\(profile)\u{1F}\(appState.isConnected)") {
-            await appState.loadResolvedWork(profile: profile)
+        .task(id: "\(farDashboardID?.uuidString ?? "")\u{1F}\(profile)\u{1F}\(targetIsConnected)") {
+            await appState.runOnWorkDashboard(farDashboardID) {
+                await appState.loadResolvedWork(profile: profile)
+            }
         }
     }
 }
@@ -750,9 +780,14 @@ private struct BotWorkQuestionCard: View {
     @EnvironmentObject private var appState: AppState
     let question: BotWorkCoordination.Item
     let profile: String
+    var farDashboardID: UUID? = nil
     let isActing: Bool
     let onWhy: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var targetIsConnected: Bool {
+        appState.workDashboardIsConnected(for: farDashboardID)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -800,15 +835,23 @@ private struct BotWorkQuestionCard: View {
                     .foregroundStyle(.secondary)
             } else {
                 BotQuestionAnswerButtons(question: question) { given in
-                    Task { await appState.answerBotQuestion(question, profile: profile, with: given) }
+                    Task {
+                        await appState.runOnWorkDashboard(farDashboardID) {
+                            await appState.answerBotQuestion(question, profile: profile, with: given)
+                        }
+                    }
                 }
-                .disabled(isActing || !appState.isConnected)
+                .disabled(isActing || !targetIsConnected)
             }
             if question.canDismiss {
                 BotQuestionDismissButton {
-                    Task { await appState.answerBotQuestion(question, profile: profile, with: .dismiss) }
+                    Task {
+                        await appState.runOnWorkDashboard(farDashboardID) {
+                            await appState.answerBotQuestion(question, profile: profile, with: .dismiss)
+                        }
+                    }
                 }
-                .disabled(isActing || !appState.isConnected)
+                .disabled(isActing || !targetIsConnected)
             }
         }
         .padding(14)
@@ -1040,8 +1083,10 @@ struct BotWorkStatusChip: View {
 /// result, and its checklist and actions once opened.
 private struct BotWorkRow: View {
     @EnvironmentObject private var appState: AppState
+    let work: BotWorkStore
     let item: BotWorkItem
     let profile: String
+    var farDashboardID: UUID? = nil
     let isActing: Bool
     @Binding var expanded: Bool
     @Binding var reply: String
@@ -1052,7 +1097,11 @@ private struct BotWorkRow: View {
     private var tint: Color { BotWorkLook.tint(item) }
 
     private var botName: String {
-        appState.botWork.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+        appState.workBotDisplayName(profile: profile, work: work, farDashboardID: farDashboardID)
+    }
+
+    private var targetIsConnected: Bool {
+        appState.workDashboardIsConnected(for: farDashboardID)
     }
 
     /// Waiting on the user with nothing to answer on the card itself (no
@@ -1077,7 +1126,7 @@ private struct BotWorkRow: View {
                     Haptics.light()
                     if tapOpensChat {
                         willOpen?()
-                        appState.openWorkstream(item, profile: profile)
+                        appState.openWorkstream(item, profile: profile, in: farDashboardID)
                     } else {
                         withAnimation(ConduitMotion.response) { expanded.toggle() }
                     }
@@ -1109,7 +1158,7 @@ private struct BotWorkRow: View {
             }
             if item.status == "needs_you", !item.isClosed, item.kind == .workstream, !item.sessionID.isEmpty {
                 // Its approval, answered here or in its chat.
-                WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
+                WorkstreamApprovalBox(item: item, profile: profile, farDashboardID: farDashboardID, isActing: isActing)
             }
             if !item.isClosed, item.kind == .workstream, !item.screenAsk.isEmpty || !item.screen.isEmpty {
                 screenBox
@@ -1169,26 +1218,28 @@ private struct BotWorkRow: View {
             }
             .foregroundStyle(item.screenAsk.isEmpty ? Color.secondary : Color.orange)
             HStack(spacing: 8) {
-                BotScreenButton(support: appState.botScreens, profile: profile, open: {
+                BotScreenButton(support: appState.botScreenSupport(for: farDashboardID), profile: profile, open: {
                     Haptics.light()
                     screenTarget = BotScreenTarget(profile: profile,
-                                                   botName: appState.botWork.snapshot(profile)?.botName
-                                                       ?? appState.profileDisplayName(profile))
+                                                   botName: botName,
+                                                   dashboardID: farDashboardID)
                 })
                 .buttonStyle(.settings)
                 if !item.screenAsk.isEmpty, item.actions.contains(.send) {
                     Button {
                         Haptics.light()
                         Task {
-                            await appState.actOnWorkstream(item, profile: profile, action: .send,
-                                                           text: AppLocalization.string("I did it on the screen. Carry on.", table: .bots))
+                            await appState.runOnWorkDashboard(farDashboardID) {
+                                await appState.actOnWorkstream(item, profile: profile, action: .send,
+                                                               text: AppLocalization.string("I did it on the screen. Carry on.", table: .bots))
+                            }
                         }
                     } label: {
                         Text(AppLocalization.string("Done, Carry On", table: .bots))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.settingsPrimary)
-                    .disabled(isActing || !appState.isConnected)
+                    .disabled(isActing || !targetIsConnected)
                 }
             }
         }
@@ -1296,9 +1347,12 @@ private struct BotWorkRow: View {
     @ViewBuilder
     private var modelLine: some View {
         if let picked = item.model {
+            let providers = appState.readOnWorkDashboard(farDashboardID, unreachable: []) {
+                appState.keptModelProviders(inProfile: profile)
+            }
             let lines = ModelChooserLinkRow.lines(
                 pick: ModelChooserPick(provider: picked.provider, model: picked.model),
-                providers: appState.keptModelProviders(inProfile: profile),
+                providers: providers,
                 defaultTitle: picked.model,
                 reasoning: picked.reasoningEffort.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: picked.reasoningEffort)
             )
@@ -1320,7 +1374,14 @@ private struct BotWorkRow: View {
     /// lists them); a disbanded one never opens, so it's left out.
     private var listedRoom: GroupRoom? {
         guard !item.room.isEmpty else { return nil }
-        return appState.shownGroupRooms.first(where: { $0.roomID == item.room && $0.disbandedAt == nil })
+        let rooms: [GroupRoom]
+        if let farDashboardID {
+            let kept = appState.readOnWorkDashboard(farDashboardID, unreachable: []) { appState.shownGroupRooms }
+            rooms = !kept.isEmpty ? kept : (appState.combinedDashboardRooms[farDashboardID]?.rooms ?? [])
+        } else {
+            rooms = appState.shownGroupRooms
+        }
+        return rooms.first(where: { $0.roomID == item.room && $0.disbandedAt == nil })
     }
 
     /// Opens the room it reports to, which Hermes still lists.
@@ -1329,7 +1390,13 @@ private struct BotWorkRow: View {
             guard let room = listedRoom else { return }
             Haptics.light()
             willOpen?()
-            Task { await appState.openGroupRoom(room) }
+            Task {
+                if let farDashboardID {
+                    await appState.openCombinedRoom(CombinedRoomTile(dashboardID: farDashboardID, kind: .hosted(room)))
+                } else {
+                    await appState.openGroupRoom(room)
+                }
+            }
         } label: {
             Label(AppLocalization.string("Open the group chat", table: .bots), systemImage: "person.3")
                 .frame(maxWidth: .infinity, minHeight: 36)
@@ -1415,7 +1482,7 @@ private struct BotWorkRow: View {
                         FittedRowOrStack(spacing: 8) { buttons }
                     }
                 }
-                .disabled(isActing || !appState.isConnected)
+                .disabled(isActing || !targetIsConnected)
             }
             if item.actions.contains(.send) {
                 replyField
@@ -1427,7 +1494,11 @@ private struct BotWorkRow: View {
                 VStack(spacing: 4) {
                     Button {
                         Haptics.light()
-                        Task { await appState.actOnWorkstream(item, profile: profile, action: handOver) }
+                        Task {
+                            await appState.runOnWorkDashboard(farDashboardID) {
+                                await appState.actOnWorkstream(item, profile: profile, action: handOver)
+                            }
+                        }
                     } label: {
                         Label(handOver == .leaveAlone ? AppLocalization.string("Keep \(botName) out of this", table: .bots)
                                   : AppLocalization.string("Let \(botName) coordinate this", table: .bots),
@@ -1435,7 +1506,7 @@ private struct BotWorkRow: View {
                             .frame(maxWidth: .infinity, minHeight: 36)
                     }
                     .buttonStyle(.settings)
-                    .disabled(isActing || !appState.isConnected)
+                    .disabled(isActing || !targetIsConnected)
                     .accessibilityIdentifier("botWork.handOver.\(item.ref)")
                     .accessibilityHint(handOverCaption(handOver))
                     Text(handOverCaption(handOver))
@@ -1459,7 +1530,7 @@ private struct BotWorkRow: View {
         Button {
             Haptics.light()
             willOpen?()
-            appState.openWorkstream(item, profile: profile)
+            appState.openWorkstream(item, profile: profile, in: farDashboardID)
         } label: {
             Label(AppLocalization.string("Open \(item.ref)’s chat", table: .bots), systemImage: "bubble.left.and.bubble.right")
                 .frame(maxWidth: .infinity, minHeight: 36)
@@ -1478,7 +1549,11 @@ private struct BotWorkRow: View {
         }()
         let act: () -> Void = {
             Haptics.light()
-            Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+            Task {
+                await appState.runOnWorkDashboard(farDashboardID) {
+                    await appState.actOnWorkstream(item, profile: profile, action: action)
+                }
+            }
         }
         let text = Text(title)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
@@ -1499,9 +1574,11 @@ private struct BotWorkRow: View {
                 let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { return }
                 Task {
-                    if await appState.actOnWorkstream(item, profile: profile, action: .send, text: text) {
-                        reply = ""
+                    var sent = false
+                    await appState.runOnWorkDashboard(farDashboardID) {
+                        sent = await appState.actOnWorkstream(item, profile: profile, action: .send, text: text)
                     }
+                    if sent { reply = "" }
                 }
             } label: {
                 Image(systemName: "arrow.up")
@@ -1512,7 +1589,7 @@ private struct BotWorkRow: View {
             }
             .buttonStyle(.plain)
             .padding(.bottom, 4)
-            .disabled(isActing || !appState.isConnected
+            .disabled(isActing || !targetIsConnected
                       || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel(AppLocalization.string("Send to \(item.ref)", table: .bots))
         }
@@ -1533,6 +1610,7 @@ struct WorkstreamBar: View {
     @ObservedObject var work: BotWorkStore
     let profile: String
     let item: BotWorkItem
+    var farDashboardID: UUID? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -1541,6 +1619,10 @@ struct WorkstreamBar: View {
     private var controls: [BotWorkItem.Action] {
         guard item.status == "interrupted" else { return [] }
         return [.check, .continue].filter { item.actions.contains($0) }
+    }
+
+    private var targetIsConnected: Bool {
+        appState.workDashboardIsConnected(for: farDashboardID)
     }
 
     var body: some View {
@@ -1568,7 +1650,7 @@ struct WorkstreamBar: View {
                             barButton(action)
                         }
                     }
-                    .disabled(work.isActing(item.ref, profile: profile) || !appState.isConnected)
+                    .disabled(work.isActing(item.ref, profile: profile) || !targetIsConnected)
                 }
                 .padding(.leading, 14)
                 .padding(.trailing, 6)
@@ -1588,7 +1670,7 @@ struct WorkstreamBar: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, controls.isEmpty && refusal == nil ? 0 : 4)
-        .refreshesBotWork(profile: profile)
+        .refreshesBotWork(profile: profile, farDashboardID: farDashboardID)
         .onDisappear { work.setRefusal(nil, profile: profile) }
     }
 
@@ -1603,7 +1685,11 @@ struct WorkstreamBar: View {
         let tint: Color = action == .stop ? .red : .conduitAccent
         return Button {
             Haptics.light()
-            Task { await appState.actOnWorkstream(item, profile: profile, action: action) }
+            Task {
+                await appState.runOnWorkDashboard(farDashboardID) {
+                    await appState.actOnWorkstream(item, profile: profile, action: action)
+                }
+            }
         } label: {
             // A small capsule, with a full-size place to tap that doesn't
             // make the pill around it taller.
@@ -1627,6 +1713,7 @@ struct WorkstreamBar: View {
 struct BotWorkHeader: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var work: BotWorkStore
+    var farDashboardID: UUID? = nil
 
     /// Reads for a bot's chat its list doesn't name yet, a few seconds
     /// apart: a workstream the bot just started shows in one of them.
@@ -1634,28 +1721,34 @@ struct BotWorkHeader: View {
     static let unmatchedInterval: UInt64 = 3_000_000_000
 
     var body: some View {
-        if appState.activeBotChatProfile != nil {
+        if appState.chatBotChatProfile != nil {
             // Its work shows under the title.
             EmptyView()
         } else if let workstream = appState.activeWorkstream {
             // One bar per workstream: another's refusal never shows on it.
-            WorkstreamBar(work: work, profile: workstream.profile, item: workstream.item)
-                .id("\(workstream.profile)\u{1F}\(workstream.item.ref)")
+            WorkstreamBar(work: work, profile: workstream.profile, item: workstream.item, farDashboardID: farDashboardID)
+                .id("\(farDashboardID?.uuidString ?? "")\u{1F}\(workstream.profile)\u{1F}\(workstream.item.ref)")
         } else if let id = appState.activeSessionId, !id.isEmpty,
-                  appState.shownBotRoster.contains(where: { $0.name == appState.activeProfile }) {
+                  let profile = Optional(farDashboardID != nil ? appState.composerOwnerProfile : appState.activeProfile),
+                  (farDashboardID.map { appState.farBotRoster(in: $0) } ?? appState.shownBotRoster)
+                    .contains(where: { $0.name == profile }) {
             // A chat on a bot that its last list didn't name: a workstream
             // opened from a card, a link or a push before the list showed
             // it. Read it again a few times, so its title line shows once
             // it does.
-            let profile = appState.activeProfile
             Color.clear
                 .frame(height: 0)
-                .task(id: "\(profile)\u{1F}\(id)") {
+                .task(id: "\(farDashboardID?.uuidString ?? "")\u{1F}\(profile)\u{1F}\(id)") {
                     // A workstream the list knows but doesn't show is a
                     // resolved one, opened from a card or a link: its
                     // Resolved page names it.
-                    if appState.isWorkstreamSession(id) {
-                        await appState.loadResolvedWork(profile: profile)
+                    let knownWorkstream = appState.readOnWorkDashboard(farDashboardID, unreachable: false) {
+                        appState.isWorkstreamSession(id)
+                    }
+                    if knownWorkstream {
+                        await appState.runOnWorkDashboard(farDashboardID) {
+                            await appState.loadResolvedWork(profile: profile)
+                        }
                         return
                     }
                     for attempt in 0..<Self.unmatchedReads {
@@ -1663,7 +1756,9 @@ struct BotWorkHeader: View {
                             try? await Task.sleep(nanoseconds: Self.unmatchedInterval)
                         }
                         guard !Task.isCancelled else { return }
-                        await appState.refreshBotWork(profile: profile)
+                        await appState.runOnWorkDashboard(farDashboardID) {
+                            await appState.refreshBotWork(profile: profile)
+                        }
                         if work.snapshot(profile)?.isOn == false { return }
                     }
                 }
@@ -1865,8 +1960,13 @@ private struct WorkstreamApprovalBox: View {
     @EnvironmentObject private var appState: AppState
     let item: BotWorkItem
     let profile: String
+    var farDashboardID: UUID? = nil
     let isActing: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var targetIsConnected: Bool {
+        appState.workDashboardIsConnected(for: farDashboardID)
+    }
 
     var body: some View {
         // The plugin reads it from Hermes with the list: only one Hermes
@@ -1904,7 +2004,7 @@ private struct WorkstreamApprovalBox: View {
                     }
                     answerButton(approval, AppLocalization.string("Deny", table: .bots), approve: false)
                 }
-                .disabled(isActing || !appState.isConnected)
+                .disabled(isActing || !targetIsConnected)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("botWork.approval.\(item.ref)")
@@ -1915,7 +2015,11 @@ private struct WorkstreamApprovalBox: View {
         let prominent = approve
         return Button {
             Haptics.light()
-            Task { await appState.answerWorkstreamApproval(approval, item: item, profile: profile, approve: approve) }
+            Task {
+                await appState.runOnWorkDashboard(farDashboardID) {
+                    await appState.answerWorkstreamApproval(approval, item: item, profile: profile, approve: approve)
+                }
+            }
         } label: {
             Text(title)
                 .scaledFont(.subheadline.weight(.semibold))

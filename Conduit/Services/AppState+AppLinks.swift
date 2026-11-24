@@ -33,6 +33,12 @@ extension AppState {
                     return
                 }
                 if owner != activeDashboardID {
+                    if let kept = keptDashboardRuntimes[owner], kept.client.isConnected,
+                       let workstreamProfile = kept.runtime.botWork.workstreamProfile(forSession: [id]) {
+                        let prof = notificationProfileID(profile) ?? workstreamProfile
+                        _ = openFarWorkstreamInPlace(id, profile: prof, in: owner)
+                        return
+                    }
                     guard !isCallEndingDashboardSwitch(to: owner) else {
                         showCallRefusal(AppLocalization.string("End the call to open a chat in another workspace."))
                         return

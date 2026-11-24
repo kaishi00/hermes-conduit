@@ -346,8 +346,15 @@ struct ChatAskedQuestionBar: View {
         items.filter { $0.asked != nil && appState.isOpenChat($0) }.sorted { $0.since < $1.since }
     }
 
+    /// The open chat's questions from the dashboard it belongs to, oldest first.
+    @MainActor
+    static func questions(in store: NeedsYouStore, for appState: AppState) -> [NeedsYouItem] {
+        let items = appState.farChatDashboardID.map { store.otherDashboards[$0] ?? [] } ?? store.items
+        return questions(items, in: appState)
+    }
+
     var body: some View {
-        let waiting = Self.questions(store.items, in: appState)
+        let waiting = Self.questions(in: store, for: appState)
         if let item = waiting.first, let question = item.asked {
             let acting = botWork.isActing(question.id, profile: item.profile)
             VStack(alignment: .leading, spacing: 8) {
@@ -378,15 +385,15 @@ struct ChatAskedQuestionBar: View {
                         .foregroundStyle(.secondary)
                 } else {
                     BotQuestionAnswerButtons(question: question) { given in
-                        Task { await appState.answerBotQuestion(question, profile: item.profile, with: given) }
+                        Task { await appState.actOnChatRuntime { await appState.answerBotQuestion(question, profile: item.profile, with: given) } }
                     }
-                    .disabled(acting || !appState.isConnected)
+                    .disabled(acting || !appState.chatIsConnected)
                 }
                 if question.canDismiss {
                     BotQuestionDismissButton {
-                        Task { await appState.answerBotQuestion(question, profile: item.profile, with: .dismiss) }
+                        Task { await appState.actOnChatRuntime { await appState.answerBotQuestion(question, profile: item.profile, with: .dismiss) } }
                     }
-                    .disabled(acting || !appState.isConnected)
+                    .disabled(acting || !appState.chatIsConnected)
                 }
                 if let refusal = botWork.refusal(item.profile, ref: question.id) {
                     Text(refusal)

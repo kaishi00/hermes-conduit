@@ -183,7 +183,7 @@ struct V2ConversationScreen: View {
 
     /// The bot whose Work panel can open: the open Bot Chat's.
     private var workProfile: String? {
-        appState.activeRoomSurface == nil && appState.servesBotWorkstreams ? appState.activeBotChatProfile : nil
+        appState.activeRoomSurface == nil && appState.chatServesBotWorkstreams ? appState.chatBotChatProfile : nil
     }
     private var showsWorkPanel: Bool {
         workPanelOpen && fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil
@@ -266,9 +266,10 @@ struct V2ConversationScreen: View {
             }
             if showsWorkPanel, let workProfile {
                 Divider()
-                BotWorkPanel(work: appState.botWork, profile: workProfile) {
+                BotWorkPanel(work: appState.chatBotWork, profile: workProfile, farDashboardID: appState.farChatDashboardID) {
                     workPanelOpen = false
                 }
+                .id("\(appState.farChatDashboardID?.uuidString ?? "")\u{1F}\(workProfile)")
                 .frame(width: sidePanelWidth)
                 .transition(.move(edge: .trailing))
             }
@@ -401,10 +402,11 @@ struct V2ConversationScreen: View {
                 // On a phone, the bot's overview: the same Work list, its
                 // artifacts, and Chat, which is this chat.
                 BotOverviewSheet(
-                    work: appState.botWork,
+                    work: appState.chatBotWork,
                     needsYou: appState.needsYou,
                     profile: workProfile,
-                    onEdit: appState.botModePhase == .available && appState.isConnected
+                    farDashboardID: appState.farChatDashboardID,
+                    onEdit: appState.farChat == nil && appState.botModePhase == .available && appState.isConnected
                         ? { (bot: BotProfile) in
                             editAfterOverview = bot
                             workPanelOpen = false
@@ -503,8 +505,8 @@ struct V2ConversationScreen: View {
                 // tap (Bot workstreams); a Bot Chat's work shows under
                 // its title.
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    if appState.activeRoomSurface == nil, appState.servesBotWorkstreams {
-                        BotWorkHeader(work: appState.botWork)
+                    if appState.activeRoomSurface == nil, appState.chatServesBotWorkstreams {
+                        BotWorkHeader(work: appState.chatBotWork, farDashboardID: appState.farChatDashboardID)
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -581,7 +583,7 @@ struct V2ConversationScreen: View {
     private var swipesBack: Bool {
         guard !composerExpanded, !composerTyping, !voiceMessages.isActive else { return false }
         return workstreamGoesBack != nil || (botChatZoomed && !shell.isSplit
-            && (appState.activeBotChatProfile != nil || appState.activeRoomSurface != nil))
+            && (appState.chatBotChatProfile != nil || appState.activeRoomSurface != nil))
     }
 
     private var backSwipe: some Gesture {
@@ -619,8 +621,9 @@ struct V2ConversationScreen: View {
         let drawn = ChatView.drawnOrFallbackScrollSessionKey(in: appState).sessionID
         let ids = appState.chatOwnSessionIDs(for: drawn).union([drawn])
         let work = appState.chatOnScreenWorkstream(forSession: ids) ?? (byOpenChatToo ? appState.activeWorkstream : nil)
-        let bot = appState.botScopeProfile(forSessionIDs: ids, workspaceProfile: appState.activeProfile)
-            ?? (byOpenChatToo ? appState.activeBotChatProfile : nil)
+        let bot = appState.onChatRuntimeValue(unreachable: appState.farChatDashboardID.flatMap { appState.farBot(named: ids, in: $0)?.name }) {
+            appState.botScopeProfile(forSessionIDs: ids, workspaceProfile: appState.activeProfile)
+        } ?? (byOpenChatToo ? appState.chatBotChatProfile : nil)
         return BotChatSwap.Shown(botChat: bot, workstreamOf: work?.profile, workstream: work?.item.sessionID)
     }
 
@@ -727,8 +730,8 @@ struct V2ConversationScreen: View {
                         .accessibilityHint(AppLocalization.string("Opens the conversation this one came from", table: .chat))
                     }
                     // A Bot Chat's work, or whose work a workstream is.
-                    if appState.servesBotWorkstreams {
-                        BotWorkTitleStatus(work: appState.botWork, isPanelOpen: workPanelOpen) {
+                    if appState.chatServesBotWorkstreams {
+                        BotWorkTitleStatus(work: appState.chatBotWork, farDashboardID: appState.farChatDashboardID, isPanelOpen: workPanelOpen) {
                             workPanelOpen.toggle()
                             // One column beside the chat: the Work panel
                             // takes Artifacts'.
@@ -983,7 +986,7 @@ private struct V2ConversationMenu: View {
 
     /// The bot whose chat this is, once the roster has it.
     private var chatBot: BotProfile? {
-        guard let profile = appState.activeBotChatProfile else { return nil }
+        guard appState.farChat == nil, let profile = appState.activeBotChatProfile else { return nil }
         return appState.botRoster.first { $0.name == profile }
     }
 

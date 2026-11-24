@@ -614,8 +614,8 @@ extension AppState {
             needsYou.dropAnsweredQuestion(question.id, profile: profile, dashboardID: activeDashboardID, alsoOn: twins)
             Haptics.success()
             Task { await refreshBotWork(profile: profile, afterAction: true) }
-            // It leaves the Needs you list too.
-            Task { await refreshNeedsYou() }
+            // It leaves the Needs you list too (on the screen's runtime).
+            Task { await self.actAcrossAwaits(onRuntime: self.runtimeOnScreen) { await self.refreshNeedsYou() } }
             return true
         } catch {
             guard botWork.mark(profile).epoch == mark.epoch else { return false }
@@ -750,18 +750,78 @@ extension AppState {
     }
 
     /// A workstream's chat, on its bot's profile, as its link opens it.
-    func openWorkstream(_ item: BotWorkItem, profile: String) {
+    func openWorkstream(_ item: BotWorkItem, profile: String, in dashboardID: UUID? = nil) {
         guard !item.sessionID.isEmpty else { return }
+        let target = dashboardID ?? (activeDashboardID != dashboardIDOnScreen ? activeDashboardID : nil)
+        if let target, target != dashboardIDOnScreen {
+            _ = openFarWorkstreamInPlace(item.sessionID, profile: profile, in: target)
+            return
+        }
         openAppLink(.session(id: item.sessionID, profile: profile))
+    }
+
+    /// Opens a workstream's hidden chat on another combined dashboard in
+    /// place, on its bot's profile through its kept connection, with no switch.
+    @discardableResult
+    func openFarWorkstreamInPlace(_ sessionID: String, profile: String, in dashboardID: UUID) -> Task<Bool, Never>? {
+        guard !sessionID.isEmpty, dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID) else { return nil }
+        guard let runtime = keptRuntime(dashboardID, on: profile) else {
+            errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+            return nil
+        }
+        ensureKeptPluginReport(for: dashboardID)
+        widgetLaunchCoordinator.supersede()
+        errorMessage = nil
+        let task = act(onRuntime: runtime) {
+            requestOpenSession(sessionID, onFailure: { [weak self] sessionWasNotFound in
+                guard let self else { return }
+                self.errorMessage = Self.linkedSessionFailureMessage(
+                    current: self.errorMessage,
+                    sessionWasNotFound: sessionWasNotFound,
+                    unavailable: AppLocalization.string("That chat is no longer available.")
+                )
+            })
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let opened = await task.value
+            if opened, self.explicitSessionOpenRequestID == nil {
+                self.dismissSidebarDrawer()
+            }
+        }
+        return task
     }
 
     /// Back to the Bot Chat coordinating a workstream. A far workstream
     /// chat's goes back to its bot on its own dashboard, in place, never to
-    /// a bot of that name on the one on screen.
+    /// a bot of that name on the one on screen. If its bot isn't in the
+    /// kept roster yet, reads the far roster again before giving up.
     func openCoordinator(profile: String) {
         if let dashboardID = farChatDashboardID, !chatOnScreenIsInScope {
-            guard let bot = Self.linkedBot(named: profile, in: farBotRoster(in: dashboardID)) else { return }
-            _ = openFarBotChatInPlace(of: bot, in: dashboardID)
+            if let bot = Self.linkedBot(named: profile, in: farBotRoster(in: dashboardID)) {
+                _ = openFarBotChatInPlace(of: bot, in: dashboardID)
+                return
+            }
+            guard let runtime = farBotChatRuntime(in: dashboardID) else {
+                errorMessage = Self.connectToChatWithBotsMessage
+                return
+            }
+            let navigation = chatViewportTransitionGeneration
+            let epoch = runtime.botRosterEpoch
+            let bridge = keptDashboardRuntimes[dashboardID]?.bridge
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.actAcrossAwaits(onRuntime: runtime) { await self.refreshBotRoster() }
+                guard self.keptDashboardRuntimes[dashboardID]?.bridge === bridge,
+                      self.keptDashboardRuntimes[dashboardID]?.runtime === runtime,
+                      runtime.botRosterEpoch == epoch,
+                      self.chatViewportTransitionIsCurrent(generation: navigation) else { return }
+                if let bot = Self.linkedBot(named: profile, in: self.farBotRoster(in: dashboardID)) {
+                    _ = self.openFarBotChatInPlace(of: bot, in: dashboardID)
+                } else {
+                    self.errorMessage = Self.missingLinkedBotMessage(for: runtime.botModePhase)
+                }
+            }
             return
         }
         openAppLink(.bot(profile: profile))
@@ -800,5 +860,45 @@ extension AppState {
             // the Chats screen draws, so it draws again.
             objectWillChange.send()
         }
+    }
+
+    // MARK: - Work surface runtime routing
+
+    func workStore(for farDashboardID: UUID?) -> BotWorkStore {
+        farDashboardID.map { runtime(for: $0)?.botWork ?? emptyBotWork } ?? botWork
+    }
+
+    func workDashboardIsConnected(for farDashboardID: UUID?) -> Bool {
+        farDashboardID.map { runtime(for: $0)?.isConnected ?? false } ?? isConnected
+    }
+
+    func workDashboardServesWorkstreams(for farDashboardID: UUID?) -> Bool {
+        farDashboardID.map { runtime(for: $0)?.notifierPlugin.reports(BotWorkstreamsClient.capability) ?? false }
+            ?? servesBotWorkstreams
+    }
+
+    func runOnWorkDashboard(_ farDashboardID: UUID?, _ body: @escaping @MainActor () async -> Void) async {
+        if let farDashboardID {
+            guard let runtime = runtime(for: farDashboardID) else { return }
+            await actAcrossAwaits(onRuntime: runtime) { await body() }
+        } else {
+            await body()
+        }
+    }
+
+    func readOnWorkDashboard<T>(_ farDashboardID: UUID?, unreachable: T, _ body: () -> T) -> T {
+        guard let farDashboardID else { return body() }
+        guard let runtime = runtime(for: farDashboardID) else { return unreachable }
+        return act(onRuntime: runtime, body)
+    }
+
+    func workBotDisplayName(profile: String, work: BotWorkStore, farDashboardID: UUID?) -> String {
+        if let name = work.snapshot(profile)?.botName { return name }
+        if let farDashboardID {
+            return readOnWorkDashboard(farDashboardID, unreachable: farBotName(profile, on: farDashboardID)) {
+                profileDisplayName(profile)
+            }
+        }
+        return profileDisplayName(profile)
     }
 }

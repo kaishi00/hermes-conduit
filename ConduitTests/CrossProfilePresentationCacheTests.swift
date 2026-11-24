@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -4163,5 +4164,241 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
         XCTAssertEqual(counts.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
         XCTAssertEqual(counts.connects, 0, "no socket is opened")
+    }
+
+    /// A far Bot Chat's Work panel reads its own dashboard's store
+    /// (`chatBotWork`, `emptyBotWork` once let go), republishes when its
+    /// workstreams change while open, routes `openCoordinator` to its far
+    /// roster (refreshing when absent and surfacing unavailable rather than
+    /// staying silent), and opens workstreams in place without switching.
+    func testFarWorkPanelStoreWorkstreamsChangedOpenCoordinatorAndOpenWorkstream() async throws {
+        final class Seen {
+            var looked: [(ObjectIdentifier, String)] = []
+            var opened: [(ObjectIdentifier, String, String?)] = []
+            var refreshedClients: [ObjectIdentifier] = []
+            var nextRoster: [BotProfile] = []
+        }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.botRoster = { client in
+            seen.refreshedClients.append(ObjectIdentifier(client))
+            return BotRosterSnapshot(bots: seen.nextRoster, supportsBotProtocol: true)
+        }
+        operations.findBotChat = { client, name in
+            seen.looked.append((ObjectIdentifier(client), name))
+            let id = name == "delayed" ? "delayed-chat" : "far-atlas"
+            return [BotChatLookupRow(id: id, title: BotMode.canonicalChatTitle)]
+        }
+        operations.openSessionWithProfile = { client, sessionID, _, profile in
+            seen.opened.append((ObjectIdentifier(client), sessionID, profile))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Reply", timestamp: "ts-1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        // 1. `chatBotWork` picks screenBotWork vs kept runtime's store, and
+        // `onWorkstreamsChanged` publishes when the far chat is on screen.
+        XCTAssertTrue(appState.chatBotWork === appState.screenBotWork)
+        var publishes = 0
+        let cancellable = appState.objectWillChange.sink { _ in publishes += 1 }
+        _ = cancellable
+        let work1 = try XCTUnwrap(BotWorkSnapshot(response: [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "far-atlas",
+            "counts": ["working": 1, "needs_you": 0, "ready": 0, "waiting": 0],
+            "work": [["ref": "W1", "kind": "workstream", "status": "running", "title": "Fix bug",
+                      "session_id": "far-w1", "closed": false, "actions": ["send", "stop"]]],
+        ], profile: "atlas"))
+        let beforeQuiet = publishes
+        kept.runtime.botWork.set(work1)
+        XCTAssertEqual(publishes, beforeQuiet, "off screen: kept store change does not publish AppState")
+
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "atlas")
+        XCTAssertTrue(appState.chatBotWork === kept.runtime.botWork)
+        XCTAssertFalse(appState.chatBotWork === appState.screenBotWork)
+
+        let work2 = try XCTUnwrap(BotWorkSnapshot(response: [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "far-atlas",
+            "counts": ["working": 2, "needs_you": 0, "ready": 0, "waiting": 0],
+            "work": [
+                ["ref": "W1", "kind": "workstream", "status": "running", "title": "Fix bug",
+                 "session_id": "far-w1", "closed": false, "actions": ["send", "stop"]],
+                ["ref": "W2", "kind": "workstream", "status": "running", "title": "Add tests",
+                 "session_id": "far-w2", "closed": false, "actions": ["send", "stop"]],
+            ],
+        ], profile: "atlas"))
+        let beforeShown = publishes
+        kept.runtime.botWork.set(work2)
+        XCTAssertGreaterThan(publishes, beforeShown, "open far chat publishes on workstreamsChanged")
+
+        // 2. `openWorkstream` and far workstream `openAppLink` hand off the
+        // kept socket and open in place without switching dashboards.
+        let w1 = try XCTUnwrap(work2.items.first { $0.ref == "W1" })
+        appState.openWorkstream(w1, profile: "atlas", in: mac.id)
+        await waitUntil { appState.activeSessionId == "far-w1" && appState.messages.contains { $0.id == "msg-far-w1" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        let handedAtlas = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.client)
+        XCTAssertEqual(handedAtlas.profile, "atlas")
+        XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(handedAtlas))
+        XCTAssertEqual(seen.opened.last?.1, "far-w1")
+
+        appState.openAppLink(.session(id: "far-w2", profile: "atlas", dashboard: mac.id.uuidString))
+        await waitUntil { appState.activeSessionId == "far-w2" && appState.messages.contains { $0.id == "msg-far-w2" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch on far workstream link")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+
+        // 3. `openCoordinator` picks the far roster's bot over a namesake
+        // on screen (#3198).
+        let screenAtlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Screen Atlas", profileDescription: "",
+                                     model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                     appearanceColor: nil,
+                                     canonicalSession: BotCanonicalSession(id: "screen-atlas", resolvedID: nil, lastActive: nil, preview: nil),
+                                     lastActive: nil, lastPreview: nil)
+        let farAtlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Far Atlas", profileDescription: "",
+                                  model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                  appearanceColor: nil,
+                                  canonicalSession: BotCanonicalSession(id: "far-atlas", resolvedID: nil, lastActive: nil, preview: nil),
+                                  lastActive: nil, lastPreview: nil)
+        appState.runtimeOnScreen.botRoster = [screenAtlas]
+        kept.runtime.botRoster = [farAtlas]
+        appState.activeSessionId = "far-w1"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "atlas")
+        appState.openCoordinator(profile: "atlas")
+        await waitUntil { appState.activeSessionId == "far-atlas" && appState.messages.contains { $0.id == "msg-far-atlas" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id)
+        XCTAssertEqual(seen.opened.last?.1, "far-atlas", "opened the far roster's bot, not screen-atlas")
+
+        // Missing from far roster: refreshes the far roster and surfaces
+        // unavailable when still gone (#3198).
+        kept.runtime.botRoster = []
+        appState.combinedDashboardBots[mac.id] = nil
+        appState.activeSessionId = "far-w1"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "atlas")
+        appState.errorMessage = nil
+        seen.nextRoster = []
+        appState.openCoordinator(profile: "missing")
+        await waitUntil { appState.errorMessage != nil }
+        let handedClient = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.client)
+        XCTAssertTrue(seen.refreshedClients.contains(ObjectIdentifier(handedClient)))
+        XCTAssertEqual(appState.errorMessage, AppState.missingLinkedBotMessage(for: .available))
+
+        // Refresh finds a newly added bot and opens its Bot Chat in place.
+        let delayed = BotProfile(name: "delayed", botTitle: nil, displayName: "Delayed", profileDescription: "",
+                                 model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                 appearanceColor: nil,
+                                 canonicalSession: BotCanonicalSession(id: "delayed-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                                 lastActive: nil, lastPreview: nil)
+        kept.runtime.botRoster = []
+        appState.errorMessage = nil
+        seen.nextRoster = [delayed]
+        appState.openCoordinator(profile: "delayed")
+        await waitUntil { appState.activeSessionId == "delayed-chat" && appState.messages.contains { $0.id == "msg-delayed-chat" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertEqual(appState.farChatDashboardID, mac.id)
+
+        // Clear the shared seed session so mac and vps are distinct Hermes hosts, not twins.
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.runtimeOnScreen.sessions = []
+
+        // ChatAskedQuestionBar reads the far chat's own dashboard waits and
+        // ignores a same-session wait on the dashboard on screen (#3199).
+        var farAsked = NeedsYouItem(waitID: "asked-P11", profile: "delayed", kind: .question, sessionIDs: ["delayed-chat"],
+                                    since: Date(timeIntervalSince1970: 10))
+        farAsked.asked = BotWorkCoordination.Item(row: ["id": "P11", "kind": "proposal", "at": 10.0,
+                                                        "text": "Continue?", "status": "open", "actions": ["approve", "decline"]])
+        var screenCollision = NeedsYouItem(waitID: "asked-P12", profile: "delayed", kind: .question, sessionIDs: ["delayed-chat"],
+                                           since: Date(timeIntervalSince1970: 20))
+        screenCollision.asked = BotWorkCoordination.Item(row: ["id": "P12", "kind": "proposal", "at": 20.0,
+                                                               "text": "Wrong host?", "status": "open", "actions": ["approve", "decline"]])
+        XCTAssertFalse(appState.isOpenChat(screenCollision))
+        appState.needsYou.apply([screenCollision], profile: "delayed", dashboardID: vps.id) { _ in false }
+        appState.needsYou.applyOther([farAsked], profile: "delayed", dashboardID: mac.id) { _ in false }
+        XCTAssertEqual(ChatAskedQuestionBar.questions(in: appState.needsYou, for: appState).map(\.waitID), ["asked-P11"])
+        appState.needsYou.dropAnsweredQuestion("P11", profile: "delayed", dashboardID: mac.id)
+        XCTAssertTrue(ChatAskedQuestionBar.questions(in: appState.needsYou, for: appState).isEmpty)
+
+        // 4. Dropped far runtime falls back to `emptyBotWork`, never `screenBotWork`.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertTrue(appState.chatBotWork === appState.emptyBotWork)
+        XCTAssertFalse(appState.chatBotWork === appState.screenBotWork)
+        _ = outgoing
+    }
+
+    /// `botWorkClient` and `botWorkSettingsClient` send to the kept
+    /// runtime's bridge (never the screen's) and follow a bridge replacement
+    /// on that runtime between sends (#3198).
+    func testAKeptDashboardsBotWorkClientUsesAndFollowsItsRuntimesBridge() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        let firstHeld = HeldDashboardRequests(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        let secondHeld = HeldDashboardRequests(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        let screenHeld = HeldDashboardRequests(baseURL: vps.normalizedURL, dashboardID: vps.id)
+        addTeardownBlock { @MainActor in
+            firstHeld.shutdown()
+            secondHeld.shutdown()
+            screenHeld.shutdown()
+        }
+        appState.installDashboardTicketBridgeForTesting(screenHeld.bridge)
+        kept.runtime.dashboardTicketBridge = firstHeld.bridge
+        kept.runtime.notifierPlugin.state = .reported(
+            version: "0.200.0",
+            capabilities: [
+                BotWorkstreamsClient.capability,
+                BotWorkSettingsClient.capability,
+                DashboardPath.dashboardProfilesCapability,
+            ]
+        )
+
+        let client = appState.act(onRuntime: kept.runtime) { appState.botWorkClient(profile: "atlas") }
+        let settingsClient = appState.act(onRuntime: kept.runtime) { appState.botWorkSettingsClient(profile: "atlas") }
+
+        let listTask = Task { try await client.list() }
+        try await firstHeld.waitForRequests(1)
+        XCTAssertTrue(screenHeld.sent.isEmpty)
+        XCTAssertEqual(firstHeld.sent.first?.path, BotWorkstreamsClient.path)
+        XCTAssertEqual(firstHeld.sent.first?.query, "\(DashboardPath.conduitProfileParameter)=atlas")
+        try await firstHeld.answer([
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "far-atlas",
+            "counts": ["working": 1, "needs_you": 0, "ready": 0, "waiting": 0],
+            "work": [["ref": "W1", "kind": "workstream", "status": "running", "title": "Bug",
+                      "session_id": "far-w1", "closed": false, "actions": ["send"]]],
+        ])
+        let snapshot = try await listTask.value
+        XCTAssertEqual(snapshot.items.map(\.ref), ["W1"])
+
+        // Replace the bridge on the kept runtime between sends: the same
+        // clients send their next requests to the replacement bridge.
+        kept.runtime.dashboardTicketBridge = secondHeld.bridge
+
+        let actTask = Task { try await client.act(ref: "W1", action: .pin) }
+        try await secondHeld.waitForRequests(1)
+        XCTAssertEqual(firstHeld.sent.count, 1, "the old bridge received nothing more")
+        XCTAssertTrue(screenHeld.sent.isEmpty)
+        XCTAssertEqual(secondHeld.sent.first?.method, "POST")
+        XCTAssertEqual(secondHeld.sent.first?.path, "\(BotWorkstreamsClient.path)/W1/pin")
+        try await secondHeld.answer([
+            "ok": true,
+            "work": ["ref": "W1", "kind": "workstream", "status": "running", "title": "Bug",
+                     "session_id": "far-w1", "closed": false, "pinned": true, "actions": ["send"]],
+        ])
+        let updated = try await actTask.value
+        XCTAssertEqual(updated?.isPinned, true)
+
+        let settingsTask = Task { try await settingsClient.load() }
+        try await secondHeld.waitForRequests(2)
+        XCTAssertEqual(secondHeld.sent.last?.path, BotWorkSettingsClient.path)
+        try await secondHeld.answer(["ok": true, "policy": "strict", "max_running": 4])
+        let loadedSettings = try await settingsTask.value
+        XCTAssertEqual(loadedSettings.policy, .strict)
     }
 }

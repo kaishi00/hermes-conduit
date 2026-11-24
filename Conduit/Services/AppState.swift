@@ -4295,6 +4295,9 @@ final class AppState: ObservableObject {
         store.onWorkstreamsChanged = { [weak self] in self?.workstreamsChanged() }
         return store
     }()
+    /// An empty inert store used when a far chat's kept connection dropped,
+    /// so its Work surfaces never fall back to the screen dashboard's work.
+    let emptyBotWork = BotWorkStore()
 
     /// Each bot's work on the dashboard in scope: the one on screen's, or,
     /// with another dashboard's runtime in scope (a far Bot Chat's Work

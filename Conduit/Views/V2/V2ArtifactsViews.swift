@@ -25,8 +25,9 @@ enum ArtifactScope: Equatable {
     /// dashboard's chat open in place, whose store is that dashboard's.
     case chat([String], far: FarChatOwner? = nil)
     /// One bot's profile, its Bot Chat's rows by the bot's name (the Bot
-    /// Overview's Artifacts).
-    case bot(String)
+    /// Overview's Artifacts); `far` names another combined dashboard when
+    /// opened from a far Bot Chat.
+    case bot(String, far: UUID? = nil)
 
     var sessionIDs: [String] {
         if case .chat(let ids, _) = self { return ids }
@@ -90,13 +91,14 @@ struct V2ArtifactsPage: View {
 struct BotArtifactsList: View {
     @EnvironmentObject private var appState: AppState
     let profile: String
+    var farDashboardID: UUID? = nil
     let willShowInChat: () -> Void
 
     var body: some View {
         // In a sheet without a navigation bar: search and Show Missing
         // Files sit in the list itself, as beside the chat.
         V2LiveUpdates(appState: appState) {
-            ArtifactsList(scope: .bot(profile), chatIsOpen: false, inPanel: true) { item in
+            ArtifactsList(scope: .bot(profile, far: farDashboardID), chatIsOpen: false, inPanel: true) { item in
                 willShowInChat()
                 appState.showArtifactInChat(item, chatIsOpen: false)
             }
@@ -271,8 +273,11 @@ private struct ArtifactsList: View {
     /// The dashboard and profile the list is read for: a far chat's own,
     /// so another far chat's rows and opens don't carry over to it.
     private var keyOwner: (dashboard: UUID?, profile: String) {
-        guard case .chat(_, let far?) = scope else { return (appState.activeDashboardID, appState.activeProfile) }
-        return (far.dashboardID, far.profile)
+        switch scope {
+        case .chat(_, let far?): return (far.dashboardID, far.profile)
+        case .bot(let profile, let far?): return (far, profile)
+        default: return (appState.activeDashboardID, appState.activeProfile)
+        }
     }
 
     private var currentKey: ArtifactsListKey {
@@ -1217,9 +1222,16 @@ private struct ArtifactsList: View {
             }
         }
         // A far chat's own dashboard whose plugin never said: asked there.
-        if !hostIsOnScreen, case .chat(_, let far?) = scope, hostIsConnected, hostPlugin.state == .unknown {
+        let farDashboardID: UUID? = {
+            switch scope {
+            case .chat(_, let far?): return far.dashboardID
+            case .bot(_, let far?): return far
+            default: return nil
+            }
+        }()
+        if !hostIsOnScreen, let farDashboardID, hostIsConnected, hostPlugin.state == .unknown {
             isLoading = true
-            await appState.readKeptPluginStatusIfUnknown(far.dashboardID)
+            await appState.readKeptPluginStatusIfUnknown(farDashboardID)
             guard ticket == generation else { return }
             if hostPlugin.state == .unknown, loadedKey != key {
                 failure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
