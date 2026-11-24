@@ -6,70 +6,234 @@
 //  switch stage 2, the notifications thread): its route runs on that
 //  dashboard's own runtime, through its kept connection, as the far Chats
 //  row's open does (AppState+FarChat.swift), while the dashboard on screen
-//  stays as it is. So does a widget's, Siri's or Spotlight's chat of
-//  another combined dashboard (its row in the launcher widget's picker, Open
-//  Chat). What opens on another surface keeps the switch until that surface
-//  opens in place: a group room's, a Pulse report's and a call's, and a
-//  widget's New Chat or Talk. A Bot Chat's opens in place through its bot's
-//  open, as its Chats row's does.
+//  stays as it is. That covers listed and unlisted chats, Bot Chats
+//  (through their bot's open), hosted group rooms (on their kept room
+//  runtime) and Pulse chats (opening that dashboard's own Pulse feed in
+//  place, per the Pulse per-instance ruling). A call's push, a peer-hosted
+//  room approval, a dashboard whose kept connection was let go, and a
+//  widget's New Chat or Talk still switch.
 //  The plan: /mnt/project-files/all-live/no-switch-plan.md.
 //
 
 import Foundation
 
 extension AppState {
-    /// Opens the chat a push or chat link for another combined dashboard
-    /// names in place, as its Chats row does, and lands a wait's push on its
-    /// card (a Bot Chat's through openFarBotChatNotification): `.opened`
-    /// once its chat opened, waited on so the card's reveal
-    /// names the chat that opened, as on screen; `.retry` when the open
-    /// failed, to be tried again, its words held for the retries' end;
-    /// `.failed` when Hermes refused the chat (gone, or another one), which
-    /// says so at once. A card the push carried leaves with an open that
-    /// failed, as the switch's does. Nil when it opens through a
-    /// switch as before: the dashboard isn't kept connected (or its socket
-    /// can't be handed to the chat's profile), its list doesn't hold the
-    /// chat, or the push opens a room, its Pulse or a call; and
-    /// while its bots aren't read yet, since a Bot Chat's push can't be told
-    /// from a chat's then, nor its Pulse chat while nothing knows where its
-    /// Pulse lives: the switch reads them and opens it in Bots or on Pulse.
+    /// Opens what a push or chat link for another combined dashboard names
+    /// in place on that dashboard's own runtime through its kept
+    /// connection: hosted group rooms, Pulse chats (opening that
+    /// dashboard's Pulse feed), Bot Chats (through openFarBotChatNotification),
+    /// and listed or unlisted chats (landing a wait's push on its card).
+    /// Returns `.opened`, `.retry`, or `.failed`, or `nil` when it opens
+    /// through a switch as before: a call's push (by ruling), a peer-hosted
+    /// room approval, the dashboard isn't kept connected (or its socket can't
+    /// be handed to the chat's profile), its bots aren't read yet, or nothing
+    /// knows where its Pulse lives.
     func openFarNotificationInPlace(_ target: ConduitNotificationTarget, in dashboardID: UUID) async -> NotificationOpenOutcome? {
-        let requested = target.sessionId
-        let attempt = FarNotificationOpenAttempt()
-        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
-              let kept = keptDashboardRuntimes[dashboardID],
-              combinedDashboardBots[dashboardID] != nil || !kept.runtime.botRoster.isEmpty else { return nil }
+        guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID) else { return nil }
+        if target.call == nil, let roomID = target.roomID {
+            return await openFarRoomNotification(target, roomID: roomID, in: dashboardID)
+        }
+        guard let kept = keptDashboardRuntimes[dashboardID], kept.client.isConnected else { return nil }
+        if let pulseOutcome = openFarPulseNotification(target, in: dashboardID, runtime: kept.runtime) {
+            return pulseOutcome
+        }
+        guard combinedDashboardBots[dashboardID] != nil || !kept.runtime.botRoster.isEmpty else { return nil }
         // A Bot Chat's push or link opens it in place too, as its Chats row
         // does: its bot's open on that dashboard's runtime.
         if let bot = farBotChatPushed(target, in: dashboardID) {
             return await openFarBotChatNotification(target, of: bot, in: dashboardID)
         }
         // Its Pulse's feed read, or its Pulse chat known some other way.
-        guard combinedDashboardPulse[dashboardID] != nil || !farPulseHomes(in: dashboardID).isEmpty,
-              let session = Self.farNotificationChat(
-                  target,
-                  listed: combinedDashboardChats[dashboardID]?.sessions ?? [],
-                  botChats: farBotChatIDs(in: dashboardID),
-                  pulseHomes: farPulseHomes(in: dashboardID)
-              ),
-              let open = startFarChatOpen(session, in: dashboardID, prepare: {
-                  // A wait raised while Conduit was away comes on the push:
-                  // its card is recorded on that dashboard's runtime before
-                  // the open, whose resume merges it in, as on screen.
-                  guard let decision = target.decision else { return }
-                  let ids = [session.id, requested, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty }
-                  attempt.cardIDs = requested == session.id ? [requested] : [requested, session.id]
-                  recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: attempt.cardIDs)
-              }, onFailed: { [weak self] wasRefused in
-                  attempt.refused = wasRefused
-                  // Runs on that dashboard's runtime, as the card was recorded.
-                  guard let self, let decision = target.decision,
-                        let key = Self.pendingDecisionEvictionKey(for: decision),
-                        let first = attempt.cardIDs.first else { return }
-                  self.sessionPresentationCache.removePendingDecision(
-                      key: key, profile: self.presentationProfile(for: first), sessionIDs: attempt.cardIDs
-                  )
-              }) else { return nil }
+        guard combinedDashboardPulse[dashboardID] != nil || !farPulseHomes(in: dashboardID).isEmpty else { return nil }
+        let requested = target.sessionId
+        let attempt = FarNotificationOpenAttempt()
+        guard let session = Self.farNotificationChat(
+            target,
+            listed: combinedDashboardChats[dashboardID]?.sessions ?? [],
+            botChats: farBotChatIDs(in: dashboardID),
+            pulseHomes: farPulseHomes(in: dashboardID)
+        ) else {
+            return await openFarUnlistedChatNotification(target, in: dashboardID, attempt: attempt)
+        }
+        guard let open = startFarChatOpen(session, in: dashboardID, prepare: {
+            // A wait raised while Conduit was away comes on the push:
+            // its card is recorded on that dashboard's runtime before
+            // the open, whose resume merges it in, as on screen.
+            guard let decision = target.decision else { return }
+            let ids = [session.id, requested, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty }
+            attempt.cardIDs = requested == session.id ? [requested] : [requested, session.id]
+            recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: attempt.cardIDs)
+        }, onFailed: { [weak self] wasRefused in
+            attempt.refused = wasRefused
+            // Runs on that dashboard's runtime, as the card was recorded.
+            guard let self, let decision = target.decision,
+                  let key = Self.pendingDecisionEvictionKey(for: decision),
+                  let first = attempt.cardIDs.first else { return }
+            self.sessionPresentationCache.removePendingDecision(
+                key: key, profile: self.presentationProfile(for: first), sessionIDs: attempt.cardIDs
+            )
+        }) else { return nil }
+        ensureKeptPluginReport(for: dashboardID)
+        return await finishFarNotificationChatOpen(open: open, attempt: attempt, target: target) {
+            self.farChatIsShown(session, in: dashboardID)
+        }
+    }
+
+    private func openFarRoomNotification(
+        _ target: ConduitNotificationTarget,
+        roomID: String,
+        in dashboardID: UUID
+    ) async -> NotificationOpenOutcome? {
+        guard let runtime = keptRuntimeOpeningRoomsInPlace(dashboardID) else { return nil }
+        let viewport = chatViewportTransitionGeneration
+        let roomEpoch = groupRoomEpoch
+        guard await readyKeptRuntimeForRooms(runtime, dashboardID) else { return .retry }
+        guard keptRuntimeOpeningRoomsInPlace(dashboardID) === runtime else { return nil }
+        guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+        let outcome = await actAcrossAwaits(onRuntime: runtime) { await openNotificationRoom(roomID) }
+        closeFarRoomIfLetGo(runtime, dashboardID)
+        if outcome == .opened {
+            if activeRoomSurface?.room.roomID == roomID {
+                discardNotificationRouteFailure(for: target)
+                return .opened
+            }
+            return .failed
+        }
+        if outcome == .failed {
+            discardNotificationRouteFailure(for: target)
+        }
+        return outcome
+    }
+
+    private func openFarPulseNotification(
+        _ target: ConduitNotificationTarget,
+        in dashboardID: UUID,
+        runtime: DashboardRuntime
+    ) -> NotificationOpenOutcome? {
+        guard target.type == "response.ready", target.decision == nil, target.call == nil,
+              !target.isChatLink, !isModalSheetPresented else { return nil }
+        let homes = farPulseHomes(in: dashboardID)
+        let targetIDs = [
+            target.sessionId,
+            target.durableSessionID,
+            ChatScrollIdentityNormalization.sessionID(target.sessionId),
+            target.durableSessionID.flatMap(ChatScrollIdentityNormalization.sessionID)
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+        guard targetIDs.contains(where: { homes.contains($0) }) else { return nil }
+        let pulseProfile = combinedDashboardPulse[dashboardID]?.profile
+            ?? act(onRuntime: runtime) { pulseHomeProfile }
+        guard target.profile.map({ profilesMatch($0, pulseProfile) }) ?? true else { return nil }
+        guard combinedDashboardPulse[dashboardID] != nil
+            || act(onRuntime: runtime, { showsPulseScreen }) else { return nil }
+        openCombinedPulse(dashboardID)
+        openPulse(card: nil)
+        discardNotificationRouteFailure(for: target)
+        return .opened
+    }
+
+    private func openFarUnlistedChatNotification(
+        _ target: ConduitNotificationTarget,
+        in dashboardID: UUID,
+        attempt: FarNotificationOpenAttempt
+    ) async -> NotificationOpenOutcome? {
+        guard target.call == nil, target.roomID == nil else { return nil }
+        let viewport = chatViewportTransitionGeneration
+        let roomEpoch = groupRoomEpoch
+        var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
+        let rawIDs = Set([target.sessionId, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty })
+        let normalizedIDs = Set([target.sessionId, target.durableSessionID].compactMap(ChatScrollIdentityNormalization.sessionID))
+        let pulseHomes = farPulseHomes(in: dashboardID)
+        let botChats = farBotChatIDs(in: dashboardID)
+        guard !rawIDs.isEmpty,
+              rawIDs.isDisjoint(with: pulseHomes), normalizedIDs.isDisjoint(with: pulseHomes),
+              rawIDs.isDisjoint(with: botChats), normalizedIDs.isDisjoint(with: botChats) else { return nil }
+        if case .approval(let sessionKey, _, _) = target.decision {
+            await readKeptPluginStatusIfUnknown(dashboardID)
+            guard !Task.isCancelled else { return .retry }
+            guard !superseded else { return .failed }
+            guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected else { return nil }
+            if act(onRuntime: currentKept.runtime, { canAnswerRoomApprovals }) {
+                let keys = [sessionKey, target.durableSessionID, target.sessionId].compactMap { $0 }
+                let approval = await actAcrossAwaits(onRuntime: currentKept.runtime, { await roomApproval(matching: keys) })
+                guard !Task.isCancelled else { return .retry }
+                guard !superseded else { return .failed }
+                if approval != nil { return nil }
+            }
+        }
+        guard let initialKept = keptDashboardRuntimes[dashboardID], initialKept.client.isConnected else { return nil }
+        let scopedProfile = act(onRuntime: initialKept.runtime) { notificationProfileID(target.profile) }
+        let listedProfile = scopedProfile.flatMap { name in
+            combinedDashboardChats[dashboardID]?.profiles.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+        }
+        let targetProfile = listedProfile ?? initialKept.client.profile ?? "default"
+        if act(onRuntime: initialKept.runtime, { botModePhase != .gatewayUnsupported }) {
+            let pushesCanonicalChat: Bool
+            do {
+                pushesCanonicalChat = try await actAcrossAwaits(onRuntime: initialKept.runtime) {
+                    try await notificationTargetIsCanonicalChat(target, of: targetProfile)
+                }
+            } catch {
+                guard !Task.isCancelled else { return .retry }
+                guard !superseded else { return .failed }
+                return nil
+            }
+            guard !Task.isCancelled else { return .retry }
+            guard !superseded else { return .failed }
+            if pushesCanonicalChat {
+                var owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
+                if owner == nil, let refreshedKept = keptDashboardRuntimes[dashboardID], refreshedKept.client.isConnected {
+                    await actAcrossAwaits(onRuntime: refreshedKept.runtime) { await refreshBotRoster() }
+                    guard !Task.isCancelled else { return .retry }
+                    guard !superseded else { return .failed }
+                    owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
+                }
+                guard let owner else { return nil }
+                return await openFarBotChatNotification(target, of: owner, in: dashboardID)
+            }
+        }
+        guard !superseded else { return .failed }
+        guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected,
+              let runtime = keptRuntime(dashboardID, on: targetProfile) else { return nil }
+        let requested = target.sessionId
+        let primaryID = target.durableSessionID.flatMap { $0.isEmpty ? nil : $0 } ?? requested
+        var decisionSessionIDs: [String] = []
+        for id in [primaryID, requested, target.durableSessionID].compactMap({ $0 })
+            where !id.isEmpty && !decisionSessionIDs.contains(id) {
+            decisionSessionIDs.append(id)
+        }
+        ensureKeptPluginReport(for: dashboardID)
+        widgetLaunchCoordinator.supersede()
+        let open: Task<Bool, Never> = act(onRuntime: runtime) {
+            if let decision = target.decision {
+                attempt.cardIDs = requested == primaryID ? [requested] : [requested, primaryID].filter { !$0.isEmpty }
+                recordNotificationDecision(decision, sessionIDs: decisionSessionIDs, cacheSessionIDs: attempt.cardIDs)
+            }
+            return requestOpenSession(primaryID, onFailed: { [weak self] wasRefused in
+                attempt.refused = wasRefused
+                guard let self, let decision = target.decision,
+                      let key = Self.pendingDecisionEvictionKey(for: decision),
+                      let first = attempt.cardIDs.first else { return }
+                self.sessionPresentationCache.removePendingDecision(
+                    key: key, profile: self.presentationProfile(for: first), sessionIDs: attempt.cardIDs
+                )
+            })
+        }
+        return await finishFarNotificationChatOpen(open: open, attempt: attempt, target: target) {
+            guard self.farChatDashboardID == dashboardID, let active = self.activeSessionId else { return false }
+            if rawIDs.contains(active) { return true }
+            if let normActive = ChatScrollIdentityNormalization.sessionID(active) {
+                return normalizedIDs.contains(normActive)
+            }
+            return false
+        }
+    }
+
+    private func finishFarNotificationChatOpen(
+        open: Task<Bool, Never>,
+        attempt: FarNotificationOpenAttempt,
+        target: ConduitNotificationTarget,
+        isShown: @MainActor () -> Bool
+    ) async -> NotificationOpenOutcome {
         // An approval's or a question's push lands on its card, as on screen.
         var reveal: NeedsYouReveal?
         if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
@@ -81,7 +245,7 @@ extension AppState {
         // on screen decides too, unless this open itself failed: a failed
         // resume leaves the chat selected without its rows.
         let answered = await open.value
-        let opened = answered || (attempt.refused == nil && farChatIsShown(session, in: dashboardID))
+        let opened = answered || (attempt.refused == nil && isShown())
         if opened {
             discardNotificationRouteFailure(for: target)
             return .opened

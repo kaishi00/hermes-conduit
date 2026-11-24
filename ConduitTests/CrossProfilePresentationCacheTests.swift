@@ -4556,4 +4556,265 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.activeDashboardID == mac.id }
         XCTAssertEqual(appState.activeDashboardID, mac.id)
     }
+
+    /// Far room pushes, far Pulse `response.ready` pushes (opening that
+    /// dashboard's Pulse feed per the per-instance ruling), and unlisted far
+    /// chat pushes open in place on their kept runtime; peer-hosted room
+    /// approvals, call pushes, and dropped kept runtimes still switch.
+    func testFarRoomPulseAndUnlistedChatPushesOpenInPlaceWhileCallSwitches() async throws {
+        final class Script {
+            var error: Error?
+            var botLookupRows: [BotChatLookupRow] = []
+            var botLookupError: Error?
+            var opened: [(ObjectIdentifier, String, String?)] = []
+            var roomClients: [String: [ObjectIdentifier]] = [:]
+        }
+        let script = Script()
+        let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                             revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { client in
+                script.roomClients["capabilities", default: []].append(ObjectIdentifier(client))
+                return GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw", features: [],
+                                         methods: GroupWire.requiredMethods, maxLogLimit: 500)
+            },
+            list: { client in
+                script.roomClients["list", default: []].append(ObjectIdentifier(client))
+                return ([trip], nil)
+            },
+            state: { client, _ in
+                script.roomClients["state", default: []].append(ObjectIdentifier(client))
+                return (trip, nil)
+            },
+            log: { client, _, sinceSeq, _ in
+                script.roomClients["log", default: []].append(ObjectIdentifier(client))
+                return GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                                    authorityGatewayID: "gw", authorityEpoch: 1)
+            }
+        )
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { _, _ in
+            if let error = script.botLookupError { throw error }
+            return script.botLookupRows
+        }
+        operations.openSessionWithProfile = { client, sessionID, _, profile in
+            if let error = script.error { throw error }
+            script.opened.append((ObjectIdentifier(client), sessionID, profile))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Unlisted reply", timestamp: "ts-u1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations, groups: groups)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let held = HeldDashboardRequests(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        addTeardownBlock { @MainActor in held.shutdown() }
+        kept.runtime.dashboardTicketBridge = held.bridge
+        kept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [])
+        kept.runtime.botRoster = []
+        appState.combinedDashboardBots[mac.id] = nil
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.runtimeOnScreen.sessions = []
+
+        // 1. Far room push opens in place on the kept room runtime even before bots/Pulse load.
+        let roomPush = ConduitNotificationTarget(
+            profile: nil, sessionId: "room-hidden-1", dashboardID: mac.id, type: "response.ready", roomID: "trip"
+        )
+        let roomOutcome = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+        XCTAssertEqual(roomOutcome, .opened)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for far room push")
+        XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
+        XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "trip")
+        XCTAssertEqual(Set(script.roomClients["state"] ?? []), [ObjectIdentifier(outgoing)])
+        appState.closeGroupRoom()
+
+        // 2. Far Pulse response.ready push opens that dashboard's Pulse feed in place.
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(
+            bridge: ObjectIdentifier(kept.bridge), unseen: 2, homeChatID: "pulse-mac", profile: "default", at: Date()
+        )
+        let pulsePush = ConduitNotificationTarget(
+            profile: "default", sessionId: "pulse-mac", dashboardID: mac.id, type: "response.ready"
+        )
+        appState.showModelPicker = true
+        let blockedPulse = await appState.openFarNotificationInPlace(pulsePush, in: mac.id)
+        XCTAssertNil(blockedPulse, "modal sheet keeps Pulse push off in-place open")
+        appState.showModelPicker = false
+        let pulseOutcome = await appState.openFarNotificationInPlace(pulsePush, in: mac.id)
+        XCTAssertEqual(pulseOutcome, .opened)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for far Pulse push")
+        XCTAssertEqual(appState.pulseShownDashboardID, mac.id)
+        XCTAssertNotNil(appState.pulseOpenRequest)
+        appState.pulseOpenRequest = nil
+        appState.pulseShownDashboardID = nil
+
+        // 3. Peer-hosted room approval still returns nil so the switch can present RoomApproval.
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [], avatars: [:], at: Date()
+        )
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [], at: Date()
+        )
+        kept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [RoomApprovalsClient.capability])
+        let peerApprovalPush = ConduitNotificationTarget(
+            profile: "atlas",
+            sessionId: "peer-room-1",
+            dashboardID: mac.id,
+            type: "approval.needed",
+            decision: .approval(sessionKey: "peer-room-1", description: "Run cmd", choices: ["once", "deny"])
+        )
+        let peerTask = Task { @MainActor in await appState.openFarNotificationInPlace(peerApprovalPush, in: mac.id) }
+        try await held.waitForRequests(1)
+        XCTAssertEqual(held.sent.first?.path, RoomApprovalsClient.path)
+        try await held.answer([
+            "ok": true,
+            "approvals": [[
+                "run_id": "run-1",
+                "request_id": "req-1",
+                "session_key": "peer-room-1",
+                "description": "Run cmd",
+                "command": "rm",
+                "choices": ["once", "deny"],
+            ]],
+        ])
+        let peerOutcome = await peerTask.value
+        XCTAssertNil(peerOutcome, "peer-hosted room approval keeps switching to present RoomApproval")
+
+        // Navigation during async approval check supersedes the tap cleanly.
+        let openedBeforeSuperseded = script.opened.count
+        appState.errorMessage = nil
+        let nonMatchingApprovalPush = ConduitNotificationTarget(
+            profile: "atlas",
+            sessionId: "unlisted-superseded",
+            dashboardID: mac.id,
+            type: "approval.needed",
+            decision: .approval(sessionKey: "unlisted-superseded", description: "Run cmd", choices: ["once", "deny"])
+        )
+        let supersededTask = Task { @MainActor in
+            await appState.openFarNotificationInPlace(nonMatchingApprovalPush, in: mac.id)
+        }
+        try await held.waitForRequests(2)
+        appState.groupRoomEpoch &+= 1
+        try await held.answer(["ok": true, "approvals": []])
+        let supersededOutcome = await supersededTask.value
+        XCTAssertEqual(supersededOutcome, .failed, "navigation during async wait drops old tap silently")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(script.opened.count, openedBeforeSuperseded)
+
+        // Pulse approval push still switches too.
+        let pulseApproval = ConduitNotificationTarget(
+            profile: "default",
+            sessionId: "pulse-mac",
+            dashboardID: mac.id,
+            type: "approval.needed",
+            decision: .approval(sessionKey: "pulse-mac", description: "Run", choices: ["once", "deny"])
+        )
+        let pulseApprovalOutcome = await appState.openFarNotificationInPlace(pulseApproval, in: mac.id)
+        XCTAssertNil(pulseApprovalOutcome, "Pulse approval keeps switching")
+
+        // 4. Compacted Bot Chat & fail-closed canonical lookup before unlisted open.
+        kept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [])
+        let atlas = BotProfile(
+            name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+            provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "old-atlas", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        script.botLookupRows = [BotChatLookupRow(id: "compacted-atlas", title: BotMode.canonicalChatTitle)]
+        let compactedBotPush = ConduitNotificationTarget(
+            profile: "atlas", sessionId: "compacted-atlas", dashboardID: mac.id, type: "response.ready"
+        )
+        let compactedBotOutcome = await appState.openFarNotificationInPlace(compactedBotPush, in: mac.id)
+        XCTAssertEqual(compactedBotOutcome, .opened)
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertEqual(appState.activeSessionId, "compacted-atlas")
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "compacted Bot Chat keeps Bot Chat ownership")
+
+        script.botLookupError = URLError(.timedOut)
+        let failClosedPush = ConduitNotificationTarget(
+            profile: "atlas", sessionId: "unknown-ownership", dashboardID: mac.id, type: "response.ready"
+        )
+        let failClosedOutcome = await appState.openFarNotificationInPlace(failClosedPush, in: mac.id)
+        XCTAssertNil(failClosedOutcome, "failed canonical lookup fails closed to switch")
+
+        // Unlisted far chat push evicts recorded decision card on refusal, and opens in place on success.
+        script.botLookupError = nil
+        script.botLookupRows = []
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [], avatars: [:], at: Date()
+        )
+        let unlistedPush = ConduitNotificationTarget(
+            profile: "atlas",
+            sessionId: "unlisted-1",
+            dashboardID: mac.id,
+            type: "input.needed",
+            decision: .clarify(requestId: "req-unlisted", question: "Continue?", choices: ["Yes", "No"])
+        )
+        script.error = RpcError(code: 4007, message: "Session not found")
+        let refusedOutcome = await appState.openFarNotificationInPlace(unlistedPush, in: mac.id)
+        XCTAssertEqual(refusedOutcome, .failed)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+        let storedAfterRefusal = appState.act(onRuntime: kept.runtime) {
+            appState.sessionPresentationCache.storedPendingDecisionKeys(
+                profile: appState.presentationProfile(for: "unlisted-1"),
+                sessionIDs: ["unlisted-1"]
+            )
+        }
+        XCTAssertTrue(storedAfterRefusal.isEmpty, "refused unlisted push evicts its pre-recorded card")
+
+        script.error = nil
+        appState.errorMessage = nil
+        let unlistedOutcome = await appState.openFarNotificationInPlace(unlistedPush, in: mac.id)
+        XCTAssertEqual(unlistedOutcome, .opened)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for unlisted far chat push")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        XCTAssertEqual(appState.activeSessionId, "unlisted-1")
+        XCTAssertTrue(appState.messages.contains { $0.role == .clarify })
+        XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "unlisted-1")
+        XCTAssertEqual(script.opened.last?.1, "unlisted-1")
+        XCTAssertEqual(appState.keptDashboardRuntimes[mac.id]?.client.profile, "atlas")
+
+        let unlistedLink = ConduitNotificationTarget(
+            profile: "atlas", sessionId: "unlisted-link-1", dashboardID: mac.id, type: nil, isChatLink: true
+        )
+        let unlistedLinkOutcome = await appState.openFarNotificationInPlace(unlistedLink, in: mac.id)
+        XCTAssertEqual(unlistedLinkOutcome, .opened)
+        XCTAssertEqual(appState.activeSessionId, "unlisted-link-1")
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+
+        // 5. Call pushes keep switching by ruling (even when targeting a room or listed chat).
+        let callPush = ConduitNotificationTarget(
+            profile: "atlas",
+            sessionId: "unlisted-1",
+            dashboardID: mac.id,
+            type: HermesCallRequest.type,
+            call: HermesCallRequest(id: "call-1", kind: .done, title: nil, sessionIDs: ["unlisted-1"])
+        )
+        let roomCallPush = ConduitNotificationTarget(
+            profile: nil,
+            sessionId: "room-hidden-1",
+            dashboardID: mac.id,
+            type: HermesCallRequest.type,
+            call: HermesCallRequest(id: "call-2", kind: .done, title: nil, sessionIDs: ["room-hidden-1"]),
+            roomID: "trip"
+        )
+        let callOutcome = await appState.openFarNotificationInPlace(callPush, in: mac.id)
+        let roomCallOutcome = await appState.openFarNotificationInPlace(roomCallPush, in: mac.id)
+        XCTAssertNil(callOutcome, "call push keeps switching")
+        XCTAssertNil(roomCallOutcome, "call push keeps switching even with roomID")
+
+        // 6. Dropped kept runtime falls back to switching for room, Pulse, and unlisted pushes.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        let droppedRoom = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+        let droppedPulse = await appState.openFarNotificationInPlace(pulsePush, in: mac.id)
+        let droppedUnlisted = await appState.openFarNotificationInPlace(unlistedPush, in: mac.id)
+        XCTAssertNil(droppedRoom)
+        XCTAssertNil(droppedPulse)
+        XCTAssertNil(droppedUnlisted)
+    }
 }
