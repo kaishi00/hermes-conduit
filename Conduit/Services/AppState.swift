@@ -401,7 +401,8 @@ final class AppState: ObservableObject {
     @Published var combinedDashboardTrouble: [UUID: CombinedDashboardTrouble] = [:]
     /// Each combined dashboard that's down: how many retries it has had in
     /// a row, and the one waiting.
-    var combinedDashboardRetries: [UUID: CombinedDashboardRetry] = [:]
+    /// Published because `chatIsRecoveringConnection` reads it between early retries.
+    @Published var combinedDashboardRetries: [UUID: CombinedDashboardRetry] = [:]
     /// Combined dashboards whose quiet sign-in was refused (the password or
     /// the grant turned down): no pass asks again until it's opened.
     var combinedSignInsRefused: Set<UUID> = []

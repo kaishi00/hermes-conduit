@@ -5220,10 +5220,32 @@ extension CrossProfilePresentationCacheTests {
         appState.isReturningQuietly = false
         XCTAssertFalse(appState.chatHidesBriefReconnect)
 
+        // Between the first quiet retries, it stays recovering; once stood down,
+        // past quiet attempts, or waiting for sign-in, it stops claiming recovery.
+        appState.combinedSignInsUnderWay.remove(mac.id)
+        appState.combinedDashboardRetryBaseDelay = 60
+        appState.noteCombinedDashboardFailed(mac.id, .down)
+        XCTAssertTrue(appState.chatIsRecoveringConnection, "early waiting retry still shows Reconnecting")
+        appState.isReturningQuietly = true
+        XCTAssertTrue(appState.chatHidesBriefReconnect)
+        appState.isReturningQuietly = false
+        appState.standDownCombinedDashboardRetry(mac.id)
+        XCTAssertFalse(appState.chatIsRecoveringConnection, "standing down stops claiming recovery")
+
+        for _ in 0..<AppState.quietReconnectAttempts {
+            appState.noteCombinedDashboardFailed(mac.id, .down)
+        }
+        XCTAssertFalse(appState.chatIsRecoveringConnection, "after quiet retries are spent it reads Disconnected")
+        appState.noteCombinedDashboardFailed(mac.id, .signInNeeded)
+        XCTAssertFalse(appState.chatIsRecoveringConnection)
+        appState.clearCombinedDashboardTrouble(mac.id)
+        appState.combinedSignInsUnderWay.insert(mac.id)
+
         // Without network, the far chat does not claim to be reconnecting.
         appState.networkPathUsable = false
         XCTAssertFalse(appState.chatIsRecoveringConnection)
         XCTAssertFalse(appState.chatHidesBriefReconnect)
+        appState.combinedSignInsUnderWay.remove(mac.id)
 
         // Leaving the far chat falls back to the screen dashboard's recovery state.
         appState.networkPathUsable = true
@@ -5376,8 +5398,14 @@ extension CrossProfilePresentationCacheTests {
         let farDurablePin = PinnedReply(sessionID: "mac-dur-1", message: m1, chatTitle: "Mac work")
         let farReboundPin = PinnedReply(sessionID: "mac-rt-1", message: m2, chatTitle: "Mac work")
         let screenIntruderPin = PinnedReply(sessionID: "vps-intruder", message: m3, chatTitle: "VPS decoy")
+        // A screen cron run sharing the far chat's runtime id must not merge
+        // its own stored id into the far chat's pin ownership set.
+        var screenCronRow = session("mac-rt-2", profile: "work")
+        screenCronRow.storedSessionId = "screen-cron-dur"
+        appState.cronSessions = [screenCronRow]
+        let screenCronPin = PinnedReply(sessionID: "screen-cron-dur", message: m3, chatTitle: "Screen cron decoy")
         appState.setPinnedReplies(
-            [farDurablePin, farReboundPin, screenIntruderPin],
+            [farDurablePin, farReboundPin, screenIntruderPin, screenCronPin],
             of: PinnedReplyOwner(dashboard: mac.id.uuidString, profile: "work")
         )
 
@@ -5388,9 +5416,12 @@ extension CrossProfilePresentationCacheTests {
         let pinIDs = appState.openChatPinIDs()
         XCTAssertTrue(pinIDs.own.contains("mac-dur-1"), "far chat resolves durable id from its own dashboard's index")
         XCTAssertFalse(pinIDs.own.contains("vps-intruder"), "screen dashboard's same-profile index never leaks into far chat")
+        XCTAssertFalse(pinIDs.own.contains("screen-cron-dur"), "screen cron runs never leak into far chat pin IDs")
         XCTAssertEqual(Set(appState.openChatPinnedReplies.map(\.id)), Set([farDurablePin.id, farReboundPin.id]),
                        "matches pins saved under both the durable id and the prior rebound runtime id")
         XCTAssertFalse(appState.pinBelongs(screenIntruderPin, toOwnIDs: pinIDs.own))
+        XCTAssertFalse(appState.pinBelongs(screenCronPin, toOwnIDs: pinIDs.own))
+        appState.cronSessions = []
 
         // 2. Clearing the screen dashboard's index never wipes Mac's kept index.
         appState.conversationIdentityIndex.removeAll()

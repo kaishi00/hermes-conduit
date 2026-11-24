@@ -118,13 +118,21 @@ extension AppState {
     /// dashboard's catalog and identity index.
     func openChatPinIDs() -> (store: String, own: Set<String>) {
         guard let active = activeSessionId, !active.isEmpty else { return ("", []) }
+        let isFar = farChat != nil
         let targetProfile = composerOwnerProfile
         return onChatRuntimeValue(unreachable: (active, [active])) {
-            let matchesRuntimeProfile = farChat == nil || activeProfile == targetProfile
+            let matchesRuntimeProfile = !isFar || activeProfile == targetProfile
             let durable = (matchesRuntimeProfile ? confirmedDurableSessionID(forRuntime: active) : nil)
                 ?? confirmedDurableSessionID(forRuntime: active, profile: targetProfile)
-            let summary = matchesRuntimeProfile ? activeChatSessionSummary : nil
-            var own = matchesRuntimeProfile ? chatOwnSessionIDs(for: active) : Set<String>()
+            let summary: SessionSummary?
+            var own: Set<String>
+            if matchesRuntimeProfile {
+                summary = isFar ? uncachedActiveChatSessionSummary(includingCronRuns: false) : activeChatSessionSummary
+                own = chatOwnSessionIDs(for: active, includingCronRuns: !isFar)
+            } else {
+                summary = nil
+                own = []
+            }
             own.insert(active)
             if let durable { own.insert(durable) }
             if let summary {

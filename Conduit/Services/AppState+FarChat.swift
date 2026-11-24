@@ -101,10 +101,16 @@ extension AppState {
     }
 
     /// Whether the chat on screen's gateway connection is recovering
-    /// (`Reconnecting…` rather than `Disconnected`).
+    /// (`Reconnecting…` rather than `Disconnected`): connecting now or between
+    /// the first few quiet retries.
     var chatIsRecoveringConnection: Bool {
         guard let farDashboardID = farChatDashboardID else { return isRecoveringConnection }
-        return networkPathUsable && combinedDashboardStatus(farDashboardID) == .connecting
+        guard networkPathUsable else { return false }
+        if combinedDashboardStatus(farDashboardID) == .connecting { return true }
+        guard combinedDashboardTrouble[farDashboardID] == .down,
+              let retry = combinedDashboardRetries[farDashboardID],
+              retry.task != nil else { return false }
+        return retry.attempt < Self.quietReconnectAttempts
     }
 
     /// Whether the chat on screen hides a brief reconnect indicator while
