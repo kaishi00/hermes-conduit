@@ -119,11 +119,17 @@ extension AppState {
     /// Lets go of the marks of a dashboard that left the group or came on
     /// screen, where `chatDoneMarks` and `chatMutes` hold its own.
     func dropFarChatMarksOutsideTheGroup() {
-        let gone = Set(farChatDoneMarks.keys).union(farChatMutes.keys)
+        let gone = Set(farChatDoneMarks.keys).union(farChatMutes.keys).union(farSessionStarsByDashboard.keys)
             .filter { !isInCombinedGroup($0) || $0 == dashboardIDOnScreen }
         guard !gone.isEmpty else { return }
-        farChatDoneMarks = farChatDoneMarks.filter { !gone.contains($0.key) }
-        farChatMutes = farChatMutes.filter { !gone.contains($0.key) }
+        if farChatDoneMarks.keys.contains(where: { gone.contains($0) }) {
+            farChatDoneMarks = farChatDoneMarks.filter { !gone.contains($0.key) }
+        }
+        if farChatMutes.keys.contains(where: { gone.contains($0) }) {
+            farChatMutes = farChatMutes.filter { !gone.contains($0.key) }
+        }
+        // Its stars stay on this phone; only the copy read for its rows goes.
+        farSessionStarsByDashboard = farSessionStarsByDashboard.filter { !gone.contains($0.key) }
     }
 
     // MARK: - Stars and the read flag
@@ -166,6 +172,20 @@ extension AppState {
         stars.save(to: defaults, scope: Self.dashboardPreferenceBucket(far))
     }
 
+    /// A chat deleted on another combined dashboard takes its star with
+    /// it, from that dashboard's stars and never the ones in use.
+    func dropFarSessionStar(_ session: SessionSummary, profile: String, in far: UUID) {
+        var stars = farSessionStars(far)
+        var row = session
+        row.combinedDashboardID = nil
+        let key = stars.idsByProfile.keys.first { Self.profilesMatch($0, profile) } ?? profile
+        guard stars.isStarred(row, profile: key) else { return }
+        stars.set(row, starred: false, profile: key)
+        objectWillChange.send()
+        farSessionStarsByDashboard[far] = stars
+        stars.save(to: defaults, scope: Self.dashboardPreferenceBucket(far))
+    }
+
     /// Hermes' read flag as that dashboard's list last gave it, or as it
     /// was set here since.
     func isFarSessionUnread(_ session: SessionSummary, in far: UUID) -> Bool {
@@ -180,8 +200,9 @@ extension AppState {
     }
 
     /// Sets Hermes' read flag for another combined dashboard's chats, on
-    /// that dashboard through its kept connection, one at a time. Each
-    /// row shows it at once and goes back if Hermes refuses.
+    /// that dashboard through its kept connection, one at a time and in
+    /// the order they were made, so the last change made is the one kept.
+    /// Each row shows it at once and goes back if Hermes refuses.
     func setFarSessionsUnread(_ sessions: [SessionSummary], in far: UUID, unread: Bool) {
         guard let bridge = keptDashboardRuntimes[far]?.bridge else {
             showSessionMutationNotice(AppLocalization.string("Reconnect to Hermes to change this conversation."))
@@ -189,14 +210,17 @@ extension AppState {
         }
         let rows = sessions.map { farChatMarksRow($0, in: far) }
         let before = rows.map { keepFarRowUnread($0.row, profile: $0.profile, in: far, unread: unread) }
-        Task { @MainActor [weak self] in
+        let previous = farReadFlagWriteTail[far]
+        let write = Task { @MainActor [weak self] in
+            await previous?.value
             for (index, entry) in rows.enumerated() {
                 guard let self else { return }
                 do {
                     _ = try await self.sendSessionMutation(entry.row.id, body: ["unread": unread], profile: entry.profile,
                                                            bridge: bridge)
-                    // Again, over a list read that started or landed while
-                    // the write was out.
+                    // Again, and stamped again, though it may show it
+                    // already: a list read that started or landed while
+                    // the write was out could put the old flag back.
                     self.keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: unread)
                 } catch {
                     sessionCatalogLog.notice("Read flag not saved: \(LogRedaction.describing(error), privacy: .public)")
@@ -205,6 +229,11 @@ extension AppState {
                     }
                 }
             }
+        }
+        farReadFlagWriteTail[far] = write
+        Task { @MainActor [weak self] in
+            await write.value
+            if self?.farReadFlagWriteTail[far] == write { self?.farReadFlagWriteTail[far] = nil }
         }
     }
 

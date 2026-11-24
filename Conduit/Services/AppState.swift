@@ -718,6 +718,9 @@ final class AppState: ObservableObject {
     /// under each dashboard as a row first asks, and read anew after a
     /// switch (`farSessionStars`).
     var farSessionStarsByDashboard: [UUID: SessionStars] = [:]
+    /// The last read-flag write under way for each other combined
+    /// dashboard: the next one waits for it (`setFarSessionsUnread`).
+    var farReadFlagWriteTail: [UUID: Task<Void, Never>] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).

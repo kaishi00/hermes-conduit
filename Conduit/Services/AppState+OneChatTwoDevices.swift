@@ -763,9 +763,16 @@ extension AppState {
                 profile: profile
             )
             removeSessionFromLiveCatalog(session)
-            archivedSessions.removeAll { sessionMatches($0, session) }
-            removePinnedState(for: session)
-            setSessionStarred(session, starred: false, profile: profile)
+            if actingOnRuntimeOnScreen {
+                archivedSessions.removeAll { sessionMatches($0, session) }
+                removePinnedState(for: session)
+                setSessionStarred(session, starred: false, profile: profile)
+            } else if let dashboardID {
+                // Another combined dashboard's chat: the Archived list, pins
+                // and stars in use are the screen's own chats', whatever id
+                // they share. Its star goes from its own dashboard's.
+                dropFarSessionStar(session, profile: profile, in: dashboardID)
+            }
             updateChatReadState { $0.forget(session, profile: profile) }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
