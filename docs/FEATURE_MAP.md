@@ -6898,7 +6898,7 @@ Sync across devices (the four Sessions bar preferences, as
 - The Chats list's rows inside a nest tap at 36 pt and the nest's expander at 30 pt, under the 44 pt Settings' rows take; kept compact for the nest's density, which no entry owns yet (#2658, issue 2654).
 - In the one-row bar the field is the first row of a lazy List, so scrolled down the row isn't instantiated and the key does nothing, or focuses it late when the row is recycled. The stacked bar's field is in the bar itself and isn't affected. Both need a device or simulator to observe.
 
-**Checked:** 2026-11-24, #PRNUM (record only, after #3239: the accent ruling names project titles, dashboards' names and the Archived sheet, which #3239 changed too; the Scheduled search's case-only matching recorded as a gap)
+**Checked:** 2026-11-24, #3243 (record only, after #3239: the accent ruling names project titles, dashboards' names and the Archived sheet, which #3239 changed too; the Scheduled search's case-only matching recorded as a gap)
 
 ## Project chats in Chats
 
