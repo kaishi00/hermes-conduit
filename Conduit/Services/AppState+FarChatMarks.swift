@@ -97,7 +97,8 @@ extension AppState {
     /// is still marked only where its own dashboard keeps them.
     var chatDoneFilterAvailable: Bool {
         if chatDoneAvailable { return true }
-        guard V2ShellPreference.isOn, isInCombinedGroup(dashboardIDOnScreen) else { return false }
+        // Their rows are listed only in All.
+        guard V2ShellPreference.isOn, isAllProfilesChatsOn, isInCombinedGroup(dashboardIDOnScreen) else { return false }
         return keptDashboardRuntimes.contains {
             $0.key != dashboardIDOnScreen && isInCombinedGroup($0.key)
                 && $0.value.runtime.notifierPlugin.reports(ChatDoneMarks.capability)

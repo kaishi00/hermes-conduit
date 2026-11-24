@@ -7239,7 +7239,7 @@ dashboards' rows do not offer Archive.
   dashboard mutation. On iOS, the open, running conversation is not archived
   (a running row that isn't open, and another profile's row, are not stopped);
   desktop checks live session status for the row's profile before archiving or
-  deleting. A successful archive removes its pin and clears the open chat if it
+  deleting. A successful archive removes its pin (this phone's pins only when it ran for the dashboard on screen; another combined dashboard's chat leaves them alone, #3230) and clears the open chat if it
   was selected.
 - The Archived sheet searches its server-backed list. Restore returns a chat
   to its list; Delete asks before permanently removing it.
@@ -7253,7 +7253,7 @@ dashboards' rows do not offer Archive.
   title menu. Its Archived view can list all profiles when All is selected.
 - Live Hermes archive/restore has not yet been tested end-to-end.
 
-**Checked:** 2026-11-23, #3194 (recorded the existing iOS archive and Archived
+**Checked:** 2026-11-24, #3230 (another combined dashboard's chat archived on another profile there leaves the screen's pins alone; Desktop not needed); 2026-11-23, #3194 (recorded the existing iOS archive and Archived
 sheet alongside desktop#410).
 
 ## Deleting from a list row

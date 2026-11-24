@@ -64,7 +64,12 @@ extension AppState {
             let pending = max((self.chatMutesPendingWrites[key] ?? 1) - 1, 0)
             self.chatMutesPendingWrites[key] = pending == 0 ? nil : pending
             // A dashboard switched or signed in again meanwhile has mutes of its own.
-            guard pending == 0, self.chatMarksBridge(dashboardID) === bridge else { return }
+            guard pending == 0, let current = self.chatMarksBridge(dashboardID) else { return }
+            guard current === bridge else {
+                // Its answer isn't this connection's: read what the host keeps.
+                self.readChatMutes(dashboardID: dashboardID, bridge: current, profiles: [profile], force: true)
+                return
+            }
             if let answer, let mutes = ChatMutes.mutes(from: answer) {
                 self.keepChatMutes(
                     self.mutes(of: dashboardID).replacing(mutes, profile: profile, dashboardID: dashboardID),
