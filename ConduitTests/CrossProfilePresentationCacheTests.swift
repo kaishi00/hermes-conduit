@@ -4481,7 +4481,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNotNil(inFarScope[vps.id], "the dashboard on screen has its evidence when read in the far scope")
         XCTAssertEqual(inFarScope[mac.id], inFarScope[vps.id], "so an answer given on the far twin finds the screen's copy")
         // Answered on the far twin, with the screen as its twin: both go.
-        appState.needsYou.dropAnsweredQuestion("P7", profile: "default", dashboardID: mac.id, alsoOn: [vps.id])
+        let twins = appState.act(onRuntime: kept.runtime) { appState.combinedHermesTwins(of: appState.activeDashboardID) }
+        XCTAssertEqual(twins, [vps.id], "the twins an answer in the far scope drops with its own copy")
+        XCTAssertEqual(appState.combinedHermesTwins(of: vps.id), [mac.id])
+        appState.needsYou.dropAnsweredQuestion("P7", profile: "default", dashboardID: mac.id, alsoOn: twins)
         XCTAssertFalse(appState.needsYou.items.contains { $0.waitID == "asked-P7" }, "the screen's copy goes too")
         XCTAssertNil(appState.needsYou.otherDashboards[mac.id])
 
@@ -4562,6 +4565,24 @@ extension CrossProfilePresentationCacheTests {
             XCTAssertEqual(groups[mac.id], groups[third.id], "two kept dashboards of the group are still found to be one Hermes")
             XCTAssertNil(groups[vps.id], "the dashboard on screen, outside the group, has no evidence")
         }
+        // Sharing only a Bot Chat, they are still one Hermes: their bots as
+        // last read count, with no grid on screen to show them.
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.combinedDashboardChats[third.id] = nil
+        XCTAssertNil(appState.combinedHermesGroups[mac.id])
+        let raiden = BotProfile(
+            name: "raiden", botTitle: nil, displayName: "raiden", profileDescription: "", model: nil,
+            provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "stored-raiden", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        for id in [mac.id, third.id] {
+            appState.combinedDashboardBots[id] = CombinedDashboardBots(
+                client: ObjectIdentifier(kept.bridge), bots: [raiden], avatars: [:], at: Date()
+            )
+        }
+        XCTAssertEqual(appState.combinedHermesTwins(of: mac.id), [third.id])
+        XCTAssertEqual(appState.combinedHermesTwins(of: vps.id), [])
     }
 
     /// A far chat left mid-reply by New Chat or by a profile switch on the
