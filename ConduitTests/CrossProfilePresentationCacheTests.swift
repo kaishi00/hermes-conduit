@@ -2589,6 +2589,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        // Its row is the one marked open on the Chats list; a row of this
+        // dashboard's under the same id isn't.
+        XCTAssertTrue(appState.isOpenChatRow(row), "its row is marked open")
+        var screensRow = row
+        screensRow.combinedDashboardID = nil
+        XCTAssertFalse(appState.isOpenChatRow(screensRow), "no row of the dashboard on screen is")
         XCTAssertEqual(seen.looked.last?.0, ObjectIdentifier(outgoing), "its bot looked up through the kept connection")
         XCTAssertEqual(seen.looked.last?.1, "atlas")
         XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing))
