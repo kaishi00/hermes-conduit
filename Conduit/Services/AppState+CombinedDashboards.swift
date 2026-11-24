@@ -49,6 +49,34 @@ struct KeptDashboardRuntime {
     var lists: DashboardRuntime? { runtime.keptListsProfile == nil ? nil : runtime }
 }
 
+/// What another combined dashboard's plugin said it serves, as read through
+/// one kept connection (`bridge`). Its version and running state are kept
+/// with its capabilities: a kept runtime that takes this report in place of
+/// a read of its own would otherwise read as a plugin with no version,
+/// which every version-gated feature counts as too old (issue 3209).
+struct KeptPluginReport {
+    let bridge: ObjectIdentifier
+    let capabilities: Set<String>
+    var version: String?
+    var runtime: NotifierPluginStatus.Runtime?
+
+    init(bridge: ObjectIdentifier, capabilities: Set<String>, version: String? = nil,
+         runtime: NotifierPluginStatus.Runtime? = nil) {
+        self.bridge = bridge
+        self.capabilities = capabilities
+        self.version = version
+        self.runtime = runtime
+    }
+
+    /// The report in a plugin status route's answer; nil when it doesn't
+    /// say what the plugin serves.
+    init?(bridge: ObjectIdentifier, response: [String: Any]) {
+        guard case .reported(let version, let capabilities) = NotifierPluginStatus.state(from: response) else { return nil }
+        self.init(bridge: bridge, capabilities: capabilities, version: version,
+                  runtime: NotifierPluginStatus.runtime(from: response))
+    }
+}
+
 /// Why a combined dashboard beside the one on screen isn't connected.
 enum CombinedDashboardTrouble: Equatable {
     /// Its last quiet sign-in failed on the way (the network, the server):
@@ -230,12 +258,12 @@ extension AppState {
     /// retirement then finds neither and closes nothing.
     /// `roster`: the outgoing dashboard's bots as it showed them, taken
     /// before the switch's preparation clears Bot Mode's state; `work`
-    /// their work by lowercased name, and `pluginCapabilities` what its
-    /// plugin serves, taken then too.
+    /// their work by lowercased name, and `pluginReport` what its
+    /// plugin serves (with its version), taken then too.
     func keepOutgoingDashboardRuntimeIfCombined(
         _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
         profiles: [String] = [], chats: [SessionSummary] = [], cronIDs: Set<String> = [],
-        work: [String: BotWorkSnapshot] = [:], pluginCapabilities: Set<String>? = nil,
+        work: [String: BotWorkSnapshot] = [:], pluginReport: NotifierPluginStatus? = nil,
         glows: [String: ProfileGlowRGB]? = nil, lists: DashboardRuntime? = nil
     ) {
         guard let outgoingID, outgoingID != targetID,
@@ -266,8 +294,10 @@ extension AppState {
         } else if combinedDashboardBotWork[outgoingID] != nil {
             combinedDashboardBotWork.removeValue(forKey: outgoingID)
         }
-        if let pluginCapabilities {
-            combinedDashboardPluginCapabilities[outgoingID] = (ObjectIdentifier(bridge), pluginCapabilities)
+        if let pluginReport, case .reported(let version, let capabilities) = pluginReport.state {
+            combinedDashboardPluginCapabilities[outgoingID] = KeptPluginReport(
+                bridge: ObjectIdentifier(bridge), capabilities: capabilities, version: version, runtime: pluginReport.runtime
+            )
         }
         // Its profiles stay on Chats' strip too, from the list it had, and
         // its chats are read for All at once rather than on the next poll
@@ -338,13 +368,16 @@ extension AppState {
         // Its plugin report too, which a quiet sign-in's fresh runtime
         // hasn't read: the call's host tools ask it (location reads).
         if liveCallHolds(dashboard: id) {
-            keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client)
+            // A call still starting has no sessions to name yet.
+            if isLiveCallUp { keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client) }
             if kept.runtime.notifierPlugin.state == .unknown { readKeptPluginReport(kept, for: id) }
         }
         kept.client.onDisconnected = { [weak self, weak client = kept.client] in
             Task { @MainActor in
                 guard let self, let client,
                       self.keptDashboardRuntimes[id]?.client === client else { return }
+                // A call still starting on it has nothing to go on through.
+                self.endLiveCallStartLosingItsDashboard(id)
                 self.dropKeptDashboardRuntime(id, keepingLists: true)
                 // Dropped on its own (the network, the server restarting):
                 // down, and tried again while Conduit is on screen.
@@ -375,21 +408,25 @@ extension AppState {
             guard state != .unknown else { return }
             kept.runtime.notifierPlugin.state = state
             kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
-            if case .reported(_, let capabilities) = state {
-                self.combinedDashboardPluginCapabilities[id] = (ObjectIdentifier(kept.bridge), capabilities)
+            if let report = KeptPluginReport(bridge: ObjectIdentifier(kept.bridge), response: response) {
+                self.combinedDashboardPluginCapabilities[id] = report
                 self.noteDashboardHermesName(id, NotifierPluginStatus.hermesName(from: response))
             }
             if self.farChatDashboardID == id { self.objectWillChange.send() }
         }
     }
 
-    /// Ensures a kept runtime knows what its plugin serves (from cached
-    /// capabilities on the same bridge, or by reading its report).
+    /// Ensures a kept runtime knows what its plugin serves (from the report
+    /// cached for the same bridge, or by reading it). The cached report
+    /// carries the plugin's version and running state, so what's gated on a
+    /// version (the location voice tool, spoken answers by id) reads as it
+    /// does after a read of its own (issue 3209).
     func ensureKeptPluginReport(for id: UUID) {
         guard let kept = keptDashboardRuntimes[id], case .unknown = kept.runtime.notifierPlugin.state else { return }
         if let known = combinedDashboardPluginCapabilities[id],
            known.bridge == ObjectIdentifier(kept.bridge) {
-            kept.runtime.notifierPlugin.state = .reported(version: nil, capabilities: known.capabilities)
+            kept.runtime.notifierPlugin.state = .reported(version: known.version, capabilities: known.capabilities)
+            kept.runtime.notifierPlugin.runtime = known.runtime
             if farChatDashboardID == id { objectWillChange.send() }
         } else {
             readKeptPluginReport(kept, for: id)
@@ -409,7 +446,7 @@ extension AppState {
         // A live call going on here while another dashboard shows hears its
         // jobs' and its turns' events, as it does on screen (no-switch
         // stage 2, calls and voice).
-        if liveCallHolds(dashboard: id) {
+        if isLiveCallUp, liveCallHolds(dashboard: id) {
             voiceBackgroundJobSupervisor.observe(event)
             if isLocalLiveActive { localLiveTurns.observe(event) }
         }
@@ -556,9 +593,6 @@ extension AppState {
         settleKeptChatTurnsAfterDisconnect(of: id)
         closeKeptChats(of: id)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
-        // A surface showing it stops republishing a runtime that's gone.
-        let gone = ObjectIdentifier(kept.runtime)
-        surfaceRuntimeChanges = surfaceRuntimeChanges.filter { $0.value.runtime != gone }
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
         if !keepingLists { forgetCombinedDashboardLists(id) }
@@ -897,8 +931,19 @@ extension AppState {
         client.isConnected
     }
 
+    /// Lets a kept connection go, on every path that does: the drop, a
+    /// take-up that finds it closed, moved or out of the group, and a
+    /// socket that can't be handed to another profile.
     private func release(_ kept: KeptDashboardRuntime) {
         kept.client.disconnect()
         kept.bridge.invalidate()
+        // Its runtime says so: a scope still holding it (a far call's
+        // start, a far open mid-await) reads `isConnected` from it, and
+        // would go on against the released client (issue 3165).
+        kept.runtime.isConnected = false
+        kept.runtime.isConnecting = false
+        // A surface showing it stops republishing a runtime that's gone.
+        let gone = ObjectIdentifier(kept.runtime)
+        surfaceRuntimeChanges = surfaceRuntimeChanges.filter { $0.value.runtime != gone }
     }
 }

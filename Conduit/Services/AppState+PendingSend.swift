@@ -566,6 +566,12 @@ extension AppState {
     }
 }
 
+/// `AppState.chatRowsOnScreenKey`.
+struct ChatRowsOnScreenKey: Equatable {
+    let chat: ObjectIdentifier
+    let revision: UInt64
+}
+
 extension AppState {
     // MARK: - Sending while connecting: what reads private state
 
@@ -582,6 +588,13 @@ extension AppState {
     var chatRowsOnScreen: [ChatMessage] {
         guard showsOfflineChatCopy, let copy = offlineChatPresentation else { return messages }
         return copy.displayedMessages
+    }
+
+    /// Changes whenever `chatRowsOnScreen` may have: what a view keys on
+    /// instead of comparing the rows themselves, message by message, on
+    /// each update.
+    var chatRowsOnScreenKey: ChatRowsOnScreenKey {
+        ChatRowsOnScreenKey(chat: ObjectIdentifier(shownChat), revision: shownChat.rowsRevision)
     }
 
     /// A turn runs in the chat drawn: not in a chat picked in the saved

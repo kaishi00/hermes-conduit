@@ -18,7 +18,11 @@ Conduit declares, and one something in Conduit sets
 nothing to say so. Being text-level, the check can't tell whether that
 setter is inside a row or above the transcript, so a key set above the
 transcript is copied, never listed. A key set or applied from another key's
-value (`key = values.other`) fails too. SwiftUI's own keys are left to the
+value (`key = values.other`) fails too. For a key in SET_WHERE the check does
+know where: each surface named there sets it, inside the function, type or
+sheet named, to the value named (#3181: a room's row, a call's card sheet
+and a Pulse card each read their cards on their own dashboard, and a value
+set at the root never reaches a room's row). SwiftUI's own keys are left to the
 struct: the traits carry most of them, and it copies the rest.
 
 Text-level, like check-sheet-environment.py, whose Swift reader it uses.
@@ -42,6 +46,23 @@ SET_FROM_VALUES = re.compile(r"^\s*(\w+)\s*=\s*values\.(\w+)\b", re.MULTILINE)
 APPLIED = re.compile(r"\.environment\(\s*\\\.(\w+)\s*,")
 APPLIED_FROM_VALUES = re.compile(r"\.environment\(\s*\\\.(\w+)\s*,\s*values\.(\w+)\b")
 SET_INSIDE = re.compile(r"\bstatic\s+let\s+setInsideRows\s*=\s*\[([^\]]*)\]")
+
+# Keys the rows set themselves whose setters are named: {key: [(path, what
+# opens the scope, a regex; the value it's set to there)]}. The scope is the
+# first brace block after the opening, so a setter moved out of the row's own
+# function, or naming another dashboard, fails here rather than drawing a far
+# card that reads the wrong Hermes.
+SET_WHERE = {
+    "richCardHostDashboard": [
+        ("Conduit/Views/ChatView.swift", r"\bfunc\s+boardView\s*\(", "appState.richCardHostDashboard"),
+        ("Conduit/Views/GroupChatView.swift", r"\bfunc\s+roomRow\s*\(", "appState.activeRoomSurface?.dashboardID"),
+        ("Conduit/Views/V2/V2PulsePage.swift", r"\bfunc\s+lookBody\s*\(", "appState.pulseDashboardID"),
+        ("Conduit/Views/LiveVoiceCallJobs.swift", r"\bstruct\s+LiveVoiceScreenCardSheet\b",
+         "appState.voiceCallDashboardID"),
+        ("Conduit/Views/RootView.swift", r"\.sheet\(\s*item:\s*\$appState\.chatCallTranscript\s*\)",
+         "appState.richCardHostDashboard"),
+    ],
+}
 
 
 def _load_swift_reader():
@@ -74,6 +95,30 @@ def declared_keys(sources):
                 if depths[var.start()] == 1 and "static" not in line:
                     keys.setdefault(var.group(1), path)
     return keys
+
+
+def setter_problems(sources, set_where=None):
+    """A line for each surface in SET_WHERE that no longer sets its key, in
+    its own scope, to its own value."""
+    problems = []
+    for key, sites in sorted((SET_WHERE if set_where is None else set_where).items()):
+        for path, opening, value in sites:
+            if path not in sources:
+                problems.append(f"{path}: not found; it sets \\.{key} to {value}")
+                continue
+            text = swift.strip_comments(sources[path])
+            setter = re.compile(r"\.environment\(\s*\\\." + key + r"\s*,\s*" + re.escape(value) + r"\s*\)")
+            found = False
+            for scope in re.finditer(opening, text):
+                brace = text.find("{", scope.end())
+                if brace != -1 and setter.search(text[brace:swift.block_end(text, brace)]):
+                    found = True
+                    break
+            if not found:
+                problems.append(
+                    f"{path}: \\.{key} isn't set to {value} inside /{opening}/; its cards would read "
+                    f"another dashboard (SET_WHERE in scripts/check-transcript-environment.py)")
+    return problems
 
 
 def find_problems(sources):
@@ -140,7 +185,7 @@ def main(argv=None):
     parser.add_argument("--repo-root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     args = parser.parse_args(argv)
     sources = load_sources(args.repo_root)
-    problems = find_problems(sources)
+    problems = find_problems(sources) + setter_problems(sources)
     for problem in problems:
         print(problem)
     if problems:

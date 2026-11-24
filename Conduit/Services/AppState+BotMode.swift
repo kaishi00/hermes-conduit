@@ -638,9 +638,12 @@ extension AppState {
             // come through the decoder gets them here.
             botRoster = BotProfile.displayOrder(StarterFaces.assign(snapshot.bots))
             readUnreadBotsWork()
-            desktopGroupChats = snapshot.desktopGroups
+            // Published, and mostly the same each read (one comes with every
+            // return to Bots): each equal write was a redraw of every view
+            // reading AppState.
+            if desktopGroupChats != snapshot.desktopGroups { desktopGroupChats = snapshot.desktopGroups }
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
-            botModePhase = .available
+            if botModePhase != .available { botModePhase = .available }
             botRosterVerifiedForCurrentConnection = true
             botRosterRetry.succeeded()
             syncProfileAvatarsWithHermes(rosterWriteSerial: avatarWriteSerial)

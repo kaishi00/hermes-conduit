@@ -299,6 +299,8 @@ final class V2ShownUpdates: ObservableObject {
                 // Covered again before it drew: the next showing draws.
                 revealTask?.cancel()
                 revealTask = nil
+                revealEnd = nil
+                burstUntil = nil
                 // A burst's draw still waiting goes with it, so shown again
                 // the list draws at once, not when that wait runs out.
                 if drawScheduled {
@@ -313,18 +315,33 @@ final class V2ShownUpdates: ObservableObject {
             // missed, so a publish during the slide waits too.
             if revealDelay > 0 {
                 reveal()
-            } else if missedUpdate {
-                missedUpdate = false
-                draw()
+            } else {
+                if missedUpdate {
+                    missedUpdate = false
+                    draw()
+                }
+                resumeSettledWaiters()
             }
         }
     }
-    /// How long a list shown again waits to draw what it missed: the list
-    /// sets `popSlide` when a pop shows it, zero (at once) otherwise.
+    /// How long a list shown again waits at most to draw what it missed:
+    /// the list sets `popSlide` when a pop shows it, zero (at once)
+    /// otherwise. A pop's wait ends sooner, as the screen popped off it
+    /// goes (`routeLeft`).
     var revealDelay: TimeInterval = 0
-    /// About a pop's slide.
-    static let popSlide: TimeInterval = 0.45
+    /// The longest a pop's wait lasts. A pop's slide runs 0.45 s, a Bot
+    /// Chat's zoom back into its portrait 0.9 to 1.2 s (a device trace,
+    /// 2026-11-24); the wait ends with whichever as its screen goes.
+    static let popSlide: TimeInterval = 1.5
     private var revealTask: Task<Void, Never>?
+    private var revealEnd: AnyCancellable?
+    /// A screen pushed on a tab (a chat, a page) left the screen: posted by
+    /// the shell's routes as they disappear.
+    static let routeLeft = Notification.Name("conduit.v2RouteLeft")
+    /// After a pop's wait, what's published for this long (the reads it
+    /// held, answering one by one) draws once, at its end.
+    var popBurst: TimeInterval = 0.5
+    private var burstUntil: Date?
 
     /// The list's visibility changed: shown by a pop it waits out the
     /// slide; by a tab switch or a split change, nothing slides, so it
@@ -336,24 +353,94 @@ final class V2ShownUpdates: ObservableObject {
         if was.isShown, now.isShown, revealDelay == 0, revealTask != nil {
             revealTask?.cancel()
             revealTask = nil
+            revealEnd = nil
             if missedUpdate {
                 missedUpdate = false
                 passOn()
             }
+            resumeSettledWaiters()
         }
         isShown = now.isShown
     }
 
     private func reveal() {
         let delay = revealDelay
+        // The screen popped off it is gone: the slide or zoom is over. A
+        // turn later, outside the disappearance's own callback.
+        revealEnd = NotificationCenter.default.publisher(for: Self.routeLeft)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.endReveal() }
+            }
         revealTask = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self, !Task.isCancelled else { return }
-            revealTask = nil
-            guard missedUpdate else { return }
+            endReveal()
+        }
+    }
+
+    private func endReveal() {
+        guard revealTask != nil else { return }
+        revealTask?.cancel()
+        revealTask = nil
+        revealEnd = nil
+        if missedUpdate {
             missedUpdate = false
             passOn()
         }
+        burstUntil = now().addingTimeInterval(popBurst)
+        resumeSettledWaiters()
+    }
+
+    /// Within the burst after a pop's wait.
+    private var inBurst: Bool {
+        guard let burstUntil else { return false }
+        if now() < burstUntil { return true }
+        self.burstUntil = nil
+        return false
+    }
+
+    // MARK: Reads after a pop
+
+    /// Shown, and past a pop's slide.
+    var hasSettled: Bool { isShown && revealTask == nil }
+    private var settledWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    /// Returns once the list is shown and a pop's slide is over: the reads
+    /// it starts as it shows again (the roster, each bot's work, its rooms)
+    /// wait for this, so their work and publishes don't hold the slide's
+    /// main thread (a device trace, 2026-11-24: 150 to 300 ms at each pop).
+    /// Everything asked meanwhile runs together once it's over. A task
+    /// cancelled while it waits (the list covered again and gone) returns
+    /// at once; its caller checks `Task.isCancelled`.
+    func settled() async {
+        // Asked again after each wait: the list can be covered again
+        // between a waiter's release and its turn to run.
+        while !hasSettled, !Task.isCancelled {
+            let id = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    if hasSettled || Task.isCancelled {
+                        continuation.resume()
+                    } else {
+                        settledWaiters[id] = continuation
+                    }
+                }
+            } onCancel: {
+                Task { @MainActor [weak self] in self?.settledWaiters.removeValue(forKey: id)?.resume() }
+            }
+        }
+    }
+
+    deinit {
+        for waiter in settledWaiters.values { waiter.resume() }
+    }
+
+    private func resumeSettledWaiters() {
+        guard hasSettled, !settledWaiters.isEmpty else { return }
+        let waiters = settledWaiters
+        settledWaiters = [:]
+        for waiter in waiters.values { waiter.resume() }
     }
     /// Set by the list: a chat is open beside it.
     var coalesces = false
@@ -445,10 +532,11 @@ final class V2ShownUpdates: ObservableObject {
         // Covered, or shown again and still sliding in: it waits.
         guard isShown, revealTask == nil else { missedUpdate = true; return }
         guard !holdsForScroll() else { holdForScroll(); return }
-        guard coalesces else { draw(); return }
+        let burst = inBurst
+        guard coalesces || burst else { draw(); return }
         guard !drawScheduled else { return }
         drawScheduled = true
-        let delay = coalescingDelay
+        let delay = coalesces ? coalescingDelay : max(0, burstUntil?.timeIntervalSince(now()) ?? 0)
         drawTask = Task { @MainActor [weak self] in
             // Cancelled only when covered, which has already taken it off.
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
@@ -741,6 +829,7 @@ struct V2Shell: View {
     /// a Bot Chat still on its way stands down.
     private func standDownIfChatLeft() {
         guard !conversationPushed else { return }
+        ResponsivenessSignposts.signposter.emitEvent("Chat popped")
         appState.standDownBotChatOnItsWay()
     }
 
@@ -1480,6 +1569,8 @@ struct V2Shell: View {
                         Group {
                             if route == .pulse {
                                 tabBarClearance(V2PulsePageGate(appState: appState, root: false).equatable())
+                                    // As `destination`'s routes do: the list's wait ends as it goes.
+                                    .onDisappear { NotificationCenter.default.post(name: V2ShownUpdates.routeLeft, object: nil) }
                             } else {
                                 destination(route)
                             }
@@ -1570,6 +1661,14 @@ struct V2Shell: View {
     /// keep to its readable column (`listRoot`); a chat caps itself.
     @ViewBuilder
     private func destination(_ route: V2Route, alone: Bool = false) -> some View {
+        routeView(route, alone: alone)
+            // The list it covered waits for this to draw and read after a
+            // pop (`V2ShownUpdates.routeLeft`).
+            .onDisappear { NotificationCenter.default.post(name: V2ShownUpdates.routeLeft, object: nil) }
+    }
+
+    @ViewBuilder
+    private func routeView(_ route: V2Route, alone: Bool) -> some View {
         switch route {
         case .conversation:
             // Never a tab's held updates: a chat pushed over Bots Home
