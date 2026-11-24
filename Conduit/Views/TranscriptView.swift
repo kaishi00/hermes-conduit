@@ -49,6 +49,12 @@ struct TranscriptView: UIViewControllerRepresentable {
     /// The slide a Bot Chat and its workstream change places with, on a
     /// screen that shows both (`TranscriptSwapMotion`).
     var swapMotion: TranscriptSwapMotion? = nil
+    /// The rows wait unbuilt: a Bot Chat's cover hides the chat open
+    /// before, which the coming chat replaces (`AppState.botChatCoverBot`).
+    var holdsRows = false
+    /// The Bot Chat cover over this transcript, told once a chat's own rows
+    /// are laid out.
+    var coverFade: BotChatCoverFade? = nil
 
     func makeUIViewController(context: Context) -> TranscriptViewController {
         TranscriptViewController(appState: appState, scroller: scroller)
@@ -59,6 +65,7 @@ struct TranscriptView: UIViewControllerRepresentable {
         controller.layoutSettled = layoutSettled
         controller.pasteTarget = pasteTarget
         controller.swapMotion = swapMotion
+        controller.coverFade = coverFade
         let transaction = context.transaction
         controller.update(
             rows: rows,
@@ -67,7 +74,8 @@ struct TranscriptView: UIViewControllerRepresentable {
             insetsAnimation: transaction.disablesAnimations ? nil : transaction.animation,
             conversation: conversation,
             composerFloats: composerFloats,
-            renderedScope: renderedScope
+            renderedScope: renderedScope,
+            holdsRows: holdsRows
         )
     }
 
@@ -92,6 +100,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     private var rowEnvironment = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
     var rowContent: @MainActor (TranscriptRow) -> AnyView = { _ in AnyView(EmptyView()) }
     var layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void = { _ in }
+    weak var coverFade: BotChatCoverFade?
     /// Slides this transcript when its chat is swapped in place.
     var swapMotion: TranscriptSwapMotion? {
         didSet {
@@ -109,6 +118,13 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     private var rowsByID: [String: TranscriptRow] = [:]
     private var appliedRows: [TranscriptRow] = []
     private var appliedConversation: String?
+    /// The conversation the rows in the cells are, whose kept heights the
+    /// layout goes by: rows carried over from the chat left keep theirs.
+    private var rowsConversation: String?
+    /// The conversation whose own rows were drawn, and are to be told
+    /// laid out (`ownRowsLaidOut`) after the next pass, or were.
+    private var ownRowsToReport: String?
+    private var ownRowsReported: String?
     private var hasAppliedRows = false
     private var attached = false
     private var lastOffsetY: CGFloat = 0
@@ -226,7 +242,8 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         insetsAnimation: Animation?,
         conversation: String,
         composerFloats: Bool,
-        renderedScope: ChatRenderedScrollScope?
+        renderedScope: ChatRenderedScrollScope?,
+        holdsRows: Bool = false
     ) {
         // The rows need the data source viewDidLoad makes.
         loadViewIfNeeded()
@@ -253,15 +270,30 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
                 hosting.rootView.rowEnvironment = environment
             }
         }
-        layout.setScope("\(conversation)|\(environment.textScope)")
         applyInsets(insets, animation: insetsAnimation)
         applyEdgeEffect(composerFloats: composerFloats)
-        let conversationChanged = appliedConversation != nil && appliedConversation != conversation
-        if conversationChanged { chatLeft.chatChanged(showing: appliedRows) }
         appliedConversation = conversation
-        applyRows(rows, redrawingAll: conversationChanged)
-        showsRowsOfChatLeft = chatLeft.areStill(appliedRows)
-        rowsWereDrawn(conversationChanged: conversationChanged)
+        let pass = rowsPass.update(rows: rows, conversation: conversation, holds: holdsRows)
+        // Under a Bot Chat's cover nothing is built: the chat open before
+        // isn't shown, and the coming chat's rows follow.
+        if pass.action == .hold { return }
+        if pass.conversationChanged {
+            ownRowsReported = nil
+            ownRowsToReport = nil
+        }
+        if case .apply(let redrawingAll) = pass.action {
+            rowsConversation = conversation
+            layout.setScope("\(conversation)|\(environment.textScope)")
+            applyRows(rows, redrawingAll: redrawingAll)
+            if ownRowsReported != conversation {
+                ownRowsToReport = conversation
+                collectionView.setNeedsLayout()
+            }
+        } else if let rowsConversation {
+            layout.setScope("\(rowsConversation)|\(environment.textScope)")
+        }
+        showsRowsOfChatLeft = rowsPass.showsRowsOfChatLeft
+        rowsWereDrawn(conversationChanged: pass.conversationChanged)
         if renderedScope != pendingScope {
             pendingScope = renderedScope
             collectionView.setNeedsLayout()
@@ -271,7 +303,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     // MARK: - Swap slide (TranscriptSwapMotion)
 
     /// The rows as the chat changed, until the new chat's replace them.
-    private var chatLeft = TranscriptRowsOfChatLeft()
+    private var rowsPass = TranscriptRowsPass()
     private var showsRowsOfChatLeft = false
     var showsChatRows: Bool { !showsRowsOfChatLeft && appliedRows.contains(where: \.isChatRow) }
     var shownConversation: String? { appliedConversation }
@@ -429,6 +461,10 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
             snapshot.reconfigureItems(redrawn)
         }
         dataSource.apply(snapshot, animatingDifferences: false)
+        ResponsivenessSignposts.signposter.emitEvent(
+            "Transcript rows",
+            "\(rows.count, privacy: .public) rows, \(redrawn.count + changes.inserted.count, privacy: .public) drawn, all \(redrawingAll, privacy: .public)"
+        )
     }
 
     /// The same array, not only equal rows: an array shares its storage
@@ -547,6 +583,19 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         }
         dropParkedIfIdle()
         reportSettledScope()
+        reportOwnRows()
+    }
+
+    /// A chat's own rows are laid out: a Bot Chat's cover over them lifts
+    /// (`BotChatCoverFade`), on the next turn, outside this pass.
+    private func reportOwnRows() {
+        guard let conversation = ownRowsToReport else { return }
+        ownRowsToReport = nil
+        ownRowsReported = conversation
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.appliedConversation == conversation else { return }
+            self.coverFade?.ownRowsLaidOut()
+        }
     }
 
     /// The recorder's lines for the collection view's size (a rotation, a
@@ -959,5 +1008,59 @@ private struct TranscriptCellLayout: Layout {
             anchor: .topLeading,
             proposal: ProposedViewSize(width: bounds.width, height: nil)
         )
+    }
+}
+
+/// What a transcript does with the rows each update hands it.
+///
+/// Under a Bot Chat's cover it builds none (`holds`): the chat open before
+/// is about to be replaced, and laying out its rows there cost a device
+/// trace some 80 ms of the open (2026-11-24). Once the chat changed, the
+/// rows it's handed are still the chat left's for a pass or more
+/// (`TranscriptRowsOfChatLeft`): they aren't built again under the new
+/// conversation, but wait for the new chat's own, which then draw in full,
+/// as another conversation's rows do.
+struct TranscriptRowsPass {
+    enum Action: Equatable {
+        /// Nothing is built.
+        case hold
+        /// The chat left's rows stay as the cells have them.
+        case keepCarried
+        /// The rows are drawn: every one again when the cells hold another
+        /// conversation's.
+        case apply(redrawingAll: Bool)
+    }
+
+    private var chatLeft = TranscriptRowsOfChatLeft()
+    private var conversation: String?
+    private var rows: [TranscriptRow] = []
+    /// The chat changed while rows were held, not yet told.
+    private var changedWhileHeld = false
+    /// The cells hold another conversation's rows, or none of this one's.
+    private var owesRedraw = false
+    /// The rows handed in are still the chat left's.
+    private(set) var showsRowsOfChatLeft = false
+
+    /// `conversationChanged`: another chat's rows are handed in than last
+    /// drawn, told on the first pass that isn't held.
+    mutating func update(rows: [TranscriptRow], conversation: String, holds: Bool) -> (action: Action, conversationChanged: Bool) {
+        let changed = self.conversation != nil && self.conversation != conversation
+        if changed { chatLeft.chatChanged(showing: self.rows) }
+        self.conversation = conversation
+        self.rows = rows
+        if holds {
+            changedWhileHeld = changedWhileHeld || changed
+            return (.hold, false)
+        }
+        let conversationChanged = changed || changedWhileHeld
+        changedWhileHeld = false
+        if conversationChanged { owesRedraw = true }
+        showsRowsOfChatLeft = chatLeft.areStill(rows)
+        if owesRedraw, showsRowsOfChatLeft, rows.contains(where: \.isChatRow) {
+            return (.keepCarried, conversationChanged)
+        }
+        let redrawingAll = owesRedraw
+        owesRedraw = false
+        return (.apply(redrawingAll: redrawingAll), conversationChanged)
     }
 }

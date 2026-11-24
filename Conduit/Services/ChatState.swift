@@ -38,6 +38,7 @@ final class ChatState: ObservableObject {
     @Published var messages: [ChatMessage] = [] {
         didSet {
             transcriptRevision &+= 1
+            rowsRevision &+= 1
             let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
             if pendingClarifyMessageID != pendingClarify {
                 pendingClarifyMessageID = pendingClarify
@@ -51,6 +52,11 @@ final class ChatState: ObservableObject {
     }
     /// Bumped on every write to `messages`.
     @Published private(set) var transcriptRevision: UInt64 = 0
+    /// Bumped on every write to `messages` or `offlineChatPresentation`, the
+    /// two the chat view's rows (`AppState.chatRowsOnScreen`) are read from:
+    /// a cheap stand-in for comparing those rows. Not published: each write
+    /// that bumps it publishes already.
+    private(set) var rowsRevision: UInt64 = 0
     /// Cached once per transcript mutation so view updates do not rescan the full history.
     @Published private(set) var pendingClarifyMessageID: String?
     /// What that card is, for the jump button's words.
@@ -63,7 +69,9 @@ final class ChatState: ObservableObject {
     /// Retry, Edit, reactions, pins). Written through AppState's
     /// `offlineChatPresentation`, which also follows it with the chat on
     /// screen claim and a message waiting to send.
-    @Published var offlineChatPresentation: OfflineChatPresentation?
+    @Published var offlineChatPresentation: OfflineChatPresentation? {
+        didSet { rowsRevision &+= 1 }
+    }
     /// Persisted-history pagination window of the chat.
     /// Drives the "Load earlier messages" affordance; nil means the current
     /// transcript is either a legacy one-shot hydration or not persisted-
