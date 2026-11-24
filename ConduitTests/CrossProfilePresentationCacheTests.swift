@@ -4752,7 +4752,7 @@ extension CrossProfilePresentationCacheTests {
             profile: "atlas",
             sessionId: "unlisted-1",
             dashboardID: mac.id,
-            type: "clarify.needed",
+            type: "input.needed",
             decision: .clarify(requestId: "req-unlisted", question: "Continue?", choices: ["Yes", "No"])
         )
         script.error = RpcError(code: 4007, message: "Session not found")
@@ -4777,7 +4777,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.messages.contains { $0.role == .clarify })
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "unlisted-1")
         XCTAssertEqual(script.opened.last?.1, "unlisted-1")
-        XCTAssertEqual(script.opened.last?.2, "atlas")
+        XCTAssertEqual(appState.keptDashboardRuntimes[mac.id]?.client.profile, "atlas")
+
+        let unlistedLink = ConduitNotificationTarget(
+            profile: "atlas", sessionId: "unlisted-link-1", dashboardID: mac.id, type: nil, isChatLink: true
+        )
+        let unlistedLinkOutcome = await appState.openFarNotificationInPlace(unlistedLink, in: mac.id)
+        XCTAssertEqual(unlistedLinkOutcome, .opened)
+        XCTAssertEqual(appState.activeSessionId, "unlisted-link-1")
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
 
         // 5. Call pushes keep switching by ruling (even when targeting a room or listed chat).
         let callPush = ConduitNotificationTarget(
