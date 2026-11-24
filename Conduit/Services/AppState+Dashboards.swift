@@ -1003,12 +1003,15 @@ extension AppState {
         // Another dashboard's, acted on through its kept connection: the
         // switch counter follows the screen, which that dashboard was never
         // on, so a switch between two others would throw away an answer
-        // its own Hermes already acted on. Still kept on the same bridge
-        // is what says nothing replaced it; taken up to the screen or let
-        // go meanwhile, the answer is dropped as before.
+        // its own Hermes already acted on. Still kept on the same bridge,
+        // in the runtime this answer applies to, is what says nothing
+        // replaced it; taken up to the screen or let go meanwhile, the
+        // answer is dropped as before, also when the dashboard was kept
+        // again since: a visit hands the bridge on to a new runtime, and
+        // this scope still holds the retired one.
         if owner.isFar {
-            guard let id = owner.dashboardID else { return false }
-            return keptDashboardRuntimes[id]?.bridge === owner.bridge
+            guard let id = owner.dashboardID, let kept = keptDashboardRuntimes[id] else { return false }
+            return kept.bridge === owner.bridge && kept.runtime === shownRuntime
         }
         return owner.switchGeneration == dashboardSwitchGeneration
     }

@@ -4421,6 +4421,16 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(kept.runtime.notifierPlugin.servesLocationVoice, "version-gated voice tools aren't read as too old")
         XCTAssertTrue(kept.runtime.notifierPlugin.recordsSpokenQuestionAnswers)
 
+        // Kept again after a visit, the bridge is the same and the runtime
+        // is new: an answer still holding the earlier one is dropped.
+        appState.keptDashboardRuntimes[mac.id] = KeptDashboardRuntime(
+            client: kept.client, bridge: kept.bridge, connection: kept.connection, keptAt: Date()
+        )
+        XCTAssertFalse(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) },
+                       "an answer to an earlier keep doesn't land in a retired runtime")
+        appState.keptDashboardRuntimes[mac.id] = kept
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.ownsDashboardRuntime(farOwner) })
+
         // Let go, its runtime stops saying it's connected to a scope that
         // still holds it, and its answers no longer stand.
         XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.isConnected })
