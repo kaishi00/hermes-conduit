@@ -1313,9 +1313,9 @@ final class OfflineChatCacheStore {
         }
     }
 
-    /// Keeps a screen's answer for the route: memory has it at once, and
-    /// the file is written on the store's queue, so a removal after this
-    /// takes it too. Memory and the file both leave out credentials
+    /// Keeps a screen's answer for the route: memory has it once the
+    /// store's queue has taken its credentials out, and the file is
+    /// written there after it, so a removal after this takes it too. Memory and the file both leave out credentials
     /// (`withoutCredentials`, keeping the keys of the objects under
     /// `namesUnder`), and one too big to keep leaves memory again once the
     /// queue has measured it.
@@ -1323,14 +1323,24 @@ final class OfflineChatCacheStore {
         _ answer: [String: Any], route: String, dashboardID: UUID, profile: String, namesUnder names: Set<String> = []
     ) {
         let url = keptAnswerFileURL(route, dashboardID: dashboardID, profile: profile)
-        let kept = Self.withoutCredentials(answer, namesUnder: names)
         let generation = memoryLock.withLock { () -> UInt64 in
-            keepAnswerLocked(kept, at: url, bytes: nil)
             keptAnswerGeneration &+= 1
             keptAnswerGenerations[url] = keptAnswerGeneration
             return keptAnswerGeneration
         }
+        // Taking the credentials out walks the whole answer (a roster's
+        // every bot): on the store's queue, not the caller's main thread
+        // (a device trace, 2026-11-24: ~25 ms on a pop back to Bots). Memory
+        // takes it there, ahead of the file, unless a newer answer or a
+        // removal came first.
         perform { [self] in
+            let kept = Self.withoutCredentials(answer, namesUnder: names)
+            let current = memoryLock.withLock { () -> Bool in
+                guard keptAnswerGenerations[url] == generation else { return false }
+                keepAnswerLocked(kept, at: url, bytes: nil)
+                return true
+            }
+            guard current else { return }
             let bytes = writeKeptAnswer(kept, route: route, to: url)
             memoryLock.withLock {
                 guard keptAnswerGenerations[url] == generation, keptAnswers[url] != nil else { return }

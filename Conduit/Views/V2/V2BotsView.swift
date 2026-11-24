@@ -87,6 +87,9 @@ struct V2BotsView: View {
         // Another tab or a chat pushed over Bots Home holds its updates
         // back, as the Chats list (audit 1722).
         .onChange(of: visibility, initial: true) { was, now in
+            if now.isShown, !was.isShown {
+                ResponsivenessSignposts.signposter.emitEvent("Bots shown", "pop \(now.isPop(from: was), privacy: .public)")
+            }
             updates.follow(now, from: was)
         }
         // Beside an open chat, a streamed reply's bursts draw once, as

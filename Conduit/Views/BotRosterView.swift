@@ -138,7 +138,10 @@ struct BotRosterView: View {
         // probes them.
         .onChange(of: Self.isShown(in: shell)) { _, shown in
             if Self.probesGroupsOnShow(shown: shown, connected: appState.isConnected, phase: appState.groupChatPhase) {
-                Task { await appState.refreshGroupChatSupport() }
+                Task {
+                    await updates.settled()
+                    await appState.refreshGroupChatSupport()
+                }
             }
         }
         .onChange(of: canStartRoomHere) { _, can in
@@ -326,6 +329,9 @@ struct BotRosterView: View {
             Text(AppLocalization.string("This permanently removes the bot's profile, chats, memory and skills from the gateway.", table: .bots))
         }
         .task(id: rosterRefreshKey) {
+            // Not during a pop's slide (`V2ShownUpdates.settled`).
+            await updates.settled()
+            guard !Task.isCancelled else { return }
             await appState.refreshBotRoster()
             await appState.refreshGroupChatSupport()
         }
@@ -333,6 +339,8 @@ struct BotRosterView: View {
         // while the list is on screen (a hidden Bots tab stays mounted).
         .task(id: "\(rosterRefreshKey)|\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
+            await updates.settled()
+            guard !Task.isCancelled else { return }
             await appState.followLinkedRoomApprovalsOnScreen()
         }
         .onChange(of: createRequest?.wrappedValue ?? false) { _, requested in
@@ -1354,12 +1362,16 @@ struct BotRosterView: View {
         // next visit.
         .task(id: "\(botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
             guard botsHomeShowsLiveStatus else { return }
+            await updates.settled()
+            guard !Task.isCancelled else { return }
             await appState.readOtherCombinedDashboardsBots()
             // Their group chats too, under Group Chats (Eric, 2026-11-20).
             await appState.readOtherCombinedDashboardsRooms()
         }
         .task(id: "\(botsHomeShowsLiveStatus)|\(appState.isConnected)|\(visibleBotNames)") {
             guard botsHomeShowsLiveStatus, appState.isConnected else { return }
+            await updates.settled()
+            guard !Task.isCancelled else { return }
             await appState.runBotsHomeLiveStatus(bots: visibleBotNames)
         }
     }
