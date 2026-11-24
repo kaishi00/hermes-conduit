@@ -2597,6 +2597,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        // Its row is the one marked open on the Chats list; a row of this
+        // dashboard's under the same id isn't.
+        XCTAssertTrue(appState.isOpenChatRow(row), "its row is marked open")
+        var screensRow = row
+        screensRow.combinedDashboardID = nil
+        XCTAssertFalse(appState.isOpenChatRow(screensRow), "no row of the dashboard on screen is")
         XCTAssertEqual(seen.looked.last?.0, ObjectIdentifier(outgoing), "its bot looked up through the kept connection")
         XCTAssertEqual(seen.looked.last?.1, "atlas")
         XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing))
@@ -3716,6 +3722,15 @@ extension CrossProfilePresentationCacheTests {
             counts.mints += 1
             return "fresh-ticket"
         }
+        operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { _, _ in [BotChatLookupRow(id: "raiden-chat", title: BotMode.canonicalChatTitle)] }
+        operations.openSessionWithProfile = { _, sessionID, _, _ in
+            SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "raiden-1", role: .assistant, content: "Raiden here", timestamp: "ts-r1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
         let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
         func bot(_ name: String, hidden: Bool = false) -> BotProfile {
@@ -3820,16 +3835,38 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardBots[vps.id]?.bots.map(\.name), ["furina"])
         appState.combinedDashboardBots[vps.id] = nil
 
+        // Kept connected, its portrait's tap opens its Bot Chat in place,
+        // on its own runtime through the kept connection, with no switch.
+        let raidenKey = CombinedBotsHomeOrder.key(mac.id, "raiden")
+        let inPlaceRequests = appState.botChatOpenRequests
+        appState.openCombinedBot(section.bots[0], in: mac.id)
+        XCTAssertEqual(appState.botZoom.tapped, raidenKey, "the chat grows out of the portrait where it stands")
+        XCTAssertEqual(appState.botChatOpenRequests, inPlaceRequests &+ 1, "one tap, one request")
+        await waitUntil { appState.activeSessionId == "raiden-chat" && appState.messages.contains { $0.id == "raiden-1" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(counts.mints, 0, "no sign-in")
+        XCTAssertEqual(appState.botZoomKey(forBot: "Raiden"), "\(mac.id.uuidString)|raiden",
+                       "its zoom is keyed by the portrait in its dashboard's section")
+        // Its overview shows in place too, with the dashboard it's on.
+        var overview: (String, UUID?)?
+        appState.openCombinedBotOverview(section.bots[0], in: mac.id) { overview = ($0.name, $1) }
+        XCTAssertEqual(overview?.0, "raiden")
+        XCTAssertEqual(overview?.1, mac.id, "shown at once, on its own dashboard")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for its overview")
+
+        // Its kept connection let go, the tap switches there as before and
+        // opens its chat as a link does.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         let requestsBefore = appState.botChatOpenRequests
         appState.openCombinedBot(section.bots[0], in: mac.id)
-        XCTAssertEqual(appState.botZoom.tapped, "raiden", "the chat grows out of the portrait")
-        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
-        XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
+        XCTAssertEqual(appState.botZoom.tapped, "raiden", "the chat grows out of the portrait it becomes there")
+        await waitUntil { appState.activeDashboardID == mac.id }
+        XCTAssertEqual(appState.activeDashboardID, mac.id, "switched to its dashboard")
         // The tap's link carries the tap's own request (`counted:`), so the
         // open after the switch counts no second one (issue 2810).
         await waitUntil { appState.activeBotChatProfile == "raiden" || appState.linkedBotChatWaitingRequest != nil }
         XCTAssertEqual(appState.botChatOpenRequests, requestsBefore &+ 1, "one tap, one request")
-        XCTAssertEqual(counts.mints, 0, "no sign-in")
         XCTAssertTrue(appState.otherCombinedDashboardsBots.allSatisfy { $0.dashboardID != mac.id }, "on screen, its bots are Bots Home's own")
         // Signed out of, its bots go, even with no connection kept.
         appState.combinedDashboardBots[vps.id] = CombinedDashboardBots(
@@ -3956,13 +3993,43 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertFalse(leftStep, "the page left Mac's Pulse")
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
 
-        // A step that opens a chat there switches first, through the kept
-        // connection, until far chats open in place.
+        // A step that opens a task or starts Do it's chat there switches
+        // first, through the kept connection.
         appState.openCombinedPulse(mac.id)
         // A step from the one on screen's Pulse doesn't go on another's.
         let screensStep = await appState.switchForFarPulseStep(for: vps.id)
         XCTAssertFalse(screensStep, "the page shows Mac's now")
         XCTAssertEqual(appState.activeDashboardID, vps.id)
+        // A card's chat on Mac's Pulse opens as a chat link naming Mac is
+        // routed (in place through its kept connection), at the message it
+        // came from, with no switch here; Pulse's own chat opens nothing;
+        // the screen's own cards open as before.
+        let farCards: [[String: Any]] = [
+            ["id": 1, "kind": "followup", "level": "push", "news": "Deck", "chat_id": "far-work",
+             "profile": "work", "message_id": 42],
+            ["id": 3, "kind": "brief", "level": "push", "news": "Morning", "chat_id": "pulse_chat", "message_id": 7],
+        ]
+        let farJSON: [String: Any] = ["home_chat_id": "pulse_chat", "cards": farCards]
+        let farPage = try XCTUnwrap(PulseFeedPage(json: farJSON))
+        XCTAssertEqual(farPage.cards.count, 2)
+        kept.runtime.pulseHomeChatID = "pulse_chat"
+        let service = PushNotificationService.shared
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        XCTAssertFalse(appState.openFarPulseCardChat(farPage.cards[0], for: vps.id), "not the Pulse the page shows")
+        XCTAssertNil(service.pendingTarget)
+        XCTAssertTrue(appState.openFarPulseCardChat(farPage.cards[1], for: mac.id), "Pulse's own chat: nothing to open")
+        XCTAssertNil(service.pendingTarget)
+        XCTAssertNil(appState.pendingArtifactReveal)
+        XCTAssertTrue(appState.openFarPulseCardChat(farPage.cards[0], for: mac.id))
+        XCTAssertEqual(service.pendingTarget?.sessionId, "far-work")
+        XCTAssertEqual(service.pendingTarget?.dashboardID, mac.id, "routed to its own dashboard")
+        XCTAssertEqual(service.pendingTarget?.profile, "work")
+        XCTAssertEqual(service.pendingTarget?.isChatLink, true)
+        XCTAssertEqual(appState.pendingArtifactReveal?.messageID, 42)
+        XCTAssertEqual(appState.pendingArtifactReveal?.opening, "far-work")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        if let target = service.pendingTarget { service.clearPendingTarget(target) }
+        appState.pendingArtifactReveal = nil
         let stepGoes = await appState.switchForFarPulseStep(for: mac.id)
         XCTAssertTrue(stepGoes)
         XCTAssertEqual(appState.activeDashboardID, mac.id)

@@ -698,10 +698,16 @@ extension AppState {
 
     /// Whether `session` is the chat open now, by any id it goes by: a
     /// chat New Chat made is open under its runtime id and listed under its
-    /// stored one (issue 1454). Another profile's row in All never is, nor
-    /// another combined dashboard's.
+    /// stored one (issue 1454). Another profile's row in All never is.
+    /// Another combined dashboard's row is while its chat is the one open
+    /// in place (`farChatIsShown`), and then no row of this dashboard is,
+    /// whatever id it shares with it.
     func isOpenChatRow(_ session: SessionSummary) -> Bool {
-        guard let activeSessionId, !isOtherProfileRow(session), session.combinedDashboardID == nil else { return false }
+        if let dashboardID = session.combinedDashboardID, dashboardID != dashboardIDOnScreen {
+            return farChatIsShown(session, in: dashboardID)
+        }
+        guard let activeSessionId, farChat == nil, !isOtherProfileRow(session),
+              session.combinedDashboardID == nil else { return false }
         if session.id == activeSessionId
             || session.storedSessionId == activeSessionId
             || session.alternateIds.contains(activeSessionId) { return true }

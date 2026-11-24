@@ -4,8 +4,9 @@
 //
 //  All-live stage 4c: on Bots Home, each other combined dashboard's bots in
 //  the same grid as the dashboard on screen's, mixed in the group's one
-//  order and marked with their dashboard's badge. A portrait opens (through
-//  a switch to its dashboard, the portrait staying put) and moves by drag;
+//  order and marked with their dashboard's badge. A portrait opens (in
+//  place through its kept connection, else through a switch to its
+//  dashboard, the portrait staying put) and moves by drag;
 //  held over another's face, or another held over its, it starts a room
 //  that brings it from its own Hermes. The bot's menu is its own
 //  dashboard's, on its own Bots Home.
@@ -38,8 +39,9 @@ struct CombinedDashboardBotPortrait: View {
     let room: BotPortraitRoom
     /// A tap while a room is being started: in or out of it.
     let onToggleRoom: () -> Void
-    /// The ⓘ, and a pill other than Needs you: the switch to its
-    /// dashboard, then the bot's overview there.
+    /// The ⓘ, and a pill other than Needs you: the bot's overview, in
+    /// place when its dashboard is kept connected, else after the switch
+    /// there.
     let onOverview: () -> Void
     /// Its chats' waits (read through its kept connection), which its pill
     /// counts.
@@ -159,7 +161,9 @@ struct CombinedDashboardBotPortrait: View {
                 .filter { !$0.isEmpty }.joined(separator: ", ")))
             // While a room is being started, its tap puts it in or takes it
             // out, as this dashboard's portraits say.
-            .accessibilityHint(room.hint ?? AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
+            .accessibilityHint(room.hint ?? (appState.farBotChatRuntime(in: section.dashboardID) != nil
+                ? AppLocalization.string("Opens the chat, without switching", table: .chat)
+                : AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat)))
             .accessibilityAction(named: Text(BotStatusPill.overviewTitle)) { onOverview() }
             .accessibilityActions {
                 if case .needsYou = status, let wait = appState.combinedBotChatWaitThePillOpens(bot, in: section.dashboardID) {

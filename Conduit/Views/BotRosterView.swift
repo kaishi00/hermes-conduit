@@ -37,6 +37,9 @@ struct BotRosterView: View {
     @State private var presentedApproval: RoomApproval?
     /// The bot whose Bot Overview shows (Bots Home's ⓘ or status pill).
     @State private var overviewBot: BotProfile?
+    /// The combined dashboard the overview's bot is on, when it's another
+    /// one's shown in place; nil for this dashboard's bot.
+    @State private var overviewDashboardID: UUID?
     /// Edit Bot tapped in the overview: the editor opens once it's gone,
     /// since a sheet can't open over it from here.
     @State private var editAfterOverview: BotProfile?
@@ -265,21 +268,31 @@ struct BotRosterView: View {
             if connected, managementNotice == AppState.connectToChatWithBotsMessage { managementNotice = nil }
         }
         .sheet(item: $overviewBot, onDismiss: {
+            overviewDashboardID = nil
             if let bot = editAfterOverview {
                 editAfterOverview = nil
                 editorMode = .edit(bot)
             }
         }) { bot in
+            let far = overviewDashboardID
             BotOverviewSheet(
-                work: appState.botWork,
+                work: appState.workStore(for: far),
                 needsYou: appState.needsYou,
                 profile: bot.name,
-                onEdit: canManageBots ? { (edited: BotProfile) in
+                farDashboardID: far,
+                // Edit Bot is its own dashboard's (Settings stay per
+                // instance): not offered for another dashboard's bot.
+                onEdit: far == nil && canManageBots ? { (edited: BotProfile) in
                     editAfterOverview = edited
                     overviewBot = nil
                 } : nil,
                 onChat: {
                     overviewBot = nil
+                    // Another dashboard's bot: its Bot Chat in place.
+                    if let far {
+                        appState.openCombinedBot(bot, in: far, zooms: openBeside == nil)
+                        return
+                    }
                     appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
                     // Grows out of its portrait, as from a tap on it
                     // (Eric 2026-11-04), unless it opens beside the list.
@@ -293,7 +306,8 @@ struct BotRosterView: View {
                 // it and its Bot Chat shrink back into the portrait too. Its
                 // open (a link) says nothing when it fails, so a failed one
                 // leaves the arm to go stale (BotZoomArm.window).
-                onWillOpenWork: openBeside == nil ? { appState.botZoom.tap(bot.name) } : nil
+                onWillOpenWork: openBeside == nil
+                    ? { appState.botZoom.tap(far.map { CombinedBotsHomeOrder.key($0, bot.name) } ?? bot.name) } : nil
             )
             .environmentObject(appState)
         }
@@ -381,6 +395,12 @@ struct BotRosterView: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .conduitGlassSurface(cornerRadius: 18, tint: .yellow.opacity(0.10))
+    }
+
+    /// This dashboard's bot's overview.
+    private func showOverview(_ bot: BotProfile) {
+        overviewDashboardID = nil
+        overviewBot = bot
     }
 
     private var canManageBots: Bool {
@@ -602,7 +622,10 @@ struct BotRosterView: View {
                         ? .off : (newRoom.contains(item.id) ? .member : .notMember),
                     onToggleRoom: { toggleNewRoomFar(item.id) },
                     onOverview: {
-                        appState.openCombinedBotOverview(item.bot, in: section.dashboardID) { overviewBot = $0 }
+                        appState.openCombinedBotOverview(item.bot, in: section.dashboardID) { bot, far in
+                            overviewDashboardID = far
+                            overviewBot = bot
+                        }
                     },
                     needsYou: appState.needsYou,
                     onMoveEarlier: mixedStep(item.id, by: -1, shown: shown),
@@ -642,7 +665,7 @@ struct BotRosterView: View {
             BotLastReply(bot: bot, style: .card) {
                 appState.openBotChatFromHome(bot, zooms: openBeside == nil)
             }
-            BotsHomeWorkSection(bot: bot, work: appState.botWork) { overviewBot = bot }
+            BotsHomeWorkSection(bot: bot, work: appState.botWork) { showOverview(bot) }
         }
         .frame(maxWidth: 560)
         .frame(maxWidth: .infinity)
@@ -694,7 +717,7 @@ struct BotRosterView: View {
                 // group's mixed grid doesn't follow: there a drag does it.
                 actions: actions(for: bot, reorders: mixedKey == nil)
             ),
-            onOverview: { overviewBot = bot },
+            onOverview: { showOverview(bot) },
             // A hidden bot can't join a room, so its tap still opens its chat.
             room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
             onDrop: { dragged, merge in
