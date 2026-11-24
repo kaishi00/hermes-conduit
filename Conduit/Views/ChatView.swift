@@ -374,6 +374,9 @@ struct ChatView: View {
     /// The slide between a Bot Chat and its workstream, from the screen
     /// that shows both in place (V2's conversation screen).
     var swapMotion: TranscriptSwapMotion? = nil
+    /// The Bot Chat cover over this chat (V2's screen): while it hides the
+    /// chat open before, the transcript builds no rows.
+    var coverFade: BotChatCoverFade? = nil
 
     /// The chat-only text-size preference (issue #85). Local, device-only
     /// @AppStorage like ComposerReturnKey — never synced to Hermes or the
@@ -584,7 +587,9 @@ struct ChatView: View {
                     )
                 },
                 pasteTarget: .chat,
-                swapMotion: swapMotion
+                swapMotion: swapMotion,
+                holdsRows: coverFade != nil && appState.botChatCoverBot != nil,
+                coverFade: coverFade
             )
             .ignoresSafeArea()
         }
@@ -789,7 +794,10 @@ struct ChatView: View {
 
     private func transcriptObservers(content: some View) -> some View {
         content
-            .onChange(of: appState.chatRowsOnScreen) { _, _ in
+            // Keyed by the rows' revision: comparing the rows themselves,
+            // message by message, cost each update of a Bot Chat's open (a
+            // device trace, 2026-11-24).
+            .onChange(of: appState.chatRowsOnScreenKey) { _, _ in
                 scroller.transcriptChanged(
                     messages: appState.chatRowsOnScreen,
                     transcriptRevision: appState.chatTranscriptRevision,

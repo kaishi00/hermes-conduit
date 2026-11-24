@@ -177,6 +177,7 @@ struct V2ConversationScreen: View {
     /// Plays that slide on the transcript's own view, where it doesn't
     /// wait for the main thread the swap keeps busy.
     @State private var swapMotion = TranscriptSwapMotion()
+    @State private var coverFade = BotChatCoverFade()
     /// This Bot Chat grew out of its portrait on Bots Home.
     @Environment(\.botChatZoomed) private var botChatZoomed
     @Environment(\.dismiss) private var dismiss
@@ -232,7 +233,7 @@ struct V2ConversationScreen: View {
             // A Bot Chat and its workstreams share this screen: one's
             // transcript slides in over the other's as a push or a pop
             // would.
-            ChatView(swapMotion: swapMotion)
+            ChatView(swapMotion: swapMotion, coverFade: coverFade)
                 .environment(\.v2ComposerRests, true)
                 .environment(\.composerStaysExpanded, composerStaysExpanded)
         }
@@ -325,6 +326,8 @@ struct V2ConversationScreen: View {
             sidePanelFar = appState.farChat
             shownChat = chatShown(byOpenChatToo: true)
         }
+        // With "Chat popped" and "Bots shown", a pop's steps on a trace.
+        .onDisappear { ResponsivenessSignposts.signposter.emitEvent("Conversation disappeared") }
         .onChange(of: watchedChat) { old, new in
             let opened = old.openChat != new.openChat
             // The swap is heard of as the transcript draws the other chat,
@@ -532,8 +535,11 @@ struct V2ConversationScreen: View {
                 // widens with the window, its text a size or more larger as
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
-                // Under the cover, VoiceOver doesn't reach it either.
+                // Under the cover, VoiceOver doesn't reach it either: while
+                // the open is out, and while the cover waits for the coming
+                // chat's rows after it.
                 .accessibilityHidden(appState.botChatCoverBot != nil)
+                .modifier(HiddenUnderBotChatCover(shown: coverFade.shown))
             // A Bot Chat tapped in Bots is pushed before its open lands:
             // the chat open before, another bot's, stays under a cover
             // until then, and is never shown as the tapped bot's. Always in
@@ -541,13 +547,19 @@ struct V2ConversationScreen: View {
             // frame, and an inserted branch there grew the zoom push's view
             // update past the main thread's stack (Debug, iOS 27.3).
             // Hidden, it keeps the open bot's glow, so a fade out as the
-            // tapped bot's chat lands doesn't change color.
-            BotChatComingCover(bot: appState.botChatCoverBot ?? appState.activeBotChatProfile)
-                .opacity(appState.botChatCoverBot != nil ? 1 : 0)
-                .allowsHitTesting(appState.botChatCoverBot != nil)
-                .accessibilityHidden(appState.botChatCoverBot == nil)
+            // tapped bot's chat lands doesn't change color. It lifts once
+            // that chat's own rows are laid out, in Core Animation
+            // (`BotChatCoverFade`).
+            BotChatCoverHost(
+                fade: coverFade,
+                bot: appState.botChatCoverBot ?? appState.activeBotChatProfile,
+                coming: appState.botChatCoverBot,
+                openBotChat: appState.activeRoomSurface == nil ? appState.activeBotChatProfile : nil,
+                reduceMotion: reduceMotion,
+                appState: appState,
+                shell: shell
+            )
         }
-        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.botChatCoverBot)
         // The chat's column only: a drag in a panel beside it (Artifacts,
         // its divider, the Work panel's swipes) is that panel's.
         .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
@@ -1134,24 +1146,4 @@ private struct ArtifactSheetIDs: Identifiable {
     let ids: [String]
     var far: FarChatOwner?
     var tab: ArtifactsTab = .made
-}
-
-/// A Bot Chat's screen while its open is out and the active chat is still
-/// the one open before (`AppState.botChatComingOverAnother`): the bot's
-/// backdrop and that it's opening. It takes the taps, so nothing reaches
-/// the chat under it.
-private struct BotChatComingCover: View {
-    let bot: String?
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            V2Backdrop(glowProfile: bot)
-            ProgressView("Opening conversation…")
-                .scaledFont(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.top, 60)
-        }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
 }

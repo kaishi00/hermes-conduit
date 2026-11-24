@@ -293,7 +293,13 @@ extension DashboardTicketBridge {
     /// native sign-in jar (a silent re-sign-in lands there), and cookies
     /// issued to requests sent without the page.
     func cookiesForRequestsWithoutPage() async -> [HTTPCookie] {
-        var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
+        let dashboardID = dashboardID
+        // The Keychain read and its decode, and the native jar, off the main
+        // thread: on it they cost a pop back to Bots ~45 ms of its work
+        // reads (a device trace, 2026-11-24).
+        var cookies = await Task.detached(priority: .userInitiated) {
+            DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
+        }.value
         // WebKit's store may hold a newer cookie than the mirror, but on
         // screen, when the mirror already holds one, a slow store mustn't hold
         // the request up long: it answers in milliseconds there, and a 401 goes
@@ -311,7 +317,9 @@ extension DashboardTicketBridge {
         if let webKit {
             cookies += webKit
         }
-        cookies += DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []
+        cookies += await Task.detached(priority: .userInitiated) {
+            DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []
+        }.value
         cookies += backgroundIssuedCookies
         return Self.freshestCookies(cookies)
     }

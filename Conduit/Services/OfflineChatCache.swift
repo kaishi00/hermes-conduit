@@ -508,6 +508,9 @@ final class OfflineChatCacheStore {
     /// Which `recordAnswer` put each answer in memory, so the queue's size
     /// check only drops the one it measured.
     private var keptAnswerGenerations: [URL: UInt64] = [:]
+    /// How many `recordAnswer` writes are still on the queue per file, under
+    /// `memoryLock`: an eviction keeps a generation only for these.
+    private var keptAnswerWritesQueued: [URL: Int] = [:]
     private var keptAnswerGeneration: UInt64 = 0
     /// How many copies each scope has had read ahead since the last
     /// removal: a later ask for more (the profile switched to, after its
@@ -1324,9 +1327,9 @@ final class OfflineChatCacheStore {
         }
     }
 
-    /// Keeps a screen's answer for the route: memory has it at once, and
-    /// the file is written on the store's queue, so a removal after this
-    /// takes it too. Memory and the file both leave out credentials
+    /// Keeps a screen's answer for the route: memory has it once the
+    /// store's queue has taken its credentials out, and the file is
+    /// written there after it, so a removal after this takes it too. Memory and the file both leave out credentials
     /// (`withoutCredentials`, keeping the keys of the objects under
     /// `namesUnder`), and one too big to keep leaves memory again once the
     /// queue has measured it.
@@ -1334,14 +1337,33 @@ final class OfflineChatCacheStore {
         _ answer: [String: Any], route: String, dashboardID: UUID, profile: String, namesUnder names: Set<String> = []
     ) {
         let url = keptAnswerFileURL(route, dashboardID: dashboardID, profile: profile)
-        let kept = Self.withoutCredentials(answer, namesUnder: names)
         let generation = memoryLock.withLock { () -> UInt64 in
-            keepAnswerLocked(kept, at: url, bytes: nil)
             keptAnswerGeneration &+= 1
             keptAnswerGenerations[url] = keptAnswerGeneration
+            keptAnswerWritesQueued[url, default: 0] += 1
             return keptAnswerGeneration
         }
+        // Taking the credentials out walks the whole answer (a roster's
+        // every bot): on the store's queue, not the caller's main thread
+        // (a device trace, 2026-11-24: ~25 ms on a pop back to Bots). Memory
+        // takes it there, ahead of the file, unless a newer answer or a
+        // removal came first.
         perform { [self] in
+            defer {
+                memoryLock.withLock {
+                    let queued = (keptAnswerWritesQueued[url] ?? 1) - 1
+                    keptAnswerWritesQueued[url] = queued > 0 ? queued : nil
+                    // Nothing queued and not in memory: its generation has no reader left.
+                    if queued <= 0, keptAnswers[url] == nil { keptAnswerGenerations.removeValue(forKey: url) }
+                }
+            }
+            let kept = Self.withoutCredentials(answer, namesUnder: names)
+            let current = memoryLock.withLock { () -> Bool in
+                guard keptAnswerGenerations[url] == generation else { return false }
+                keepAnswerLocked(kept, at: url, bytes: nil)
+                return true
+            }
+            guard current else { return }
             let bytes = writeKeptAnswer(kept, route: route, to: url)
             memoryLock.withLock {
                 guard keptAnswerGenerations[url] == generation, keptAnswers[url] != nil else { return }
@@ -1590,7 +1612,12 @@ final class OfflineChatCacheStore {
         while let oldest = keptAnswerOrder.first, keptAnswerOrder.count > 1,
               keptAnswerOrder.count > Self.maxKeptAnswersInMemory
                 || keptAnswerBytes.values.reduce(0, +) > Self.maxKeptAnswerMemoryBytes {
+            // Memory lets it go, but an answer for it still on the queue
+            // (`recordAnswer`) is kept when its turn comes: only a removal
+            // or a newer answer stands it down.
+            let generation = keptAnswerWritesQueued[oldest] != nil ? keptAnswerGenerations[oldest] : nil
             forgetAnswerLocked(oldest)
+            keptAnswerGenerations[oldest] = generation
         }
     }
 
