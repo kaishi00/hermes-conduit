@@ -3789,6 +3789,9 @@ final class AppState: ObservableObject {
     /// or engine says so yet (`isLiveCallUp`). That dashboard's connection
     /// is held as a running call's is (issue 3164).
     var farCallStartsInFlight: [UUID: Int] = [:]
+    /// The dashboard whose far chat's resume after a quiet sign-in waits
+    /// for a call start there to end (`resumeFarChatAfterReconnect`).
+    var farChatResumeOwedAfterCallStart: UUID?
     /// The ended call's dashboard while its hand-back waits.
     var callDashboardHandingBack: UUID?
 

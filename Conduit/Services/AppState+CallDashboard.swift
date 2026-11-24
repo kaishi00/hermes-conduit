@@ -147,9 +147,12 @@ extension AppState {
     /// while the call was still starting there: no engine is up to go on
     /// and be signed in again for, so what the start began ends, and the
     /// start fails as on a dropped connection.
-    func endLiveCallStartLosingItsDashboard(_ id: UUID) {
-        guard farCallStartHolds(dashboard: id), liveCallDashboardID == id else { return }
+    /// Whether it ended one.
+    @discardableResult
+    func endLiveCallStartLosingItsDashboard(_ id: UUID) -> Bool {
+        guard farCallStartHolds(dashboard: id), liveCallDashboardID == id else { return false }
         endEveryLiveCall()
+        return true
     }
 
     /// The call's dashboard was let go (signed out, removed, left the
@@ -180,11 +183,20 @@ extension AppState {
         guard let runtime = farCallRuntime(dashboardID, profile: profile) else { return nil }
         // Held from here to the start's end (issue 3164).
         farCallStartsInFlight[dashboardID, default: 0] += 1
-        defer {
-            let left = (farCallStartsInFlight[dashboardID] ?? 1) - 1
-            farCallStartsInFlight[dashboardID] = left > 0 ? left : nil
-        }
+        defer { farCallStartEnded(dashboardID) }
         return await actAcrossAwaits(onRuntime: runtime, body)
+    }
+
+    /// A far start on this dashboard ran to its end. With the last one, a
+    /// far chat's resume the start held off goes ahead: its dashboard
+    /// signed in again under the start, on another profile than the chat's,
+    /// and the socket couldn't be handed to the chat's then.
+    func farCallStartEnded(_ dashboardID: UUID) {
+        let left = (farCallStartsInFlight[dashboardID] ?? 1) - 1
+        farCallStartsInFlight[dashboardID] = left > 0 ? left : nil
+        guard left <= 0, farChatResumeOwedAfterCallStart == dashboardID else { return }
+        farChatResumeOwedAfterCallStart = nil
+        resumeFarChatAfterReconnect(dashboardID)
     }
 
     /// Starts the phone's live call to `profile` on another combined
