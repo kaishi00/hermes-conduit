@@ -626,4 +626,13 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(model.hits.map(\.sessionID), ["own", "atlas", "nova"], "profile order, whatever answered first")
         XCTAssertFalse(model.isSearching)
     }
+
+    /// The Chats search's own matching (titles, previews, project names), desktop issue 399.
+    func testAChatsSearchIgnoresAccentsAndCaseBothWays() {
+        XCTAssertTrue("Reunião com André".matchesChatSearch("andre"))
+        XCTAssertTrue("Notes for Andre".matchesChatSearch("André"))
+        XCTAssertTrue("CONFIGURAÇÃO".matchesChatSearch("configuracao"))
+        XCTAssertFalse("naive".matchesChatSearch("nave"))
+        XCTAssertFalse("André".matchesChatSearch(""), "an empty query finds nothing; the list shows every chat without asking")
+    }
 }

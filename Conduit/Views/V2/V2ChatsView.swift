@@ -1409,10 +1409,10 @@ struct V2ChatsView: View {
     private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
         // The project name a result shows finds it too.
         [session.title, session.model, session.id, session.preview ?? "", category(session).label]
-            .contains { $0.localizedCaseInsensitiveContains(query) }
-            || projectTitle(for: session)?.localizedCaseInsensitiveContains(query) == true
+            .contains { $0.matchesChatSearch(query) }
+            || projectTitle(for: session)?.matchesChatSearch(query) == true
             // Another combined dashboard's chats by its name too.
-            || appState.combinedChatBadge(session)?.name.localizedCaseInsensitiveContains(query) == true
+            || appState.combinedChatBadge(session)?.name.matchesChatSearch(query) == true
     }
 
     private var isSearching: Bool {
@@ -2305,8 +2305,8 @@ struct V2ChatsView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return appState.projects }
         return appState.projects.filter { project in
-            project.title.localizedCaseInsensitiveContains(query)
-                || project.previewSessions.contains { $0.title.localizedCaseInsensitiveContains(query) }
+            project.title.matchesChatSearch(query)
+                || project.previewSessions.contains { $0.title.matchesChatSearch(query) }
         }
     }
 
