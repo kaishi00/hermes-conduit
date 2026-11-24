@@ -4831,9 +4831,10 @@ extension CrossProfilePresentationCacheTests {
         operations.persistedTranscript = { _, _, _ in .unavailable }
         operations.openSessionWithProfile = { client, sessionID, _, profile in
             seen.opened.append((ObjectIdentifier(client), sessionID, profile))
+            let host = client.connection.ticket == "vps-ticket" ? "vps" : "mac"
             return SessionResumeResult(
                 sessionId: sessionID,
-                messages: [ChatMessage(id: "msg-\(sessionID)", role: .assistant, content: "Reply from \(sessionID)", timestamp: "ts-1")],
+                messages: [ChatMessage(id: "msg-\(sessionID)-\(host)", role: .assistant, content: "Reply from \(host) \(sessionID)", timestamp: "ts-1")],
                 snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
             )
         }
@@ -4888,7 +4889,7 @@ extension CrossProfilePresentationCacheTests {
         // 1. Open Beside on a far row keeps local chat beside and opens far chat in place.
         XCTAssertTrue(appState.canOpenBeside(macRow))
         appState.openBeside(macRow)
-        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "msg-mac-1" } }
+        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "msg-mac-1-mac" } }
         XCTAssertEqual(appState.activeDashboardID, vps.id, "openBeside keeps screen dashboard active")
         XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
         XCTAssertNil(appState.besideChatOwner, "previous local chat stays beside under screen owner")
@@ -4900,7 +4901,7 @@ extension CrossProfilePresentationCacheTests {
         appState.swapBesideChat()
         await waitUntil {
             appState.activeSessionId == "vps-1" && appState.farChat == nil
-                && appState.messages.contains { $0.id == "msg-vps-1" }
+                && appState.messages.contains { $0.id == "msg-vps-1-vps" }
         }
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertEqual(appState.besideChatOwner, FarChatOwner(dashboardID: mac.id, profile: "default"))
@@ -4939,6 +4940,7 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil {
             appState.activeSessionId == "mac-1"
                 && appState.farChat == FarChatOwner(dashboardID: mac.id, profile: "default")
+                && appState.messages.contains { $0.id == "msg-mac-1-mac" }
                 && appState.windowChat(macWindowKey) == nil
         }
         XCTAssertEqual(appState.activeDashboardID, vps.id, "openWindowChatInMainWindow does not switch")
@@ -4949,6 +4951,7 @@ extension CrossProfilePresentationCacheTests {
         appState.openBeside(localRow)
         await waitUntil {
             appState.activeSessionId == "vps-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-vps-1-vps" }
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
         // Put vps-1 into a local window first, then open far shared-1 window before local shared-1.
@@ -4956,6 +4959,7 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil {
             appState.activeSessionId == "shared-1"
                 && appState.farChat == FarChatOwner(dashboardID: mac.id, profile: "default")
+                && appState.messages.contains { $0.id == "msg-shared-1-mac" }
         }
         XCTAssertNil(appState.besideChatOwner, "local vps-1 is beside")
         let localWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
@@ -4965,6 +4969,7 @@ extension CrossProfilePresentationCacheTests {
         appState.openBeside(localSharedRow)
         await waitUntil {
             appState.activeSessionId == "shared-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-shared-1-vps" }
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
         let farSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
@@ -4973,6 +4978,7 @@ extension CrossProfilePresentationCacheTests {
         appState.openBeside(macRow)
         await waitUntil {
             appState.activeSessionId == "mac-1" && appState.besideChatOwner == nil
+                && appState.messages.contains { $0.id == "msg-mac-1-mac" }
                 && appState.besideChat?.answers(to: "shared-1") == true
         }
         let localSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
@@ -4989,8 +4995,11 @@ extension CrossProfilePresentationCacheTests {
         appState.openBeside(localSharedRow)
         await waitUntil {
             appState.activeSessionId == "shared-1" && appState.farChat == nil
+                && appState.messages.contains { $0.id == "msg-shared-1-vps" }
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
+        XCTAssertEqual(try XCTUnwrap(appState.besideChat).answers(to: "mac-1"), true)
+        XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
 
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.besideChatIDs, "dropping Mac closes its far beside pane")
