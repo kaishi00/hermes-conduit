@@ -1,4 +1,6 @@
 import Combine
+import SwiftUI
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -5447,9 +5449,52 @@ extension CrossProfilePresentationCacheTests {
                        "switching back restores Mac's kept identity index")
     }
 
-    /// Beside/window composer identity keys, VoiceOver header labels, and
-    /// list seeding when `openKeptChatInMainColumn` hands the kept client across
-    /// profiles (#3207).
+    private final class MountedBesideChatModel: ObservableObject {
+        @Published var chat: BackgroundChat
+        init(chat: BackgroundChat) { self.chat = chat }
+    }
+
+    private struct MountedBesideChatHost: View {
+        @ObservedObject var model: MountedBesideChatModel
+        var body: some View {
+            V2BesideChatPane(chat: model.chat, windowKey: nil)
+        }
+    }
+
+    private func findEditableTextInput(in root: UIView) -> UIView? {
+        if let textView = root as? UITextView, textView.isEditable {
+            return textView
+        }
+        if let textField = root as? UITextField, textField.isEnabled {
+            return textField
+        }
+        for subview in root.subviews {
+            if let match = findEditableTextInput(in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func editableText(of control: UIView) -> String {
+        if let textView = control as? UITextView { return textView.text ?? "" }
+        if let textField = control as? UITextField { return textField.text ?? "" }
+        return ""
+    }
+
+    private func insertText(_ text: String, into control: UIView) {
+        if let textView = control as? UITextView {
+            _ = textView.becomeFirstResponder()
+            textView.insertText(text)
+        } else if let textField = control as? UITextField {
+            _ = textField.becomeFirstResponder()
+            textField.insertText(text)
+        }
+    }
+
+    /// Beside/window composer identity keys, VoiceOver header labels, mounted
+    /// `V2BesideChatPane` draft reset across owner changes, and list seeding when
+    /// `openKeptChatInMainColumn` hands the kept client across profiles (#3207).
     func testFarBesideComposerIdentityAccessibilityAndListReseedAcrossProfiles() async throws {
         let dashA = UUID()
         let dashB = UUID()
@@ -5520,6 +5565,60 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(handedWorkRuntime.sessions.map(\.id), ["mac-default-1"])
         XCTAssertNil(handedWorkRuntime.sessions.first?.combinedDashboardID)
         XCTAssertEqual(appState.act(onRuntime: handedWorkRuntime) { appState.sessions.map(\.id) }, ["mac-default-1"])
+
+        // Mounted V2BesideChatPane resets composer draft when dashboardID or profile changes
+        // even while sessionIDs remains identical (#3207).
+        let chatMacDefault = BackgroundChat(
+            sessionIDs: ["shared-1"], durableSessionID: "shared-1", title: "Shared",
+            dashboardID: mac.id, profile: "default", isBotChat: false, state: ChatState()
+        )
+        let chatVpsDefault = BackgroundChat(
+            sessionIDs: ["shared-1"], durableSessionID: "shared-1", title: "Shared",
+            dashboardID: vps.id, profile: "default", isBotChat: false, state: ChatState()
+        )
+        let chatVpsWork = BackgroundChat(
+            sessionIDs: ["shared-1"], durableSessionID: "shared-1", title: "Shared",
+            dashboardID: vps.id, profile: "work", isBotChat: false, state: ChatState()
+        )
+        let mountedModel = MountedBesideChatModel(chat: chatMacDefault)
+        let host = UIHostingController(rootView: MountedBesideChatHost(model: mountedModel).environmentObject(appState))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 420, height: 600))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        addTeardownBlock { @MainActor in
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+
+        await waitUntil { [self] in
+            host.view.layoutIfNeeded()
+            return findEditableTextInput(in: window) != nil
+        }
+        let firstInput = try XCTUnwrap(findEditableTextInput(in: window))
+        insertText("Draft on Mac", into: firstInput)
+        XCTAssertEqual(editableText(of: firstInput), "Draft on Mac")
+
+        mountedModel.chat = chatVpsDefault
+        await waitUntil { [self] in
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            guard let current = findEditableTextInput(in: window) else { return false }
+            return editableText(of: current).isEmpty
+        }
+        let secondInput = try XCTUnwrap(findEditableTextInput(in: window))
+        XCTAssertEqual(editableText(of: secondInput), "", "changing dashboardID resets kept composer draft")
+
+        insertText("Draft on VPS", into: secondInput)
+        XCTAssertEqual(editableText(of: secondInput), "Draft on VPS")
+        mountedModel.chat = chatVpsWork
+        await waitUntil { [self] in
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            guard let current = findEditableTextInput(in: window) else { return false }
+            return editableText(of: current).isEmpty
+        }
+        let thirdInput = try XCTUnwrap(findEditableTextInput(in: window))
+        XCTAssertEqual(editableText(of: thirdInput), "", "changing profile resets kept composer draft")
     }
 
     /// Far room notifications handle kept-runtime replacement, navigation
@@ -5791,7 +5890,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(store.loadPendingSends(dashboardID: mac.id).count, 1)
 
         // Even with idle turn state on screen, settling waits until Mac's kept runtime connects.
+        // Drain the check scheduled by `sendWhenConnected` while Mac is still down so delivery
+        // below proves `AppState.isConnected`'s forwarder schedules its own check.
         appState.turnState = .idle
+        await waitUntil { !appState.shownChat.pendingComposerSendCheckScheduled }
         appState.settlePendingComposerSend()
         XCTAssertNotNil(appState.pendingComposerSend)
         XCTAssertTrue(seen.sent.isEmpty)
@@ -5817,6 +5919,8 @@ extension CrossProfilePresentationCacheTests {
         appState.turnState = .reconnecting
         XCTAssertTrue(appState.sendWhenConnected("Send after quiet reconnect", replyReference: nil))
         XCTAssertEqual(store.loadPendingSends(dashboardID: mac.id).count, 1)
+        await waitUntil { !appState.shownChat.pendingComposerSendCheckScheduled }
+        XCTAssertNotNil(appState.pendingComposerSend)
 
         kept.runtime.isConnected = true
         appState.resumeFarChatAfterReconnect(mac.id)
