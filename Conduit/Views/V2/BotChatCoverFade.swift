@@ -82,6 +82,8 @@ final class BotChatCoverFade {
     /// How long the cover waits for the open chat's rows once it's open.
     var cap: Duration = .milliseconds(600)
     private var capTask: Task<Void, Never>?
+    /// Whether the cover is up, for the chat under it (`HiddenUnderBotChatCover`).
+    let shown = BotChatCoverShown()
 
     static let key = "conduit.botChatCover"
 
@@ -136,7 +138,7 @@ final class BotChatCoverFade {
         // under it, and VoiceOver reads only it.
         cover.isUserInteractionEnabled = shown
         cover.accessibilityElementsHidden = !shown
-        cover.accessibilityViewIsModal = shown
+        publishShown()
         let layer = cover.layer
         let from = layer.presentation()?.opacity ?? layer.opacity
         let to: Float = shown ? 1 : 0
@@ -153,6 +155,20 @@ final class BotChatCoverFade {
         if flushes { CATransaction.flush() }
     }
 
+    /// Published after the view update this may run inside, as `lift` has
+    /// it by then.
+    private func publishShown() {
+        guard !publishesShown else { return }
+        publishesShown = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.publishesShown = false
+            if self.shown.covers != self.lift.shows { self.shown.covers = self.lift.shows }
+        }
+    }
+
+    private var publishesShown = false
+
     static func fade(from: Float, to: Float, reduceMotion: Bool) -> CABasicAnimation {
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = from
@@ -162,6 +178,24 @@ final class BotChatCoverFade {
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         fade.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
         return fade
+    }
+}
+
+/// Whether a Bot Chat's cover is up, the row wait after the open switched
+/// chats included, when `AppState.botChatCoverBot` is already nil.
+@MainActor
+final class BotChatCoverShown: ObservableObject {
+    @Published var covers = false
+}
+
+/// Keeps the chat under a Bot Chat's cover from VoiceOver while the cover
+/// is up. A modifier of its own, so the cover's lift redraws only this and
+/// not the conversation screen.
+struct HiddenUnderBotChatCover: ViewModifier {
+    @ObservedObject var shown: BotChatCoverShown
+
+    func body(content: Content) -> some View {
+        content.accessibilityHidden(shown.covers)
     }
 }
 

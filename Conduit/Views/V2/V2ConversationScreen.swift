@@ -535,8 +535,11 @@ struct V2ConversationScreen: View {
                 // widens with the window, its text a size or more larger as
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
-                // Under the cover, VoiceOver doesn't reach it either.
+                // Under the cover, VoiceOver doesn't reach it either: while
+                // the open is out, and while the cover waits for the coming
+                // chat's rows after it.
                 .accessibilityHidden(appState.botChatCoverBot != nil)
+                .modifier(HiddenUnderBotChatCover(shown: coverFade.shown))
             // A Bot Chat tapped in Bots is pushed before its open lands:
             // the chat open before, another bot's, stays under a cover
             // until then, and is never shown as the tapped bot's. Always in

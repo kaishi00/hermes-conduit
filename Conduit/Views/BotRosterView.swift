@@ -112,6 +112,9 @@ struct BotRosterView: View {
                     // dashboards' rosters too, so their bots replace it.
                     .task(id: "\(createRequest != nil && botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
                         guard createRequest != nil, botsHomeShowsLiveStatus else { return }
+                        // Not during a pop's slide (`V2ShownUpdates.settled`).
+                        await updates.settled()
+                        guard !Task.isCancelled else { return }
                         await appState.readOtherCombinedDashboardsBots()
                         await appState.readOtherCombinedDashboardsRooms()
                     }
