@@ -4514,7 +4514,7 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.activeSessionId == "far-atlas" && appState.messages.contains { $0.id == "msg-far-atlas" } }
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for far Bot Chat wait")
         XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "default"))
-        XCTAssertEqual(appState.activeBotChatProfile, "atlas")
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas")
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "far-atlas")
         XCTAssertEqual(seen.looked.last?.1, "atlas")
 
