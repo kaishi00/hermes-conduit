@@ -661,6 +661,13 @@ extension HermesVoiceConfigurationServiceTests {
         let savedStreaming = await service.saveLiveTranscription(true)
         XCTAssertTrue(savedStreaming)
         XCTAssertEqual((kept.saved["/api/config"]?["stt"] as? [String: Any])?["streaming"] as? Bool, true)
+
+        // A cleared value is gone from what's kept, as it is from the file (issue 3155).
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true, "removed": ["tts.edge.voice"]]
+        let cleared = await service.save(value: "", for: "tts.edge.voice")
+        XCTAssertTrue(cleared)
+        let keptTTS = kept.saved["/api/config"]?["tts"] as? [String: Any]
+        XCTAssertNil((keptTTS?["edge"] as? [String: Any])?["voice"])
     }
 
     /// Speech to text's speech server opens on the status last read, and

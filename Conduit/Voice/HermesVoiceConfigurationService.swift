@@ -563,10 +563,6 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
-    /// Every speech server value the plugin reads: cleared as "" or false,
-    /// never removed (see saveSpeechServer).
-    static let speechServerPrefix = "voice.speech_server."
-
     /// Has the plugin run every turn on the speech server
     /// (`voice.speech_server.drive_turns`), written as a Boolean, false
     /// when off.
