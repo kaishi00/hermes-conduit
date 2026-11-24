@@ -170,9 +170,10 @@ extension AppState {
     func openFarPulseCardChat(_ card: PulseCard, for dashboard: UUID?) -> Bool {
         guard let id = dashboard, id != dashboardIDOnScreen, pulseDashboardID == id,
               let runtime = runtime(for: id) else { return false }
-        // What the card names, as its own Pulse reads it.
+        // What the card names, as its own Pulse reads it, its profile
+        // spelled as that dashboard lists it (its default is its own).
         let (hasChat, profile) = act(onRuntime: runtime) {
-            (pulseCardHasChat(card), card.profile.isEmpty ? pulseHomeProfile : card.profile)
+            (pulseCardHasChat(card), notificationProfileID(card.profile.isEmpty ? pulseHomeProfile : card.profile))
         }
         guard hasChat else { return true }
         let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
@@ -184,7 +185,7 @@ extension AppState {
         // and nothing waits to scroll.
         if let workstreamProfile = runtime.botWork.workstreamProfile(forSession: [card.chatID]) {
             let open = openFarWorkstreamInPlace(
-                card.chatID, profile: notificationProfileID(profile) ?? workstreamProfile, in: id
+                card.chatID, profile: profile ?? workstreamProfile, in: id
             )
             if open == nil, pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
             return true
@@ -193,7 +194,7 @@ extension AppState {
         // switch it falls back to is refused during one.
         PushNotificationService.shared.routeChatLink(
             ConduitNotificationTarget(
-                profile: notificationProfileID(profile), sessionId: card.chatID, dashboardID: id, type: nil, isChatLink: true
+                profile: profile, sessionId: card.chatID, dashboardID: id, type: nil, isChatLink: true
             )
         )
         return true
