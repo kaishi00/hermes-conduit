@@ -560,8 +560,10 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         // Hermes' PUT keeps a key left out of it: the plugin takes it out
         // first (issue 3155).
         XCTAssertEqual(requester.unsetKeys, [["stt.use_gateway"]])
+        // After the save, so a save that fails leaves the old provider
+        // with its routing.
         let order = requester.recorded.filter { $0.method != "GET" }.map(\.path)
-        XCTAssertEqual(Array(order.suffix(2)), [HermesVoiceConfigurationService.configUnsetPath, "/api/config"])
+        XCTAssertEqual(Array(order.suffix(2)), ["/api/config", HermesVoiceConfigurationService.configUnsetPath])
     }
 
     /// A plugin without the unset route (before 0.195.8) still gets the
@@ -967,25 +969,50 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertEqual(service.snapshot.values["tts.openai.voice"], "nova")
     }
 
-    /// A speech server value is cleared as "" in Hermes' own save, which
-    /// the plugin reads as unset; the unset route takes only stt and tts.
-    func testClearingASpeechServerValueStaysInHermesSave() async throws {
+    /// A value the plugin reads (the speech server's, Local Live's fast
+    /// model and its key) is cleared as "" in Hermes' own save, which the
+    /// plugin reads as unset; the unset route takes only stt and tts.
+    func testClearingAValueThePluginReadsStaysInHermesSave() async throws {
+        for (key, path) in [("voice.speech_server.model", ["speech_server", "model"]),
+                            ("voice.local_live.front_model.api_key", ["local_live", "front_model", "api_key"])] {
+            let requester = MockVoiceConfigurationRequester()
+            requester.routes = [
+                "/api/config": ["voice": ["speech_server": ["model": "own"], "local_live": ["front_model": ["api_key": "sk-old"]]]],
+                "/api/tools/toolsets/stt/config": ["providers": []],
+                "/api/tools/toolsets/tts/config": ["providers": []]
+            ]
+            let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+            await service.reload()
+
+            let saved = await service.save(value: "", for: key)
+
+            XCTAssertTrue(saved, key)
+            XCTAssertEqual(requester.unsetKeys.count, 0, key)
+            let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
+            var value: Any? = (configPUT?.body?["config"] as? [String: Any])?["voice"]
+            for part in path { value = (value as? [String: Any])?[part] }
+            XCTAssertEqual(try XCTUnwrap(value as? String, key), "", key)
+        }
+    }
+
+    /// A provider save that fails leaves the stale routing where it was:
+    /// the plugin is asked only after the save.
+    func testLegacyVendorFallbackKeepsUseGatewayWhenTheSaveFails() async {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = [
-            "/api/config": ["voice": ["speech_server": ["model": "own"]]],
+            "/api/config": ["stt": ["provider": "stepfun", "use_gateway": true], "tts": ["provider": "edge"]],
             "/api/tools/toolsets/stt/config": ["providers": []],
-            "/api/tools/toolsets/tts/config": ["providers": []]
+            "/api/tools/toolsets/tts/config": ["providers": []],
+            HermesVoiceConfigurationService.configUnsetPath: ["ok": true]
         ]
+        requester.failingPUTPaths = ["/api/config"]
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
-        let saved = await service.save(value: "", for: "voice.speech_server.model")
+        let saved = await service.saveProvider("groq", kind: .stt)
 
-        XCTAssertTrue(saved)
+        XCTAssertFalse(saved)
         XCTAssertEqual(requester.unsetKeys.count, 0)
-        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
-        let voice = try XCTUnwrap((configPUT?.body?["config"] as? [String: Any])?["voice"] as? [String: Any])
-        XCTAssertEqual((voice["speech_server"] as? [String: Any])?["model"] as? String, "")
     }
 
     /// A failed clear must leave the snapshot matching the server: the

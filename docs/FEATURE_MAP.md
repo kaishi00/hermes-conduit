@@ -6645,14 +6645,14 @@ outside it, see Plugin settings, #2011) · clearing a Hermes speech field and a 
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
-- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveSpeechServerDrivesTurns, saveSpeechServerOwnModel, saveSpeechServer, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote; unsetConfig and configUnsetPath, the plugin's key removal), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
+- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveSpeechServerDrivesTurns, saveSpeechServerOwnModel, saveSpeechServer, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote; unsetConfig, configUnsetPath and hermesSpeechPrefixes, the plugin's key removal), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
 - AppState: `Conduit/Services/AppState+ProfileConfig.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setProfileSetting), `Conduit/Services/AppState+HelperModels.swift` (setVoiceReplyModel, setHelperModel), `Conduit/Services/AppState+Capabilities.swift` (toggleSkill, toggleToolset)
 - Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig, serverConfig and saveServer: Edit Server's read, and its read and whole-map write in one turn)
 - Gateway RPCs: `Conduit/Services/HermesClient.swift` (configureBotProfile, configureBotModel, addBotMcpServer, addMcpServer, setBusyInputMode)
 - Plugin update: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater install and update requests)
 - Custom endpoints: `Conduit/Services/ProviderSettings.swift` (ProviderSettingsService's save(endpoint:) and remove(endpoint:))
 - Key removal: `notifier/dashboard/api/config_unset.py` (unset_config_keys, `POST /config/unset`)
-- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`, `ConduitTests/HermesVoiceConfigurationServiceTests.swift` (the clearing tests, testClearingOnAPluginWithoutTheRouteAsksForAnUpdate, the legacy vendor fallback's), `notifier/tests/test_config_unset.py`, `notifier/upstream/test_config_unset.py` (against a real Hermes)
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`, `ConduitTests/HermesVoiceConfigurationServiceTests.swift` (the clearing tests, testClearingOnAPluginWithoutTheRouteAsksForAnUpdate, the legacy vendor fallback's), `notifier/tests/test_config_unset.py`, `notifier/upstream/test_speech_config_unset.py` (against a real Hermes)
 
 **Rulings**
 - Every profile config write, whichever page or service makes it, runs in the one app-wide queue, one at a time; a failed one doesn't hold up the next (2026-10-24, #1222, from #1004).
@@ -6665,7 +6665,7 @@ CarPlay don't write a profile's config, and the host-run plugin update
 (`/self/update`) runs as a job on the host that changes the plugin's files,
 not the config.
 - Hermes' `PUT /api/config` merges what it's sent over the file, so a key a save leaves out keeps its old value. A value the plugin reads (`voice.speech_server.*`) is cleared by saving `false` or `""`, which it reads as unset, never by taking the key out (issue 3153, #3154, desktop#387).
-- A key Hermes itself reads with a default only when it's absent (a speech provider's model, voice, language, endpoint or speed, a stale `use_gateway`) is taken out by the plugin's `POST /config/unset` (plugin 0.195.8), which removes it from the file as written under Hermes' config lock, in the queue like any save. The route takes keys under `stt` and `tts` only. On a plugin without it, clearing a field fails and says to update the plugin, rather than showing a field cleared that isn't; a provider pick still saves and leaves the stale `use_gateway`, as before (issue 3155, 2026-11-24, #3242).
+- A key Hermes itself reads with a default only when it's absent (a speech provider's model, voice, language, endpoint or speed, a stale `use_gateway`) is taken out by the plugin's `POST /config/unset` (plugin 0.195.8), which removes it from the file as written under Hermes' config lock, in the queue like any save. The route takes keys under `stt` and `tts` only. On a plugin without it, clearing a field fails and says to update the plugin, rather than showing a field cleared that isn't; a provider pick still saves and leaves the stale `use_gateway`, as before. A pick asks for `use_gateway` to go only after its save, so a save that fails leaves the old provider with its routing. Every other value these pages clear is one the plugin reads (`voice.speech_server.*`, `voice.local_live.front_model.*`) and is saved as `""` (issue 3155, 2026-11-24, #3242).
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
