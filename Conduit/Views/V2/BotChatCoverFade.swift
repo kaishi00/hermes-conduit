@@ -186,6 +186,9 @@ struct BotChatCoverHost: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: BotChatCoverController, context: Context) {
+        // Its view first: `viewDidLoad` hides the cover, and run after this
+        // had shown it, it would hide a cover that is meant to show.
+        controller.loadViewIfNeeded()
         // A hosting controller of its own doesn't inherit the screen's
         // environment: the in-app language (the root's locale) and what the
         // cover's text reads come along by hand.

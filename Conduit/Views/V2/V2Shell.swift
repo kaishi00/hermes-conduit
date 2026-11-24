@@ -414,18 +414,21 @@ final class V2ShownUpdates: ObservableObject {
     /// cancelled while it waits (the list covered again and gone) returns
     /// at once; its caller checks `Task.isCancelled`.
     func settled() async {
-        guard !hasSettled else { return }
-        let id = UUID()
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                if hasSettled || Task.isCancelled {
-                    continuation.resume()
-                } else {
-                    settledWaiters[id] = continuation
+        // Asked again after each wait: the list can be covered again
+        // between a waiter's release and its turn to run.
+        while !hasSettled, !Task.isCancelled {
+            let id = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    if hasSettled || Task.isCancelled {
+                        continuation.resume()
+                    } else {
+                        settledWaiters[id] = continuation
+                    }
                 }
+            } onCancel: {
+                Task { @MainActor [weak self] in self?.settledWaiters.removeValue(forKey: id)?.resume() }
             }
-        } onCancel: {
-            Task { @MainActor [weak self] in self?.settledWaiters.removeValue(forKey: id)?.resume() }
         }
     }
 
@@ -1566,6 +1569,8 @@ struct V2Shell: View {
                         Group {
                             if route == .pulse {
                                 tabBarClearance(V2PulsePageGate(appState: appState, root: false).equatable())
+                                    // As `destination`'s routes do: the list's wait ends as it goes.
+                                    .onDisappear { NotificationCenter.default.post(name: V2ShownUpdates.routeLeft, object: nil) }
                             } else {
                                 destination(route)
                             }
