@@ -79,12 +79,28 @@ extension AppState {
     /// what its plugin keeps.
     func refreshFarChatMarks(_ dashboardID: UUID, profiles: [String], force: Bool = false, now: Date = Date()) {
         guard dashboardID != dashboardIDOnScreen, let kept = keptDashboardRuntimes[dashboardID] else { return }
+        // One signed in quietly hasn't read what its plugin serves: the
+        // report its bridge already gave, or a read whose answer the next
+        // pass finds.
+        ensureKeptPluginReport(for: dashboardID)
         let plugin = kept.runtime.notifierPlugin
         if V2ShellPreference.isOn, plugin.reports(ChatDoneMarks.capability) {
             readChatDoneMarks(dashboardID: dashboardID, bridge: kept.bridge, profiles: profiles, force: force, now: now)
         }
         if plugin.reports(ChatMutes.capability) {
             readChatMutes(dashboardID: dashboardID, bridge: kept.bridge, profiles: profiles, force: force, now: now)
+        }
+    }
+
+    /// The Chats list offers In progress and Done: its own dashboard keeps
+    /// Done marks, or another combined one whose rows it shows does. A row
+    /// is still marked only where its own dashboard keeps them.
+    var chatDoneFilterAvailable: Bool {
+        if chatDoneAvailable { return true }
+        guard V2ShellPreference.isOn, isInCombinedGroup(dashboardIDOnScreen) else { return false }
+        return keptDashboardRuntimes.contains {
+            $0.key != dashboardIDOnScreen && isInCombinedGroup($0.key)
+                && $0.value.runtime.notifierPlugin.reports(ChatDoneMarks.capability)
         }
     }
 

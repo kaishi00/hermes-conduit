@@ -498,6 +498,15 @@ extension SidebarLayoutTests {
         try await farHeld.waitForRequests(5)
         XCTAssertEqual(farHeld.sent.suffix(2).map(\.method), ["GET", "GET"])
 
+        // The filters follow the list's rows: this dashboard's plugin, or a
+        // combined one's whose rows it shows.
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: []))
+        XCTAssertFalse(appState.chatDoneAvailable)
+        XCTAssertFalse(appState.chatDoneFilterAvailable, "outside the combined group its rows aren't listed")
+        XCTAssertFalse(appState.canMarkSessionDone(screenChat), "this dashboard's chat still isn't marked")
+        XCTAssertTrue(appState.canMarkSessionDone(chat))
+
         // Let go: nothing is offered or shown.
         appState.keptDashboardRuntimes[far] = nil
         XCTAssertFalse(appState.canMarkSessionDone(chat))
