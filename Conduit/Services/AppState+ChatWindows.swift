@@ -181,7 +181,8 @@ extension AppState {
         if besideChatOwner?.dashboardID == dashboardID {
             closeBesideChat()
         }
-        let matchingKeys = Set(windowChatOwners.filter { $0.value.dashboardID == dashboardID }.keys)
+        let owners = windowChatOwners
+        let matchingKeys = Set(owners.filter { $0.value.dashboardID == dashboardID }.keys)
         guard !matchingKeys.isEmpty else { return }
         var kept: [Set<String>] = []
         var removed: [(Set<String>, String?)] = []
@@ -189,7 +190,7 @@ extension AppState {
             if ids.isDisjoint(with: matchingKeys) {
                 kept.append(ids)
             } else {
-                let profile = ids.lazy.compactMap { windowChatOwners[$0]?.profile }.first
+                let profile = ids.lazy.compactMap { owners[$0]?.profile }.first
                 removed.append((ids, profile))
             }
         }

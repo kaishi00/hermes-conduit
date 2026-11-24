@@ -244,11 +244,11 @@ extension AppState {
             ensureKeptPluginReport(for: owner.dashboardID)
             widgetLaunchCoordinator.supersede()
             act(onRuntime: runtime) {
-                requestOpenSession(target, onFailure: onFailure)
+                _ = requestOpenSession(target, onFailure: onFailure)
             }
             return true
         }
-        requestOpenSession(target, onFailure: onFailure)
+        _ = requestOpenSession(target, onFailure: onFailure)
         return true
     }
 
