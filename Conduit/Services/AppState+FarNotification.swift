@@ -137,6 +137,8 @@ extension AppState {
         attempt: FarNotificationOpenAttempt
     ) async -> NotificationOpenOutcome? {
         guard target.call == nil, target.roomID == nil else { return nil }
+        let viewport = chatViewportTransitionGeneration
+        let roomEpoch = groupRoomEpoch
         let rawIDs = Set([target.sessionId, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty })
         let normalizedIDs = Set([target.sessionId, target.durableSessionID].compactMap(ChatScrollIdentityNormalization.sessionID))
         let pulseHomes = farPulseHomes(in: dashboardID)
@@ -147,6 +149,7 @@ extension AppState {
         if case .approval(let sessionKey, _, _) = target.decision {
             await readKeptPluginStatusIfUnknown(dashboardID)
             guard !Task.isCancelled else { return .retry }
+            guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
             guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected else { return nil }
             if act(onRuntime: currentKept.runtime, { canAnswerRoomApprovals }) {
                 let keys = [sessionKey, target.durableSessionID, target.sessionId].compactMap { $0 }
@@ -154,15 +157,43 @@ extension AppState {
                     return nil
                 }
                 guard !Task.isCancelled else { return .retry }
+                guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
             }
         }
-        guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected else { return nil }
-        let scopedProfile = act(onRuntime: currentKept.runtime) { notificationProfileID(target.profile) }
+        guard let initialKept = keptDashboardRuntimes[dashboardID], initialKept.client.isConnected else { return nil }
+        let scopedProfile = act(onRuntime: initialKept.runtime) { notificationProfileID(target.profile) }
         let listedProfile = scopedProfile.flatMap { name in
             combinedDashboardChats[dashboardID]?.profiles.first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
         }
-        let targetProfile = listedProfile ?? currentKept.client.profile ?? "default"
-        guard let runtime = keptRuntime(dashboardID, on: targetProfile) else { return nil }
+        let targetProfile = listedProfile ?? initialKept.client.profile ?? "default"
+        if act(onRuntime: initialKept.runtime, { botModePhase != .gatewayUnsupported }) {
+            let pushesCanonicalChat: Bool
+            do {
+                pushesCanonicalChat = try await actAcrossAwaits(onRuntime: initialKept.runtime) {
+                    try await notificationTargetIsCanonicalChat(target, of: targetProfile)
+                }
+            } catch {
+                guard !Task.isCancelled else { return .retry }
+                guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+                return nil
+            }
+            guard !Task.isCancelled else { return .retry }
+            guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+            if pushesCanonicalChat {
+                var owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
+                if owner == nil, let refreshedKept = keptDashboardRuntimes[dashboardID], refreshedKept.client.isConnected {
+                    await actAcrossAwaits(onRuntime: refreshedKept.runtime) { await refreshBotRoster() }
+                    guard !Task.isCancelled else { return .retry }
+                    guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+                    owner = Self.linkedBot(named: targetProfile, in: farBotRoster(in: dashboardID))
+                }
+                guard let owner else { return nil }
+                return await openFarBotChatNotification(target, of: owner, in: dashboardID)
+            }
+        }
+        guard chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return .failed }
+        guard let currentKept = keptDashboardRuntimes[dashboardID], currentKept.client.isConnected,
+              let runtime = keptRuntime(dashboardID, on: targetProfile) else { return nil }
         let requested = target.sessionId
         let primaryID = target.durableSessionID.flatMap { $0.isEmpty ? nil : $0 } ?? requested
         var decisionSessionIDs: [String] = []

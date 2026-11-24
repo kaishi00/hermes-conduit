@@ -4564,6 +4564,8 @@ extension CrossProfilePresentationCacheTests {
     func testFarRoomPulseAndUnlistedChatPushesOpenInPlaceWhileCallSwitches() async throws {
         final class Script {
             var error: Error?
+            var botLookupRows: [BotChatLookupRow] = []
+            var botLookupError: Error?
             var opened: [(ObjectIdentifier, String, String?)] = []
             var roomClients: [String: [ObjectIdentifier]] = [:]
         }
@@ -4592,6 +4594,10 @@ extension CrossProfilePresentationCacheTests {
         )
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.persistedTranscript = { _, _, _ in .unavailable }
+        operations.findBotChat = { _, _ in
+            if let error = script.botLookupError { throw error }
+            return script.botLookupRows
+        }
         operations.openSessionWithProfile = { client, sessionID, _, profile in
             if let error = script.error { throw error }
             script.opened.append((ObjectIdentifier(client), sessionID, profile))
@@ -4676,6 +4682,27 @@ extension CrossProfilePresentationCacheTests {
         let peerOutcome = await peerTask.value
         XCTAssertNil(peerOutcome, "peer-hosted room approval keeps switching to present RoomApproval")
 
+        // Navigation during async approval check supersedes the tap cleanly.
+        let openedBeforeSuperseded = script.opened.count
+        appState.errorMessage = nil
+        let nonMatchingApprovalPush = ConduitNotificationTarget(
+            profile: "atlas",
+            sessionId: "unlisted-superseded",
+            dashboardID: mac.id,
+            type: "approval.needed",
+            decision: .approval(sessionKey: "unlisted-superseded", description: "Run cmd", choices: ["once", "deny"])
+        )
+        let supersededTask = Task { @MainActor in
+            await appState.openFarNotificationInPlace(nonMatchingApprovalPush, in: mac.id)
+        }
+        try await held.waitForRequests(2)
+        appState.groupRoomEpoch &+= 1
+        try await held.answer(["ok": true, "approvals": []])
+        let supersededOutcome = await supersededTask.value
+        XCTAssertEqual(supersededOutcome, .failed, "navigation during async wait drops old tap silently")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(script.opened.count, openedBeforeSuperseded)
+
         // Pulse approval push still switches too.
         let pulseApproval = ConduitNotificationTarget(
             profile: "default",
@@ -4687,8 +4714,40 @@ extension CrossProfilePresentationCacheTests {
         let pulseApprovalOutcome = await appState.openFarNotificationInPlace(pulseApproval, in: mac.id)
         XCTAssertNil(pulseApprovalOutcome, "Pulse approval keeps switching")
 
-        // 4. Unlisted far chat push evicts recorded decision card on refusal, and opens in place on success.
+        // 4. Compacted Bot Chat & fail-closed canonical lookup before unlisted open.
         kept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [])
+        let atlas = BotProfile(
+            name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+            provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: "old-atlas", resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil, lastPreview: nil
+        )
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        script.botLookupRows = [BotChatLookupRow(id: "compacted-atlas", title: BotMode.canonicalChatTitle)]
+        let compactedBotPush = ConduitNotificationTarget(
+            profile: "atlas", sessionId: "compacted-atlas", dashboardID: mac.id, type: "response.ready"
+        )
+        let compactedBotOutcome = await appState.openFarNotificationInPlace(compactedBotPush, in: mac.id)
+        XCTAssertEqual(compactedBotOutcome, .opened)
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertEqual(appState.activeSessionId, "compacted-atlas")
+        XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "compacted Bot Chat keeps Bot Chat ownership")
+
+        script.botLookupError = URLError(.timedOut)
+        let failClosedPush = ConduitNotificationTarget(
+            profile: "atlas", sessionId: "unknown-ownership", dashboardID: mac.id, type: "response.ready"
+        )
+        let failClosedOutcome = await appState.openFarNotificationInPlace(failClosedPush, in: mac.id)
+        XCTAssertNil(failClosedOutcome, "failed canonical lookup fails closed to switch")
+
+        // Unlisted far chat push evicts recorded decision card on refusal, and opens in place on success.
+        script.botLookupError = nil
+        script.botLookupRows = []
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [], avatars: [:], at: Date()
+        )
         let unlistedPush = ConduitNotificationTarget(
             profile: "atlas",
             sessionId: "unlisted-1",
