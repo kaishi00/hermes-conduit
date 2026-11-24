@@ -175,12 +175,18 @@ extension AppState {
             (pulseCardHasChat(card), card.profile.isEmpty ? pulseHomeProfile : card.profile)
         }
         guard hasChat else { return true }
-        pendingArtifactReveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
+        let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
+        pendingArtifactReveal = reveal
         widgetLaunchCoordinator.supersede()
         // A workstream's hidden chat opens on its bot's profile, as its
-        // link does (`openAppLink`).
+        // link does (`openAppLink`). One that can't start (its socket busy
+        // with a request, so not handed to that profile now) has said so,
+        // and nothing waits to scroll.
         if let workstreamProfile = runtime.botWork.workstreamProfile(forSession: [card.chatID]) {
-            _ = openFarWorkstreamInPlace(card.chatID, profile: notificationProfileID(profile) ?? workstreamProfile, in: id)
+            let open = openFarWorkstreamInPlace(
+                card.chatID, profile: notificationProfileID(profile) ?? workstreamProfile, in: id
+            )
+            if open == nil, pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
             return true
         }
         // The route tries it in place first, so a call goes on; only a
