@@ -362,6 +362,16 @@ enum PersistedTranscriptWindow {
               let anchor = previous.firstIndex(where: { $0.id == first.id }) else {
             return (refreshedTail, false)
         }
+        // Hermes' live model-switch producer replaces prior active notices.
+        // A new notice in the tail makes an older held notice unverified:
+        // archived notices may still be valid, so do not selectively delete
+        // them. Use the authoritative tail and let bounded backfill restore
+        // whatever older history the server still exposes. Ordinary growth
+        // without this replacement signal keeps its complete/backfilled prefix.
+        if previous[..<anchor].contains(where: { $0.displayKind == "model_switch" }),
+           refreshedTail.contains(where: { $0.displayKind == "model_switch" }) {
+            return (refreshedTail, false)
+        }
         return (Array(previous[..<anchor]) + refreshedTail, true)
     }
 

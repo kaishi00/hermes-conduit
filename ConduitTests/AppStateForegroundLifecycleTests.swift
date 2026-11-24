@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -10303,5 +10304,148 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(state.messages[marker - 1].id, "120")
         XCTAssertEqual(state.messages[marker + 1].id, "121")
         XCTAssertEqual(state.voiceCallChatLinks, links, "Backfill reveals the marker without rewriting saved links")
+    }
+}
+
+// An authoritative empty persisted read must retire the hidden-only page and admit its saved calls.
+@MainActor
+extension AppStateForegroundLifecycleTests {
+    func testReview6035656478PositiveEmptyForegroundCompletesHiddenWindow() async throws {
+        try await assertPositiveEmptyReadCompletesHiddenWindow(retryBeforeSend: false)
+    }
+
+    func testReview6035656478PositiveEmptyPreSendCompletesHiddenWindow() async throws {
+        try await assertPositiveEmptyReadCompletesHiddenWindow(retryBeforeSend: true)
+    }
+
+    private func assertPositiveEmptyReadCompletesHiddenWindow(retryBeforeSend: Bool) async throws {
+        let active = session("stored-a")
+        let epoch = Date(timeIntervalSince1970: 1_788_256_800)
+        let iso = ISO8601DateFormatter()
+        let hidden: [[String: Any]] = (121...240).map { id in
+            ["id": String(id), "role": "user", "content": "Hidden durable row \(id)",
+             "display_kind": "hidden", "timestamp": iso.string(from: epoch.addingTimeInterval(Double(id * 60)))]
+        }
+        XCTAssertTrue(MessageNormalizer.normalizeMessages(hidden.map(AnyCodable.from)).isEmpty)
+        var reads = 0
+        var resumes = 0
+        var probes = 0
+        var sends = 0
+        var rowsAtSend: [String] = []
+        var rowsForSend: () -> [String] = { [] }
+        var defaults: UserDefaults?
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, compact in
+                resumes += 1
+                XCTAssertTrue(compact)
+                return SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { id, profile, query in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                reads += 1
+                if retryBeforeSend && reads == 2 {
+                    return .failed(DashboardTicketBridgeError.http(status: 503, detail: "temporary fixture failure"))
+                }
+                let rows: [[String: Any]] = reads == 1 ? hidden : []
+                return .payload(["session_id": "stored-a", "messages": rows,
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": rows.count]])
+            },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, _, _ in
+                sends += 1
+                rowsAtSend = rowsForSend()
+                return .accepted
+            },
+            verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in
+                probes += 1
+                return [LiveSessionStatus(runtimeSessionId: "stored-a", storedSessionId: "stored-a", status: "idle")]
+            }
+        ), configureDefaults: { defaults = $0 })
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [active]
+        state.activeSessionId = active.id
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "review-c-saved", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(30), endedAt: epoch.addingTimeInterval(30))], profile: "default")
+        let opened = await state.openSession(active.id)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(resumes, 1)
+        XCTAssertTrue(state.messages.isEmpty, "C_INITIAL_HIDDEN_CALL_DEFERRED")
+        XCTAssertEqual(state.shownChat.durablePersistedRowIDs, Set((121...240).map(String.init)))
+        XCTAssertTrue(try XCTUnwrap(state.persistedTranscriptWindow).hasAcceptedHiddenOnlyPage)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        let links = state.voiceCallChatLinks
+        XCTAssertEqual(links.links.count, 1)
+        let ordinaryBefore = state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }
+        try await captureReviewPositiveEmptyHistory(state, label: retryBeforeSend ? "pre-send-before" : "foreground-before")
+        state.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(probes, 1)
+        if retryBeforeSend {
+            XCTAssertTrue(state.transcriptFreshnessIsStale, "Real transient foreground failure arms pre-send retry")
+            rowsForSend = { [weak state] in state?.messages.map(\.id) ?? [] }
+            let submitted = await state.submitComposer(text: "New prompt after empty history")
+            XCTAssertTrue(submitted)
+            XCTAssertEqual(sends, 1)
+            XCTAssertEqual(reads, 3, "Exactly one real pre-send retry")
+            XCTAssertTrue(rowsAtSend.contains("voice-call-review-c-saved"), "Call admitted before new prompt submission")
+        } else {
+            XCTAssertEqual(reads, 2, "C_EXACTLY_ONE_REAL_ZERO_RAW_FOREGROUND_READ")
+        }
+        XCTAssertEqual(resumes, 1, "C_CLASSIFIED_UNCHANGED_MUST_NOT_RESUME")
+        XCTAssertTrue(state.shownChat.persistedOrderingFrontier.isPositivelyEmpty, "C_REACHED_POSITIVELY_EMPTY_UNCHANGED_BRANCH")
+        XCTAssertFalse(state.transcriptFreshnessIsStale)
+        if !retryBeforeSend { XCTAssertEqual(state.turnState, .idle) }
+        if !retryBeforeSend { XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }, ordinaryBefore) }
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, true, "C_POSITIVE_EMPTY_MUST_COMPLETE_WINDOW")
+        XCTAssertEqual(state.messages.filter { $0.id == "voice-call-review-c-saved" }.count, 1, "C_POSITIVE_EMPTY_MUST_ADMIT_SAVED_CALL")
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertEqual(VoiceCallChatLinks.load(from: try XCTUnwrap(defaults)), links)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 0, "Authoritative zero-row coverage replaces raw120")
+        XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.hasAcceptedHiddenOnlyPage, false)
+        XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty, "Obsolete hidden rows are not the accepted durable frontier")
+        try await captureReviewPositiveEmptyHistory(state, label: retryBeforeSend ? "pre-send-after" : "foreground-after")
+        let receipt: [String: Any] = ["tailReads": reads, "resumes": resumes, "probes": probes,
+            "positiveEmptyOrdering": state.shownChat.persistedOrderingFrontier.isPositivelyEmpty,
+            "rawOffset": state.persistedTranscriptWindow?.nextOffset ?? -1,
+            "reachedBeginning": state.persistedTranscriptWindow?.reachedBeginning ?? false,
+            "acceptedHiddenOnly": state.persistedTranscriptWindow?.hasAcceptedHiddenOnlyPage ?? false,
+            "rowIDs": state.messages.map(\.id), "linksUnchanged": state.voiceCallChatLinks == links]
+        let documents = try XCTUnwrap(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first)
+        try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys, .prettyPrinted])
+            .write(to: documents.appendingPathComponent(retryBeforeSend ? "review6035656478-c-pre-send.json" : "review6035656478-c.json"), options: .atomic)
+    }
+
+    private func captureReviewPositiveEmptyHistory(_ state: AppState, label: String) async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(
+            ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize).environmentObject(state)
+        ))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for _ in 0..<15 {
+            host.view.setNeedsLayout(); host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        var didDraw = false
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            didDraw = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        XCTAssertTrue(didDraw)
+        let name = "review6035656478-\(label)-native-ChatView"
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        let documents = try XCTUnwrap(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first)
+        try XCTUnwrap(image.pngData()).write(to: documents.appendingPathComponent(name + ".png"), options: .atomic)
     }
 }

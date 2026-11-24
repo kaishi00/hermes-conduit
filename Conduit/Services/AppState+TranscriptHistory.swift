@@ -540,6 +540,7 @@ extension AppState {
         if let done = await onChatRuntime(unreachable: false, { await self.loadEarlierMessages() }) { return done }
         guard let window = persistedTranscriptWindow,
               window.canLoadEarlier,
+              (!messages.isEmpty || canSeedHiddenOnlyTranscript(from: window)),
               !window.isLoadingEarlier else {
             return false
         }

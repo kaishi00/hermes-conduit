@@ -487,6 +487,20 @@ extension AppState {
             // observation (see PersistedOrderingFrontier for the
             // non-monotonicity rationale).
             shownChat.persistedOrderingFrontier = observedOrderingFrontier
+            // A zero-raw-row read behind an empty transcript is authoritative
+            // history too, not just ordering metadata. Retire hidden-only
+            // coverage and admit its deferred calls through normal acceptance.
+            // A locally-owned optimistic tail must remain observational.
+            if observedOrderingFrontier.isPositivelyEmpty, messages.isEmpty,
+               case let .hydrated(transcript) = outcome {
+                applyPersistedForegroundAdvancement(
+                    requestedSessionID: requestedSessionID,
+                    transcript: transcript,
+                    newRows: [],
+                    runtimeSessionID: probeRow.runtimeSessionId,
+                    profile: profile
+                )
+            }
             if let observedNewUserBoundaries, observedNewUserBoundaries > 0 {
                 // The read positively observed the locally-owned turn's
                 // persisted boundary. If the turn is still running this does
@@ -913,6 +927,17 @@ extension AppState {
                     // Re-anchor the ordering frontier on the read's validated
                     // observation (non-monotonic by design).
                     shownChat.persistedOrderingFrontier = observedOrderingFrontier
+                    if observedOrderingFrontier.isPositivelyEmpty, messages.isEmpty {
+                        applyPersistedForegroundAdvancement(
+                            requestedSessionID: sessionId,
+                            transcript: transcript,
+                            newRows: [],
+                            runtimeSessionID: persistedTranscriptWindow?.runtimeSessionID
+                                ?? transcript.resolvedSessionId
+                                ?? sessionId,
+                            profile: profile
+                        )
+                    }
                     return .proceed
                 case let .advanced(transcript, newRows):
                     applyPersistedForegroundAdvancement(
