@@ -2297,8 +2297,12 @@ extension AppState {
             } else if keepsRowsOnScreen {
                 // The rows kept from the screen keep their paging window:
                 // what Load earlier brought in stays, and grafts again on
-                // the next refresh.
-                persistedTranscriptWindow = priorWindowForGraft
+                // the next refresh. With no window and no accepted history,
+                // these identical rows also keep provisional compressed voice
+                // coverage: a nil-to-nil write would clear it as a replacement.
+                if priorWindowForGraft != nil || persistedTranscriptWindow != nil {
+                    persistedTranscriptWindow = priorWindowForGraft
+                }
             } else {
                 persistedTranscriptWindow = nil
             }

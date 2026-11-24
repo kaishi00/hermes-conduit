@@ -170,18 +170,21 @@ extension AppState {
 
     /// The chat's "Voice call" markers for calls started from it.
     func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        mergeVoiceCallMarkers(into: history, sessionId: sessionId, window: persistedTranscriptWindow)
+        mergeVoiceCallMarkers(into: history, sessionId: sessionId, window: persistedTranscriptWindow,
+                              provisionalLowerBound: shownChat.compressedVoiceCallLowerBound)
     }
 
     /// Explicit context for a backfill whose accepted page has not yet been
     /// published, or a replacement that must not consult the previous window.
     func mergeVoiceCallMarkers(into history: [ChatMessage], sessionId: String,
-                               window: PersistedTranscriptWindowState?) -> [ChatMessage] {
+                               window: PersistedTranscriptWindowState?,
+                               provisionalLowerBound: Date? = nil) -> [ChatMessage] {
         let ownedWindow = priorWindowOwnsThisConversation(
             window, requestedSessionId: sessionId, resolvedSessionId: nil,
             runtimeSessionId: sessionId, profile: persistedTailProfile(for: sessionId)
         ) ? window : nil
-        let lowerBound = ownedWindow?.reachedBeginning == false ? ownedWindow?.oldestLoadedTimestamp : nil
+        let lowerBound = ownedWindow?.reachedBeginning == false
+            ? ownedWindow?.oldestLoadedTimestamp : provisionalLowerBound
         let ownIDs = chatOwnSessionIDs(for: sessionId)
         var openIDs = ownIDs
         if let call = voiceCallSessionID(ownIDs: ownIDs) { openIDs.insert(call) }

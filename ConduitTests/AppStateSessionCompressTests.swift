@@ -773,6 +773,260 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertFalse(harness.appState.canLoadEarlierMessagesForActiveConversation)
     }
 
+    // MARK: - Voice-call coverage after compression
+
+    func testCompressionFailedRehydrationDefersCallsBeforeCompressedRows() async throws {
+        _ = try await compressionVoiceFixture(outcome: .failed(URLError(.networkConnectionLost)))
+    }
+
+    func testCompressionUnavailableRehydrationDefersCallsBeforeCompressedRows() async throws {
+        _ = try await compressionVoiceFixture(outcome: .unavailable)
+    }
+
+    func testCompressionForeignRehydrationDefersCallsBeforeCompressedRows() async throws {
+        _ = try await compressionVoiceFixture(outcome: .payload([
+            "session_id": "another-chat", "messages": [],
+            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 0]
+        ]))
+    }
+
+    func testCompressionPartialRehydrationRetainsCallWithinOlderVisibleRows() async throws {
+        _ = try await compressionVoiceFixture(partial: true)
+    }
+
+    func testCompressionCompleteRehydrationKeepsCallBeforeFirstRow() async throws {
+        _ = try await compressionVoiceFixture(partial: false)
+    }
+
+    func testCompressionLegacyRehydrationKeepsCallBeforeFirstRow() async throws {
+        _ = try await compressionVoiceFixture(partial: false, legacy: true)
+    }
+
+    func testCompressionFailedHydrationKeepsVoiceCoverageThroughResumeTooLong() async throws {
+        try await compressionVoiceReconnectFixture(history: .failed(URLError(.networkConnectionLost)))
+    }
+
+    func testCompressionUnavailableHydrationKeepsVoiceCoverageThroughResumeTooLong() async throws {
+        try await compressionVoiceReconnectFixture(history: .unavailable)
+    }
+
+    func testCompressionForeignHydrationKeepsVoiceCoverageThroughResumeTooLong() async throws {
+        try await compressionVoiceReconnectFixture(history: .payload([
+            "session_id": "another-chat", "messages": [],
+            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 0]
+        ]))
+    }
+
+    func testCompressionResumeTooLongCompleteReplacementClearsProvisionalVoiceCoverage() async throws {
+        try await compressionVoiceReconnectFixture(acceptsReplacement: true)
+    }
+
+    func testCompressionResumeTooLongLegacyReplacementClearsProvisionalVoiceCoverage() async throws {
+        try await compressionVoiceReconnectFixture(acceptsReplacement: true, legacy: true)
+    }
+
+    /// Real /compress adoption followed by preserve-current sync: an unavailable
+    /// first history read forces the full resume, 4130 forces compact again,
+    /// and only that final read decides whether history replaces the shown rows.
+    private func compressionVoiceReconnectFixture(
+        history: PersistedTranscriptFetchOutcome = .unavailable,
+        acceptsReplacement: Bool = false,
+        legacy: Bool = false
+    ) async throws {
+        let epoch = Date(timeIntervalSince1970: 1_800_000_000)
+        let iso = ISO8601DateFormatter()
+        func row(_ id: Int) -> [String: Any] {
+            ["id": String(id), "role": id.isMultiple(of: 2) ? "assistant" : "user",
+             "content": "Reconnect row \(id)",
+             "timestamp": iso.string(from: epoch.addingTimeInterval(Double(id * 60)))]
+        }
+        let compressedRows = [row(1), row(2)]
+        let replacementRows = [row(101), row(102)]
+        var replacement: [String: Any] = ["session_id": "composer-origin", "messages": replacementRows]
+        if !legacy {
+            replacement["pagination"] = ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+        }
+        var reads = 0
+        let recorder = SlashCallRecorder()
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, compact in
+                recorder.recordResume(sessionID: sessionID, compact: compact)
+                if !compact { throw RpcError(code: 4130, message: "This session is too long to reload safely.") }
+                return SessionResumeResult(sessionId: sessionID, messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, query in
+                reads += 1
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                // Compression hydration fails; the first reconnect read is
+                // unavailable so the supported 4130 fallback is actually reached.
+                if reads == 1 { return .failed(URLError(.networkConnectionLost)) }
+                if reads == 2 { return .unavailable }
+                return acceptsReplacement ? .payload(replacement) : history
+            },
+            compressSession: { _, _, _ in
+                SessionCompressResult(from: AnyCodable.from([
+                    "status": "compressed", "messages": compressedRows,
+                    "summary": ["headline": "Synthetic compression finished"]
+                ]))
+            }
+        )
+        operations.connectClient = { _ in }
+        operations.loadCatalog = { _, _ in [self.session("composer-origin")] }
+        operations.refreshContext = { _, _ in }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let state = harness.appState
+        state.sessions = [session("composer-origin")]
+        state.activeSessionId = "composer-origin"
+        let calls = [
+            VoiceHostChatCall(callID: "before-reconnect", chatID: "composer-origin", startedAt: epoch, endedAt: epoch),
+            VoiceHostChatCall(callID: "inside-reconnect", chatID: "composer-origin",
+                startedAt: epoch.addingTimeInterval(90), endedAt: epoch.addingTimeInterval(90))
+        ]
+        state.adoptHostChatCalls(calls, profile: "default")
+        let links = state.voiceCallChatLinks.links
+        let submitted = await state.submitComposer(text: "/compress")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(reads, 1)
+        XCTAssertNil(state.persistedTranscriptWindow)
+        let bound = try XCTUnwrap(state.shownChat.compressedVoiceCallLowerBound)
+        XCTAssertEqual(bound, epoch.addingTimeInterval(60))
+        XCTAssertFalse(state.messages.contains { $0.id == "voice-call-before-reconnect" })
+        let ordinaryBefore = state.messages.filter { $0.role != .system }
+
+        await state.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+
+        XCTAssertEqual(recorder.resumeCalls.map(\.compact), [true, false, true],
+            "R1_PATH: must execute full-resume 4130 -> compact, not an algorithm proxy")
+        XCTAssertEqual(reads, 3)
+        XCTAssertNil(state.errorMessage)
+        XCTAssertEqual(state.activeSessionId, "composer-origin")
+        if acceptsReplacement {
+            XCTAssertNil(state.shownChat.compressedVoiceCallLowerBound,
+                "R1_REPLACEMENT: accepted complete or legacy history supersedes provisional coverage")
+            XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id),
+                MessageNormalizer.normalizeMessages(replacementRows.map(AnyCodable.from)).map(\.id))
+            XCTAssertTrue(state.messages.contains { $0.id == "voice-call-before-reconnect" },
+                "Accepted complete history must admit the formerly deferred call")
+            XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, legacy ? nil : true)
+            XCTAssertEqual(state.shownChat.durablePersistedRowIDs, ["101", "102"])
+        } else {
+            XCTAssertEqual(state.messages.filter { $0.role != .system }, ordinaryBefore,
+                "The keep-rows fallback must not replace or reorder ordinary compressed rows")
+            XCTAssertNil(state.persistedTranscriptWindow)
+            XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty)
+            XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+            XCTAssertEqual(state.shownChat.compressedVoiceCallLowerBound, bound,
+                "R1_RETAINED_COVERAGE: identical rows without accepted history keep their compressed coverage")
+            XCTAssertFalse(state.messages.contains { $0.id == "voice-call-before-reconnect" },
+                "R1_ADMISSION: 4130 keep-rows fallback must not resurrect the before-first call")
+            XCTAssertEqual(state.messages.filter { $0.id == "voice-call-inside-reconnect" }.count, 1)
+        }
+        XCTAssertEqual(state.voiceCallChatLinks.links, links,
+            "Reconcile admission must never delete or rewrite saved call links")
+    }
+
+    /// Uses submitComposer -> session.compress -> adoption -> fresh persisted
+    /// hydration, not the marker algorithm in isolation. The compressed RPC
+    /// retains 160 rows while the persisted endpoint returns only its newest
+    /// 120. The older visible call must not be lost at that page boundary.
+    private func compressionVoiceFixture(
+        partial: Bool = true,
+        legacy: Bool = false,
+        outcome: PersistedTranscriptFetchOutcome? = nil,
+        hiddenRows: Bool = false
+    ) async throws -> AppState {
+        let epoch = Date(timeIntervalSince1970: 1_800_000_000)
+        let iso = ISO8601DateFormatter()
+        let count = partial ? 160 : 2
+        func row(_ id: Int) -> [String: Any] {
+            var row: [String: Any] = [
+                "id": String(id), "role": id.isMultiple(of: 2) ? "assistant" : "user",
+                "content": "Compressed row \(id)",
+                "timestamp": iso.string(from: epoch.addingTimeInterval(Double(id * 60)))
+            ]
+            if hiddenRows && !(id <= 2 || id >= 159) { row["display_kind"] = "hidden" }
+            return row
+        }
+        let compressedRows = (1...count).map(row)
+        let pageRows = partial ? Array(compressedRows.suffix(120)) : compressedRows
+        var payload: [String: Any] = ["session_id": "composer-origin", "messages": pageRows]
+        if !legacy {
+            payload["pagination"] = ["limit": 120, "offset": 0, "order": "latest", "returned": pageRows.count]
+        }
+        var reads = 0
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            persistedTranscript: { _, _, query in
+                reads += 1
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                return outcome ?? .payload(payload)
+            },
+            compressSession: { _, _, _ in
+                SessionCompressResult(from: AnyCodable.from([
+                    "status": "compressed", "messages": compressedRows,
+                    "summary": ["headline": "Synthetic compression finished"]
+                ]))
+            }
+        ))
+        installComposerClient(in: harness)
+        let state = harness.appState
+        state.sessions = [session("composer-origin")]
+        state.activeSessionId = "composer-origin"
+        // A previous complete transcript admits both calls. Compression must
+        // reconsider membership, but must never delete these saved links.
+        let calls = [
+            VoiceHostChatCall(callID: "before-compressed", chatID: "composer-origin", startedAt: epoch, endedAt: epoch),
+            VoiceHostChatCall(callID: "inside-older-visible", chatID: "composer-origin", startedAt: epoch.addingTimeInterval(90), endedAt: epoch.addingTimeInterval(90))
+        ]
+        state.adoptHostChatCalls(calls, profile: "default")
+        let links = state.voiceCallChatLinks.links
+        XCTAssertEqual(links.count, 2)
+        let submitted = await state.submitComposer(text: "/compress")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(reads, 1)
+        let normalized = MessageNormalizer.normalizeMessages(compressedRows.map(AnyCodable.from))
+        XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id), normalized.map(\.id),
+            "COMPRESSION_ORDINARY_ORDER: compression must preserve ordinary row order")
+        XCTAssertEqual(state.messages.filter { $0.id == "voice-call-inside-older-visible" }.count, 1,
+            "COMPRESSION_VISIBLE_PREFIX: a call inside retained compressed rows must survive the newest-120 hydration")
+        let complete = outcome == nil && !partial
+        XCTAssertEqual(state.messages.contains { $0.id == "voice-call-before-compressed" }, complete,
+            "COMPRESSION_ADMISSION: only validated complete history admits calls before every compressed row")
+        XCTAssertEqual(state.voiceCallChatLinks.links, links, "Deferral must not delete or rewrite stored links")
+        // A newly discovered call forces adoption and another marker merge;
+        // refreshing only the already-known calls returns before that merge.
+        let discovered = VoiceHostChatCall(callID: "newly-discovered", chatID: "composer-origin",
+            startedAt: epoch.addingTimeInterval(120), endedAt: epoch.addingTimeInterval(120))
+        state.adoptHostChatCalls(calls + [discovered], profile: "default")
+        XCTAssertEqual(state.messages.contains { $0.id == "voice-call-before-compressed" }, complete,
+            "COMPRESSION_REPEATED_ADMISSION: failed or partial hydration must stay bounded on later call refresh")
+        XCTAssertEqual(state.messages.filter { $0.id == "voice-call-newly-discovered" }.count, 1,
+            "The second refresh must execute a real merge and show the new in-range call")
+        XCTAssertEqual(state.voiceCallChatLinks.links.filter { $0.callID != discovered.callID }, links,
+            "The real second adoption must preserve every previously saved link unchanged")
+        XCTAssertEqual(state.voiceCallChatLinks.links.count, links.count + 1)
+        XCTAssertEqual(VoiceCallChatLinks.load(from: harness.defaults), state.voiceCallChatLinks,
+            "The newly discovered link must actually be stored")
+        XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id), normalized.map(\.id),
+            "A real second marker merge must preserve ordinary row order")
+        if outcome != nil {
+            XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+            XCTAssertTrue(state.shownChat.durablePersistedRowIDs.isEmpty)
+        } else {
+            XCTAssertEqual(state.shownChat.durablePersistedRowIDs, Set(pageRows.map { $0["id"] as! String }))
+            if legacy {
+                XCTAssertNil(state.persistedTranscriptWindow)
+            } else {
+                let window = try XCTUnwrap(state.persistedTranscriptWindow)
+                XCTAssertEqual(window.nextOffset, pageRows.count, "Visible compressed prefix must not inflate network offsets")
+                XCTAssertEqual(window.canLoadEarlier, partial)
+                XCTAssertEqual(window.reachedBeginning, !partial)
+            }
+        }
+        return state
+    }
+
     // MARK: - Stale runtime recovery
 
     func testSessionNotFoundRecoversStoredRuntimeAndRetriesOnce() async throws {

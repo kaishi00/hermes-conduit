@@ -523,19 +523,21 @@ extension AppState {
         )
         // The chat's own notes aren't among the compressed rows; keep them.
         let kept = Self.keepingLocalNotes(from: messages, in: merged)
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID, window: nil)
+        // Compression alone proves only the rows it actually retained, not
+        // that the beginning of display history was reached. Invalidate the
+        // obsolete paging universe BEFORE admitting calls. Keep this voice-
+        // only bound if fresh hydration later fails; it is not a page offset
+        // or durable-row provenance.
+        invalidatePersistedHistoryInvariants()
+        shownChat.compressedVoiceCallLowerBound = PersistedTranscriptWindow.timestampLowerBound(in: compressed)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID)
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false
         shownChat.locallyOwnedInFlightTurn = nil
         shownChat.pendingLocalOrderingDebt = nil
-        // Compression rewrote the persisted history server-side: window
-        // offsets, durable-row provenance, and the ordering frontier from
-        // BEFORE the compression describe history that no longer exists.
-        // They are re-established only from a fresh validated hydration
-        // (reestablishPersistedHistoryAfterCompression); until
-        // that succeeds, backfill stays disabled.
-        invalidatePersistedHistoryInvariants()
+        // Paging stays disabled until the fresh validated hydration below.
+        // The separate compressed-row voice bound survives a failed read.
         noteChatViewportTranscriptReplacement()
         cacheMessagePresentation()
     }
@@ -601,7 +603,10 @@ extension AppState {
                 nextOffset: page.rawReturned,
                 canLoadEarlier: page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
                 reachedBeginning: !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned),
-                oldestLoadedTimestamp: PersistedTranscriptWindow.timestampLowerBound(in: transcript.messages),
+                // Hydration re-establishes network offsets and provenance,
+                // but does not replace the compressed rows still on screen.
+                // Bound calls by those retained rows, not only the latest page.
+                oldestLoadedTimestamp: shownChat.compressedVoiceCallLowerBound,
                 hasBackfilledPrefix: false
             )
         } else {

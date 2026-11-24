@@ -68,7 +68,14 @@ final class ChatState: ObservableObject {
     /// Drives the "Load earlier messages" affordance; nil means the current
     /// transcript is either a legacy one-shot hydration or not persisted-
     /// history-backed at all, and no older pages exist to fetch.
-    @Published var persistedTranscriptWindow: PersistedTranscriptWindowState?
+    @Published var persistedTranscriptWindow: PersistedTranscriptWindowState? {
+        didSet { compressedVoiceCallLowerBound = nil }
+    }
+    /// Compression can replace visible rows before persisted hydration succeeds.
+    /// Keep that replacement's undecorated coverage separate from pagination:
+    /// a failed read proves neither a usable offset nor complete history.
+    /// Any later window replacement supersedes this provisional evidence.
+    var compressedVoiceCallLowerBound: Date?
     /// Row ids POSITIVELY known to originate from validated persisted-
     /// transcript hydration (raw rows carrying a durable `id`/`message_id`)
     /// for the chat, adopted from the latest accepted hydration and cleared

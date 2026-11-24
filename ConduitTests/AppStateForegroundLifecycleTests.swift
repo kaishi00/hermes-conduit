@@ -1702,6 +1702,60 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    func testForegroundAdvanceKeepsCallBeforeFirstRowOfCompleteHistory() async throws {
+        try await foregroundVoiceCoverageFixture(partial: false)
+    }
+
+    func testForegroundAdvanceDefersCallBeforeFirstRowOfPartialHistory() async throws {
+        try await foregroundVoiceCoverageFixture(partial: true)
+    }
+
+    private func foregroundVoiceCoverageFixture(partial: Bool) async throws {
+        let active = session("stored-a")
+        let epoch = Date(timeIntervalSince1970: 1_800_000_000)
+        let iso = ISO8601DateFormatter()
+        var reads = 0
+        var resumes = 0
+        func rows(_ range: Range<Int>) -> [[String: Any]] {
+            range.map { id in ["id": String(id), "role": id.isMultiple(of: 2) ? "assistant" : "user",
+                "content": "Foreground row \(id)", "timestamp": iso.string(from: epoch.addingTimeInterval(Double(id * 60)))] }
+        }
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSession: { _, sessionID, _ in
+                resumes += 1
+                return SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in
+                reads += 1
+                let range = partial ? (reads == 1 ? 1..<121 : 3..<123) : (reads == 1 ? 1..<3 : 1..<5)
+                return .payload(["session_id": "stored-a", "messages": rows(range),
+                    "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": range.count]])
+            },
+            refreshContext: { _, _ in }, verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in [LiveSessionStatus(runtimeSessionId: "stored-a", storedSessionId: "stored-a", status: "idle")] }
+        ))
+        let box = await installConnectedClient(into: harness)
+        defer { box.client.disconnect() }
+        let state = harness.appState
+        state.sessions = [active]
+        state.activeSessionId = active.id
+        let opened = await state.openSession(active.id)
+        XCTAssertTrue(opened)
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "foreground-before-first", chatID: "stored-a", startedAt: epoch, endedAt: epoch)], profile: "default")
+        let links = state.voiceCallChatLinks.links
+        XCTAssertEqual(state.messages.contains { $0.id == "voice-call-foreground-before-first" }, !partial)
+        state.handleScenePhase(.background)
+        await runSceneActivation(harness)
+        XCTAssertEqual(reads, 2, "Exactly one foreground tail read")
+        XCTAssertEqual(resumes, 1, "Must take the real append-only advancement, not resume")
+        XCTAssertEqual(state.messages.filter { $0.role != .system }.map(\.id), (1..<(partial ? 123 : 5)).map(String.init))
+        XCTAssertEqual(state.messages.filter { $0.id == "voice-call-foreground-before-first" }.count, partial ? 0 : 1,
+            "FOREGROUND_VOICE_COVERAGE: before-first calls remain visible only on complete history")
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, !partial)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, partial ? 120 : 4)
+        XCTAssertEqual(state.voiceCallChatLinks.links, links)
+    }
+
     /// A turn another surface completed while Conduit was backgrounded is
     /// invisible to the liveness probe (the runtime is idle). One bounded
     /// persisted-tail read must merge the missed rows into the local
