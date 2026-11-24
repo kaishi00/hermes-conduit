@@ -1589,7 +1589,12 @@ final class OfflineChatCacheStore {
         while let oldest = keptAnswerOrder.first, keptAnswerOrder.count > 1,
               keptAnswerOrder.count > Self.maxKeptAnswersInMemory
                 || keptAnswerBytes.values.reduce(0, +) > Self.maxKeptAnswerMemoryBytes {
+            // Memory lets it go, but an answer for it still on the queue
+            // (`recordAnswer`) is kept when its turn comes: only a removal
+            // or a newer answer stands it down.
+            let generation = keptAnswerGenerations[oldest]
             forgetAnswerLocked(oldest)
+            keptAnswerGenerations[oldest] = generation
         }
     }
 

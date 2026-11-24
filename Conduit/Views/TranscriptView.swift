@@ -1034,6 +1034,10 @@ struct TranscriptRowsPass {
     private var chatLeft = TranscriptRowsOfChatLeft()
     private var conversation: String?
     private var rows: [TranscriptRow] = []
+    /// The chat left's own rows, whole: ids alone don't tell two chats
+    /// apart (a row's can be its place in the chat), so rows are kept
+    /// undrawn only while they are these, text and all.
+    private var carried: [TranscriptRow] = []
     /// The chat changed while rows were held, not yet told.
     private var changedWhileHeld = false
     /// The cells hold another conversation's rows, or none of this one's.
@@ -1045,7 +1049,10 @@ struct TranscriptRowsPass {
     /// drawn, told on the first pass that isn't held.
     mutating func update(rows: [TranscriptRow], conversation: String, holds: Bool) -> (action: Action, conversationChanged: Bool) {
         let changed = self.conversation != nil && self.conversation != conversation
-        if changed { chatLeft.chatChanged(showing: self.rows) }
+        if changed {
+            chatLeft.chatChanged(showing: self.rows)
+            carried = self.rows.filter(\.isChatRow)
+        }
         self.conversation = conversation
         self.rows = rows
         if holds {
@@ -1056,9 +1063,10 @@ struct TranscriptRowsPass {
         changedWhileHeld = false
         if conversationChanged { owesRedraw = true }
         showsRowsOfChatLeft = chatLeft.areStill(rows)
-        if owesRedraw, showsRowsOfChatLeft, rows.contains(where: \.isChatRow) {
+        if owesRedraw, showsRowsOfChatLeft, !carried.isEmpty, rows.filter(\.isChatRow) == carried {
             return (.keepCarried, conversationChanged)
         }
+        carried = []
         let redrawingAll = owesRedraw
         owesRedraw = false
         return (.apply(redrawingAll: redrawingAll), conversationChanged)

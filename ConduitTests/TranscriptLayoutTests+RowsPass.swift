@@ -54,4 +54,14 @@ extension TranscriptLayoutTests {
         // A chat left with no rows of its own carries nothing to skip.
         XCTAssertEqual(pass.update(rows: welcome, conversation: "other", holds: false).action, .apply(redrawingAll: true))
     }
+
+    /// Two chats' rows can carry the same ids (a row's place in its chat):
+    /// the coming chat's still draw, since their text differs.
+    func testAnotherChatsRowsWithTheSameIDsAreDrawn() {
+        var pass = TranscriptRowsPass()
+        _ = pass.update(rows: [TranscriptRow(id: "0", kind: .thinking)], conversation: "old", holds: false)
+        let own = pass.update(rows: [TranscriptRow(id: "0", kind: .streaming(isActive: true))], conversation: "new", holds: false)
+        XCTAssertEqual(own.action, .apply(redrawingAll: true))
+        XCTAssertTrue(own.conversationChanged)
+    }
 }
