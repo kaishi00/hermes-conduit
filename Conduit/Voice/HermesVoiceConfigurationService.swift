@@ -409,7 +409,14 @@ final class HermesVoiceConfigurationService: ObservableObject {
             var section = config[sectionKey] as? [String: Any] ?? [:]
             section["provider"] = vendor
             if section.removeValue(forKey: "use_gateway") != nil {
-                _ = try? await unsetConfig(keys: ["\(sectionKey).use_gateway"])
+                do {
+                    try await unsetConfig(keys: ["\(sectionKey).use_gateway"])
+                } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+                    // A plugin before 0.195.8: the key stays, as before.
+                } catch {
+                    errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))", table: .voice)
+                    return false
+                }
             }
             config[sectionKey] = section
             do {

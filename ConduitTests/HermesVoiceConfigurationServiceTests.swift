@@ -408,6 +408,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             "/api/tools/toolsets/stt/config": ["providers": []],
             "/api/tools/toolsets/tts/config": ["providers": []]
         ]
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true]
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
@@ -597,6 +598,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
                 ]
             ]
         ]
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true]
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
