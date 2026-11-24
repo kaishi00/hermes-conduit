@@ -714,6 +714,10 @@ final class AppState: ObservableObject {
     /// and change them without a switch.
     @Published var farChatDoneMarks: [UUID: ChatDoneMarks] = [:]
     @Published var farChatMutes: [UUID: ChatMutes] = [:]
+    /// The other combined dashboards' stars, read from this phone's copy
+    /// under each dashboard as a row first asks, and read anew after a
+    /// switch (`farSessionStars`).
+    var farSessionStarsByDashboard: [UUID: SessionStars] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).

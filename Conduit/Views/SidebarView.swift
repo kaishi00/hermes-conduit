@@ -1436,13 +1436,18 @@ struct SessionActionMenuItems: View {
 
     var body: some View {
         // Another combined dashboard's chat on screen (its row from that
-        // dashboard's list): Rename, Done, Mute, Archive and Delete, which
-        // run there; the rest reads and keeps this dashboard's list state.
+        // dashboard's list): Rename, Star, Done, Read, Mute, Archive and
+        // Delete, which run there or keep that dashboard's own state; Pin
+        // and Move to Project keep this dashboard's list state.
         if session.combinedDashboardID != nil {
             renameButton
+            if V2ShellPreference.isOn {
+                starButton
+            }
             if appState.canMarkSessionDone(session) {
                 DoneToggleButton(session: session)
             }
+            ReadStateToggleButton(session: session)
             if appState.canMuteSession(session) {
                 ChatMuteMenu(session: session)
             }
@@ -1463,6 +1468,15 @@ struct SessionActionMenuItems: View {
             Label(AppLocalization.string("Rename…"), systemImage: "pencil")
         }
         .disabled(appState.isSessionMutationInFlight(session))
+    }
+
+    private var starButton: some View {
+        Button {
+            Haptics.light()
+            appState.toggleSessionStarred(session)
+        } label: {
+            Label(appState.isSessionStarred(session) ? AppLocalization.string("Unstar", table: .chat) : AppLocalization.string("Star", table: .chat), systemImage: appState.isSessionStarred(session) ? "star.slash" : "star")
+        }
     }
 
     private var deleteButton: some View {
@@ -1498,12 +1512,7 @@ struct SessionActionMenuItems: View {
 
         // Only V2's Chats list has the Starred filter that lists them (#757).
         if V2ShellPreference.isOn {
-            Button {
-                Haptics.light()
-                appState.toggleSessionStarred(session)
-            } label: {
-                Label(appState.isSessionStarred(session) ? AppLocalization.string("Unstar", table: .chat) : AppLocalization.string("Star", table: .chat), systemImage: appState.isSessionStarred(session) ? "star.slash" : "star")
-            }
+            starButton
         }
 
         // Done chats: kept on the host, so every Conduit shows the mark.

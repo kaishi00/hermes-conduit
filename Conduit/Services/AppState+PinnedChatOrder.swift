@@ -249,6 +249,9 @@ extension AppState {
     /// every switch.
     func loadDashboardLists(dashboardID: UUID?) {
         let scope = Self.dashboardPreferenceBucket(dashboardID)
+        // The others' are read anew: the one that was on screen changed its
+        // own meanwhile.
+        farSessionStarsByDashboard = [:]
         sessionStars = SessionStars(defaults: defaults, scope: scope)
         pinnedChatOrder = PinnedChatOrder(defaults: defaults, scope: scope)
         botOrder = BotOrder(defaults: defaults, key: BotOrder.storageKey(scope: scope))
@@ -280,6 +283,7 @@ extension AppState {
             hidden = hidden.filter { !$0.key.hasPrefix(prefix) }
             if hidden.count != before { defaults.set(hidden, forKey: HiddenChatProjects.key) }
         }
+        if let dashboardID { farSessionStarsByDashboard[dashboardID] = nil }
         guard scope == dashboardListsScope else { return }
         loadDashboardLists(dashboardID: dashboardID)
     }

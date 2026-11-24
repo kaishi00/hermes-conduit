@@ -843,10 +843,13 @@ extension AppState {
     // MARK: - Stars (#757)
 
     func isSessionStarred(_ session: SessionSummary) -> Bool {
-        sessionStars.isStarred(session, profile: rowProfile(session))
+        // Another combined dashboard's row: its own dashboard's stars.
+        if let far = farMarksDashboard(session) { return isFarSessionStarred(session, in: far) }
+        return sessionStars.isStarred(session, profile: rowProfile(session))
     }
 
     func toggleSessionStarred(_ session: SessionSummary) {
+        if let far = farMarksDashboard(session) { return toggleFarSessionStarred(session, in: far) }
         let profile = rowProfile(session)
         guard sessionBelongsToProfile(session, profile: profile) else { return }
         setSessionStarred(session, starred: !isSessionStarred(session), profile: profile)
@@ -863,7 +866,10 @@ extension AppState {
     // MARK: - Read state (#454)
 
     func isSessionUnread(_ session: SessionSummary) -> Bool {
-        chatReadState.isUnread(session, profile: rowProfile(session))
+        // Another combined dashboard's row: Hermes' flag there. This
+        // dashboard's read state is its own chats', whatever id they share.
+        if let far = farMarksDashboard(session) { return isFarSessionUnread(session, in: far) }
+        return chatReadState.isUnread(session, profile: rowProfile(session))
     }
 
     /// Whether a turn is running in the conversation or it waits on the user.
@@ -1037,6 +1043,7 @@ extension AppState {
     }
 
     func markSessionRead(_ session: SessionSummary) {
+        if let far = farMarksDashboard(session) { return setFarSessionsUnread([session], in: far, unread: false) }
         let profile = rowProfile(session)
         let flagged = chatReadState.serverUnread(session, profile: profile)
         updateChatReadState { $0.markSeen(session, profile: profile) }
@@ -1046,6 +1053,7 @@ extension AppState {
     }
 
     func markSessionUnread(_ session: SessionSummary) {
+        if let far = farMarksDashboard(session) { return setFarSessionsUnread([session], in: far, unread: true) }
         let profile = rowProfile(session)
         updateChatReadState { $0.markUnread(session, profile: profile) }
         writeSessionUnreadFlag(session, unread: true, profile: profile)
@@ -1055,7 +1063,9 @@ extension AppState {
         // What All lists: the chats and pinned cron runs (#485), and in the
         // All profiles view the other profiles' chats too.
         let others = isAllProfilesChatsOn ? chatListSessions.filter(isOtherProfileRow) : []
-        markSessionsRead(activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) } + others)
+        // And the other combined dashboards' chats it lists beside them.
+        let far = chatListCombinedChats(excluding: Set(listedSessions.map(\.id)))
+        markSessionsRead(activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) } + others + far)
     }
 
     /// Marks a whole nest read at once (#556 follow-up): a parent row's
@@ -1069,6 +1079,15 @@ extension AppState {
     /// session records its own generation), then one request at a time
     /// through the dashboard bridge.
     private func markSessionsRead(_ sessions: [SessionSummary]) {
+        // Another combined dashboard's rows: each on its own dashboard.
+        // One that isn't connected keeps its flags, with no notice here.
+        let farUnread = sessions.filter { farMarksDashboard($0) != nil && !$0.isArchived && isSessionUnread($0) }
+        for (dashboardID, rows) in Dictionary(grouping: farUnread, by: { farMarksDashboard($0) }) {
+            if let dashboardID, keptDashboardRuntimes[dashboardID] != nil {
+                setFarSessionsUnread(rows, in: dashboardID, unread: false)
+            }
+        }
+        let sessions = sessions.filter { farMarksDashboard($0) == nil }
         // Each row under its own profile: All lists several.
         let unread = sessions.filter { !$0.isArchived && isSessionUnread($0) }
             .map { (session: $0, profile: rowProfile($0)) }
