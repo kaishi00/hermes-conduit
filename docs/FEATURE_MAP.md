@@ -1856,7 +1856,7 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
 Calls from Hermes use the default audio in every mode, so the speaker and car column's talk-over does not apply to them (see the rulings below).
 
-**Desktop app:** has it: words said over a running reply interrupt it in the live modes and Local Live (`desktop/src/renderer/src/state/liveCall.ts`, `desktop/src/renderer/src/state/localLive.ts`).
+**Desktop app:** has it (desktop#488): a computer can't tell a headset from its speakers, so Gemini, Qwen, Grok and Local Live follow the speaker column everywhere. With "Talk over it on the speaker" off, the default, the microphone is closed from a reply's first sound until the reply has ended and played out, then for the latency the output and the microphone report plus 300 ms (`desktop/src/renderer/src/state/speakerGate.ts`), and Interrupt on the call stops what plays and drops the rest of a reply still arriving, sending `response.cancel` in Local Live (`desktop/src/renderer/src/components/LocalLiveCall.tsx`, `GrokLiveCall.tsx`, `GeminiLiveCall.tsx`; issue 3159). With it on (Settings > Voice, one switch for those four modes, kept on the computer: `desktop/src/renderer/src/components/VoiceModeSettings.tsx`), the microphone stays open and the capture's echo cancellation keeps the reply out of it, so words said over a running reply interrupt it (`desktop/src/renderer/src/state/liveCall.ts`, `desktop/src/renderer/src/state/localLive.ts`). GPT-Live's WebRTC audio always barges in.
 
 **Code**
 - Routes: `Conduit/Voice/VoiceBargeInRoutePolicy.swift`
