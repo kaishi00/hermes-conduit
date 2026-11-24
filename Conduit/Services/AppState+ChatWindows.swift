@@ -56,6 +56,13 @@ extension AppState {
         return nil
     }
 
+    private func windowIndex(forKey key: String) -> Int? {
+        let expectedOwner = windowChatOwners[key]
+        return windowChatIDs.firstIndex { windowIDs in
+            windowIDs.contains(key) && windowOwner(forWindowIDs: windowIDs) == expectedOwner
+        }
+    }
+
     /// The chat on show in the pane or a window that answers to
     /// `sessionID`, of the dashboard in scope: matching its owning profile
     /// when local or on a kept dashboard, or by a runtime id Hermes bound
@@ -73,7 +80,8 @@ extension AppState {
     /// The chat the window opened as `key` draws. Nil once its chat is
     /// followed no longer, or after a relaunch: the window closes.
     func windowChat(_ key: String) -> BackgroundChat? {
-        guard let ids = windowChatIDs.first(where: { $0.contains(key) }) else { return nil }
+        guard let index = windowIndex(forKey: key) else { return nil }
+        let ids = windowChatIDs[index]
         let owner = windowChatOwners[key] ?? windowOwner(forWindowIDs: ids)
         let ownerDashboard = owner?.dashboardID ?? dashboardIDOnScreen
         let ownerProfile = owner?.profile ?? runtimeOnScreen.activeProfile
@@ -94,7 +102,7 @@ extension AppState {
         guard canMoveBesideChatToWindow, let chat = besideChat, let ids = besideChatIDs,
               let target = chat.durableSessionID ?? chat.sessionIDs.sorted().first else { return nil }
         if let owner = besideChatOwner {
-            let key = "\(owner.dashboardID.uuidString)/\(target)"
+            let key = "\(owner.dashboardID.uuidString)/\(owner.profile)/\(target)"
             windowChatIDs.append(ids.union(chat.sessionIDs).union([key]))
             windowChatOwners[key] = owner
             besideChatIDs = nil
@@ -109,14 +117,22 @@ extension AppState {
     /// The window opened as `key` closed. Its chat goes on being followed
     /// only while a reply still runs in it.
     func closeChatWindow(_ key: String) {
-        guard let index = windowChatIDs.firstIndex(where: { $0.contains(key) }) else {
+        guard let index = windowIndex(forKey: key) else {
             windowChatOwners.removeValue(forKey: key)
             return
         }
         let ids = windowChatIDs.remove(at: index)
         let owner = windowChatOwners.removeValue(forKey: key) ?? windowOwner(forWindowIDs: ids)
-        for windowKey in ids { windowChatOwners.removeValue(forKey: windowKey) }
-        letGoOfIdleFollowedChat(answering: ids, dashboardID: owner?.dashboardID ?? dashboardIDOnScreen)
+        if let owner {
+            for windowKey in ids where windowChatOwners[windowKey] == owner {
+                windowChatOwners.removeValue(forKey: windowKey)
+            }
+        }
+        letGoOfIdleFollowedChat(
+            answering: ids,
+            dashboardID: owner?.dashboardID ?? dashboardIDOnScreen,
+            profile: owner?.profile ?? runtimeOnScreen.activeProfile
+        )
     }
 
     /// Opens a window's chat in the chat's own column, where it can be
@@ -129,7 +145,7 @@ extension AppState {
     func openWindowChatInMainWindow(_ key: String) -> Bool {
         guard let chat = windowChat(key),
               let target = chat.durableSessionID ?? chat.sessionIDs.sorted().first else { return false }
-        let owner = windowChatOwners[key] ?? windowChatIDs.first(where: { $0.contains(key) }).flatMap(windowOwner(forWindowIDs:))
+        let owner = windowChatOwners[key] ?? windowIndex(forKey: key).flatMap { windowOwner(forWindowIDs: windowChatIDs[$0]) }
         guard openKeptChatInMainColumn(target: target, owner: owner, onFailure: nil) else { return false }
         // Uncovering the chat pushes it in the shell (V2Shell's showSidebar).
         showSidebar = false
@@ -150,7 +166,11 @@ extension AppState {
         windowChatOwners = [:]
         for ids in windows {
             let owner = ids.lazy.compactMap { owners[$0] }.first
-            letGoOfIdleFollowedChat(answering: ids, dashboardID: owner?.dashboardID ?? dashboardIDOnScreen)
+            letGoOfIdleFollowedChat(
+                answering: ids,
+                dashboardID: owner?.dashboardID ?? dashboardIDOnScreen,
+                profile: owner?.profile ?? runtimeOnScreen.activeProfile
+            )
         }
     }
 
@@ -163,22 +183,23 @@ extension AppState {
         }
         let matchingKeys = Set(windowChatOwners.filter { $0.value.dashboardID == dashboardID }.keys)
         guard !matchingKeys.isEmpty else { return }
-        for key in matchingKeys {
-            windowChatOwners.removeValue(forKey: key)
-        }
         var kept: [Set<String>] = []
-        var removed: [Set<String>] = []
+        var removed: [(Set<String>, String?)] = []
         for ids in windowChatIDs {
             if ids.isDisjoint(with: matchingKeys) {
                 kept.append(ids)
             } else {
-                removed.append(ids)
+                let profile = ids.lazy.compactMap { windowChatOwners[$0]?.profile }.first
+                removed.append((ids, profile))
             }
+        }
+        for key in matchingKeys {
+            windowChatOwners.removeValue(forKey: key)
         }
         if removed.isEmpty == false {
             windowChatIDs = kept
-            for ids in removed {
-                letGoOfIdleFollowedChat(answering: ids, dashboardID: dashboardID)
+            for (ids, profile) in removed {
+                letGoOfIdleFollowedChat(answering: ids, dashboardID: dashboardID, profile: profile)
             }
         }
     }

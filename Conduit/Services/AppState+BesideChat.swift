@@ -184,8 +184,13 @@ extension AppState {
         let openingDashboard = session.combinedDashboardID ?? dashboardIDOnScreen
         if let previous,
            previousDashboard != openingDashboard
+            || (previousOwner?.profile ?? runtimeOnScreen.activeProfile) != (session.profile ?? "default")
             || (previous.isDisjoint(with: session.nestingIDs) && !previous.contains(session.id)) {
-            letGoOfIdleFollowedChat(answering: previous, dashboardID: previousDashboard)
+            letGoOfIdleFollowedChat(
+                answering: previous,
+                dashboardID: previousDashboard,
+                profile: previousOwner?.profile ?? runtimeOnScreen.activeProfile
+            )
         }
         if let farDashboard = session.combinedDashboardID, farDashboard != dashboardIDOnScreen {
             guard startFarChatOpen(session, in: farDashboard, onFailure: { [weak self] _ in
@@ -254,7 +259,11 @@ extension AppState {
         let owner = besideChatOwner
         besideChatIDs = nil
         besideChatOwner = nil
-        letGoOfIdleFollowedChat(answering: ids, dashboardID: owner?.dashboardID ?? dashboardIDOnScreen)
+        letGoOfIdleFollowedChat(
+            answering: ids,
+            dashboardID: owner?.dashboardID ?? dashboardIDOnScreen,
+            profile: owner?.profile ?? runtimeOnScreen.activeProfile
+        )
     }
 
     /// The pane closes once its chat is followed no longer: opened in the
@@ -300,13 +309,21 @@ extension AppState {
         }
         guard matchesKept else { return }
         let ownerDashboard = owner?.dashboardID ?? dashboardIDOnScreen
+        let ownerProfile = owner?.profile ?? runtimeOnScreen.activeProfile
         besideChatIDs = nil
         besideChatOwner = nil
-        backgroundChats.removeAll { $0.dashboardID == ownerDashboard && !$0.sessionIDs.isDisjoint(with: kept) }
+        backgroundChats.removeAll {
+            $0.dashboardID == ownerDashboard && $0.profile == ownerProfile && !$0.sessionIDs.isDisjoint(with: kept)
+        }
     }
 
-    func letGoOfIdleFollowedChat(answering ids: Set<String>, dashboardID: UUID? = nil) {
+    func letGoOfIdleFollowedChat(answering ids: Set<String>, dashboardID: UUID? = nil, profile: String? = nil) {
         let targetDashboard = dashboardID ?? activeDashboardID
-        backgroundChats.removeAll { $0.dashboardID == targetDashboard && !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
+        backgroundChats.removeAll {
+            $0.dashboardID == targetDashboard
+                && (profile == nil || $0.profile == profile)
+                && !$0.sessionIDs.isDisjoint(with: ids)
+                && !$0.isRunning
+        }
     }
 }

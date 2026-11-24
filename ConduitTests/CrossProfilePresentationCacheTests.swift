@@ -4862,7 +4862,11 @@ extension CrossProfilePresentationCacheTests {
             id: "vps-1", alternateIds: [], title: "Local work", model: "Hermes", updatedLabel: "now",
             profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
         )
-        appState.runtimeOnScreen.sessions = [localRow]
+        let localSharedRow = SessionSummary(
+            id: "shared-1", alternateIds: [], title: "Shared on VPS", model: "Hermes", updatedLabel: "now",
+            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )
+        appState.runtimeOnScreen.sessions = [localRow, localSharedRow]
         appState.setActiveSessionState(id: "vps-1", title: "Local work")
         appState.messages = [ChatMessage(id: "vps-m1", role: .user, content: "Local words", timestamp: "ts-0")]
         appState.turnState = .idle
@@ -4924,7 +4928,7 @@ extension CrossProfilePresentationCacheTests {
 
         // 4. Move far beside chat to a window and Open in Main Window back in place.
         let macWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
-        XCTAssertEqual(macWindowKey, "\(mac.id.uuidString)/mac-1")
+        XCTAssertEqual(macWindowKey, "\(mac.id.uuidString)/default/mac-1")
         XCTAssertNil(appState.besideChatIDs)
         XCTAssertNil(appState.besideChatOwner)
         XCTAssertEqual(appState.windowChatOwners[macWindowKey], FarChatOwner(dashboardID: mac.id, profile: "default"))
@@ -4940,16 +4944,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeDashboardID, vps.id, "openWindowChatInMainWindow does not switch")
         XCTAssertNil(appState.windowChatOwners[macWindowKey])
 
-        // 5. Open a local chat beside the far chat, then hold windows on both dashboards and drop Mac.
+        // 5. Same-ID windows (far opened first, then local) stay isolated, and drop closes only Mac's.
         XCTAssertTrue(appState.canOpenBeside(localRow))
         appState.openBeside(localRow)
         await waitUntil {
             appState.activeSessionId == "vps-1" && appState.farChat == nil
                 && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
         }
-        let macWindowKey2 = try XCTUnwrap(appState.moveBesideChatToWindow())
-        XCTAssertEqual(appState.windowChatOwners[macWindowKey2], FarChatOwner(dashboardID: mac.id, profile: "default"))
-
+        // Put vps-1 into a local window first, then open far shared-1 window before local shared-1.
         appState.openBeside(sharedMacRow)
         await waitUntil {
             appState.activeSessionId == "shared-1"
@@ -4960,17 +4962,41 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(localWindowKey, "vps-1")
         XCTAssertNil(appState.windowChatOwners[localWindowKey])
 
+        appState.openBeside(localSharedRow)
+        await waitUntil {
+            appState.activeSessionId == "shared-1" && appState.farChat == nil
+                && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
+        }
+        let farSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
+        XCTAssertEqual(farSharedWindowKey, "\(mac.id.uuidString)/default/shared-1")
+
         appState.openBeside(macRow)
         await waitUntil {
-            appState.activeSessionId == "mac-1" && appState.besideChat?.answers(to: "shared-1") == true
+            appState.activeSessionId == "mac-1" && appState.besideChatOwner == nil
+                && appState.besideChat?.answers(to: "shared-1") == true
         }
-        XCTAssertEqual(appState.besideChatOwner, FarChatOwner(dashboardID: mac.id, profile: "default"))
+        let localSharedWindowKey = try XCTUnwrap(appState.moveBesideChatToWindow())
+        XCTAssertEqual(localSharedWindowKey, "shared-1")
+        XCTAssertEqual(appState.windowChat(localSharedWindowKey)?.dashboardID, vps.id, "local window is not shadowed by far window")
+        XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
+
+        // Closing the local shared-1 window leaves the far shared-1 window untouched.
+        appState.closeChatWindow(localSharedWindowKey)
+        XCTAssertNil(appState.windowChat(localSharedWindowKey))
+        XCTAssertEqual(appState.windowChat(farSharedWindowKey)?.dashboardID, mac.id)
+
+        // Keep far mac-1 beside while opening local shared-1, then drop Mac's kept runtime.
+        appState.openBeside(localSharedRow)
+        await waitUntil {
+            appState.activeSessionId == "shared-1" && appState.farChat == nil
+                && appState.besideChatOwner == FarChatOwner(dashboardID: mac.id, profile: "default")
+        }
 
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.besideChatIDs, "dropping Mac closes its far beside pane")
         XCTAssertNil(appState.besideChatOwner)
-        XCTAssertNil(appState.windowChat(macWindowKey2), "dropping Mac closes its kept window")
-        XCTAssertNil(appState.windowChatOwners[macWindowKey2])
+        XCTAssertNil(appState.windowChat(farSharedWindowKey), "dropping Mac closes its kept window")
+        XCTAssertTrue(appState.windowChatOwners.isEmpty)
         XCTAssertNotNil(appState.windowChat(localWindowKey), "local window stays open")
         XCTAssertEqual(appState.windowChatIDs.count, 1)
     }

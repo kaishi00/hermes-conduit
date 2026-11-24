@@ -88,12 +88,19 @@ private struct V2BesideChatPaneContent: View, Equatable {
                     appState: appState
                 )
                 V2BesideChatRows(live: inputs.live, chat: chat, gatewayResolver: inputs.gatewayResolver)
-                // Its draft is this chat's: Swap empties the box.
+                // Its draft is this chat's: Swap empties the box, including
+                // when another dashboard or profile owns the same session ids.
                 V2KeptChatComposer(live: inputs.live, chat: chat, takesMessages: inputs.takesMessages, appState: appState)
-                    .id(chat.sessionIDs)
+                    .id(KeptChatComposerIdentity(dashboardID: chat.dashboardID, profile: chat.profile, sessionIDs: chat.sessionIDs))
             }
         }
     }
+}
+
+private struct KeptChatComposerIdentity: Hashable {
+    let dashboardID: UUID
+    let profile: String
+    let sessionIDs: Set<String>
 }
 
 /// The pane's title and buttons, or a chat window's.
