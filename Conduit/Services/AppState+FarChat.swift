@@ -598,8 +598,15 @@ extension AppState {
     /// its chat on screen resumes through it, as a reconnect resumes
     /// the one on screen's.
     func resumeFarChatAfterReconnect(_ id: UUID) {
-        guard let farChat, farChat.dashboardID == id,
-              let runtime = keptRuntime(id, on: farChat.profile) else { return }
+        guard let farChat, farChat.dashboardID == id else { return }
+        guard let runtime = keptRuntime(id, on: farChat.profile) else {
+            // A call still starting there keeps the socket on its own
+            // profile (issue 3164): the resume goes ahead when the start
+            // ends (`farCallStartEnded`), rather than never.
+            if farCallStartHolds(dashboard: id) { farChatResumeOwedAfterCallStart = id }
+            return
+        }
+        if farChatResumeOwedAfterCallStart == id { farChatResumeOwedAfterCallStart = nil }
         // A new runtime came with the new connection: its changes redraw
         // the chat.
         republishRuntime(runtime, for: Self.farChatSurface)

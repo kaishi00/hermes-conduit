@@ -4534,8 +4534,26 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.keptRuntime(mac.id, on: "another-profile"), "its socket stays on the start's profile")
         XCTAssertTrue(appState.keptRuntime(mac.id, on: kept.runtime.activeProfile) === kept.runtime)
         XCTAssertFalse(appState.liveCallHolds(dashboard: vps.id), "only the dashboard the call starts on")
-        appState.farCallStartsInFlight[mac.id] = nil
+        // Its dashboard dropping ends what the start began: only a start's,
+        // and only on the dashboard the call began on.
+        XCTAssertFalse(appState.endLiveCallStartLosingItsDashboard(mac.id), "no call has begun there yet")
+        appState.liveCallDashboardID = mac.id
+        XCTAssertFalse(appState.endLiveCallStartLosingItsDashboard(vps.id))
+        XCTAssertTrue(appState.endLiveCallStartLosingItsDashboard(mac.id))
+        appState.liveCallDashboardID = nil
+        // A far chat's resume the start held off goes ahead when the last
+        // start there ends, and is owed to nobody after.
+        appState.farCallStartsInFlight[mac.id] = 2
+        appState.farChatResumeOwedAfterCallStart = mac.id
+        appState.farCallStartEnded(mac.id)
+        XCTAssertEqual(appState.farCallStartsInFlight[mac.id], 1)
+        XCTAssertEqual(appState.farChatResumeOwedAfterCallStart, mac.id, "another start still holds the socket")
+        appState.farCallStartEnded(mac.id)
+        XCTAssertNil(appState.farCallStartsInFlight[mac.id])
+        XCTAssertNil(appState.farChatResumeOwedAfterCallStart)
         XCTAssertFalse(appState.liveCallHolds(dashboard: mac.id))
+        appState.farCallStartEnded(mac.id)
+        XCTAssertNil(appState.farCallStartsInFlight[mac.id], "an end with no start counts nothing")
 
         // Let go, its runtime stops saying it's connected to a scope that
         // still holds it, and its answers no longer stand.
