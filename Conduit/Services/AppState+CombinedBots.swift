@@ -7,8 +7,8 @@
 //  shown in the same grid as the dashboard on screen's, mixed in one order
 //  for the group kept on this phone (until arranged, each dashboard's in
 //  Saved Dashboards order), every portrait with its badge. A portrait's tap
-//  switches to that dashboard (through the kept connection) and opens the
-//  bot's chat; the portrait stays where it was.
+//  opens the bot's chat in place through the kept connection, or switches
+//  to that dashboard when it was let go; the portrait stays where it was.
 //
 
 import Foundation
@@ -519,11 +519,12 @@ extension AppState {
                 // Its chat comes forward over the grid, as a link's does.
                 self.dismissSidebarDrawer()
             case .superseded:
-                if zooms { self.botZoom.openFailed(zoomKey) }
+                // A newer tap owns the zoom, its own arm included.
+                if zooms, request == self.botChatOpenRequests { self.botZoom.openFailed(zoomKey) }
             case .failed:
-                if zooms { self.botZoom.openFailed(zoomKey) }
-                // A newer tap owns what the grid says.
+                // A newer tap owns the zoom and what the grid says.
                 guard request == self.botChatOpenRequests else { return }
+                if zooms { self.botZoom.openFailed(zoomKey) }
                 // The grid still shows: it says why, as this dashboard's
                 // portraits do (`openBotChatFromList`).
                 if let error = self.errorMessage, self.errorMessageWrites != writes {
