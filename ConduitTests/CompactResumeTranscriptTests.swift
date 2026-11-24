@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Conduit
 
 /// Regression coverage for issue #106: large sessions resume reliably because
@@ -3636,7 +3638,7 @@ extension CompactResumeTranscriptTests {
         let prepended = await state.loadEarlierMessages()
         XCTAssertEqual(prepended, !terminal && !clearDuringRead)
         XCTAssertEqual(offsets, [120], "Raw hidden rows, not normalized count, control paging")
-        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, terminal ? 120 : 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, terminal || clearDuringRead ? 120 : 240)
         XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, terminal)
         if clearDuringRead {
             XCTAssertTrue(state.messages.isEmpty,
@@ -3684,5 +3686,200 @@ extension CompactResumeTranscriptTests {
         XCTAssertEqual(state.messages.map(\.id), [link.originMarkerID],
             "HIDDEN_STANDALONE_ORIGIN: lack of chat coverage must not hide the call's way back")
         XCTAssertEqual(state.voiceCallChatLinks.links, [link])
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    func testHiddenPartialWindowOffersAndLoadsEarlierVisibleHistory() async throws {
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        var offsets: [Int] = []
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0) },
+            loadEarlierTranscriptPage: { id, profile, offset in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                offsets.append(offset)
+                return self.tailPagePayload(sessionId: "stored-a", rows: self.voiceWindowRows(0..<120), offset: offset)
+            }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let epoch = Date(timeIntervalSince1970: 1_788_256_800)
+        state.adoptHostChatCalls([VoiceHostChatCall(callID: "ui-hidden-saved", chatID: "stored-a",
+            startedAt: epoch.addingTimeInterval(30), endedAt: epoch.addingTimeInterval(30))], profile: "default")
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120)
+        let links = state.voiceCallChatLinks
+        let provenance = state.shownChat.durablePersistedRowIDs
+        XCTAssertEqual(provenance, Set((121...240).map(String.init)))
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, false)
+        XCTAssertTrue(try XCTUnwrap(state.persistedTranscriptWindow).loadedPageStarts.isEmpty)
+        XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
+        state.shownChat.durablePersistedRowIDs = []
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation, "An arbitrary empty transcript has no seed provenance")
+        state.shownChat.durablePersistedRowIDs = provenance
+        let eligibleWindow = try XCTUnwrap(state.persistedTranscriptWindow)
+        var disallowed = eligibleWindow
+        disallowed.hasBackfilledPrefix = true
+        state.persistedTranscriptWindow = disallowed
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation, "A wiped loaded prefix must not become seedable")
+        disallowed = eligibleWindow
+        disallowed.reachedBeginning = true
+        state.persistedTranscriptWindow = disallowed
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+        disallowed = eligibleWindow
+        disallowed.canLoadEarlier = false
+        state.persistedTranscriptWindow = disallowed
+        XCTAssertFalse(state.canLoadEarlierMessagesForActiveConversation)
+        state.persistedTranscriptWindow = eligibleWindow
+        let offered = state.canLoadEarlierMessagesForActiveConversation
+        XCTAssertTrue(offered, "HIDDEN_UI_AFFORDANCE: ChatView must offer its real backfill path for validated hidden-only coverage")
+        guard offered else { return }
+        var model = TranscriptModel()
+        let disclosure = ChatRowDisclosure()
+        var input = TranscriptModel.Input()
+        input.loadsEarlier = offered
+        input.hasSavedCopy = state.offlineChatPresentation != nil
+        input.chatIsOpening = state.liveChatIsOnItsWay
+        _ = model.update(input, targets: [], disclosure: disclosure)
+        XCTAssertTrue(model.rows.contains { if case .loadEarlier(isLoading: false) = $0.kind { return true }; return false },
+            "HIDDEN_UI_MODEL: the production selector must create the load-earlier control")
+        // A truly empty transcript also draws its empty/opening line. Do not
+        // fabricate targets or saved-copy state to force the auto-load oracle.
+        XCTAssertFalse(model.drawsOnlyLoadEarlier)
+        try await captureHiddenHistory(state, label: "hidden-only")
+        XCTAssertTrue(offsets.isEmpty, "Capture precedes the explicit earlier-page read")
+        let outcome = await state.loadEarlierPage()
+        XCTAssertEqual(outcome, .landed)
+        XCTAssertEqual(offsets, [120])
+        XCTAssertEqual(state.messages.filter { $0.displayKind != VoiceCallChatLink.displayKind }.map(\.id), (1...120).map(String.init))
+        XCTAssertEqual(Array(state.messages.prefix(3)).map(\.id), ["1", "voice-call-ui-hidden-saved", "2"])
+        XCTAssertEqual(state.voiceCallChatLinks, links)
+        XCTAssertEqual(VoiceCallChatLinks.load(from: harness.defaults), links)
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, true)
+        XCTAssertEqual(state.persistedTranscriptWindow?.loadedPageStarts.map(\.firstRowID), ["1"])
+        XCTAssertEqual(state.activeSessionId, "runtime-a")
+        XCTAssertEqual(state.activeProfile, "default")
+        input.targetsRevision += 1
+        input.loadsEarlier = state.canLoadEarlierMessagesForActiveConversation
+        var targets = ChatMessageScrollTargetCache()
+        targets.update(for: state.messages)
+        _ = model.update(input, targets: targets.targets, disclosure: disclosure)
+        XCTAssertFalse(model.drawsOnlyLoadEarlier)
+        try await captureHiddenHistory(state, label: "visible-backfilled")
+    }
+
+    func testHiddenPartialRejectedSeedRetriesSameRawPage() async throws {
+        let hidden = voiceWindowRows(120..<240).map { row -> [String: Any] in
+            var row = row
+            row["display_kind"] = "hidden"
+            return row
+        }
+        var offsets: [Int] = []
+        var interrupt: (() -> Void)?
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(sessionId: "runtime-a", messages: [], snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            persistedTranscript: { _, _, _ in self.tailPagePayload(sessionId: "stored-a", rows: hidden, offset: 0) },
+            loadEarlierTranscriptPage: { id, profile, offset in
+                XCTAssertEqual(id, "stored-a")
+                XCTAssertEqual(profile, "default")
+                offsets.append(offset)
+                if offsets.count == 1 { interrupt?() }
+                return self.tailPagePayload(sessionId: "stored-a", rows: offset == 120 ? self.voiceWindowRows(0..<120) : [], offset: offset)
+            }
+        )
+        let state = harness.appState
+        state.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        interrupt = { [weak state] in state?.messages = [] }
+        defer { interrupt = nil }
+        let opened = await state.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertTrue(state.messages.isEmpty)
+        let rejected = await state.loadEarlierPage()
+        XCTAssertEqual(rejected, .failed, "HIDDEN_REJECTED_SEED_OUTCOME: an unadopted, unheld page is not a duplicate-only page")
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 120,
+            "HIDDEN_REJECTED_SEED_OFFSET: rejecting a changed transcript must not skip its never-adopted page")
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertEqual(state.persistedTranscriptWindow?.reachedBeginning, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertEqual(state.persistedTranscriptWindow?.isLoadingEarlier, false)
+        XCTAssertEqual(state.persistedTranscriptWindow?.hasBackfilledPrefix, false)
+        XCTAssertTrue(try XCTUnwrap(state.persistedTranscriptWindow).loadedPageStarts.isEmpty)
+        XCTAssertNil(state.persistedTranscriptWindow?.oldestLoadedTimestamp)
+        XCTAssertTrue(state.canLoadEarlierMessagesForActiveConversation)
+        let retry = await state.loadEarlierPage()
+        XCTAssertEqual(retry, .landed)
+        XCTAssertEqual(offsets, [120, 120], "HIDDEN_REJECTED_SEED_RETRY: retry the same raw page before advancing")
+        XCTAssertEqual(state.messages.map(\.id), (1...120).map(String.init))
+        XCTAssertEqual(state.persistedTranscriptWindow?.nextOffset, 240)
+    }
+}
+
+@MainActor
+extension CompactResumeTranscriptTests {
+    /// Native scene-attached production ChatView, never a web reconstruction.
+    /// All state and voice links come from the regression's real open/backfill.
+    private func captureHiddenHistory(_ state: AppState, label: String) async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let host = UIHostingController(rootView: DormancyHarnessEnvironment.applying(
+            ChatView(chatTextSizeOverride: DormancyHarnessEnvironment.pinnedChatTextSize).environmentObject(state)
+        ))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for _ in 0..<35 {
+            host.view.setNeedsLayout(); host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        var didDraw = false
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            didDraw = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        XCTAssertTrue(didDraw, "HIDDEN_NATIVE_RENDER: scene-attached production ChatView must draw")
+        let name = "hidden-history-\(label)-native-ChatView"
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let documents = try XCTUnwrap(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first)
+        try XCTUnwrap(image.pngData()).write(to: documents.appendingPathComponent(name + ".png"), options: .atomic)
+        let links = try JSONSerialization.jsonObject(with: JSONEncoder().encode(state.voiceCallChatLinks))
+        let receipt: [String: Any] = [
+            "label": label,
+            "sceneAttachedProductionChatView": true,
+            "canLoadEarlier": state.canLoadEarlierMessagesForActiveConversation,
+            "rawNextOffset": try XCTUnwrap(state.persistedTranscriptWindow).nextOffset,
+            "reachedBeginning": try XCTUnwrap(state.persistedTranscriptWindow).reachedBeginning,
+            "activeSessionID": state.activeSessionId ?? "",
+            "profile": state.activeProfile,
+            "links": links,
+            "rows": state.messages.map { message in
+                ["id": message.id, "content": message.content, "timestamp": message.timestamp,
+                 "role": message.role.rawValue, "displayKind": message.displayKind ?? "ordinary"]
+            }
+        ]
+        let data = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys, .prettyPrinted])
+        try data.write(to: documents.appendingPathComponent("hidden-history-\(label)-rows.json"), options: .atomic)
+        let rows = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        rows.name = "hidden-history-\(label)-rows"
+        rows.lifetime = .keepAlways
+        add(rows)
     }
 }

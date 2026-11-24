@@ -572,10 +572,7 @@ extension AppState {
         // Only that unchanged, still-owned empty transcript may be seeded by
         // backfill; a transcript cleared or replaced during the read may not.
         let emptyTranscriptRevision = shownChat.transcriptRevision
-        let canSeedEmptyTranscript = messages.isEmpty
-            && !window.reachedBeginning && window.oldestLoadedTimestamp == nil
-            && !window.hasBackfilledPrefix && window.loadedPageStarts.isEmpty
-            && !shownChat.durablePersistedRowIDs.isEmpty
+        let canSeedEmptyTranscript = canSeedHiddenOnlyTranscript(from: window)
         var arming = window
         arming.isLoadingEarlier = true
         persistedTranscriptWindow = arming
@@ -611,6 +608,13 @@ extension AppState {
         }
         current.isLoadingEarlier = false
         defer { persistedTranscriptWindow = current }
+
+        // A seed refused by a transcript write is discarded, not held or
+        // duplicate-only. Keep the same raw page retryable without accepting
+        // its completeness, voice markers, or paging offset.
+        if canSeedEmptyTranscript, shownChat.transcriptRevision != emptyTranscriptRevision {
+            return false
+        }
 
         switch outcome {
         case .payload(let response):
@@ -853,8 +857,18 @@ extension AppState {
         )
     }
 
+    /// Only a validated hidden-only partial hydration can seed an empty
+    /// transcript. Share this eligibility between the UI and the action;
+    /// arbitrary empty or cleared transcripts must not become seedable.
+    private func canSeedHiddenOnlyTranscript(from window: PersistedTranscriptWindowState) -> Bool {
+        messages.isEmpty
+            && !window.reachedBeginning && window.oldestLoadedTimestamp == nil
+            && !window.hasBackfilledPrefix && window.loadedPageStarts.isEmpty
+            && !shownChat.durablePersistedRowIDs.isEmpty
+    }
+
     /// Whether "Load earlier messages" may be offered AND executed right
-    /// now: a hydrated, non-empty transcript whose persisted-history window
+    /// now: a hydrated transcript (visible or legitimately hidden-only) whose persisted-history window
     /// still has an older page and belongs to the conversation that is
     /// actually active. The single ownership truth for the ChatView
     /// affordance and the `loadEarlierMessages` action, so the control can
@@ -863,7 +877,7 @@ extension AppState {
     var canLoadEarlierMessagesForActiveConversation: Bool {
         guard let window = persistedTranscriptWindow,
               window.canLoadEarlier,
-              !messages.isEmpty,
+              (!messages.isEmpty || canSeedHiddenOnlyTranscript(from: window)),
               persistedTranscriptWindowOwnershipIsCurrent(window) else {
             return false
         }
