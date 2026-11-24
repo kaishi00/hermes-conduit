@@ -19,14 +19,20 @@ extension AppState {
         V2ShellPreference.isOn && notifierPlugin.reports(ChatDoneMarks.capability)
     }
 
-    /// Another combined dashboard's chat keeps its marks on that dashboard.
+    /// Another combined dashboard's chat keeps its marks on that dashboard,
+    /// whose plugin says whether it has them.
     func canMarkSessionDone(_ session: SessionSummary) -> Bool {
-        chatDoneAvailable && session.combinedDashboardID == nil
+        guard session.combinedDashboardID != nil else { return chatDoneAvailable }
+        return V2ShellPreference.isOn && chatMarksHome(session)?.plugin.reports(ChatDoneMarks.capability) == true
     }
 
     func isSessionDone(_ session: SessionSummary) -> Bool {
-        guard session.combinedDashboardID == nil, chatDoneMarks.dashboardID == activeDashboardID else { return false }
-        return chatDoneMarks.isDone(session, profile: rowProfile(session))
+        guard let far = session.combinedDashboardID else {
+            guard chatDoneMarks.dashboardID == activeDashboardID else { return false }
+            return chatDoneMarks.isDone(session, profile: rowProfile(session))
+        }
+        guard let marks = farChatDoneMarks[far], let home = chatMarksHome(session) else { return false }
+        return marks.isDone(home.session, profile: home.profile)
     }
 
     func toggleSessionDone(_ session: SessionSummary) {
@@ -40,17 +46,16 @@ extension AppState {
         "\(dashboardID?.uuidString ?? "-")\u{1F}\(profile.lowercased())"
     }
 
-    /// Marks the chat at once, then on the host. A read that went out
+    /// Marks the chat at once, then on its host. A read that went out
     /// before the write's answer is dropped, so it can't put the old mark
     /// back; once no write is pending the marks are read again, which also
     /// puts a refused mark back as the host has it.
     func setSessionDone(_ session: SessionSummary, done: Bool) {
-        guard canMarkSessionDone(session), let bridge = dashboardTicketBridge else { return }
-        let profile = rowProfile(session)
-        let dashboardID = activeDashboardID
+        guard canMarkSessionDone(session), let home = chatMarksHome(session) else { return }
+        let (bridge, profile, dashboardID, row) = (home.bridge, home.profile, home.dashboardID, home.session)
         let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
-        let next = chatDoneMarks.setting(session, done: done, profile: profile, dashboardID: dashboardID)
-        if next != chatDoneMarks { chatDoneMarks = next }
+        keepChatDoneMarks(doneMarks(of: dashboardID).setting(row, done: done, profile: profile, dashboardID: dashboardID),
+                          of: dashboardID)
         chatDoneMarksPendingWrites[key, default: 0] += 1
         // The fence: a read that went out before this is dropped. No read
         // starts while the write is pending, so one move per write is enough.
@@ -62,15 +67,17 @@ extension AppState {
             await previous?.value
             do {
                 _ = try await bridge.requestJSON(path: ChatDoneMarks.savePath(profile: profile), method: "POST",
-                                                 body: ChatDoneMarks.body(for: session, done: done))
+                                                 body: ChatDoneMarks.body(for: row, done: done))
             } catch {
                 sessionCatalogLog.notice("Done mark not saved: \(LogRedaction.describing(error), privacy: .public)")
             }
             guard let self else { return }
             let pending = max((self.chatDoneMarksPendingWrites[key] ?? 1) - 1, 0)
             self.chatDoneMarksPendingWrites[key] = pending == 0 ? nil : pending
-            if pending == 0, self.activeDashboardID == dashboardID {
-                self.refreshChatDoneMarks(profiles: [profile], force: true)
+            // Its dashboard as it's connected now (switched to or away from
+            // meanwhile, it's still that dashboard's marks).
+            if pending == 0, let current = self.chatMarksBridge(dashboardID) {
+                self.readChatDoneMarks(dashboardID: dashboardID, bridge: current, profiles: [profile], force: true)
             }
         }
         chatDoneMarksWriteTail[key] = write
@@ -92,13 +99,22 @@ extension AppState {
     /// on its way waits for it: its answer reads the marks again.
     func refreshChatDoneMarks(profiles: [String]? = nil, force: Bool = false, now: Date = Date()) {
         guard chatDoneAvailable, let bridge = dashboardTicketBridge else { return }
-        let dashboardID = activeDashboardID
-        for profile in profiles ?? chatDoneMarksProfiles {
+        readChatDoneMarks(dashboardID: activeDashboardID, bridge: bridge, profiles: profiles ?? chatDoneMarksProfiles,
+                          force: force, now: now)
+    }
+
+    /// Reads a dashboard's profiles' marks through its bridge: the one on
+    /// screen's (`refreshChatDoneMarks`) or another combined dashboard's
+    /// (`refreshFarChatMarks`).
+    func readChatDoneMarks(dashboardID: UUID?, bridge: DashboardTicketBridge, profiles: [String], force: Bool = false,
+                           now: Date = Date()) {
+        for profile in profiles {
             let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
             guard !chatDoneMarksReads.contains(key), chatDoneMarksPendingWrites[key] == nil else { continue }
             // Marks another dashboard's read dropped are read again at once,
             // each profile's, even once this dashboard's marks are back.
-            if !force, chatDoneMarks.hasRead(profile, dashboardID: dashboardID), let last = chatDoneMarksReadAt[key],
+            if !force, doneMarks(of: dashboardID).hasRead(profile, dashboardID: dashboardID),
+               let last = chatDoneMarksReadAt[key],
                now.timeIntervalSince(last) < Self.chatDoneMarksReadInterval { continue }
             chatDoneMarksReads.insert(key)
             chatDoneMarksReadAt[key] = now
@@ -116,21 +132,23 @@ extension AppState {
                 }
                 guard let self else { return }
                 self.chatDoneMarksReads.remove(key)
-                // A dashboard switched meanwhile has marks of its own.
-                guard self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge else { return }
+                // A dashboard switched or signed in again meanwhile has
+                // marks of its own.
+                guard self.chatMarksBridge(dashboardID) === bridge else { return }
                 // A mark made since this read went out: dropped. Its write's
                 // answer reads them again, or, when that answer came while
                 // this read was out (so it read nothing), this does.
                 guard (self.chatDoneMarksWrites[key] ?? 0) == writes else {
                     if self.chatDoneMarksPendingWrites[key] == nil {
-                        self.refreshChatDoneMarks(profiles: [profile], force: true)
+                        self.readChatDoneMarks(dashboardID: dashboardID, bridge: bridge, profiles: [profile], force: true)
                     }
                     return
                 }
                 guard let answer, let marks = ChatDoneMarks.marks(from: answer) else { return }
                 self.chatDoneMarksReadFailureLogged.remove(key)
-                let next = self.chatDoneMarks.replacing(marks, profile: profile, dashboardID: dashboardID)
-                if next != self.chatDoneMarks { self.chatDoneMarks = next }
+                self.keepChatDoneMarks(
+                    self.doneMarks(of: dashboardID).replacing(marks, profile: profile, dashboardID: dashboardID),
+                    of: dashboardID)
             }
         }
     }

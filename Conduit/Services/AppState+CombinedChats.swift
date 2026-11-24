@@ -67,6 +67,7 @@ extension AppState {
         // out of the group or opened here, it goes.
         let gone = combinedDashboardChats.keys.filter { !isInCombinedGroup($0) || $0 == activeDashboardID }
         if !gone.isEmpty { combinedDashboardChats = combinedDashboardChats.filter { !gone.contains($0.key) } }
+        dropFarChatMarksOutsideTheGroup()
         // Siri, Spotlight and the widgets know them too, once per pass,
         // however it ends.
         var wroteAny = false
@@ -81,6 +82,9 @@ extension AppState {
                 ?? combinedDashboardChats[id].flatMap { $0.profiles.isEmpty ? nil : $0.profiles }
                 ?? [rememberedActiveProfile(for: id) ?? "default"]
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
+            // Its chats' Done marks and mutes, at their own intervals: its
+            // rows show them, and its chat's menu changes them, in place.
+            refreshFarChatMarks(id, profiles: profiles, now: now)
             // A profile its Hermes no longer lists leaves Siri, Spotlight and
             // the widgets once the list says so, whether or not its chats
             // are read on this pass (issue 3034).

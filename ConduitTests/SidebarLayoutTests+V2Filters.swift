@@ -441,6 +441,74 @@ extension SidebarLayoutTests {
         XCTAssertNotNil(appState.sessionMute(chat), "an answer from the bridge before is dropped")
     }
 
+    /// Another combined dashboard's chat is marked done and muted on its
+    /// own dashboard, through that dashboard's kept bridge: the screen's
+    /// chat under the same id, and the screen's plugin, are left alone.
+    @MainActor
+    func testAFarChatsDoneMarkAndMuteAreKeptOnItsOwnDashboard() async throws {
+        let (appState, held) = try chatMuteAppState()
+        defer { held.shutdown() }
+        let far = UUID()
+        let farHeld = HeldDashboardRequests(baseURL: "http://127.0.0.2:1", dashboardID: far)
+        defer { farHeld.shutdown() }
+        let connection = HermesConnection(baseUrl: "http://127.0.0.2:1", ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        appState.keptDashboardRuntimes[far] = kept
+        let screenChat = filterRow("chat-1", source: .chat)
+        var chat = screenChat
+        chat.combinedDashboardID = far
+
+        // Its plugin's report decides, not the screen's.
+        XCTAssertFalse(appState.canMarkSessionDone(chat))
+        XCTAssertFalse(appState.canMuteSession(chat))
+        appState.setSessionDone(chat, done: true)
+        XCTAssertFalse(appState.isSessionDone(chat))
+        kept.runtime.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [ChatDoneMarks.capability, ChatMutes.capability]))
+        XCTAssertTrue(appState.canMarkSessionDone(chat))
+        XCTAssertTrue(appState.canMuteSession(chat))
+
+        appState.setSessionDone(chat, done: true)
+        XCTAssertTrue(appState.isSessionDone(chat), "marked at once")
+        XCTAssertFalse(appState.isSessionDone(screenChat), "the screen's chat under its id isn't")
+        try await farHeld.waitForRequests(1)
+        XCTAssertEqual(farHeld.sent.map(\.method), ["POST"])
+        try await farHeld.answer(["ok": true])
+        try await farHeld.waitForRequests(2)
+        XCTAssertEqual(farHeld.sent.last?.method, "GET", "the write's answer reads its dashboard's marks again")
+        try await farHeld.answer(["done": [["ids": ["chat-1"], "at": 1, "by": "user"]]])
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty }, "read")
+        XCTAssertTrue(appState.isSessionDone(chat))
+        XCTAssertEqual(appState.chatDoneMarks, ChatDoneMarks(), "the screen's marks are untouched")
+
+        appState.setSessionMute(chat, duration: .oneHour)
+        XCTAssertNotNil(appState.sessionMute(chat)?.until, "muted at once")
+        XCTAssertNil(appState.sessionMute(screenChat))
+        try await farHeld.waitForRequests(3)
+        XCTAssertEqual(farHeld.sent.last?.method, "PUT")
+        try await farHeld.answer(["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]])
+        try await untilChatDone({ appState.sessionMute(chat) != nil && appState.sessionMute(chat)?.until == nil },
+                                "its host's answer shows")
+        XCTAssertEqual(appState.chatMutes, ChatMutes())
+        XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
+
+        // Its list's read brings both, each at its interval.
+        appState.refreshFarChatMarks(far, profiles: ["default"], force: true)
+        try await farHeld.waitForRequests(5)
+        XCTAssertEqual(farHeld.sent.suffix(2).map(\.method), ["GET", "GET"])
+
+        // Let go: nothing is offered or shown.
+        appState.keptDashboardRuntimes[far] = nil
+        XCTAssertFalse(appState.canMarkSessionDone(chat))
+        XCTAssertFalse(appState.canMuteSession(chat))
+        XCTAssertFalse(appState.isSessionDone(chat))
+        XCTAssertNil(appState.sessionMute(chat))
+        appState.dropFarChatMarksOutsideTheGroup()
+        XCTAssertTrue(appState.farChatDoneMarks.isEmpty)
+        XCTAssertTrue(appState.farChatMutes.isEmpty)
+    }
+
     /// Issue 3032: a timed mute that ends takes its bell with it then, not
     /// at the next read.
     @MainActor

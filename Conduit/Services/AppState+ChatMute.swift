@@ -18,30 +18,35 @@ extension AppState {
         notifierPlugin.reports(ChatMutes.capability)
     }
 
-    /// Another combined dashboard's chat is muted on that dashboard.
+    /// Another combined dashboard's chat is muted on that dashboard, whose
+    /// plugin says whether it keeps mutes.
     func canMuteSession(_ session: SessionSummary) -> Bool {
-        chatMuteAvailable && session.combinedDashboardID == nil
+        guard session.combinedDashboardID != nil else { return chatMuteAvailable }
+        return chatMarksHome(session)?.plugin.reports(ChatMutes.capability) == true
     }
 
     /// The chat's mute while it lasts.
     func sessionMute(_ session: SessionSummary, now: Date = Date()) -> ChatMutes.Mute? {
-        guard session.combinedDashboardID == nil, chatMutes.dashboardID == activeDashboardID else { return nil }
-        return chatMutes.mute(for: session, profile: rowProfile(session), now: now)
+        guard let far = session.combinedDashboardID else {
+            guard chatMutes.dashboardID == activeDashboardID else { return nil }
+            return chatMutes.mute(for: session, profile: rowProfile(session), now: now)
+        }
+        guard let mutes = farChatMutes[far], let home = chatMarksHome(session) else { return nil }
+        return mutes.mute(for: home.session, profile: home.profile, now: now)
     }
 
     /// Mutes the chat for `duration`, or unmutes it (nil): at once here,
-    /// then on the host, whose answer replaces what this showed. One write
+    /// then on its host, whose answer replaces what this showed. One write
     /// at a time per profile, in the order they were made.
     func setSessionMute(_ session: SessionSummary, duration: ChatMutes.Duration?) {
-        guard canMuteSession(session), let bridge = dashboardTicketBridge else { return }
-        let profile = rowProfile(session)
-        let dashboardID = activeDashboardID
+        guard canMuteSession(session), let home = chatMarksHome(session) else { return }
+        let (bridge, profile, dashboardID, row) = (home.bridge, home.profile, home.dashboardID, home.session)
         let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
-        let next = chatMutes.setting(session, duration: duration, profile: profile, dashboardID: dashboardID)
-        if next != chatMutes { chatMutes = next }
+        keepChatMutes(mutes(of: dashboardID).setting(row, duration: duration, profile: profile, dashboardID: dashboardID),
+                      of: dashboardID)
         chatMutesPendingWrites[key, default: 0] += 1
         chatMutesWrites[key, default: 0] += 1
-        let body = ChatMutes.body(for: session, duration: duration)
+        let body = ChatMutes.body(for: row, duration: duration)
         let previous = chatMutesWriteTail[key]
         let write = Task { @MainActor [weak self] in
             await previous?.value
@@ -50,7 +55,7 @@ extension AppState {
                 answer = try await bridge.requestJSON(path: ChatMutes.path(profile: profile), method: "PUT", body: body)
             } catch {
                 sessionCatalogLog.notice("Chat mute not saved: \(LogRedaction.describing(error), privacy: .public)")
-                if !(error is CancellationError), self?.activeDashboardID == dashboardID {
+                if !(error is CancellationError), self?.chatMarksBridge(dashboardID) != nil {
                     self?.errorMessage = AppLocalization.string(
                         "Could not change this chat's notifications: \(UserFacingError.message(for: error))", table: .chat)
                 }
@@ -59,14 +64,15 @@ extension AppState {
             let pending = max((self.chatMutesPendingWrites[key] ?? 1) - 1, 0)
             self.chatMutesPendingWrites[key] = pending == 0 ? nil : pending
             // A dashboard switched or signed in again meanwhile has mutes of its own.
-            guard pending == 0, self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge else { return }
+            guard pending == 0, self.chatMarksBridge(dashboardID) === bridge else { return }
             if let answer, let mutes = ChatMutes.mutes(from: answer) {
-                let kept = self.chatMutes.replacing(mutes, profile: profile, dashboardID: dashboardID)
-                if kept != self.chatMutes { self.chatMutes = kept }
+                self.keepChatMutes(
+                    self.mutes(of: dashboardID).replacing(mutes, profile: profile, dashboardID: dashboardID),
+                    of: dashboardID)
                 self.chatMutesReadAt[key] = Date()
             } else {
                 // Refused: read back what the host kept.
-                self.refreshChatMutes(profiles: [profile], force: true)
+                self.readChatMutes(dashboardID: dashboardID, bridge: bridge, profiles: [profile], force: true)
             }
         }
         chatMutesWriteTail[key] = write
@@ -81,11 +87,19 @@ extension AppState {
     /// with a write on its way waits for its answer.
     func refreshChatMutes(profiles: [String]? = nil, force: Bool = false, now: Date = Date()) {
         guard chatMuteAvailable, let bridge = dashboardTicketBridge else { return }
-        let dashboardID = activeDashboardID
-        for profile in profiles ?? chatDoneMarksProfiles {
+        readChatMutes(dashboardID: activeDashboardID, bridge: bridge, profiles: profiles ?? chatDoneMarksProfiles,
+                      force: force, now: now)
+    }
+
+    /// Reads a dashboard's profiles' mutes through its bridge: the one on
+    /// screen's (`refreshChatMutes`) or another combined dashboard's
+    /// (`refreshFarChatMarks`).
+    func readChatMutes(dashboardID: UUID?, bridge: DashboardTicketBridge, profiles: [String], force: Bool = false,
+                       now: Date = Date()) {
+        for profile in profiles {
             let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
             guard !chatMutesReads.contains(key), chatMutesPendingWrites[key] == nil else { continue }
-            if !force, chatMutes.hasRead(profile, dashboardID: dashboardID), let last = chatMutesReadAt[key],
+            if !force, mutes(of: dashboardID).hasRead(profile, dashboardID: dashboardID), let last = chatMutesReadAt[key],
                now.timeIntervalSince(last) < Self.chatMutesReadInterval { continue }
             chatMutesReads.insert(key)
             chatMutesReadAt[key] = now
@@ -103,19 +117,19 @@ extension AppState {
                 }
                 guard let self else { return }
                 self.chatMutesReads.remove(key)
-                guard self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge,
-                      self.chatMutesPendingWrites[key] == nil else { return }
+                guard self.chatMarksBridge(dashboardID) === bridge, self.chatMutesPendingWrites[key] == nil else { return }
                 // A mute made since this read went out: dropped. Its write's
                 // answer reads them again, or, when that answer came while
                 // this read was out (so it read nothing), this does, as Done
                 // marks do.
                 guard (self.chatMutesWrites[key] ?? 0) == writes else {
-                    self.refreshChatMutes(profiles: [profile], force: true)
+                    self.readChatMutes(dashboardID: dashboardID, bridge: bridge, profiles: [profile], force: true)
                     return
                 }
                 guard let answer, let mutes = ChatMutes.mutes(from: answer) else { return }
-                let next = self.chatMutes.replacing(mutes, profile: profile, dashboardID: dashboardID)
-                if next != self.chatMutes { self.chatMutes = next }
+                self.keepChatMutes(
+                    self.mutes(of: dashboardID).replacing(mutes, profile: profile, dashboardID: dashboardID),
+                    of: dashboardID)
             }
         }
     }
