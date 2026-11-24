@@ -202,6 +202,12 @@ extension AppState {
     /// addresses, bots or none (issue 2741). Bot Chats join in
     /// `oneHermesGroups`' callers.
     var combinedHermesEvidence: [UUID?: Set<String>] {
+        // Always as the screen sees the group: the dashboard on screen's
+        // own lists are its evidence, and every other dashboard's is what
+        // was read through its kept connection. Read in another
+        // dashboard's scope, the one on screen would have none, and could
+        // never be found to be that dashboard's twin (issue 3210).
+        guard actingOnRuntimeOnScreen else { return act(onRuntime: runtimeOnScreen) { combinedHermesEvidence } }
         guard isInCombinedGroup(activeDashboardID) else { return [:] }
         // A row with no id of its own goes by its place in the list
         // (normalizeSessions): a number any Hermes could give.
@@ -495,10 +501,12 @@ extension AppState {
         if let known = combinedDashboardPluginCapabilities[id], known.bridge == bridge { return known.capabilities }
         guard let response = try? await readKeptDashboardJSON(runtime.bridge, path: NotifierPluginStatus.path),
               keptDashboardRuntimes[id]?.bridge === runtime.bridge,
-              case .reported(_, let capabilities) = NotifierPluginStatus.state(from: response) else { return nil }
-        combinedDashboardPluginCapabilities[id] = (bridge, capabilities)
+              let report = KeptPluginReport(bridge: bridge, response: response) else { return nil }
+        // With its version, which a kept runtime taking this report reads
+        // its version-gated features by (issue 3209).
+        combinedDashboardPluginCapabilities[id] = report
         noteDashboardHermesName(id, NotifierPluginStatus.hermesName(from: response))
-        return capabilities
+        return report.capabilities
     }
 
     /// Reads another combined dashboard's bot's work through its kept

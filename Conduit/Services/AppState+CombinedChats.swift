@@ -321,6 +321,8 @@ extension AppState {
     /// Each dashboard of the group to its Hermes' number, from what the
     /// lists share (`combinedHermesEvidence`) and the rosters' Bot Chats.
     var combinedHermesGroups: [UUID?: Int] {
+        // As the screen sees the group, whatever scope asks (issue 3210).
+        guard actingOnRuntimeOnScreen else { return act(onRuntime: runtimeOnScreen) { combinedHermesGroups } }
         var evidence = combinedHermesEvidence
         for bot in shownBotRoster {
             if let id = bot.canonicalSession?.id { evidence[activeDashboardID, default: []].insert(id) }
