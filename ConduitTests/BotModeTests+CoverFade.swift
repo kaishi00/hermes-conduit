@@ -67,18 +67,21 @@ extension BotModeTests {
         XCTAssertEqual(cover.layer.opacity, 1)
         XCTAssertTrue(cover.isUserInteractionEnabled)
         XCTAssertFalse(cover.accessibilityElementsHidden)
+        XCTAssertFalse(fade.shown.covers, "published after the update it ran in")
+        for _ in 0..<200 where !fade.shown.covers {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(fade.shown.covers)
         fade.coverChanged(coming: nil, openBotChat: "atlas", animated: true)
         XCTAssertEqual(cover.layer.opacity, 1, "waits for the rows")
-        XCTAssertFalse(fade.shown.covers, "published after the update it ran in")
-        await Task.yield()
-        try await Task.sleep(for: .milliseconds(1))
         XCTAssertTrue(fade.shown.covers, "the chat under it stays from VoiceOver through the row wait")
         for _ in 0..<200 where cover.layer.opacity != 0 {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(cover.layer.opacity, 0)
-        await Task.yield()
-        try await Task.sleep(for: .milliseconds(1))
+        for _ in 0..<200 where fade.shown.covers {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         XCTAssertFalse(fade.shown.covers)
         XCTAssertFalse(cover.isUserInteractionEnabled)
         XCTAssertTrue(cover.accessibilityElementsHidden)

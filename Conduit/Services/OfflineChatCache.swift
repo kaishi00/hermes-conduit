@@ -508,6 +508,9 @@ final class OfflineChatCacheStore {
     /// Which `recordAnswer` put each answer in memory, so the queue's size
     /// check only drops the one it measured.
     private var keptAnswerGenerations: [URL: UInt64] = [:]
+    /// How many `recordAnswer` writes are still on the queue per file, under
+    /// `memoryLock`: an eviction keeps a generation only for these.
+    private var keptAnswerWritesQueued: [URL: Int] = [:]
     private var keptAnswerGeneration: UInt64 = 0
     /// How many copies each scope has had read ahead since the last
     /// removal: a later ask for more (the profile switched to, after its
@@ -1337,6 +1340,7 @@ final class OfflineChatCacheStore {
         let generation = memoryLock.withLock { () -> UInt64 in
             keptAnswerGeneration &+= 1
             keptAnswerGenerations[url] = keptAnswerGeneration
+            keptAnswerWritesQueued[url, default: 0] += 1
             return keptAnswerGeneration
         }
         // Taking the credentials out walks the whole answer (a roster's
@@ -1345,6 +1349,14 @@ final class OfflineChatCacheStore {
         // takes it there, ahead of the file, unless a newer answer or a
         // removal came first.
         perform { [self] in
+            defer {
+                memoryLock.withLock {
+                    let queued = (keptAnswerWritesQueued[url] ?? 1) - 1
+                    keptAnswerWritesQueued[url] = queued > 0 ? queued : nil
+                    // Nothing queued and not in memory: its generation has no reader left.
+                    if queued <= 0, keptAnswers[url] == nil { keptAnswerGenerations.removeValue(forKey: url) }
+                }
+            }
             let kept = Self.withoutCredentials(answer, namesUnder: names)
             let current = memoryLock.withLock { () -> Bool in
                 guard keptAnswerGenerations[url] == generation else { return false }
@@ -1603,7 +1615,7 @@ final class OfflineChatCacheStore {
             // Memory lets it go, but an answer for it still on the queue
             // (`recordAnswer`) is kept when its turn comes: only a removal
             // or a newer answer stands it down.
-            let generation = keptAnswerGenerations[oldest]
+            let generation = keptAnswerWritesQueued[oldest] != nil ? keptAnswerGenerations[oldest] : nil
             forgetAnswerLocked(oldest)
             keptAnswerGenerations[oldest] = generation
         }
