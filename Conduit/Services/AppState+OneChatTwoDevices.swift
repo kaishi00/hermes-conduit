@@ -1033,10 +1033,13 @@ extension AppState {
 
     func removeSessionFromLiveCatalog(_ session: SessionSummary) {
         sessions.removeAll { sessionMatches($0, session) }
-        cronSessions.removeAll { sessionMatches($0, session) }
+        // The Cron rows and the saved list are the dashboard on screen's:
+        // another combined dashboard's chat, deleted or archived on its
+        // own runtime, never takes a row of this one's under the same id.
+        if actingOnRuntimeOnScreen { cronSessions.removeAll { sessionMatches($0, session) } }
         // A row deleted or archived while the saved list still shows goes
         // from it too, not only once the live list lands without it.
-        if var saved = savedChatList {
+        if actingOnRuntimeOnScreen, var saved = savedChatList {
             saved.list.sessions.removeAll { sessionMatches($0, session) }
             saved.list.cronSessions.removeAll { sessionMatches($0, session) }
             saved.keptPinnedRows?.removeAll { sessionMatches($0, session) }
@@ -1053,8 +1056,10 @@ extension AppState {
         // call archived on Hermes already, deleted or archived here, leaves
         // no trace in the live total that would make it read again. Kept
         // archives that don't list it (other profiles') stay.
-        archivedCallsReads = archivedCallsReads.filter { _, read in
-            !read.calls.contains { sessionMatches($0, session) }
+        if actingOnRuntimeOnScreen {
+            archivedCallsReads = archivedCallsReads.filter { _, read in
+                !read.calls.contains { sessionMatches($0, session) }
+            }
         }
         publishWidgetSnapshot()
     }
