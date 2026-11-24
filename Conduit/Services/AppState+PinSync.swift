@@ -100,7 +100,8 @@ extension AppState {
             transcriptRevision: chatTranscriptRevision,
             sessionsRevision: sessionsRevision,
             cronSessionsRevision: cronSessionsRevision,
-            identityRevision: chatOnScreenRuntime?.conversationIdentityIndex.revision ?? 0
+            identityRevision: chatOnScreenRuntime?.conversationIdentityIndex.revision ?? 0,
+            identityIndex: chatOnScreenRuntime.map { ObjectIdentifier($0.conversationIdentityIndex) }
         )
         if let cached = openChatPinnedRepliesCache, cached.key == key { return cached.value }
         let own = openChatPinIDs().own

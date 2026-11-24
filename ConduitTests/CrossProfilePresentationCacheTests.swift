@@ -5183,6 +5183,7 @@ extension CrossProfilePresentationCacheTests {
 
         openGate.release()
         await waitUntil { appState.messages.contains { $0.id == "live-1" } }
+        XCTAssertEqual(appState.messages.map(\.id), ["live-1"], "the live transcript replaces the saved copy once loaded")
     }
 
     /// A far chat's header recovery state follows its own dashboard's quiet

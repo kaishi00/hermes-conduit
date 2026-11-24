@@ -234,7 +234,7 @@ extension AppState {
         let profile = activeProfile
         offlineChatCache.readTranscript(durableID, dashboardID: dashboardID, profile: profile) { [weak self] saved in
             guard let self, let saved else { return }
-            self.onChatRuntimeNow {
+            let applyIfCurrent: () -> Void = {
                 guard self.chatViewportTransitionIsCurrent(generation: transition),
                       self.shownChat.reconciliationToken == reconcileToken,
                       self.reconciliation?.token == reconcileToken,
@@ -251,6 +251,20 @@ extension AppState {
                 )
                 ResponsivenessSignposts.signposter.emitEvent("Saved rows shown")
             }
+            if case .unreachable = self.chatRuntimeRoute,
+               let farChat = self.farChat,
+               farChat.dashboardID == dashboardID,
+               farChat.profile == profile {
+                let standIn = DashboardRuntime()
+                standIn.activeProfile = farChat.profile
+                RuntimeScope.$runtime.withValue(standIn) {
+                    RuntimeScope.$dashboardID.withValue(farChat.dashboardID) {
+                        applyIfCurrent()
+                    }
+                }
+                return
+            }
+            self.onChatRuntimeNow(applyIfCurrent)
         }
     }
 
