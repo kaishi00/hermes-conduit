@@ -516,7 +516,6 @@ extension AppState {
         let secondaryID = item.sessionIDs.dropFirst().first(where: { !$0.isEmpty }) ?? primaryID
         let unavailable = AppLocalization.string("Couldn't open that chat. Try again.")
         let reveal: NeedsYouReveal? = item.asked == nil ? NeedsYouReveal(opening: primaryID) : nil
-        let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
         switch plan {
         case .botChat(let bot):
             let target = ConduitNotificationTarget(
@@ -525,37 +524,34 @@ extension AppState {
                 durableSessionID: primaryID,
                 dashboardID: dashboardID,
                 type: item.asked == nil ? (item.kind == .approval ? "approval.needed" : "input.needed") : nil,
-                decision: item.card
+                decision: nil
             )
             retainNeedsYouRelayGateway(for: item, on: dashboardID)
             errorMessage = nil
             pendingNeedsYouReveal = reveal
             dismissSidebarDrawer()
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
             Task { @MainActor [weak self] in
                 guard let self,
-                      let outcome = await self.openFarBotChatNotification(target, of: bot, in: dashboardID) else { return }
-                if outcome != .opened, let reveal, self.pendingNeedsYouReveal == reveal {
-                    self.pendingNeedsYouReveal = nil
-                }
-                guard outcome == .retry,
                       self.chatViewportTransitionGeneration == viewport,
                       self.groupRoomEpoch == roomEpoch,
-                      self.errorMessage == nil else { return }
-                self.errorMessage = unavailable
+                      let outcome = await self.openFarBotChatNotification(target, of: bot, in: dashboardID) else { return }
+                if outcome == .opened {
+                    self.showWaitingQuestionCards()
+                } else {
+                    if let reveal, self.pendingNeedsYouReveal == reveal {
+                        self.pendingNeedsYouReveal = nil
+                    }
+                    if outcome == .retry {
+                        self.publishNotificationRouteFailure(for: target)
+                    }
+                }
             }
             return true
 
         case .listedChat(let row):
             guard let open = startFarChatOpen(row, in: dashboardID, prepare: { [weak self] in
-                guard let self else { return }
-                self.retainNeedsYouRelayGateway(for: item, on: dashboardID)
-                guard let card = item.card else { return }
-                self.recordNotificationDecision(
-                    card,
-                    sessionIDs: item.sessionIDs,
-                    cacheSessionIDs: Array(Set([primaryID, row.id])),
-                    profile: row.profile ?? item.profile
-                )
+                self?.retainNeedsYouRelayGateway(for: item, on: dashboardID)
             }, onFailure: { [weak self] sessionWasNotFound in
                 guard let self else { return }
                 self.errorMessage = Self.linkedSessionFailureMessage(
@@ -568,7 +564,7 @@ extension AppState {
             errorMessage = nil
             pendingNeedsYouReveal = reveal
             dismissSidebarDrawer()
-            awaitFarNeedsYouChatOpen(open, reveal: reveal, viewport: viewport, roomEpoch: roomEpoch, unavailable: unavailable)
+            awaitFarNeedsYouChatOpen(open, reveal: reveal)
             return true
 
         case .unlistedChat:
@@ -580,14 +576,6 @@ extension AppState {
             dismissSidebarDrawer()
             let open = act(onRuntime: runtime) {
                 retainNeedsYouRelayGateway(for: item, on: dashboardID)
-                if let card = item.card {
-                    recordNotificationDecision(
-                        card,
-                        sessionIDs: item.sessionIDs,
-                        cacheSessionIDs: [primaryID],
-                        profile: item.profile
-                    )
-                }
                 return requestOpenSession(primaryID, onFailure: { [weak self] sessionWasNotFound in
                     guard let self else { return }
                     self.errorMessage = Self.linkedSessionFailureMessage(
@@ -597,26 +585,23 @@ extension AppState {
                     )
                 })
             }
-            awaitFarNeedsYouChatOpen(open, reveal: reveal, viewport: viewport, roomEpoch: roomEpoch, unavailable: unavailable)
+            awaitFarNeedsYouChatOpen(open, reveal: reveal)
             return true
         }
     }
 
     private func awaitFarNeedsYouChatOpen(
         _ open: Task<Bool, Never>,
-        reveal: NeedsYouReveal?,
-        viewport: UInt64,
-        roomEpoch: UInt64,
-        unavailable: String
+        reveal: NeedsYouReveal?
     ) {
         Task { @MainActor [weak self] in
             let opened = await open.value
-            guard let self, !opened else { return }
-            if let reveal, self.pendingNeedsYouReveal == reveal { self.pendingNeedsYouReveal = nil }
-            guard self.chatViewportTransitionGeneration == viewport,
-                  self.groupRoomEpoch == roomEpoch,
-                  self.errorMessage == nil else { return }
-            self.errorMessage = unavailable
+            guard let self else { return }
+            if opened {
+                self.showWaitingQuestionCards()
+            } else if let reveal, self.pendingNeedsYouReveal == reveal {
+                self.pendingNeedsYouReveal = nil
+            }
         }
     }
 
