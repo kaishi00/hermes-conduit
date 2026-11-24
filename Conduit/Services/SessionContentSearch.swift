@@ -541,3 +541,12 @@ extension AppState {
         }
     }
 }
+
+extension StringProtocol {
+    /// Whether these words hold a Chats search's query, without case and without accents:
+    /// "andre" finds "André" and "André" finds "Andre" (desktop issue 399), as the search
+    /// inside messages above already matched.
+    func matchesChatSearch<Query: StringProtocol>(_ query: Query) -> Bool {
+        range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
+}

@@ -651,7 +651,7 @@ struct SessionList: View {
 
     private func sessionMatches(_ session: SessionSummary, query: String) -> Bool {
         [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
-            .contains { $0.localizedCaseInsensitiveContains(query) }
+            .contains { $0.matchesChatSearch(query) }
     }
 
     /// The Projects view hides the source filters, so its Pinned section
@@ -763,8 +763,8 @@ struct SessionList: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return appState.projects }
         return appState.projects.filter { project in
-            project.title.localizedCaseInsensitiveContains(query)
-                || project.previewSessions.contains { $0.title.localizedCaseInsensitiveContains(query) }
+            project.title.matchesChatSearch(query)
+                || project.previewSessions.contains { $0.title.matchesChatSearch(query) }
         }
     }
 
@@ -1276,7 +1276,7 @@ struct ArchivedSessionsSheet: View {
         guard !query.isEmpty else { return appState.archivedSessions }
         return appState.archivedSessions.filter { session in
             [session.title, session.model, session.id, appState.sessionCategory(for: session).label]
-                .contains { $0.localizedCaseInsensitiveContains(query) }
+                .contains { $0.matchesChatSearch(query) }
         }
     }
 
@@ -1436,10 +1436,16 @@ struct SessionActionMenuItems: View {
 
     var body: some View {
         // Another combined dashboard's chat on screen (its row from that
-        // dashboard's list): Rename, Archive and Delete, which run there;
-        // the rest reads and keeps this dashboard's list state.
+        // dashboard's list): Rename, Done, Mute, Archive and Delete, which
+        // run there; the rest reads and keeps this dashboard's list state.
         if session.combinedDashboardID != nil {
             renameButton
+            if appState.canMarkSessionDone(session) {
+                DoneToggleButton(session: session)
+            }
+            if appState.canMuteSession(session) {
+                ChatMuteMenu(session: session)
+            }
             archiveButton
             deleteButton
         } else {

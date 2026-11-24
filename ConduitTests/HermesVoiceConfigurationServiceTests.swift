@@ -408,6 +408,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             "/api/tools/toolsets/stt/config": ["providers": []],
             "/api/tools/toolsets/tts/config": ["providers": []]
         ]
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true]
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
@@ -543,7 +544,8 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
                     ["name": "OpenAI", "status": "ready", "is_active": true]
                 ]
             ],
-            "/api/tools/toolsets/tts/config": ["providers": []]
+            "/api/tools/toolsets/tts/config": ["providers": []],
+            HermesVoiceConfigurationService.configUnsetPath: ["ok": true, "removed": ["stt.use_gateway"]]
         ]
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
@@ -555,6 +557,32 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         let writtenSection = try XCTUnwrap((configPUT?.body?["config"] as? [String: Any])?["stt"] as? [String: Any])
         XCTAssertEqual(writtenSection["provider"] as? String, "openai")
         XCTAssertNil(writtenSection["use_gateway"])
+        // Hermes' PUT keeps a key left out of it: the plugin takes it out
+        // first (issue 3155).
+        XCTAssertEqual(requester.unsetKeys, [["stt.use_gateway"]])
+        // After the save, so a save that fails leaves the old provider
+        // with its routing.
+        let order = requester.recorded.filter { $0.method != "GET" }.map(\.path)
+        XCTAssertEqual(Array(order.suffix(2)), ["/api/config", HermesVoiceConfigurationService.configUnsetPath])
+    }
+
+    /// A plugin without the unset route (before 0.195.8) still gets the
+    /// provider saved; the stale key stays, as it did before.
+    func testLegacyVendorFallbackSavesTheProviderOnAPluginWithoutTheUnsetRoute() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "stepfun", "use_gateway": true], "tts": ["provider": "edge"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        requester.missingRoutes = [HermesVoiceConfigurationService.configUnsetPath]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.saveProvider("groq", kind: .stt)
+
+        XCTAssertTrue(saved)
+        XCTAssertTrue(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
     }
 
     func testLegacyVendorFallbackRemovesStaleUseGatewayFromTTS() async throws {
@@ -572,6 +600,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
                 ]
             ]
         ]
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true]
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
@@ -712,7 +741,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
     /// Clearing speed (empty or whitespace-only) removes the override key
     /// from the profile config — upstream's `.get("speed", default)`
     /// fallback then applies — and the snapshot no longer carries the key.
-    func testClearingOpenAISpeedRemovesTheOverride() async throws {
+    func testClearingOpenAISpeedRemovesTheOverride() async {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = [
             "/api/config": [
@@ -725,15 +754,15 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true, "removed": ["tts.openai.speed"]]
+
         let saved = await service.save(value: "  ", for: "tts.openai.speed")
 
         XCTAssertTrue(saved)
-        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
-        let openai = try XCTUnwrap(
-            ((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])?["openai"] as? [String: Any]
-        )
-        XCTAssertNil(openai["speed"])
-        XCTAssertEqual(openai["voice"] as? String, "alloy")
+        // Hermes' PUT would merge the key back in, so the plugin takes it
+        // out and nothing is PUT (issue 3155).
+        XCTAssertEqual(requester.unsetKeys, [["tts.openai.speed"]])
+        XCTAssertFalse(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
         XCTAssertNil(service.snapshot.values["tts.openai.speed"])
     }
 
@@ -862,7 +891,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
     /// key is absent — a stored "" would be used verbatim and break
     /// synthesis. Removal is behavior-identical for keys upstream treats as
     /// unset when empty (`base_url`'s falsy-or chains).
-    func testClearingOpenAIBaseURLRemovesTheOverride() async throws {
+    func testClearingOpenAIBaseURLRemovesTheOverride() async {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = [
             "/api/config": [
@@ -876,25 +905,23 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         await service.reload()
         XCTAssertEqual(service.snapshot.values["tts.openai.base_url"], "https://tts.example.com/v1")
 
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true, "removed": ["tts.openai.base_url"]]
+
         // Whitespace-only input is a clear, never a persisted override.
         let saved = await service.save(value: "   ", for: "tts.openai.base_url")
 
         XCTAssertTrue(saved)
-        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
-        let openai = try XCTUnwrap(
-            ((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])?["openai"] as? [String: Any]
-        )
-        XCTAssertNil(openai["base_url"])
-        // Unrelated provider values survive the removal.
-        XCTAssertEqual(openai["voice"] as? String, "alloy")
+        // Only that key is named, so unrelated provider values stay.
+        XCTAssertEqual(requester.unsetKeys, [["tts.openai.base_url"]])
+        XCTAssertFalse(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
         XCTAssertNil(service.snapshot.values["tts.openai.base_url"])
     }
 
     /// Clearing the ElevenLabs voice override removes `voice_id` entirely
-    /// (upstream reads it with `.get(key, DEFAULT)`), prunes the provider
-    /// section when it becomes empty, and leaves the snapshot consistent
-    /// with an absent override.
-    func testClearingElevenLabsVoiceIDRemovesTheOverride() async throws {
+    /// (upstream reads it with `.get(key, DEFAULT)`; the plugin prunes the
+    /// provider section it leaves empty), and leaves the snapshot
+    /// consistent with an absent override.
+    func testClearingElevenLabsVoiceIDRemovesTheOverride() async {
         let requester = MockVoiceConfigurationRequester()
         requester.routes = [
             "/api/config": [
@@ -907,18 +934,88 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
+        requester.routes[HermesVoiceConfigurationService.configUnsetPath] = ["ok": true, "removed": ["tts.elevenlabs.voice_id"]]
+
         let saved = await service.save(value: "", for: "tts.elevenlabs.voice_id")
 
         XCTAssertTrue(saved)
-        let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
-        let tts = try XCTUnwrap((configPUT?.body?["config"] as? [String: Any])?["tts"] as? [String: Any])
-        // The emptied section is pruned so no empty {} lingers in config.
-        XCTAssertNil(tts["elevenlabs"])
-        XCTAssertEqual(tts["provider"] as? String, "elevenlabs")
+        XCTAssertEqual(requester.unsetKeys, [["tts.elevenlabs.voice_id"]])
         XCTAssertNil(service.snapshot.values["tts.elevenlabs.voice_id"])
     }
 
-    /// A failed config PUT must leave the snapshot matching the server: the
+    /// A plugin before 0.195.8 has no route that takes a key out, and
+    /// Hermes' own save would keep it: the clear fails and says to update
+    /// the plugin, rather than showing a field cleared that isn't
+    /// (issue 3155).
+    func testClearingOnAPluginWithoutTheRouteAsksForAnUpdate() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": [
+                "stt": ["enabled": true, "provider": "local"],
+                "tts": ["provider": "openai", "openai": ["voice": "nova"]]
+            ],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        requester.missingRoutes = [HermesVoiceConfigurationService.configUnsetPath]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.save(value: "", for: "tts.openai.voice")
+
+        XCTAssertFalse(saved)
+        XCTAssertEqual(service.errorMessage, "Update the Conduit plugin on your Hermes host to clear this setting.")
+        XCTAssertFalse(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
+        XCTAssertEqual(service.snapshot.values["tts.openai.voice"], "nova")
+    }
+
+    /// A value the plugin reads (the speech server's, Local Live's fast
+    /// model and its key) is cleared as "" in Hermes' own save, which the
+    /// plugin reads as unset; the unset route takes only stt and tts.
+    func testClearingAValueThePluginReadsStaysInHermesSave() async throws {
+        for (key, path) in [("voice.speech_server.model", ["speech_server", "model"]),
+                            ("voice.local_live.front_model.api_key", ["local_live", "front_model", "api_key"])] {
+            let requester = MockVoiceConfigurationRequester()
+            requester.routes = [
+                "/api/config": ["voice": ["speech_server": ["model": "own"], "local_live": ["front_model": ["api_key": "sk-old"]]]],
+                "/api/tools/toolsets/stt/config": ["providers": []],
+                "/api/tools/toolsets/tts/config": ["providers": []]
+            ]
+            let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+            await service.reload()
+
+            let saved = await service.save(value: "", for: key)
+
+            XCTAssertTrue(saved, key)
+            XCTAssertEqual(requester.unsetKeys.count, 0, key)
+            let configPUT = requester.recorded.first { $0.method == "PUT" && $0.path == "/api/config" }
+            var value: Any? = (configPUT?.body?["config"] as? [String: Any])?["voice"]
+            for part in path { value = (value as? [String: Any])?[part] }
+            XCTAssertEqual(try XCTUnwrap(value as? String, key), "", key)
+        }
+    }
+
+    /// A provider save that fails leaves the stale routing where it was:
+    /// the plugin is asked only after the save.
+    func testLegacyVendorFallbackKeepsUseGatewayWhenTheSaveFails() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "stepfun", "use_gateway": true], "tts": ["provider": "edge"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []],
+            HermesVoiceConfigurationService.configUnsetPath: ["ok": true]
+        ]
+        requester.failingPUTPaths = ["/api/config"]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        let saved = await service.saveProvider("groq", kind: .stt)
+
+        XCTAssertFalse(saved)
+        XCTAssertEqual(requester.unsetKeys.count, 0)
+    }
+
+    /// A failed clear must leave the snapshot matching the server: the
     /// in-memory values only update once the write is confirmed, so the
     /// settings UI never shows a cleared override that did not persist.
     func testFailedClearKeepsSnapshotConsistentWithServer() async {
@@ -931,7 +1028,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             "/api/tools/toolsets/stt/config": ["providers": []],
             "/api/tools/toolsets/tts/config": ["providers": []]
         ]
-        requester.failingPUTPaths = ["/api/config"]
+        // No answer from the plugin's unset route: the request fails.
         let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
         await service.reload()
 
@@ -1243,6 +1340,11 @@ final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     /// Paths Hermes answers 404 for, as a Hermes without those routes does.
     var missingRoutes: Set<String> = []
     private(set) var recorded: [(path: String, method: String, body: [String: Any]?)] = []
+    /// The keys each request to the plugin's unset route named.
+    var unsetKeys: [[String]] {
+        recorded.filter { $0.method == "POST" && $0.path == HermesVoiceConfigurationService.configUnsetPath }
+            .map { $0.body?["keys"] as? [String] ?? [] }
+    }
     /// Runs as each GET goes out, before it answers.
     var onGET: ((String) async -> Void)?
 

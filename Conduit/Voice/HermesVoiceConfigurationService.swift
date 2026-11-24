@@ -393,9 +393,13 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// lands in `<section>.provider` and any stale `use_gateway`
     /// gateway-routing intent is removed — a leftover `use_gateway: true`
     /// would override the user's fresh BYOK selection on legacy runtimes.
-    /// Like the other config editors, this is a full-document GET→PUT; it
-    /// runs in ProfileConfigWriteQueue, so another save can't land between
-    /// the two and be put back.
+    /// Hermes' PUT merges what it's sent over the file, so leaving the key
+    /// out of it keeps it: the plugin takes it out once the provider is
+    /// saved (unsetConfig), and a plugin without that route leaves it, as
+    /// every Conduit did before (issue 3155). Like the other config
+    /// editors, this is a full-document GET→PUT; it runs in
+    /// ProfileConfigWriteQueue, so another save can't land between the two
+    /// and be put back.
     private func saveVendorSelection(_ vendor: String, kind: VoiceProviderDescriptor.Kind) async -> Bool {
         let sectionKey = kind.rawValue
         let saved = await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
@@ -405,18 +409,29 @@ final class HermesVoiceConfigurationService: ObservableObject {
             }
             var section = config[sectionKey] as? [String: Any] ?? [:]
             section["provider"] = vendor
-            section.removeValue(forKey: "use_gateway")
+            let hadGateway = section.removeValue(forKey: "use_gateway") != nil
             config[sectionKey] = section
             do {
                 _ = try await requester.requestJSON(
                     path: profilePath("/api/config"), method: "PUT",
                     body: ["config": config]
                 )
-                return true
             } catch {
                 errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))", table: .voice)
                 return false
             }
+            guard hadGateway else { return true }
+            // After the save, so one that fails leaves the old provider
+            // with its routing.
+            do {
+                try await unsetConfig(keys: ["\(sectionKey).use_gateway"])
+            } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+                // A plugin before 0.195.8: the key stays, as before.
+            } catch {
+                errorMessage = AppLocalization.string("Could not save \(sectionKey).provider: \(UserFacingError.message(for: error))", table: .voice)
+                return false
+            }
+            return true
         }
         if saved { await reload() }
         return saved
@@ -478,20 +493,25 @@ final class HermesVoiceConfigurationService: ObservableObject {
         // Clearing REMOVES the override key: Hermes reads provider keys
         // like `config.get(key, default)`, which applies the default only
         // when the key is ABSENT, so a stored "" would be used verbatim.
-        // A speech server value is the exception: the plugin reads "" as
-        // unset, and Hermes' PUT merges what it's sent over the file, so a
-        // removed key would keep its old value ("Remove key" left the key,
-        // app issue 3153).
+        // Hermes' PUT merges what it's sent over the file, so a key left
+        // out of it keeps its old value: the plugin takes a speech
+        // provider's key out (unsetConfig, issue 3155). Every other value
+        // saved here is one the plugin reads (the speech server's, Local
+        // Live's fast model), and it reads "" as unset, so those are
+        // saved as "" ("Remove key" left the key, app issue 3153).
         let clears = stored.isEmpty
-        if clears, key.hasPrefix(Self.speechServerPrefix) {
-            Self.setNested("", in: &config, dottedKey: key)
-        } else if clears {
+        let unsets = clears && Self.hermesSpeechPrefixes.contains { key.hasPrefix($0) }
+        if unsets {
             Self.removeNested(in: &config, dottedKey: key)
         } else {
             Self.setNested(stored, in: &config, dottedKey: key)
         }
         do {
-            try await putConfig(config)
+            if unsets {
+                try await unsetConfig(keys: [key], leaving: config)
+            } else {
+                try await putConfig(config)
+            }
             // The snapshot only reflects a confirmed write; a failed PUT
             // must leave it matching the server. A key saved into the config
             // (the speech server's) is never kept in memory.
@@ -503,6 +523,13 @@ final class HermesVoiceConfigurationService: ObservableObject {
             if key == "stt.provider" { snapshot.selectedSTTProvider = value }
             if key == "tts.provider" { snapshot.selectedTTSProvider = value }
             return true
+        } catch let error as DashboardTicketBridgeError where unsets && GeminiLiveTokenClient.isMissingRoute(error) {
+            // A plugin before 0.195.8 can't take a key out, and Hermes'
+            // own save would keep it: say so rather than show it cleared.
+            // A profile that turned the plugin off says how to turn it on.
+            errorMessage = DashboardTicketBridgeError.pluginOffDetail(of: error)
+                ?? PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to clear this setting.", table: .voice))
+            return false
         } catch {
             errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
             return false
@@ -746,6 +773,29 @@ final class HermesVoiceConfigurationService: ObservableObject {
     private func putConfig(_ config: [String: Any]) async throws {
         _ = try await keeping(KeptRead.config, writes: true) {
             _ = try await requester.requestJSON(path: profilePath("/api/config"), method: "PUT", body: ["config": config])
+            return config
+        }
+    }
+
+    /// The sections Hermes itself reads its speech providers from, with a
+    /// default only when a key is absent: the keys the plugin's unset
+    /// route takes.
+    static let hermesSpeechPrefixes = ["stt.", "tts."]
+
+    /// The plugin's route that takes keys out of the profile's config
+    /// (plugin 0.195.8, notifier `dashboard/api/config_unset.py`).
+    static let configUnsetPath = "/api/plugins/conduit_push/config/unset"
+
+    /// Takes `keys` (under `stt` or `tts`) out of the profile's config, so
+    /// Hermes' defaults apply again. `config`, the document without them,
+    /// is kept as what the page opens on next, as putConfig's is.
+    private func unsetConfig(keys: [String], leaving config: [String: Any]? = nil) async throws {
+        func unset() async throws {
+            _ = try await requester.requestJSON(path: profilePath(Self.configUnsetPath), method: "POST", body: ["keys": keys])
+        }
+        guard let config else { return try await unset() }
+        _ = try await keeping(KeptRead.config, writes: true) {
+            try await unset()
             return config
         }
     }

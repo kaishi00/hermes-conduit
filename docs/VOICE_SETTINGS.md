@@ -44,7 +44,10 @@ The OpenAI TTS provider accepts two endpoint overrides:
   endpoint (for example `https://your-host/v1`). This configures the provider
   **Hermes** calls; it does not change the server Conduit connects to, and it
   is not the Hermes dashboard URL. Clearing the field removes the override
-  key from the profile config, returning the provider to its default.
+  key from the profile config, returning the provider to its default. The
+  Conduit plugin takes the key out (plugin 0.195.8 or newer), since Hermes'
+  own save keeps a key that's left out; on an older plugin Conduit asks you
+  to update it.
 - `tts.openai.speed` — speech rate multiplier. Upstream clamps values into
   0.25–4.0; Conduit validates and refuses out-of-range or malformed input
   rather than saving something upstream would silently rewrite, and accepts
