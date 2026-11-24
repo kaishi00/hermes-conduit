@@ -6,7 +6,8 @@
 //  dashboard's plugin keeps its own, so a chat opened in place is marked
 //  done and muted on its own dashboard, and its row shows it, without a
 //  switch (AppState+ChatDone.swift and AppState+ChatMute.swift read and
-//  write them through that dashboard's kept bridge).
+//  write them through that dashboard's kept bridge). Its star is kept on
+//  this phone under its own dashboard, and its read flag is Hermes' there.
 //
 
 import Foundation
@@ -123,5 +124,112 @@ extension AppState {
         guard !gone.isEmpty else { return }
         farChatDoneMarks = farChatDoneMarks.filter { !gone.contains($0.key) }
         farChatMutes = farChatMutes.filter { !gone.contains($0.key) }
+    }
+
+    // MARK: - Stars and the read flag
+
+    /// The dashboard another combined dashboard's row is kept on; nil for
+    /// the dashboard on screen's own rows.
+    func farMarksDashboard(_ session: SessionSummary) -> UUID? {
+        guard let far = session.combinedDashboardID, far != dashboardIDOnScreen else { return nil }
+        return far
+    }
+
+    /// Another combined dashboard's stars: the ones this phone keeps under
+    /// that dashboard, which its own Chats list shows once it's on screen.
+    func farSessionStars(_ far: UUID) -> SessionStars {
+        if let read = farSessionStarsByDashboard[far] { return read }
+        let stars = SessionStars(defaults: defaults, scope: Self.dashboardPreferenceBucket(far))
+        farSessionStarsByDashboard[far] = stars
+        return stars
+    }
+
+    /// A far row and the profile its star is kept under, spelled as the
+    /// stars already spell it.
+    private func farStarRow(_ session: SessionSummary, in far: UUID, stars: SessionStars) -> (row: SessionSummary, profile: String) {
+        let (row, profile) = farChatMarksRow(session, in: far)
+        return (row, stars.idsByProfile.keys.first { Self.profilesMatch($0, profile) } ?? profile)
+    }
+
+    func isFarSessionStarred(_ session: SessionSummary, in far: UUID) -> Bool {
+        let stars = farSessionStars(far)
+        let (row, profile) = farStarRow(session, in: far, stars: stars)
+        return stars.isStarred(row, profile: profile)
+    }
+
+    func toggleFarSessionStarred(_ session: SessionSummary, in far: UUID) {
+        var stars = farSessionStars(far)
+        let (row, profile) = farStarRow(session, in: far, stars: stars)
+        stars.set(row, starred: !stars.isStarred(row, profile: profile), profile: profile)
+        objectWillChange.send()
+        farSessionStarsByDashboard[far] = stars
+        stars.save(to: defaults, scope: Self.dashboardPreferenceBucket(far))
+    }
+
+    /// Hermes' read flag as that dashboard's list last gave it, or as it
+    /// was set here since.
+    func isFarSessionUnread(_ session: SessionSummary, in far: UUID) -> Bool {
+        let (row, profile) = farChatMarksRow(session, in: far)
+        return farListedRow(row, profile: profile, in: far)?.isUnread ?? session.isUnread ?? false
+    }
+
+    private func farListedRow(_ row: SessionSummary, profile: String, in far: UUID) -> SessionSummary? {
+        combinedDashboardChats[far]?.sessions.first {
+            $0.id == row.id && Self.profilesMatch($0.profile ?? "default", profile)
+        }
+    }
+
+    /// Sets Hermes' read flag for another combined dashboard's chats, on
+    /// that dashboard through its kept connection, one at a time. Each
+    /// row shows it at once and goes back if Hermes refuses.
+    func setFarSessionsUnread(_ sessions: [SessionSummary], in far: UUID, unread: Bool) {
+        guard let bridge = keptDashboardRuntimes[far]?.bridge else {
+            showSessionMutationNotice(AppLocalization.string("Reconnect to Hermes to change this conversation."))
+            return
+        }
+        let rows = sessions.map { farChatMarksRow($0, in: far) }
+        let before = rows.map { keepFarRowUnread($0.row, profile: $0.profile, in: far, unread: unread) }
+        Task { @MainActor [weak self] in
+            for (index, entry) in rows.enumerated() {
+                guard let self else { return }
+                do {
+                    _ = try await self.sendSessionMutation(entry.row.id, body: ["unread": unread], profile: entry.profile,
+                                                           bridge: bridge)
+                    // Again, over a list read that started or landed while
+                    // the write was out.
+                    self.keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: unread)
+                } catch {
+                    sessionCatalogLog.notice("Read flag not saved: \(LogRedaction.describing(error), privacy: .public)")
+                    if let was = before[index] {
+                        self.keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: was)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Shows a far row's read flag on its list, stamped so a list read
+    /// started before it can't put the old one back. Returns what it
+    /// showed before; nil when its list doesn't hold the row.
+    @discardableResult
+    private func keepFarRowUnread(_ row: SessionSummary, profile: String, in far: UUID, unread: Bool) -> Bool? {
+        guard let chats = combinedDashboardChats[far],
+              let index = chats.sessions.firstIndex(where: {
+                  $0.id == row.id && Self.profilesMatch($0.profile ?? "default", profile)
+              }) else { return nil }
+        var sessions = chats.sessions
+        let before = sessions[index].isUnread == true
+        sessions[index].isUnread = unread
+        combinedDashboardChats[far] = CombinedDashboardChats(
+            bridge: chats.bridge,
+            profiles: chats.profiles,
+            sessions: sessions,
+            at: chats.at,
+            seededAt: Date(),
+            cronIDs: chats.cronIDs,
+            cronAt: chats.cronAt,
+            unreadProfiles: chats.unreadProfiles
+        )
+        return before
     }
 }
