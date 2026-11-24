@@ -7196,7 +7196,7 @@ capability, tool, CHANGELOG and README (done, notifier PR) · the drawer
 shell's sidebar (not needed: V1 has no filters, like Stars) · Bots Home, the
 Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 
-**Desktop app:** has it: Mark as Done in the row menu, the dimmed row with a check, and In progress and Done in the Filter menu, combined with status, source and Starred as on the phone (`desktop/src/renderer/src/state/chatDone.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#269). The open chat's header has the row's menu too, Mark as Done in it (the "…" button and a right-click on the title, `desktop/src/renderer/src/state/chatMenu.ts`, desktop#499).
+**Desktop app:** has it: Mark as Done in the row menu, the dimmed row with a check, and In progress and Done in the Filter menu, combined with status, source and Starred as on the phone (`desktop/src/renderer/src/state/chatDone.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#269). The main window's open chat has the row's menu in its header too, Mark as Done in it; a chat in a window of its own has only Rename and Delete there (the "…" button and a right-click on the title, `desktop/src/renderer/src/state/chatMenu.ts`, desktop#499).
 
 **Code**
 - Marks: `Conduit/Models/ChatDoneMarks.swift` (ids(for:), the lineage root first; marks(from:), setting, replacing), `Conduit/Services/AppState+ChatDone.swift` (chatDoneAvailable, chatDoneMarksKey per dashboard and profile, setSessionDone and its pending writes, refreshChatDoneMarks and its 15 s throttle, a read from before a write dropped; readChatDoneMarks reads any dashboard's through its bridge), `Conduit/Services/AppState+FarChatMarks.swift` (chatMarksHome, farChatDoneMarks: another combined dashboard's marks, refreshFarChatMarks called by `Conduit/Services/AppState+CombinedChats.swift`'s list read; chatDoneFilterAvailable: the list's In progress and Done filters also show when a combined dashboard whose rows it lists keeps marks)
@@ -7258,11 +7258,11 @@ Archive too (`desktop/src/renderer/src/components/HeaderMenu.tsx`, desktop#499);
   in the Chats list carries no menu.
 
 **Open gaps**
-- Desktop does not offer Archive from a project chat row or the open chat's
-  title menu. Its Archived view can list all profiles when All is selected.
+- Desktop does not offer Archive from a project chat row or in a chat's own
+  window. Its Archived view can list all profiles when All is selected.
 - Live Hermes archive/restore has not yet been tested end-to-end.
 
-**Checked:** 2026-11-24, #3230 (another combined dashboard's chat archived on another profile there leaves the screen's pins alone; Desktop not needed); 2026-11-23, #3194 (recorded the existing iOS archive and Archived
+**Checked:** 2026-11-24, #3246 (the desktop's open chat offers Archive from its header menu, desktop#499, so that gap is trimmed to project rows and chat windows); 2026-11-24, #3230 (another combined dashboard's chat archived on another profile there leaves the screen's pins alone; Desktop not needed); 2026-11-23, #3194 (recorded the existing iOS archive and Archived
 sheet alongside desktop#410).
 
 ## Deleting from a list row
