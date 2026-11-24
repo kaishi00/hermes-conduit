@@ -31,9 +31,12 @@ extension AppState {
     /// Hermes deleted the chat `sessionIDs` name on `dashboardID`: a call
     /// in it there goes on in a new chat (issue 1797). A call on another
     /// combined dashboard, in a chat that shares one of the ids, keeps its
-    /// chat (issue 3147).
+    /// chat (issue 3147). One Hermes saved twice lists the same chat on
+    /// both, so a delete on either counts as on the call's.
     func noteCallChatDeleted(_ sessionIDs: Set<String>, dashboardID: UUID?) {
-        voiceBackgroundJobSupervisor.noteChatDeleted(sessionIDs, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+        var deletedOn = dashboardID
+        if let call = callChatsDashboardID, combinedHermesTwins(of: dashboardID).contains(call) { deletedOn = call }
+        voiceBackgroundJobSupervisor.noteChatDeleted(sessionIDs, dashboard: Self.dashboardPreferenceBucket(deletedOn))
     }
 
     /// The call's dashboard when it isn't the one on screen: its requests go

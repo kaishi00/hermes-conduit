@@ -269,7 +269,7 @@ extension AppState {
             try await sendSessionMutation(session.id, body: ["archived": true], profile: profile, bridge: owner.bridge)
             guard ownsDashboardRuntime(owner) else { return false }
             sessionYoloStore.clearOverride(
-                for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set([session.id] + session.alternateIds))))
+                for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set(session.nestingIDs))))
             setLocalPin(session, pinned: false, profile: profile)
             removeFromAllProfilesCatalog(session)
             return true

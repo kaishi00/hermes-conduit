@@ -587,7 +587,7 @@ extension AppState {
                 if archived {
                     sessionYoloStore.clearOverride(
                         for: profile,
-                        sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set([updated.id] + updated.alternateIds)))
+                        sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set(updated.nestingIDs)))
                     )
                     removeSessionFromLiveCatalog(updated)
                     // The Archived list and the pins are the dashboard on
@@ -887,10 +887,13 @@ extension AppState {
     /// alternates stay (issue 3147).
     func idsOnlyTheDeletedChatAnswersTo(_ session: SessionSummary, dashboard: String, profile: String) -> Set<String> {
         let own = Set(([session.id] + [session.storedSessionId].compactMap { $0 }).filter { !$0.isEmpty })
-        guard dashboard == Self.dashboardPreferenceBucket(activeDashboardID),
+        guard actingOnRuntimeOnScreen, dashboard == Self.dashboardPreferenceBucket(activeDashboardID),
               profile.caseInsensitiveCompare(activeProfile) == .orderedSame,
               sessionCatalogPhase == .loaded else { return own }
-        let others = (sessions + cronSessions).filter { $0.id != session.id }
+        // The same rows `idsKeptOnlyForTheDeletedChat` reads: an archived
+        // row, or another profile's in All, can list the id too.
+        let others = [sessions, cronSessions, archivedSessions, allProfilesCatalog.sessions].joined()
+            .filter { $0.id != session.id }
         return own.union(session.alternateIds.filter { id in
             !id.isEmpty && !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
         })

@@ -2053,6 +2053,8 @@ extension AppStateMultiDashboardTests {
     func testAnotherProfilesDeleteAnsweredAfterASwitchKeepsToItsDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let mac = try XCTUnwrap(appState.activeDashboardID)
+        // All lists the row under its own profile once the dashboard lists it.
+        appState.profiles = ["default", "work"]
         var row = macSession("work-1")
         row.profile = "work"
         let store = appState.offlineChatCacheForTesting
@@ -2087,7 +2089,7 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(appState.pinnedReplies(of: macPins).isEmpty, "and its pinned replies there")
         XCTAssertEqual(appState.pinnedReplies(of: vpsPins).map(\.id), [pin.id], "the VPS's pins under that id stay")
         XCTAssertEqual(appState.sessionYoloStore.storedOverride(for: "work", sessionID: "work-1"), true)
-        XCTAssertTrue(appState.isSessionStarred(row))
+        XCTAssertTrue(appState.sessionStars.isStarred(row, profile: "work"))
         XCTAssertNil(appState.pinSyncNotice, "nothing about the Mac's chat is said over the VPS")
         XCTAssertFalse(
             appState.voiceBackgroundJobSupervisor.isDeletedChat(
@@ -2133,7 +2135,7 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(failure, "Hermes deleted it: no failure is said over the VPS")
         XCTAssertTrue(appState.pinnedReplies(of: macPins).isEmpty, "its pinned replies go from the Mac")
         XCTAssertEqual(appState.pinnedReplies(of: vpsPins).map(\.id), [pin.id], "the VPS's profile of that name keeps its own")
-        XCTAssertTrue(appState.isSessionStarred(vpsChat), "and its stars")
+        XCTAssertTrue(appState.sessionStars.isStarred(vpsChat, profile: "helper"), "and its stars")
     }
 
     /// Issue 3147: another combined dashboard's chat deleted in place, on
