@@ -3649,7 +3649,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
         let prompt = try XCTUnwrap(fake.submissions.first?.1)
         XCTAssertTrue(prompt.contains("Archive the newsletters." + VoiceRequestWords.marker + "Only the newsletters this time"), prompt)
-        XCTAssertFalse(prompt.contains("Clean the inbox"), prompt)
+        XCTAssertFalse(prompt.contains(VoiceRequestWords.marker + "No"), prompt)
     }
 
     func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {
