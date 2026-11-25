@@ -902,7 +902,7 @@ extension AppState {
                 let farBot = farBotRoster(in: dashboardID).first { profilesMatch($0.name, activeProfile) }
                 return ConversationAgentIdentity.workspace(
                     name: farBot?.displayLabel ?? profileDisplayName(activeProfile),
-                    photoURL: farAvatarURL(for: activeProfile, on: dashboardID),
+                    photoURL: farAvatarURL(for: farBot?.name ?? activeProfile, on: dashboardID),
                     profile: activeProfile
                 )
             }
