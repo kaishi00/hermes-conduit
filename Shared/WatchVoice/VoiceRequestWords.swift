@@ -123,6 +123,18 @@ enum VoiceRequestWords {
         return adding([said], to: request, maxBytes: watchMaxBytes) != request || adding([said], to: request) == request
     }
 
+    /// Whether the answer to a Watch call's start_job or interrupt_job
+    /// says Hermes took the request (or will, once the iPhone or the
+    /// wrist is back): only then did the user's words go with it, and a
+    /// retry after a refusal carries them again (issue 3271).
+    static func watchRequestTaken(_ result: [String: String]) -> Bool {
+        guard result["error"] == nil else { return false }
+        switch result["status"] {
+        case "not_sent", "not_started", "unknown_job", "error": return false
+        default: return true
+        }
+    }
+
     /// The request as the model wrote it, without the user's words:
     /// routing reads only this.
     static func modelWords(of request: String) -> String {

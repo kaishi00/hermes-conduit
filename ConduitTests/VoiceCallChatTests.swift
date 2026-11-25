@@ -289,7 +289,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(reply, "The call ended; Hermes takes this request in the chat once it's free.")
         XCTAssertEqual(fake.created, 1, "no chat of its own")
         XCTAssertNil(supervisor.liveThread, "the ended call attaches nothing")
-        try? await Task.sleep(for: .milliseconds(30))
+        // The queue looked at it and held it.
+        guard await waitForCallChat({ supervisor.threadTurnsHeldPasses > 0 }) else { return }
         XCTAssertTrue(fake.threadSubmissions.isEmpty, "the first request still runs there")
 
         // Issue 3185: it goes in after the request that made the chat.
@@ -485,6 +486,69 @@ extension VoiceConversationControllerTests {
         base.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Plan.", reasoning: nil))
         try? await Task.sleep(for: .milliseconds(40))
         XCTAssertEqual(fake.submissions.count, 1, "the cancelled request never goes in")
+    }
+
+    /// Issue 3271: a Watch call's request still waiting for its busy chat
+    /// when the call ends is kept as long as a phone call's, with the
+    /// background time to send it, and dropped past that.
+    func testAWatchRequestWaitingPastTheHangUpIsKeptOnlyAsLongAsAPhoneCallsTurn() async {
+        let fake = FakeVoiceJobBackend()
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        var holds = 0
+        var released = 0
+        base.holdBackgroundTime = { _ in
+            holds += 1
+            return { released += 1 }
+        }
+        let watch = WatchCallJobSupervisor(base)
+        _ = await watch.startJob(instructions: "plan the trip", profile: nil, joinsCall: true, onJobCreated: nil)
+        _ = await watch.startJob(instructions: "and book the hotel", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(base.jobs.last?.status, .starting, "it waits for the first")
+        XCTAssertFalse(base.hasRequestWaitingSinceHangUp)
+
+        base.continuedJobsCallEnded()
+        XCTAssertNotNil(base.jobs.last?.waitsSinceHangUp)
+        XCTAssertTrue(base.hasRequestWaitingSinceHangUp, "a hand-back waits for it")
+        XCTAssertEqual(holds, 1, "Conduit may leave the screen with the call")
+
+        base.now = { Date().addingTimeInterval(VoiceBackgroundJobSupervisor.hangUpSendLimit + 1) }
+        guard await waitForCallChat({ base.jobs.last?.status == .cancelled }) else { return }
+        guard await waitForCallChat({ released == 1 }) else { return }
+        XCTAssertEqual(fake.submissions.count, 1, "the chat never came free: it never went in")
+        XCTAssertFalse(base.hasRequestWaitingSinceHangUp)
+    }
+
+    /// Issue 3271: a Watch call's opening request brings the chat its
+    /// recent lines only once Hermes took it, a lost acknowledgement
+    /// included; a refused one brings none.
+    func testAWatchCallsOpeningLinesCountAsSentOnlyOnceHermesTookThem() async {
+        let marker = WatchBridgeDelegation.contextMarker
+        let heard = "Assistant: Sure, I can plan the trip for you."
+        let fake = FakeVoiceJobBackend()
+        let base = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5))
+        let watch = WatchCallJobSupervisor(base)
+        fake.submitError = RpcError(code: 4009, message: "session busy")
+        _ = await watch.startJob(instructions: "plan the trip" + marker + heard + "\nUser: plan the trip\n", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(base.jobs.first?.requestSent, true)
+        XCTAssertEqual(base.jobs.first?.requestTaken, false, "refused: the chat never got its lines")
+        XCTAssertNil(watch.callChat)
+
+        // A lost acknowledgement after Hermes started the turn.
+        fake.onSubmit = { id in base.observe(.messageStart(sessionId: id)) }
+        _ = await watch.startJob(instructions: "plan the trip" + marker + heard + "\nUser: plan the trip\n", profile: nil, joinsCall: true, onJobCreated: nil)
+        XCTAssertEqual(base.jobs.last?.requestTaken, true)
+        guard let chat = watch.callChat else { return XCTFail("no call chat") }
+        fake.submitError = nil
+        fake.onSubmit = nil
+        base.observe(.messageComplete(sessionId: chat.runtimeSessionID, messageId: nil, content: "Planned.", reasoning: nil))
+
+        _ = await watch.startJob(instructions: "and book the hotel" + marker + heard + "\nUser: and book the hotel\n", profile: nil, joinsCall: true, onJobCreated: nil)
+        guard await waitForCallChat({ fake.submissions.count == 3 }) else { return }
+        XCTAssertEqual(
+            fake.submissions.last?.1,
+            VoiceBackgroundJobSupervisor.jobPrompt(for: "and book the hotel" + marker + "User: and book the hotel"),
+            "the chat holds the opening request's lines"
+        )
     }
 
     // MARK: A call's chat deleted mid-call (issue 1797)

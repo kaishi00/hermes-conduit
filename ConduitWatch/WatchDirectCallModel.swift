@@ -210,6 +210,11 @@ final class WatchDirectCallModel: ObservableObject {
     /// The user's line (counted from the call's first) and how much of it
     /// went with a request already.
     private var requestWordsSent: (turn: Int, length: Int)?
+    /// The same, for requests still on their way: counted as sent while
+    /// they run, so a second call on the words doesn't carry them again,
+    /// and kept only when the answer says Hermes took the request
+    /// (issue 3271).
+    private var requestWordsPending: [String: (turn: Int, length: Int)] = [:]
     private var hasSentOpening = false
     private(set) var callID: UInt32 = 0
     private var callUUID = UUID()
@@ -1752,14 +1757,17 @@ final class WatchDirectCallModel: ObservableObject {
             let turn = line + transcriptLinesDropped
             var said: String? = transcript[line].text
             if call.name == WatchJobAnswer.startJob || call.name == WatchJobAnswer.interruptJob {
-                if let sent = requestWordsSent, sent.turn == turn {
-                    said = transcript[line].text.count > sent.length ? String(transcript[line].text.dropFirst(sent.length)) : nil
+                requestWordsPending = requestWordsPending.filter { toolsInFlight.contains($0.key) }
+                let sentLength = ([requestWordsSent].compactMap { $0 } + Array(requestWordsPending.values))
+                    .filter { $0.turn == turn }.map(\.length).max()
+                if let sentLength {
+                    said = transcript[line].text.count > sentLength ? String(transcript[line].text.dropFirst(sentLength)) : nil
                 }
                 // Counted as sent only when this request carries them: one
                 // with no text, or too long to take them, leaves them for
-                // the next.
+                // the next. And only once its answer says Hermes took it.
                 if let said, VoiceRequestWords.watchCarries(name: call.name, arguments: call.arguments, said: said) {
-                    requestWordsSent = (turn, transcript[line].text.count)
+                    requestWordsPending[call.id] = (turn, transcript[line].text.count)
                 }
             }
             wire.arguments = VoiceRequestWords.watchArguments(name: call.name, arguments: call.arguments, said: said)
@@ -2755,9 +2763,20 @@ final class WatchDirectCallModel: ObservableObject {
         flushQuietQueue()
     }
 
+    /// A request's words count as sent once Hermes took it; a refused
+    /// one leaves them for the model's retry.
+    private func settleRequestWords(id: String, taken: Bool) {
+        guard let words = requestWordsPending.removeValue(forKey: id), taken else { return }
+        if let sent = requestWordsSent, sent.turn == words.turn, sent.length >= words.length { return }
+        requestWordsSent = words
+    }
+
     /// Answers a call on the connection it was made on; once another took
     /// over, its fallback goes out as a text update, as on the iPhone.
     private func answer(_ item: WatchVoiceWire.DirectOutgoing, generation: Int?) {
+        if case .toolResponse(let id, _, let result, _, _) = item {
+            settleRequestWords(id: id, taken: VoiceRequestWords.watchRequestTaken(result))
+        }
         // A started job the model already said it's starting goes in
         // silently (WatchJobAnswer.scheduling(name:result:acknowledged:)).
         var item = item
@@ -3410,6 +3429,7 @@ final class WatchDirectCallModel: ObservableObject {
         endPhrases = []
         exchangeUserLine = nil
         requestWordsSent = nil
+        requestWordsPending = [:]
         hasSentOpening = false
         caption = nil
         isMuted = false

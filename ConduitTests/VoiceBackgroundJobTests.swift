@@ -133,6 +133,7 @@ final class FakeVoiceJobBackend {
     /// Thrown when the chat's runtime is resolved (a deleted chat's resume).
     var threadRuntimeError: Error?
     var onThreadSubmit: (@MainActor () -> Void)?
+    var duringThreadSubmit: (@MainActor () async -> Void)?
     var onLatestReply: (@MainActor () -> Void)?
     /// Each chat whose latest reply was read.
     private(set) var replyReads: [VoiceThreadTarget] = []
@@ -248,6 +249,7 @@ final class FakeVoiceJobBackend {
             submitThreadTurn: { [self] _, runtimeID, text in
                 self.threadSubmissions.append((runtimeID, text))
                 self.onThreadSubmit?()
+                await self.duringThreadSubmit?()
                 if let error = self.threadSubmitError { throw error }
                 return runtimeID
             },
@@ -2301,7 +2303,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(supervisor.hasRequestWaitingSinceHangUp)
         XCTAssertEqual(holds, 1, "Conduit may leave the screen with the call")
         XCTAssertNil(supervisor.startThreadTurn(request: "after").jobID, "no chat to send to")
-        try? await Task.sleep(for: .milliseconds(40))
+        let passes = supervisor.threadTurnsHeldPasses
+        guard await waitFor({ supervisor.threadTurnsHeldPasses > passes }) else { return }
         XCTAssertTrue(fake.threadSubmissions.isEmpty, "the chat is still busy")
 
         fake.threadBusy = false
@@ -2945,6 +2948,35 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(fake.threadSubmissions.last?.1, "(voice) later", "sent once the chat took it (issue 3185)")
         XCTAssertNil(supervisor.takePendingNotice())
+        supervisor.reset()
+    }
+
+    /// #3273's review: a turn whose call ended mid-send, settled by a
+    /// typed turn's events meanwhile, isn't pruned before its send
+    /// answers: sent back in line, it still goes.
+    func testATurnSettledMidSendSurvivesPruningUntilItsSendAnswers() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.holdBackgroundTime = { _ in {} }
+        fake.threadSubmitError = VoiceThreadBusyError()
+        fake.onThreadSubmit = { [weak fake] in
+            if fake?.threadSubmissions.count ?? 0 > 1 { fake?.threadSubmitError = nil }
+        }
+        fake.duringThreadSubmit = { [weak supervisor, weak fake] in
+            guard let supervisor, let fake, fake.threadSubmissions.count == 1 else { return }
+            supervisor.detachLiveThread()
+            supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "typed reply", reasoning: nil))
+            for index in 1...(VoiceBackgroundJobSupervisor.maximumSettledJobs + 2) {
+                _ = await supervisor.startJob(instructions: "job \(index)")
+                supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "ok", reasoning: nil))
+                _ = supervisor.takePendingNotice()
+            }
+        }
+        let turn = supervisor.startThreadTurn(request: "later").jobID
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
+        XCTAssertTrue(supervisor.jobs.contains { $0.id == turn }, "kept while its send was out")
+        XCTAssertEqual(fake.threadSubmissions.last?.1, "(voice) later")
+        guard await waitFor({ supervisor.jobs.first { $0.id == turn }?.status == .running }) else { return }
+        XCTAssertNil(supervisor.takePendingNotice(), "its call ended: never announced")
         supervisor.reset()
     }
 
@@ -3660,10 +3692,42 @@ extension VoiceConversationControllerTests {
         let later = try XCTUnwrap(fake.submissions.last?.1)
         XCTAssertTrue(later.contains("Archive the receipts." + VoiceRequestWords.marker + "Also the invoices"), later)
         XCTAssertFalse(later.contains("Also the invoices\nYes"), later)
-        // A Watch request with no text takes none of the words.
-        XCTAssertFalse(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": " "], said: "Brand only."))
-        XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Post it."], said: "Brand only."))
-        XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Brand only."], said: "Brand only."))
+
+        // Issue 3271: a bare no the model let pass, then a yes: the no isn't
+        // the request's words.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_8", name: "start_job", arguments: ["instructions": "Archive the flyers."]))
+        say("No")
+        say("Yes")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_9", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 3)
+        let flyers = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertFalse(flyers.contains(VoiceRequestWords.marker), flyers)
+
+        // A bare no through send_request drops only itself: what they said
+        // before it goes with the next request.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_10", name: "start_job", arguments: ["instructions": "Archive the coupons."]))
+        say("Also pin the best one")
+        say("No")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_11", name: "send_request", arguments: [:]))
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_12", name: "start_job", arguments: ["instructions": "Pin the best coupon."]))
+        say("Yes")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_13", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 4)
+        let pinned = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(pinned.contains("Pin the best coupon." + VoiceRequestWords.marker + "Also pin the best one"), pinned)
+        XCTAssertFalse(pinned.contains("\nNo"), pinned)
+
+        // A bare yes the model answered with a new request instead of
+        // send_request doesn't ride along as its words.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_14", name: "start_job", arguments: ["instructions": "Archive the menus."]))
+        say("Yes")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_15", name: "start_job", arguments: ["instructions": "Archive the old menus."]))
+        say("Yes")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_16", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 5)
+        let menus = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(menus.contains("Archive the old menus."), menus)
+        XCTAssertFalse(menus.contains(VoiceRequestWords.marker), menus)
     }
 
     func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {

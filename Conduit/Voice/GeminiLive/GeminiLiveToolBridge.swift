@@ -597,6 +597,10 @@ final class GeminiLiveToolBridge {
     private let requestWordsWait: Duration
     /// How much of each of the user's lines went with a request already.
     private var wordsSent: [UUID: Int] = [:]
+    /// What the last request's words moved, line by line, with each line's
+    /// count before it: a request Hermes refused gives them back, so the
+    /// retry carries them (issue 3271).
+    private var lastMarked: [UUID: (before: Int?, after: Int)] = [:]
     /// How long a yes still being transcribed is waited for.
     var lateYesWait: Duration = .seconds(3)
     private let now: () -> Date
@@ -646,6 +650,7 @@ final class GeminiLiveToolBridge {
             guard !isEnding else { return [] }
             // Finished meanwhile: it is the chat's next turn after all.
             if !outcome.foundRequestFinished {
+                if case .failed = outcome { requestNotTaken() }
                 return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
             }
         }
@@ -665,6 +670,7 @@ final class GeminiLiveToolBridge {
         }
         let sent = supervisor.startThreadTurn(request: words)
         guard let jobID = sent.jobID else {
+            requestNotTaken()
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]
         }
         openCalls[jobID] = call.id
@@ -705,7 +711,8 @@ final class GeminiLiveToolBridge {
             return []
         }
         guard let jobID = createdJobID else {
-            // Refused (too many jobs): answer now.
+            // Refused (too many jobs): answer now, its words kept for the retry.
+            requestNotTaken()
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
         }
         if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
@@ -805,8 +812,9 @@ final class GeminiLiveToolBridge {
             case .no(nil):
                 draft = nil
                 // Their no was about this request: it doesn't go with the
-                // next one as their words.
-                noteWordsSent()
+                // next one as their words. Other words said while it waited
+                // ("also pin the best one") still do (issue 3271).
+                noteLastLineSent()
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "dropped", "message": "Not sent: the user said no, so it won't go to Hermes. Tell them in a few words."], scheduling: .whenIdle)]
             case .no(let change?), .notYet(let change?):
                 draft = nil
@@ -822,8 +830,10 @@ final class GeminiLiveToolBridge {
             // yes that says more, "yes, make it for four", included; a bare
             // yes is no words of the request's), and none of it goes with
             // the next one.
-            let saidWaiting = unsentWords().filter { VoiceThreadRouting.heldRequestAnswer($0) != .yes(addition: nil) }
-            noteWordsSent()
+            // A bare no or "not yet" the model let pass before the yes is
+            // no words of it either (issue 3271).
+            let saidWaiting = unsentWords().filter { !Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0)) }
+            lastMarked = noteWordsSent()
             let approved = GeminiLiveProtocol.FunctionCall(
                 id: call.id,
                 name: call.name,
@@ -941,6 +951,10 @@ final class GeminiLiveToolBridge {
             guard let said = await saidForRequest(), !isEnding else { return [] }
             let outcome = await supervisor.followUp(jobID: id, words: VoiceRequestWords.adding(said, to: words), kind: call.arguments["kind"])
             guard !isEnding else { return [] }
+            switch outcome {
+            case .failed, .finished: requestNotTaken()
+            default: break
+            }
             return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
         case .webSearch:
             var result = await searchResult(call.arguments["query"])
@@ -1132,18 +1146,19 @@ final class GeminiLiveToolBridge {
         let deadline = ContinuousClock.now + requestWordsWait
         var earlier: [String]?
         // The model may let a held request go on the user's no without
-        // send_request: a bare no was about that one, not this.
+        // send_request, or make a new request on their yes: a bare answer
+        // was about that one, not this (issue 3271).
         let answered = draft != nil
         while true {
-            let fresh = unsentWords().filter { !(answered && VoiceThreadRouting.heldRequestAnswer($0) == .no(change: nil)) }
+            let fresh = unsentWords().filter { !(answered && Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0))) }
             if ContinuousClock.now >= deadline || (!fresh.isEmpty && fresh == earlier) {
-                noteWordsSent()
+                lastMarked = noteWordsSent()
                 return fresh
             }
             earlier = fresh
             do { try await Task.sleep(for: .milliseconds(250)) } catch {
                 guard conversation == conversationEpoch else { return nil }
-                noteWordsSent()
+                lastMarked = noteWordsSent()
                 return fresh
             }
             // A stop clears `isEnding` for the next conversation, so the
@@ -1159,8 +1174,35 @@ final class GeminiLiveToolBridge {
         }
     }
 
-    private func noteWordsSent() {
-        for line in userLines() { wordsSent[line.id] = line.text.count }
+    /// Marks every line sent; what it moved, with each line's count before.
+    @discardableResult
+    private func noteWordsSent() -> [UUID: (before: Int?, after: Int)] {
+        var moved: [UUID: (before: Int?, after: Int)] = [:]
+        for line in userLines() where wordsSent[line.id] != line.text.count {
+            moved[line.id] = (wordsSent[line.id], line.text.count)
+            wordsSent[line.id] = line.text.count
+        }
+        return moved
+    }
+
+    /// Marks only the user's last line sent: their answer, not what they
+    /// said before it.
+    private func noteLastLineSent() {
+        lastMarked = [:]
+        guard let last = userLines().last else { return }
+        wordsSent[last.id] = last.text.count
+    }
+
+    /// The request the last words went with wasn't taken (the supervisor
+    /// refused it, or the work had finished): its words go with the next.
+    private func requestNotTaken() {
+        for (id, mark) in lastMarked where wordsSent[id] == mark.after { wordsSent[id] = mark.before }
+        lastMarked = [:]
+    }
+
+    /// A yes, no or "not yet" that says nothing more.
+    static func isBareAnswer(_ answer: VoiceThreadRouting.HeldRequestAnswer) -> Bool {
+        answer == .yes(addition: nil) || answer == .no(change: nil) || answer == .notYet(change: nil)
     }
 
     /// The user said to send it to Hermes: the next new request goes at
@@ -1182,6 +1224,8 @@ final class GeminiLiveToolBridge {
             return nil
         }
         draft = Draft(request: request, profile: profile, toChat: toChat, kind: call.arguments["kind"], heardUntil: lastUserSpeechAt(), said: said)
+        // The draft keeps its words: they go with its yes.
+        lastMarked = [:]
         // Not UI copy, so not localized.
         return [.toolResponse(id: call.id, name: call.name, result: [
             "status": "waiting_for_ok",

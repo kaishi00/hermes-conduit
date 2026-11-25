@@ -1087,6 +1087,21 @@ extension VoiceConversationControllerTests {
                        ["job_id": "1", "message": "Stop it." + marker + "Hold on a minute"])
         XCTAssertEqual(VoiceRequestWords.watchArguments(name: "web_search", arguments: ["query": "ramen"], said: "Find ramen"), ["query": "ramen"])
         XCTAssertEqual(VoiceRequestWords.watchArguments(name: "start_job", arguments: ["instructions": "Post them."], said: nil), ["instructions": "Post them."])
+        // A Watch request with no text takes none of the words.
+        XCTAssertFalse(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": " "], said: "Brand only."))
+        XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Post it."], said: "Brand only."))
+        XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Brand only."], said: "Brand only."))
+        // The Watch counts the words as sent only once Hermes took the
+        // request: a refusal leaves them for the retry (issue 3271).
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(["status": "started", "job_id": "1"]))
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(["status": "queued", "message": "…"]))
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(["status": "waiting_for_wrist", "message": "…"]))
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.followUpResult(.queued(title: "Post"))))
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.followUpResult(.failed("grant ran out"))))
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.followUpResult(.finished(title: "Post"))))
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.unknownJob))
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(["status": "not_started", "message": "capped"]))
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.result(body: ["ok": false, "detail": "busy"])))
     }
 
     func testGeminiLiveCancelJobSettlesOpenCallsSilentlyAndListReportsJobs() async throws {

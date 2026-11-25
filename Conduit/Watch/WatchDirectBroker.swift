@@ -1569,6 +1569,9 @@ final class WatchDirectBroker {
         appState.watchCallUserTurn = nil
         revokeGrants()
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = false
+        // Requests still waiting for the call's busy chat are kept as long
+        // as a phone call's, with the background time to send them.
+        appState.voiceBackgroundJobSupervisor.continuedJobsCallEnded()
         callID = nil
         connection = nil
         if !keepRecovery { appState.setWatchVoiceCallActive(false) }
@@ -1898,7 +1901,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
                 guard let self, var chat = self.callChat, chat == callChat else { return }
                 chat.runtimeSessionID = runtimeID
                 self.callChat = chat
-            })
+            }, afterHangUp: waited && callIsLive?() == false)
         }
         let claims = joins
         if claims { startingCallChat = true }
