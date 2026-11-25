@@ -1984,7 +1984,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// ended call does, sent when the chat is free and never announced.
     private func sendAfterHangUp(_ request: String, toChatOf firstID: UUID) async {
         let generation = generation
-        while generation == self.generation, job(firstID)?.status == .starting {
+        // Kept from the hang-up, the wait for the chat included.
+        let since = now()
+        while generation == self.generation, job(firstID)?.status == .starting,
+              now().timeIntervalSince(since) <= Self.hangUpSendLimit {
             try? await Task.sleep(for: threadWaitInterval)
         }
         let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2006,7 +2009,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         turn.isDetachedThreadTurn = true
         turn.outcomeDelivered = true
-        turn.waitsSinceHangUp = now()
+        turn.waitsSinceHangUp = since
         jobs.append(turn)
         threadTargets[turn.id] = thread
         if hangUpSendHold == nil { hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest") }
@@ -2484,7 +2487,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// waiting for the call's chat to be made counts: read at a hang-up, it
     /// is about to be the ended call's.
     var hasRequestWaitingSinceHangUp: Bool {
-        jobs.contains { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting && $0.waitsSinceHangUp != nil }
+        // One whose send is in flight counts too: a busy chat sends it back
+        // to wait, and a hand-back's reset meanwhile would drop it.
+        jobs.contains {
+            $0.isThreadTurn && $0.status == .starting
+                && ($0.threadTurnSubmitted ? $0.isDetachedThreadTurn : $0.waitsSinceHangUp != nil)
+        }
             || callChatClaimWaits > 0
     }
     /// Requests waiting for the call's first job to make its chat.
