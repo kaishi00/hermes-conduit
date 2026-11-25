@@ -40,6 +40,13 @@ extension AppState {
     /// one on screen's.
     var farChatDashboardID: UUID? { farChat?.dashboardID }
 
+    /// The far chat's dashboard while acting in its scope (its runtime is
+    /// the one AppState reads); nil on the dashboard on screen's.
+    var farChatDashboardIDInScope: UUID? {
+        guard let id = farChat?.dashboardID, id == activeDashboardID, id != dashboardIDOnScreen else { return nil }
+        return id
+    }
+
     /// Whether a Bot's Screen for `dashboardID`'s bot is another combined
     /// dashboard's than the one on screen's.
     func botScreenIsFar(_ dashboardID: UUID?) -> Bool {

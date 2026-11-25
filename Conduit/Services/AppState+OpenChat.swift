@@ -826,9 +826,21 @@ extension AppState {
     /// the resume lands, so a Bot Chat back from the background read as the
     /// workspace's chat for that second: its title the bot's, its composer
     /// and reply headers the workspace profile's (issue 2025).
+    /// Acting for another combined dashboard's chat open in place, the
+    /// miss falls back to that dashboard's own bots naming the open id (its
+    /// kept roster, else Bots Home's read), as `farBotChatProfile` does: a
+    /// kept runtime that never read its roster, with the open under an id
+    /// its registry hasn't heard, otherwise read as its main profile's chat,
+    /// its reply rows named and faced as the dashboard on screen's main bot
+    /// (build 283).
     var activeBotChatProfile: String? {
         guard let activeSessionId else { return nil }
-        return botScopeProfile(forSessionIDs: [activeSessionId], workspaceProfile: activeProfile)
+        if let profile = botScopeProfile(forSessionIDs: [activeSessionId], workspaceProfile: activeProfile) {
+            return profile
+        }
+        guard let dashboardID = farChatDashboardIDInScope,
+              let open = ChatScrollIdentityNormalization.sessionID(activeSessionId) else { return nil }
+        return farBot(named: [open], in: dashboardID)?.name
     }
 
     /// The profile the open conversation's agent identity draws from: the
@@ -883,6 +895,17 @@ extension AppState {
             return onChatRuntimeValue(unreachable: unreachable) { conversationAgentIdentity }
         }
         guard let botProfile = activeBotChatProfile else {
+            // Another combined dashboard's ordinary chat, in its scope: its
+            // profile named and faced by its own dashboard's bots, never a
+            // same-named profile's here.
+            if let dashboardID = farChatDashboardIDInScope {
+                let farBot = farBotRoster(in: dashboardID).first { profilesMatch($0.name, activeProfile) }
+                return ConversationAgentIdentity.workspace(
+                    name: farBot?.displayLabel ?? activeProfile,
+                    photoURL: farAvatarURL(for: activeProfile, on: dashboardID),
+                    profile: activeProfile
+                )
+            }
             return ConversationAgentIdentity.workspace(
                 name: profileDisplayName(activeProfile),
                 photoURL: profileAvatarURL(for: activeProfile),

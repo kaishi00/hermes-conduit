@@ -2618,6 +2618,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertTrue(appState.placesConversationAsBotChat, "pushed in Bots, so Back returns to Bots Home")
         // Its row is the one marked open on the Chats list; a row of this
         // dashboard's under the same id isn't.
         XCTAssertTrue(appState.isOpenChatRow(row), "its row is marked open")
@@ -2681,6 +2682,11 @@ extension CrossProfilePresentationCacheTests {
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its dashboard's bots name its open id")
         XCTAssertTrue(appState.placesConversationAsBotChat, "a far Bot Chat is pushed in Bots, so Back returns to Bots Home")
+        // Its reply rows and composer wear its bot, though its kept runtime
+        // never read a roster and its registry hasn't heard of the id
+        // (build 283: they showed the screen's main bot).
+        XCTAssertEqual(appState.conversationAgentIdentity.name, "Atlas")
+        XCTAssertEqual(appState.conversationAgentIdentity.botFace?.name, "atlas")
         kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
         appState.activeSessionId = "plain-far-chat"
