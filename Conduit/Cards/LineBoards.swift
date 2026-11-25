@@ -62,6 +62,22 @@ enum LineBoards {
     /// first reply to name it; a board no row in `rows` drew is read from
     /// the host; a line naming an earlier turn's board, or one a reply
     /// already took, places nothing.
+    /// The last rows' placement, for a view that works it out in its body:
+    /// rows equal to the last ones give it back without reading their
+    /// conduit_show answers again.
+    @MainActor
+    final class PlacementMemo {
+        private var rows: [ChatMessage] = []
+        private var last = Placement()
+
+        func placement(in rows: [ChatMessage]) -> Placement {
+            if rows == self.rows { return last }
+            self.rows = rows
+            last = LineBoards.placement(in: rows)
+            return last
+        }
+    }
+
     static func placement(in rows: [ChatMessage]) -> Placement {
         var placement = Placement()
         var named: [(reply: String, ids: [String])] = []
@@ -72,7 +88,10 @@ enum LineBoards {
         for row in rows {
             switch row.role {
             case .user:
-                if !row.isSteer { turn = [:] }
+                // A steer, or a prompt queued while the turn ran (stored
+                // between its prompt and its reply), doesn't end the turn
+                // (issue 3266).
+                if !row.isSteer && !row.isQueuedPrompt { turn = [:] }
             case .assistant:
                 let found = Self.ids(in: row.content)
                 guard !found.isEmpty else { continue }

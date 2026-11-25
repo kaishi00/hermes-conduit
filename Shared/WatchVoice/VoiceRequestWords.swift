@@ -48,19 +48,31 @@ enum VoiceRequestWords {
         return whole
     }
 
-    /// Whether `request` already carries the user's `words` (`comparable`
-    /// already): as whole words, or, for Chinese and Japanese, written
-    /// without spaces, as their letters and numbers anywhere in it, with
-    /// punctuation on either side left out (desktop#529). A short answer
-    /// ("不", "好的") sits inside too many longer words to be found that way,
-    /// so under `unspacedMinimum` letters it must stand as a run of its own.
+    /// Whether `request` already carries the user's `words`, which must be
+    /// `comparable` already (`adding`, the only caller, makes them so): as
+    /// whole words, or, for Chinese and Japanese, written without spaces, as
+    /// their letters and numbers in it, with punctuation on either side left
+    /// out (desktop#529), starting or ending where one of the request's runs
+    /// between punctuation does, so "没问题" inside "这没问题的事" isn't the
+    /// user's answer (issue 3279). A short answer ("不", "好的") sits inside
+    /// too many longer words to be found that way, so under
+    /// `unspacedMinimum` letters it must stand as a run of its own.
     static func carries(_ request: String, words: String) -> Bool {
         if words.unicodeScalars.contains(where: isUnspaced) {
-            let bare = { (text: String) in
-                String(String.UnicodeScalarView(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }))
+            let theirs = Array(words.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+            if theirs.count >= unspacedMinimum {
+                var letters: [Unicode.Scalar] = []
+                var edges: Set<Int> = [0]
+                for scalar in request.lowercased().unicodeScalars {
+                    if CharacterSet.alphanumerics.contains(scalar) { letters.append(scalar) } else { edges.insert(letters.count) }
+                }
+                edges.insert(letters.count)
+                guard theirs.count <= letters.count else { return false }
+                for start in 0...(letters.count - theirs.count) where letters[start..<(start + theirs.count)].elementsEqual(theirs) {
+                    if edges.contains(start) || edges.contains(start + theirs.count) { return true }
+                }
+                return false
             }
-            let theirs = bare(words)
-            if theirs.unicodeScalars.count >= unspacedMinimum { return bare(request).contains(theirs) }
         }
         return (" " + WatchBridgeDelegation.comparable(request) + " ").contains(" " + words + " ")
     }

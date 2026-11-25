@@ -772,7 +772,7 @@ extension AppState {
             // deleted on its own runtime, leaves this one's chat under the
             // same id as it was (issue 3147).
             if actingOnRuntimeOnScreen {
-                archivedSessions.removeAll { sessionMatches($0, session) }
+                archivedSessions.removeAll { isRemovedWith($0, session) }
                 removePinnedState(for: session)
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
@@ -873,9 +873,14 @@ extension AppState {
         guard !actingOnRuntimeOnScreen else {
             guard let far = farChat, let open = activeSessionId,
                   far.profile.caseInsensitiveCompare(profile ?? activeProfile) == .orderedSame,
-                  far.dashboardID != dashboardIDOnScreen,
-                  !combinedHermesTwins(of: far.dashboardID).contains(where: { $0 == dashboardIDOnScreen })
+                  far.dashboardID != dashboardIDOnScreen
             else { return sessionIDs }
+            // A twin of the dashboard on screen lists the same chats: every id
+            // goes only when the chat open in place is the one deleted, not
+            // another chat of that Hermes (issue 3256).
+            if combinedHermesTwins(of: far.dashboardID).contains(where: { $0 == dashboardIDOnScreen }), sessionIDs.contains(open) {
+                return sessionIDs
+            }
             // The far chat's rows, where its dashboard lists it.
             let rows = runtime(for: far.dashboardID)?.sessions.filter { $0.nestingIDs.contains(open) } ?? []
             return sessionIDs.subtracting(Set(rows.flatMap(\.nestingIDs)).union([open]))
@@ -1004,6 +1009,20 @@ extension AppState {
         return !left.isDisjoint(with: right)
     }
 
+    /// Whether a delete or archive of `removed` takes `row` off the lists:
+    /// any id the two share, unless they are different chats (their durable
+    /// keys differ) that share only aliases each carries, which leaves
+    /// `row`, as `owningSessionRow` leaves such an alias neither's (issue
+    /// 3256). The same chat listed under two runtime ids goes whole.
+    func isRemovedWith(_ row: SessionSummary, _ removed: SessionSummary) -> Bool {
+        guard sessionMatches(row, removed) else { return false }
+        guard row.durableKey != removed.durableKey else { return true }
+        let own = { (session: SessionSummary) in Set([session.id, session.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }) }
+        let rowOwn = own(row), removedOwn = own(removed)
+        return !rowOwn.isDisjoint(with: removedOwn.union(removed.alternateIds))
+            || !removedOwn.isDisjoint(with: rowOwn.union(row.alternateIds))
+    }
+
     /// The catalog row that is `sessionID`'s own chat: one whose id or
     /// stored id it is wins over one that only carries it among its
     /// aliases, and an alias two rows carry is neither's (issue 2602, as the
@@ -1129,17 +1148,17 @@ extension AppState {
     }
 
     func removeSessionFromLiveCatalog(_ session: SessionSummary) {
-        sessions.removeAll { sessionMatches($0, session) }
+        sessions.removeAll { isRemovedWith($0, session) }
         // The Cron rows and the saved list are the dashboard on screen's:
         // another combined dashboard's chat, deleted or archived on its
         // own runtime, never takes a row of this one's under the same id.
-        if actingOnRuntimeOnScreen { cronSessions.removeAll { sessionMatches($0, session) } }
+        if actingOnRuntimeOnScreen { cronSessions.removeAll { isRemovedWith($0, session) } }
         // A row deleted or archived while the saved list still shows goes
         // from it too, not only once the live list lands without it.
         if actingOnRuntimeOnScreen, var saved = savedChatList {
-            saved.list.sessions.removeAll { sessionMatches($0, session) }
-            saved.list.cronSessions.removeAll { sessionMatches($0, session) }
-            saved.keptPinnedRows?.removeAll { sessionMatches($0, session) }
+            saved.list.sessions.removeAll { isRemovedWith($0, session) }
+            saved.list.cronSessions.removeAll { isRemovedWith($0, session) }
+            saved.keptPinnedRows?.removeAll { isRemovedWith($0, session) }
             if saved != savedChatList { savedChatList = saved }
         }
         // Every non-forced catalog load merges the profile cache back into
@@ -1155,7 +1174,7 @@ extension AppState {
         // archives that don't list it (other profiles') stay.
         if actingOnRuntimeOnScreen {
             archivedCallsReads = archivedCallsReads.filter { _, read in
-                !read.calls.contains { sessionMatches($0, session) }
+                !read.calls.contains { isRemovedWith($0, session) }
             }
         }
         publishWidgetSnapshot()

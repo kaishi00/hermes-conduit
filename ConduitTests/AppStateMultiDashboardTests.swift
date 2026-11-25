@@ -2260,6 +2260,20 @@ extension AppStateMultiDashboardTests {
                        "the chat that shares the alias keeps what is under it")
         XCTAssertEqual(farIndex.durableID(forRuntime: "run-shared", profile: farProfile), "chat-3", "and its runtime id's mapping")
         XCTAssertNil(farIndex.durableID(forRuntime: "run-own", profile: farProfile))
+        // Issue 3256: the row that only shares an alias stays listed until the next read too.
+        XCTAssertEqual(kept.runtime.sessions.map(\.id), ["chat-3"], "the sibling row isn't taken off the list")
+        // What a removal takes: the same chat under another runtime id goes,
+        // another chat sharing only an alias stays, a row carrying the
+        // removed chat's own id goes.
+        var underAnotherID = macSession("run-new")
+        underAnotherID.storedSessionId = deleted.durableKey
+        underAnotherID.alternateIds = ["run-shared"]
+        var ownedAlias = macSession("chat-4")
+        ownedAlias.alternateIds = ["chat-2"]
+        XCTAssertTrue(appState.isRemovedWith(underAnotherID, deleted))
+        XCTAssertFalse(appState.isRemovedWith(sibling, deleted))
+        XCTAssertTrue(appState.isRemovedWith(ownedAlias, deleted))
+        XCTAssertFalse(appState.isRemovedWith(macSession("chat-5"), deleted))
 
         // A chat deleted on the dashboard on screen while another combined
         // dashboard's chat under the same id is open in place: what is kept
@@ -2299,6 +2313,10 @@ extension AppStateMultiDashboardTests {
                            "the far copy open in place is the same chat")
             XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.idsKeptOnlyForTheDeletedChat(["chat-1"], profile: farProfile) },
                            ["chat-1"], "deleted on its other address, the screen's copy is the same chat")
+            // Issue 3256: another chat of that Hermes deleted while this one is
+            // open in place leaves what is kept under the open chat's ids.
+            XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-5", "run-far"], profile: profile), ["chat-5"],
+                           "only the far chat open in place being the one deleted lets every id go")
         } else {
             XCTFail("the two dashboards weren't found to be one Hermes")
         }

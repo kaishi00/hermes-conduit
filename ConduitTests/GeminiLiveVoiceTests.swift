@@ -1076,6 +1076,10 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceRequestWords.adding(["好的，帮我"], to: "好的，帮我订车"), "好的，帮我订车")
         XCTAssertEqual(VoiceRequestWords.adding(["好的帮我"], to: "好的，帮我订车"), "好的，帮我订车")
         XCTAssertEqual(VoiceRequestWords.adding(["是的"], to: "好的，帮我订车"), "好的，帮我订车" + marker + "是的")
+        // A longer answer counts only where a run of the request starts or ends with it (issue 3279).
+        XCTAssertEqual(VoiceRequestWords.adding(["没问题"], to: "这没问题的事不要做"), "这没问题的事不要做" + marker + "没问题")
+        XCTAssertEqual(VoiceRequestWords.adding(["没问题"], to: "没问题，这件事交给你"), "没问题，这件事交给你")
+        XCTAssertEqual(VoiceRequestWords.adding(["订明天的车"], to: "好的，订明天的车"), "好的，订明天的车")
         // A Watch call's request and correction carry them; its other calls don't.
         XCTAssertEqual(VoiceRequestWords.watchArguments(name: "start_job", arguments: ["instructions": "Post them.", "profile": "Fam"], said: "Brand only."),
                        ["instructions": "Post them." + marker + "Brand only.", "profile": "Fam"])
