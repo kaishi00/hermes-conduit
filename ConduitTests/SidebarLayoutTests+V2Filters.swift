@@ -560,6 +560,14 @@ extension SidebarLayoutTests {
         appState.toggleSessionStarred(chat)
         XCTAssertFalse(appState.isSessionStarred(chat))
         XCTAssertEqual(SessionStars(defaults: appState.defaults, scope: farScope), SessionStars())
+        // Deleted there: its star goes from its own dashboard's, however
+        // its profile is spelled, and the screen's stars stay.
+        appState.toggleSessionStarred(chat)
+        XCTAssertTrue(appState.isSessionStarred(chat))
+        appState.dropFarSessionStar(screenChat, profile: "DEFAULT", in: far)
+        XCTAssertFalse(appState.isSessionStarred(chat))
+        XCTAssertEqual(SessionStars(defaults: appState.defaults, scope: farScope), SessionStars())
+        XCTAssertEqual(appState.sessionStars, SessionStars())
 
         // Its read flag: shown at once, written on its own dashboard.
         XCTAssertFalse(appState.isSessionUnread(chat))
@@ -584,13 +592,44 @@ extension SidebarLayoutTests {
         try await farHeld.waitForRequests(4)
         try await farHeld.answer(["detail": "no"], status: 500)
         try await untilChatDone({ appState.isSessionUnread(chat) }, "the refused change goes back")
+
+        // Marking a nest read (as Mark All Read does) reaches a far row on
+        // its own dashboard, after the write before it.
+        appState.markSessionNestRead([chat])
+        XCTAssertFalse(appState.isSessionUnread(chat))
+        try await farHeld.waitForRequests(5)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(6)
+        XCTAssertEqual(farHeld.sent.last?.method, "PATCH")
+        try await farHeld.answer()
+        try await untilChatDone({ appState.farReadFlagWriteTail[far] == nil }, "the write ends")
+        XCTAssertFalse(appState.isSessionUnread(chat))
+
+        // Two changes before the first is answered: the row keeps showing
+        // the later one over the earlier one's answer, and when the later
+        // one is refused it goes back to the flag Hermes took last.
+        appState.markSessionUnread(chat)
+        appState.markSessionRead(chat)
+        XCTAssertFalse(appState.isSessionUnread(chat))
+        try await farHeld.waitForRequests(7)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(8)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(9)
+        XCTAssertFalse(appState.isSessionUnread(chat), "the earlier answer doesn't put its flag back over the later change")
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(10)
+        try await farHeld.answer(["detail": "no"], status: 500)
+        try await untilChatDone({ appState.isSessionUnread(chat) }, "back to the flag Hermes took last")
+        try await untilChatDone({ appState.farReadFlagWriteTail[far] == nil }, "the writes end")
+        XCTAssertTrue(appState.farReadFlagChanges.isEmpty)
         XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
 
         // Not connected: nothing changes.
         appState.keptDashboardRuntimes[far] = nil
         appState.markSessionRead(chat)
         XCTAssertTrue(appState.isSessionUnread(chat))
-        XCTAssertEqual(farHeld.sent.count, 4)
+        XCTAssertEqual(farHeld.sent.count, 10)
     }
 
     /// Issue 3032: a timed mute that ends takes its bell with it then, not

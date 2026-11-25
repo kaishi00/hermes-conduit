@@ -774,6 +774,9 @@ extension AppState {
                 removePinnedState(for: session)
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
+            } else if let dashboardID {
+                // Its star goes from its own dashboard's.
+                dropFarSessionStar(session, profile: profile, in: dashboardID)
             }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
