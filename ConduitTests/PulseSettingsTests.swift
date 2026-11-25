@@ -274,7 +274,7 @@ final class PulseSettingsTests: XCTestCase {
     /// Issue 3241: while Pulse reads every profile, single ones can be left out.
     func testProfilesLeftOutWhileEveryProfileIsRead() throws {
         var state = try XCTUnwrap(PulseState(json: json("""
-        {"ok": true, "report_profiles": "all", "other_profiles": ["work", "default"],
+        {"ok": true, "enabled": true, "report_profiles": "all", "other_profiles": ["work", "default"],
          "excluded_profiles": ["nahida", 5]}
         """)))
         XCTAssertEqual(state.excludedProfiles, ["nahida"])
