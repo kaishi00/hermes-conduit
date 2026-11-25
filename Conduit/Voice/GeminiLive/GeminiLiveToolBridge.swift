@@ -1100,8 +1100,7 @@ final class GeminiLiveToolBridge {
             let words = lastUserWords()
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return answer }
             let now = lastUserWords()
-            // Their next words began a new line: the yes already read stands.
-            guard now != words, now.hasPrefix(words) else { break }
+            guard now != words else { break }
             answer = VoiceThreadRouting.heldRequestAnswer(now)
         }
         return answer
