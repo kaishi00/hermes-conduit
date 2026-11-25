@@ -2990,10 +2990,22 @@ extension CrossProfilePresentationCacheTests {
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
-        final class Counts { var connects = 0; var mints = 0; var reads: [String] = []; var cronReads: [String] = [] }
+        final class Counts {
+            var connects = 0; var mints = 0; var reads: [String] = []; var cronReads: [String] = []
+            var farClient: ObjectIdentifier?; var statusReads: [String] = []
+        }
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
+        // The kept dashboard's registries, read by profile through its kept
+        // connection; any other connection's read finds nothing running.
+        operations.probeProfileActiveSessions = { client, profile in
+            guard ObjectIdentifier(client) == counts.farClient else { return [] }
+            counts.statusReads.append(profile)
+            return profile == "atlas"
+                ? [LiveSessionStatus(runtimeSessionId: "rt-atlas", storedSessionId: "atlas-1", status: "working")]
+                : [LiveSessionStatus(runtimeSessionId: "rt-mac", storedSessionId: "mac-1", status: "waiting")]
+        }
         operations.mintTicket = { _ in
             counts.mints += 1
             return "fresh-ticket"
@@ -3045,6 +3057,31 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.profiles, ["default", "atlas"])
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"],
                        "newest first across its profiles")
+        // Its rows' Running and approval status (no-switch stage 4b): each
+        // listed profile's registry, read through its kept connection.
+        let farRows = appState.otherCombinedDashboardsChats(excluding: [])
+        let macRow = try XCTUnwrap(farRows.first { $0.id == "mac-1" })
+        let atlasRow = try XCTUnwrap(farRows.first { $0.id == "atlas-1" })
+        let oldRow = try XCTUnwrap(farRows.first { $0.id == "mac-2" })
+        XCTAssertNil(appState.sessionLiveStatus(atlasRow), "not read yet")
+        counts.farClient = ObjectIdentifier(kept.client)
+        kept.runtime.isConnected = true
+        await appState.refreshFarLiveSessionStatusesIfDue()
+        XCTAssertEqual(Set(counts.statusReads), ["default", "atlas"], "each listed profile, by name")
+        XCTAssertEqual(appState.sessionLiveStatus(atlasRow), .working)
+        XCTAssertEqual(appState.v2RowStatus(for: atlasRow), .running)
+        XCTAssertEqual(appState.sessionLiveStatus(macRow), .needsInput)
+        XCTAssertNil(appState.sessionLiveStatus(oldRow))
+        // Read again only after its interval.
+        await appState.refreshFarLiveSessionStatusesIfDue()
+        XCTAssertEqual(counts.statusReads.count, 2)
+        await appState.refreshFarLiveSessionStatusesIfDue(now: Date().addingTimeInterval(AppState.farLiveStatusInterval + 1))
+        XCTAssertEqual(counts.statusReads.count, 4)
+        // Its connection down: nothing it read last stands.
+        kept.runtime.isConnected = false
+        XCTAssertNil(appState.sessionLiveStatus(atlasRow))
+        kept.runtime.isConnected = true
+        counts.farClient = nil
         XCTAssertEqual(appState.combinedChatTarget(
             try XCTUnwrap(appState.otherCombinedDashboardsChats(excluding: []).first { $0.id == "atlas-1" }), in: mac.id
         ).profile, "atlas", "a row opens in its own profile")
