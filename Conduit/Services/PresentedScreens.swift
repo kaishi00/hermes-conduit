@@ -580,10 +580,12 @@ final class PresentedScreensSync: ObservableObject {
     /// instead) or Don't start (plugin 0.137+). "pulse-looks": Pulse
     /// cards drawn from their picks, a conduit_show card body among them
     /// (plugin 0.150+); "pulse-more-shapes": their number, waiting and
-    /// found shapes too (plugin 0.162+).
+    /// found shapes too (plugin 0.162+). "placed-boards": a board drawn
+    /// where the reply holds its ::conduit-board line, and left out of its
+    /// conduit_show row (plugin 0.196+, issue 3215).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
                            "text-drafts", "email-texts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks",
-                           "room-work", "pulse-looks", "pulse-more-shapes"]
+                           "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.
