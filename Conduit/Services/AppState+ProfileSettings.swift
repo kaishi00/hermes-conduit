@@ -505,11 +505,16 @@ extension AppState {
     /// A photo kept on this device only: the gateway has no profile asset
     /// store (older Hermes).
     func saveProfileAvatarOnDevice(_ data: Data, for profile: String) throws {
-        profileAvatarURLs[profile] = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
+        let url = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
+        // The pictures on hand are the dashboard on screen's alone.
+        if actingOnRuntimeOnScreen { profileAvatarURLs[profile] = url }
     }
 
     func removeProfileAvatarFile(for profile: String) {
         profileAppearanceStore.removeAvatar(for: profile, dashboardID: activeDashboardID)
+        // Another combined dashboard's removal (in its scope) leaves a
+        // same-named profile's picture here alone.
+        guard actingOnRuntimeOnScreen else { return }
         profileAvatarURLs.removeValue(forKey: profile)
     }
 

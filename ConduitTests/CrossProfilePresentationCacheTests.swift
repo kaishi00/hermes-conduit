@@ -2687,6 +2687,18 @@ extension CrossProfilePresentationCacheTests {
         // (build 283: they showed the screen's main bot).
         XCTAssertEqual(appState.conversationAgentIdentity.name, "Atlas")
         XCTAssertEqual(appState.conversationAgentIdentity.botFace?.name, "atlas")
+        // Its main bot's Hermes picture, mirrored in its scope, is kept for
+        // its own dashboard, never as this dashboard's main bot's (build 283).
+        let screensMain = appState.profileAvatarURLs["default"]
+        let picture = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }.pngData())
+        appState.act(onRuntime: kept.runtime) {
+            appState.mirrorHermesPicture(picture, for: "default", dashboardID: mac.id)
+        }
+        XCTAssertEqual(appState.profileAvatarURLs["default"], screensMain, "this dashboard's main picture stays its own")
+        XCTAssertNotNil(appState.profileAppearanceStore.loadAvatarURLs(dashboardID: mac.id)["default"], "kept for the Mac")
         kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
         appState.activeSessionId = "plain-far-chat"

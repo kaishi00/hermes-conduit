@@ -27,6 +27,12 @@ extension AppState {
         guard dashboardID == activeDashboardID,
               let saved = try? profileAppearanceStore.saveMirroredAvatar(data, for: name, dashboardID: dashboardID)
         else { return }
+        // The pictures on hand are the dashboard on screen's: another
+        // combined dashboard's roster read in its scope (a far Bot Chat open
+        // in place) keeps its copy on disk for that dashboard alone
+        // (`farAvatarURL`), never over a same-named profile here (build 283:
+        // the main bot here took the far main bot's picture).
+        guard actingOnRuntimeOnScreen else { return }
         // Published when the bytes changed (same URL, new content) or the
         // URL is new, so views redraw only for a real change.
         if saved.changed || profileAvatarURLs[name] != saved.url {
