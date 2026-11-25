@@ -3437,7 +3437,7 @@ reply's elements) · long-press Open Link · file paths, linked to the Folder
 (Workspace files) · a reply's `conduit://session/` links to its workstreams,
 drawn as work cards under it, and the workstream refs a Bot Chat reply names in its words, linked in place (Bot workstreams, #1677)
 
-**Desktop app:** has it: links in messages open in the browser (`desktop/src/renderer/src/components/Markdown.tsx`); a Bot Chat reply's "[Open W3](conduit://session/…)" links are work cards under it, Desktop's @session: reference to the same session goes with them, any other @session: reference is a link to that chat, and a ref a Bot Chat reply names links to its workstream's chat (desktop#225); opening one of the work links keeps the bot context — a workstream's chat opens beside the bots, its sidebar and Bots mark staying, not in the sessions list, wherever the click came from (an ordinary chat's reference too), and a card clicked in a chat's own window lands the main window the same way (desktop#426); work no longer in the bot's Work list is found on its Resolved page, for its card, a named ref and a resolved workstream's title line, and a work link quoted in code stays as written, as here (desktop#227, desktop#228).
+**Desktop app:** has it: links in messages open in the browser (`desktop/src/renderer/src/components/Markdown.tsx`); a Bot Chat reply's "[Open W3](conduit://session/…)" links are work cards under it, Desktop's @session: reference to the same session goes with them, any other @session: reference is a link to that chat, and a ref a Bot Chat reply names links to its workstream's chat (desktop#225); desktop only: an https link shows its site's own icon before its words, and a file's name its type as a small label (`desktop/src/renderer/src/state/linkMarks.ts`, desktop#499, desktop issue 455); opening one of the work links keeps the bot context — a workstream's chat opens beside the bots, its sidebar and Bots mark staying, not in the sessions list, wherever the click came from (an ordinary chat's reference too), and a card clicked in a chat's own window lands the main window the same way (desktop#426); work no longer in the bot's Work list is found on its Resolved page, for its card, a named ref and a resolved workstream's title line, and a work link quoted in code stays as written, as here (desktop#227, desktop#228).
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
@@ -7197,7 +7197,7 @@ capability, tool, CHANGELOG and README (done, notifier PR) · the drawer
 shell's sidebar (not needed: V1 has no filters, like Stars) · Bots Home, the
 Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 
-**Desktop app:** has it: Mark as Done in the row menu, the dimmed row with a check, and In progress and Done in the Filter menu, combined with status, source and Starred as on the phone (`desktop/src/renderer/src/state/chatDone.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#269).
+**Desktop app:** has it: Mark as Done in the row menu, the dimmed row with a check, and In progress and Done in the Filter menu, combined with status, source and Starred as on the phone (`desktop/src/renderer/src/state/chatDone.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#269). The main window's open chat has the row's menu in its header too, Mark as Done in it; a chat in a window of its own has only Rename and Delete there (the "…" button and a right-click on the title, `desktop/src/renderer/src/state/chatMenu.ts`, desktop#499).
 
 **Code**
 - Marks: `Conduit/Models/ChatDoneMarks.swift` (ids(for:), the lineage root first; marks(from:), setting, replacing), `Conduit/Services/AppState+ChatDone.swift` (chatDoneAvailable, chatDoneMarksKey per dashboard and profile, setSessionDone and its pending writes, refreshChatDoneMarks and its 15 s throttle, a read from before a write dropped; readChatDoneMarks reads any dashboard's through its bridge), `Conduit/Services/AppState+FarChatMarks.swift` (chatMarksHome, farChatDoneMarks: another combined dashboard's marks, refreshFarChatMarks called by `Conduit/Services/AppState+CombinedChats.swift`'s list read; chatDoneFilterAvailable: the list's In progress and Done filters also show when a combined dashboard whose rows it lists keeps marks)
@@ -7233,7 +7233,8 @@ dashboards · iPhone, iPad and Mac · accessibility labels and text · README.md
 for search, restore and confirmed deletion (desktop#410). It checks the chat's
 own profile, keeps busy chats from being archived or deleted, removes a pin
 when archiving, and excludes voice rows already listed in Chats. Other
-dashboards' rows do not offer Archive.
+dashboards' rows do not offer Archive. The open chat's header menu offers
+Archive too (`desktop/src/renderer/src/components/HeaderMenu.tsx`, desktop#499); a chat in a window of its own does not.
 
 **Code**
 - Actions and Archived sheet: `Conduit/Views/SidebarView.swift` (SessionActionMenuItems, ArchivedSessionsSheet)
@@ -7258,11 +7259,11 @@ dashboards' rows do not offer Archive.
   in the Chats list carries no menu.
 
 **Open gaps**
-- Desktop does not offer Archive from a project chat row or the open chat's
-  title menu. Its Archived view can list all profiles when All is selected.
+- Desktop does not offer Archive from a project chat row or in a chat's own
+  window. Its Archived view can list all profiles when All is selected.
 - Live Hermes archive/restore has not yet been tested end-to-end.
 
-**Checked:** 2026-11-24, #3230 (another combined dashboard's chat archived on another profile there leaves the screen's pins alone; Desktop not needed); 2026-11-23, #3194 (recorded the existing iOS archive and Archived
+**Checked:** 2026-11-24, #3246 (the desktop's open chat offers Archive from its header menu, desktop#499, so that gap is trimmed to project rows and chat windows); 2026-11-24, #3230 (another combined dashboard's chat archived on another profile there leaves the screen's pins alone; Desktop not needed); 2026-11-23, #3194 (recorded the existing iOS archive and Archived
 sheet alongside desktop#410).
 
 ## Deleting from a list row
@@ -7277,7 +7278,7 @@ context menu Delete · pinned replies' Unpin (acts at once, no confirmation) ·
 the iPad and Mac list beside the open chat (same views) · text: no Settings
 caption or doc describes it
 
-**Desktop app:** has it: Delete in the row menus (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19), and a confirmed permanent Delete in Archived (desktop#410).
+**Desktop app:** has it: Delete in the row menus (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19), a confirmed permanent Delete in Archived (desktop#410), and a confirmed Delete in the open chat's header menu, in the main window and in a chat's own window, which closes (`desktop/src/renderer/src/state/chatMenu.ts`, desktop#499).
 
 **Code**
 - V2 rows: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions and V2SessionTrailingSwipes, which holds the Delete swipe; projectRow's swipe actions, the Delete alerts)
