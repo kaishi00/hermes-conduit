@@ -717,14 +717,15 @@ extension AppState {
     /// The bot's picture: the one fetched from its profile, else the copy
     /// of Hermes' picture the profile pictures keep on the phone, so a row
     /// shows it before the fetch, or offline (#1533).
-    /// For another combined dashboard's chat open in place, its picture as
-    /// its own dashboard keeps it, never a same-named profile's here
-    /// (build 283: a far bot's chat showed a starter face).
+    /// Acting for another combined dashboard (its chat open in place, its
+    /// group chat's tile), its picture as its own dashboard keeps it, never
+    /// a same-named profile's here (build 283: a far bot's chat showed a
+    /// starter face).
     func botAvatarImage(for bot: BotProfile) -> UIImage? {
         guard bot.hasAvatar else { return nil }
         if let image = botAvatarImages[bot.name] { return image }
         let url: URL?
-        if let dashboardID = farChatDashboardIDInScope {
+        if !actingOnRuntimeOnScreen, let dashboardID = dashboardID(of: shownRuntime) {
             url = farAvatarURL(for: bot.name, on: dashboardID)
         } else {
             url = profileAvatarURLs[bot.name]

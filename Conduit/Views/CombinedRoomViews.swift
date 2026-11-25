@@ -146,6 +146,8 @@ struct CombinedRoomIcon: View {
 
     var body: some View {
         GroupRoomIcon(picture: appState.combinedRoomPicture(tile), members: tile.room.members, size: size)
+            // Its members' faces are its own dashboard's bots.
+            .environment(\.roomTileDashboardID, tile.dashboardID == appState.dashboardIDOnScreen ? nil : tile.dashboardID)
             .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: tile.room.isLinked))
             // On the other corner from the linked mark.
             .overlay(alignment: .bottomLeading) {
