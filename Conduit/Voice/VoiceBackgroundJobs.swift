@@ -147,6 +147,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// A thread turn whose call ended. It keeps running in its chat, but no
     /// later call hears about it, reads its reply, or loses events to it.
     var isDetachedThreadTurn = false
+    /// When its call ended with this thread turn still waiting to be sent:
+    /// it goes to the chat once the chat is free (issue 3185).
+    var waitsSinceHangUp: Date?
     /// The request whose chat an unattached call took (#1250): its reply is
     /// the chat's, told as a chat turn's is.
     var isCallChat = false
@@ -1618,11 +1621,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // joins that chat once it's made.
             let callID = liveCallID
             let waits = callID != nil && callChatClaim?.callID == callID
+            let making = waits ? callChatClaim?.jobID : nil
             await waitForCallChatClaim()
             if liveThread != nil { return joinCallChat(requested, onJobCreated: onJobCreated) }
-            // The call hung up meanwhile: let go of it, as of the call's
-            // turns still waiting theirs. Read by no one: not localized.
-            if waits, callChatClosedCallID == callID { return "The call ended before Hermes took this request." }
+            // The call hung up meanwhile: it attaches nothing, and the
+            // request goes to the chat the first one makes once that chat
+            // is free, as the call's turns still waiting theirs do (issue
+            // 3185). Read by no one: not localized.
+            if waits, callChatClosedCallID == callID {
+                if let making { await sendAfterHangUp(requested, toChatOf: making) }
+                return "The call ended; Hermes takes this request in the chat once it's free."
+            }
         }
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
@@ -1951,6 +1960,50 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         onCallChatAdopted?(thread)
     }
 
+    /// A request that waited for the call's chat when the call ended: once
+    /// the first request has made the chat, it waits there as a turn of the
+    /// ended call does, sent when the chat is free and never announced.
+    private func sendAfterHangUp(_ request: String, toChatOf firstID: UUID) async {
+        let generation = generation
+        while generation == self.generation, job(firstID)?.status == .starting {
+            try? await Task.sleep(for: threadWaitInterval)
+        }
+        let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard generation == self.generation, !request.isEmpty, let first = job(firstID), first.requestSent,
+              let runtimeID = first.runtimeSessionID, !runtimeID.isEmpty else { return }
+        let thread = VoiceThreadTarget(runtimeSessionID: runtimeID, storedSessionID: first.storedSessionID, title: first.title, profile: first.profile)
+        guard !isDeletedChat(thread) else { return }
+        var turn = VoiceBackgroundJob(
+            id: UUID(),
+            title: Self.title(for: request),
+            instructions: request,
+            profile: thread.profile,
+            runtimeSessionID: thread.runtimeSessionID,
+            storedSessionID: thread.storedSessionID,
+            status: .starting,
+            startedAt: Date(),
+            isThreadTurn: true,
+            callAnchor: first.callAnchor
+        )
+        turn.isDetachedThreadTurn = true
+        turn.outcomeDelivered = true
+        turn.waitsSinceHangUp = now()
+        jobs.append(turn)
+        threadTargets[turn.id] = thread
+        if hangUpSendHold == nil { hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest") }
+        pumpThreadTurns()
+    }
+
+    /// Whether a request an ended call left (the one that made its chat, a
+    /// job continued there) still runs in `thread`: a request waiting since
+    /// the hang-up goes after it.
+    private func endedCallRequestRuns(in thread: VoiceThreadTarget) -> Bool {
+        jobs.contains { job in
+            !job.isThreadTurn && job.status.isActive && (job.requestSent || job.submitInFlight)
+                && [job.runtimeSessionID, job.storedSessionID].compactMap { $0 }.contains { thread.owns(sessionID: $0) }
+        }
+    }
+
     /// Waits while the running call's first ordinary job is making its chat.
     private func waitForCallChatClaim() async {
         let generation = generation
@@ -2189,10 +2242,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return (job.id, nil)
     }
 
-    /// The call left its chat (it ended, or a boundary reset it). Requests
-    /// still waiting their turn are dropped: nobody is on the call to hear
-    /// them. A turn already sent keeps running in the chat, unannounced:
-    /// its reply is there, and a later call shouldn't bring it up.
+    /// The call left its chat (it ended, or a boundary reset it). A request
+    /// still waiting its turn is sent once the chat is free (issue 3185);
+    /// it and a turn already sent run in the chat unannounced: the reply
+    /// is there, and a later call shouldn't bring it up.
     /// Attaches a new call to `thread`. Whatever an earlier call left
     /// attached (one that failed rather than hung up) lets go first, so its
     /// turns are never announced to this call.
@@ -2380,13 +2433,53 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         for index in jobs.indices where (jobs[index].isThreadTurn || jobs[index].id == callChatJob || jobs[index].id == claimedJob)
             && !jobs[index].isDetachedThreadTurn {
             if jobs[index].isThreadTurn, jobs[index].status.isActive, !jobs[index].threadTurnSubmitted {
-                jobs[index].status = .cancelled
+                // Still waiting its turn: the user asked for it, so it is
+                // sent once the chat is free, and its reply is the chat's.
+                jobs[index].waitsSinceHangUp = now()
             }
             jobs[index].outcomeDelivered = true
             jobs[index].isDetachedThreadTurn = true
             jobs[index].settledByPoll = false
         }
         pruneSettledJobs()
+        guard hasRequestWaitingSinceHangUp else { return }
+        // Conduit may leave the screen with the call: the send gets the
+        // time iOS allows.
+        if hangUpSendHold == nil { hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest") }
+        pumpThreadTurns()
+    }
+
+    /// How long a request still waiting when its call ended is kept for a
+    /// chat that stays busy. Past it the request is dropped.
+    static let hangUpSendLimit: TimeInterval = 600
+    /// Injected by tests.
+    var now: () -> Date = { Date() }
+    var holdBackgroundTime: (String) -> () -> Void = { BackgroundTaskHold.begin($0) }
+    private var hangUpSendHold: (() -> Void)?
+
+    /// Changes with every reset: what an earlier ledger asked for is no
+    /// longer wanted.
+    var ledgerGeneration: UInt64 { generation }
+
+    /// Whether a request of an ended call still waits to be sent.
+    var hasRequestWaitingSinceHangUp: Bool {
+        jobs.contains { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting && $0.waitsSinceHangUp != nil }
+    }
+
+    /// Returns once no request of an ended call waits to be sent, or after
+    /// `limit`: a hand-back of the call's jobs waits for it this long.
+    func hangUpRequestsSent(within limit: Duration = .seconds(30)) async {
+        let generation = generation
+        let deadline = ContinuousClock.now + limit
+        while generation == self.generation, hasRequestWaitingSinceHangUp, ContinuousClock.now < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: threadWaitInterval)
+        }
+    }
+
+    private func releaseHangUpSendHoldIfDone() {
+        guard !hasRequestWaitingSinceHangUp, let end = hangUpSendHold else { return }
+        hangUpSendHold = nil
+        end()
     }
 
     /// What a read-back reads (#451): the newest result the call reported,
@@ -2520,9 +2613,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     private func runThreadTurns(generation: UInt64) async {
-        defer { if generation == self.generation { threadTask = nil } }
+        defer {
+            if generation == self.generation {
+                threadTask = nil
+                releaseHangUpSendHoldIfDone()
+            }
+        }
         while !Task.isCancelled, generation == self.generation {
             guard let next = jobs.first(where: { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting }) else { return }
+            // Its call ended long ago and the chat never came free.
+            if let since = next.waitsSinceHangUp, now().timeIntervalSince(since) > Self.hangUpSendLimit {
+                update(next.id) { $0.status = .cancelled }
+                continue
+            }
             guard let thread = threadTargets[next.id] else {
                 update(next.id) { $0.status = .failed(AppLocalization.string("Hermes could not send this to the chat.")) }
                 continue
@@ -2535,6 +2638,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
             } || callChatJobRuns(in: thread) || continuedJobHoldsChat(thread)
             if chatHasSentTurn { return }
+            if next.waitsSinceHangUp != nil, endedCallRequestRuns(in: thread) {
+                try? await Task.sleep(for: threadWaitInterval)
+                continue
+            }
             if await backend.threadIsBusy(thread) {
                 guard generation == self.generation else { return }
                 try? await Task.sleep(for: threadWaitInterval)
@@ -2599,25 +2706,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 noticeMayBePending()
             } catch is VoiceThreadBusyError {
                 guard generation == self.generation else { return }
-                // The call ended during the send: nothing went out, so the
-                // request is dropped like any other still waiting.
-                if job(next.id)?.isDetachedThreadTurn == true {
-                    update(next.id) {
-                        $0.threadTurnSubmitted = false
-                        $0.status = .cancelled
-                        $0.result = nil
-                    }
-                    continue
-                }
                 // A typed turn got there first: back in line to wait for it.
                 // Anything its events did to this turn meanwhile is undone.
+                // One whose call ended during the send waits like any other
+                // still waiting then, and stays unannounced.
                 update(next.id) {
                     $0.threadTurnSubmitted = false
                     $0.sentAt = nil
                     $0.status = .starting
                     $0.result = nil
                     $0.inputRequestDelivered = false
-                    $0.outcomeDelivered = false
+                    $0.outcomeDelivered = $0.isDetachedThreadTurn
+                    if $0.isDetachedThreadTurn, $0.waitsSinceHangUp == nil { $0.waitsSinceHangUp = self.now() }
                 }
                 try? await Task.sleep(for: threadWaitInterval)
             } catch {
@@ -2885,6 +2985,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         threadTask?.cancel()
         threadTask = nil
         jobs.removeAll()
+        hangUpSendHold?()
+        hangUpSendHold = nil
         lastJobNumber = 0
         keptCallChat = nil  // another dashboard's chat: never told to the next
         chatMatches = []

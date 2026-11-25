@@ -1489,17 +1489,18 @@ final class WatchDirectBroker {
         // its own profile's, which may not be the iPhone's (#1564).
         let started = callJobs.removeValue(forKey: id) ?? []
         let supervisor = appState.voiceBackgroundJobSupervisor
-        let waiting = waitingJobs(started)
         let callsProfile = known?.connection.profile ?? appState.activeProfile
+        // A request still waiting its turn in the call's chat is sent once
+        // the chat is free, as a phone call's (issue 3185), so it is one of
+        // the call's jobs like the rest.
         let phoneJobs = supervisor.jobs.compactMap { job -> WatchVoiceWire.DirectJob? in
-            guard started.contains(job.id), !waiting.contains(job.id),
+            guard started.contains(job.id),
                   AppState.profilesMatch(job.profile ?? appState.activeProfile, callsProfile),
                   !(job.continuesChat && job.status == .cancelled && !job.requestSent) else { return nil }
             let sessionID = [job.storedSessionID, job.runtimeSessionID].compactMap { $0 }.first { !$0.isEmpty }
             return .init(jobID: job.id.uuidString, title: job.title, sessionID: sessionID, startedAt: job.startedAt)
         }
         Task {
-            for jobID in waiting { _ = await supervisor.cancel(jobID: jobID) }
             if let known {
                 await appState.saveWatchVoiceCall(transcript, connection: known.connection, saveCalls: known.saveCalls, phoneJobs: phoneJobs)
             }
@@ -1545,22 +1546,8 @@ final class WatchDirectBroker {
         endCall()
     }
 
-    /// A request still waiting its turn in the call's chat goes no further
-    /// when the call ends, however it ends, as on the relay and in a phone
-    /// call (#1250).
-    private func waitingJobs(_ started: [UUID]) -> [UUID] {
-        appState.voiceBackgroundJobSupervisor.jobs.filter {
-            started.contains($0.id) && $0.continuesChat && !$0.requestSent && $0.status.isActive
-        }.map(\.id)
-    }
-
     /// Unspoken job news goes back to the jobs, which report it as usual.
     private func endCall(keepRecovery: Bool = false) {
-        if let callID {
-            let waiting = waitingJobs(callJobs[callID] ?? [])
-            let supervisor = appState.voiceBackgroundJobSupervisor
-            if !waiting.isEmpty { Task { for jobID in waiting { _ = await supervisor.cancel(jobID: jobID) } } }
-        }
         grantWatchdog?.cancel()
         grantWatchdog = nil
         silenceWatchdog?.cancel()

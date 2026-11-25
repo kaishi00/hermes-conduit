@@ -2273,19 +2273,44 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceBackgroundJobSupervisor.requestWithoutContextSent("The user wants the build checked.", sent: sent).text, "The user wants the build checked.")
     }
 
-    func testEndingTheCallDropsTurnsStillWaiting() async {
+    /// Issue 3185 (Eric, 2026-11-25): a request still waiting its turn when
+    /// the call ends is sent once the chat is free, never announced.
+    func testARequestStillWaitingAtHangUpIsSentOnceTheChatIsFree() async {
         let (supervisor, fake) = makeThreadSupervisor()
+        var holds = 0
+        var released = 0
+        supervisor.holdBackgroundTime = { _ in
+            holds += 1
+            return { released += 1 }
+        }
         fake.threadBusy = true
         _ = supervisor.startThreadTurn(request: "later")
 
         supervisor.detachLiveThread()
-        fake.threadBusy = false
-        try? await Task.sleep(for: .milliseconds(40))
-
-        XCTAssertTrue(fake.threadSubmissions.isEmpty)
-        XCTAssertEqual(supervisor.jobs.first?.status, .cancelled)
-        XCTAssertNil(supervisor.takePendingNotice(), "nobody is on the call to tell")
+        XCTAssertTrue(supervisor.hasRequestWaitingSinceHangUp)
+        XCTAssertEqual(holds, 1, "Conduit may leave the screen with the call")
         XCTAssertNil(supervisor.startThreadTurn(request: "after").jobID, "no chat to send to")
+        try? await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(fake.threadSubmissions.isEmpty, "the chat is still busy")
+
+        fake.threadBusy = false
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) later"])
+        XCTAssertFalse(supervisor.hasRequestWaitingSinceHangUp)
+        guard await waitFor({ released == 1 }) else { return }
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Done.", reasoning: nil))
+        XCTAssertNil(supervisor.takePendingNotice(), "nobody is on the call to tell, and a later call doesn't bring it up")
+
+        // A chat that never comes free: the request is dropped in the end.
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        fake.threadBusy = true
+        _ = supervisor.startThreadTurn(request: "never")
+        supervisor.detachLiveThread()
+        supervisor.now = { Date().addingTimeInterval(VoiceBackgroundJobSupervisor.hangUpSendLimit + 1) }
+        guard await waitFor({ supervisor.jobs.last?.status == .cancelled }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+        XCTAssertNil(supervisor.takePendingNotice())
+        supervisor.reset()
     }
 
     func testASentTurnOutlivesTheCallWithoutBeingAnnounced() async {
@@ -2323,7 +2348,7 @@ extension VoiceConversationControllerTests {
         let cancelled = await supervisor.cancelAll()
         XCTAssertEqual(cancelled, AppLocalization.string("There are no background jobs to cancel.", table: .voice))
         XCTAssertEqual(supervisor.jobs.first?.status, .starting)
-        supervisor.detachLiveThread()
+        supervisor.reset()
     }
 
     func testTheLastReplyIsReadWithoutANewTurn() async {
@@ -2876,18 +2901,21 @@ extension VoiceConversationControllerTests {
         supervisor.detachLiveThread()
     }
 
-    func testHangingUpDuringASendThatFindsTheChatBusyDropsTheRequest() async {
+    func testHangingUpDuringASendThatFindsTheChatBusyWaitsForTheChat() async {
         let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.holdBackgroundTime = { _ in {} }
         fake.threadSubmitError = VoiceThreadBusyError()
         fake.onThreadSubmit = { supervisor.detachLiveThread() }
 
         _ = supervisor.startThreadTurn(request: "later")
-        guard await waitFor({ supervisor.jobs.first?.status == .cancelled }) else { return }
+        guard await waitFor({ supervisor.hasRequestWaitingSinceHangUp }) else { return }
+        fake.onThreadSubmit = nil
         fake.threadSubmitError = nil
-        try? await Task.sleep(for: .milliseconds(30))
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
 
-        XCTAssertEqual(fake.threadSubmissions.count, 1, "never sent again after the call ended")
+        XCTAssertEqual(fake.threadSubmissions.last?.1, "(voice) later", "sent once the chat took it (issue 3185)")
         XCTAssertNil(supervisor.takePendingNotice())
+        supervisor.reset()
     }
 
     func testARequestHermesFoldsIntoTheRunningReplyIsntSentAgain() async {

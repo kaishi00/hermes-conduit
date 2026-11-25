@@ -242,6 +242,8 @@ extension AppState {
     /// (`finishCallbacks`): it releases the watches the call told, holds
     /// the ones still to tell, and the reset would cancel it. Its ledger
     /// isn't saved meanwhile, as the restored key is still the call's.
+    /// It also waits, up to 30 seconds, for a request of the call still
+    /// waiting to be sent to its chat (issue 3185).
     func callEndedOffItsProfile() {
         guard !isLiveCallUp else { return }
         // Every hang-up passes here, saved or not, so the bot goes with the
@@ -260,13 +262,17 @@ extension AppState {
         // the call's profile's.
         callProfileHandingBack = ended
         callDashboardHandingBack = offItsDashboard ? endedDashboard : nil
-        guard let hangUp = voiceBackgroundJobSupervisor.callbackSyncInFlight else {
+        let hangUp = voiceBackgroundJobSupervisor.callbackSyncInFlight
+        // A request still waiting its turn in the call's chat is sent on the
+        // call's profile first (issue 3185): the hand-back's reset would drop it.
+        guard hangUp != nil || voiceBackgroundJobSupervisor.hasRequestWaitingSinceHangUp else {
             handBackCallJobs()
             return
         }
         callEndedOffProfileHandBack?.cancel()
         callEndedOffProfileHandBack = Task { @MainActor [weak self] in
-            await hangUp.value
+            await hangUp?.value
+            await self?.voiceBackgroundJobSupervisor.hangUpRequestsSent()
             guard !Task.isCancelled else { return }
             self?.handBackCallJobs()
         }
