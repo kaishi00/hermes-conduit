@@ -273,8 +273,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.liveThread?.runtimeSessionID, "rt-2")
     }
 
-    func testARequestWaitingForTheCallsChatAtHangUpIsLetGo() async {
+    func testARequestWaitingForTheCallsChatAtHangUpGoesToItOnceFree() async {
         let (supervisor, fake) = makeUnattachedCall()
+        supervisor.holdBackgroundTime = { _ in {} }
         fake.parksCreate = true
         let first = Task { await supervisor.startJob(instructions: "plan the trip", joinsCall: true) }
         await fake.createParked.waitUntil(1)
@@ -285,8 +286,18 @@ extension VoiceConversationControllerTests {
         _ = await first.value
         let reply = await second.value
 
-        XCTAssertEqual(reply, "The call ended before Hermes took this request.")
-        XCTAssertEqual(fake.created, 1, "nothing of the ended call starts after it")
+        XCTAssertEqual(reply, "The call ended; Hermes takes this request in the chat once it's free.")
+        XCTAssertEqual(fake.created, 1, "no chat of its own")
+        XCTAssertNil(supervisor.liveThread, "the ended call attaches nothing")
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertTrue(fake.threadSubmissions.isEmpty, "the first request still runs there")
+
+        // Issue 3185: it goes in after the request that made the chat.
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Planned.", reasoning: nil))
+        guard await waitForCallChat({ fake.threadSubmissions.count == 1 }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.first?.1, "(voice) and book the hotel")
+        XCTAssertNil(supervisor.takePendingNotice())
+        supervisor.reset()
     }
 
     func testTheCallsChatJobTakesFollowUpsWhileItRuns() async {
