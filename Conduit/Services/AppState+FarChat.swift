@@ -167,8 +167,16 @@ extension AppState {
 
     /// A far bot's saved avatar URL as its own dashboard knows it.
     func farAvatarURL(for profile: String, on dashboardID: UUID) -> URL? {
-        if let url = combinedDashboardBots[dashboardID]?.avatars[profile] { return url }
-        return profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)[profile]
+        if let url = Self.avatar(in: combinedDashboardBots[dashboardID]?.avatars ?? [:], for: profile) { return url }
+        return Self.avatar(in: profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID), for: profile)
+    }
+
+    /// A profile's picture among another dashboard's, under its own spelling
+    /// or another case of it: the roster, a chat row and a wait spell one
+    /// profile differently (#3306 follow-up).
+    nonisolated static func avatar(in avatars: [String: URL], for profile: String) -> URL? {
+        if let url = avatars[profile] { return url }
+        return avatars.first { profilesMatch($0.key, profile) }?.value
     }
 
     /// Runs an async action on the chat on screen's own runtime (the screen

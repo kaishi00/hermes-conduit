@@ -549,8 +549,7 @@ struct V2ChatsView: View {
             return V2ProfileBadge(
                 profile: profile,
                 name: profile,
-                url: appState.combinedDashboardBots[dashboardID]?.avatars[profile]
-                    ?? appState.otherCombinedDashboardProfileAvatar(profile, in: dashboardID),
+                url: appState.farAvatarURL(for: profile, on: dashboardID),
                 dashboardID: dashboardID
             )
         }

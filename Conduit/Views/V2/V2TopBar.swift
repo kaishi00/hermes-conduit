@@ -432,7 +432,7 @@ struct V2ProfileStrip: View {
         for id in Set(chips.filter(\.isOther).compactMap(\.dashboardID)) {
             let saved = appState.combinedDashboardBots[id]?.avatars
                 ?? appState.profileAppearanceStore.loadAvatarURLs(dashboardID: id)
-            for chip in chips where chip.dashboardID == id { urls[chip.id] = saved[chip.profile] }
+            for chip in chips where chip.dashboardID == id { urls[chip.id] = AppState.avatar(in: saved, for: chip.profile) }
         }
         return urls
     }

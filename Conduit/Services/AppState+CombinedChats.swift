@@ -391,11 +391,6 @@ extension AppState {
         return profiles.flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// The picture another combined dashboard's profile has on this phone.
-    func otherCombinedDashboardProfileAvatar(_ profile: String, in id: UUID) -> URL? {
-        profileAppearanceStore.loadAvatarURLs(dashboardID: id)[profile]
-    }
-
     /// A strip pick of another combined dashboard's profile: the switch
     /// there through its kept connection, the strip staying as it was (the
     /// group's one order), its list no longer All. True once it's on screen;

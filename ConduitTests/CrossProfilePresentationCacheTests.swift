@@ -2795,6 +2795,10 @@ extension CrossProfilePresentationCacheTests {
         kept.runtime.activeProfile = "nova"
         XCTAssertEqual(appState.conversationAgentIdentity.photoURL, macNova, "the profile-spelled picture")
         kept.runtime.activeProfile = mainProfile
+        // Chat rows, Needs you rows and the strip's chips look it up the same way.
+        XCTAssertEqual(AppState.avatar(in: ["nova": macNova], for: "Nova"), macNova)
+        XCTAssertEqual(AppState.avatar(in: ["Nova": macNova, "nova": macAtlas], for: "nova"), macAtlas, "its own spelling first")
+        XCTAssertNil(AppState.avatar(in: ["nova": macNova], for: "atlas"))
 
         // Its display settings and busy mode are its own dashboard's kept
         // ones; this dashboard's stay its own.
