@@ -620,6 +620,12 @@ extension AppStateVoiceCapabilityTests {
         var queued = ChatMessage(id: "u4", role: .user, content: "Then book it", timestamp: "2026-11-25T09:00:01Z")
         queued.isQueuedPrompt = true
         XCTAssertEqual(LineBoards.placement(in: [ask, row, queued, reply]).placed, ["a1": [id]])
+        // The turn still ends with its reply: the queued prompt's own turn,
+        // which follows with no user row, can't take the earlier board.
+        XCTAssertEqual(LineBoards.placement(in: [
+            ask, row, queued, plain,
+            ChatMessage(id: "a5", role: .assistant, content: "Booked. \(line)", timestamp: "2026-11-25T09:00:05Z"),
+        ]), LineBoards.Placement())
         // A conduit_show row whose board can't be drawn drew none: the
         // reply's line is read from the host.
         let bare = ChatMessage(id: "t5", role: .tool, content: "", timestamp: "2026-11-25T09:00:01Z", tool: try boardTool(

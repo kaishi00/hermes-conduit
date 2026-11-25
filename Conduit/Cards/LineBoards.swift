@@ -85,15 +85,30 @@ enum LineBoards {
         var drawn: Set<String> = []
         var turn: [String: (row: String, board: RichBoard)] = [:]
         var takers: [String: String] = [:]
+        // A queued prompt was stored before the running turn's reply: the
+        // turn ends with that reply, and the queued prompt's own turn,
+        // which has no user row of its own, starts after it.
+        var queuedBeforeReply = false
         for row in rows {
             switch row.role {
             case .user:
                 // A steer, or a prompt queued while the turn ran (stored
                 // between its prompt and its reply), doesn't end the turn
                 // (issue 3266).
-                if !row.isSteer && !row.isQueuedPrompt { turn = [:] }
+                if row.isQueuedPrompt {
+                    queuedBeforeReply = true
+                } else if !row.isSteer {
+                    turn = [:]
+                    queuedBeforeReply = false
+                }
             case .assistant:
                 let found = Self.ids(in: row.content)
+                defer {
+                    if queuedBeforeReply, !row.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        turn = [:]
+                        queuedBeforeReply = false
+                    }
+                }
                 guard !found.isEmpty else { continue }
                 named.append((row.id, found))
                 for id in found {

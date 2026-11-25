@@ -2274,6 +2274,10 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(appState.isRemovedWith(sibling, deleted))
         XCTAssertTrue(appState.isRemovedWith(ownedAlias, deleted))
         XCTAssertFalse(appState.isRemovedWith(macSession("chat-5"), deleted))
+        // The same chat under another runtime id goes even with no alias shared.
+        var sameChatNoAlias = macSession("run-newer")
+        sameChatNoAlias.storedSessionId = deleted.durableKey
+        XCTAssertTrue(appState.isRemovedWith(sameChatNoAlias, deleted))
 
         // A chat deleted on the dashboard on screen while another combined
         // dashboard's chat under the same id is open in place: what is kept
@@ -2317,6 +2321,15 @@ extension AppStateMultiDashboardTests {
             // open in place leaves what is kept under the open chat's ids.
             XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-5", "run-far"], profile: profile), ["chat-5"],
                            "only the far chat open in place being the one deleted lets every id go")
+            // Open in place under a runtime id the deleted row doesn't list:
+            // its stored id tells it is the same chat.
+            var farUnderRuntime = macSession("run-open")
+            farUnderRuntime.storedSessionId = "chat-1"
+            kept.runtime.sessions = [farUnderRuntime]
+            appState.activeSessionId = "run-open"
+            XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1"], profile: profile), ["chat-1"])
+            kept.runtime.sessions = [farOpen]
+            appState.activeSessionId = "chat-1"
         } else {
             XCTFail("the two dashboards weren't found to be one Hermes")
         }
