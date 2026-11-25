@@ -4510,7 +4510,7 @@ system's Paste) · not needed: group rooms' ⌘. (a room has no Stop
 of its own), the model picker's, image gallery's and suggestion list's own
 keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 
-**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘1 to ⌘6 (Ctrl+1 to Ctrl+6) follow the rail's pinned sections in the user's order, the Mac's View menu and the sheet's Go to rows with them, and an unpinned section has no key (desktop#470); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224).
+**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘1 to ⌘6 (Ctrl+1 to Ctrl+6) follow the rail's pinned sections in the user's order, the Mac's View menu and the sheet's Go to rows with them, and an unpinned section has no key (desktop#470); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224); Ctrl with the scroll wheel (a trackpad's pinch) also steps the chat text size, in the main window and a chat's own, desktop only (desktop#510).
 
 **Code**
 - Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
