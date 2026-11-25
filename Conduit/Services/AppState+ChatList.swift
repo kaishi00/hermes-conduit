@@ -1063,8 +1063,11 @@ extension AppState {
         // What All lists: the chats and pinned cron runs (#485), and in the
         // All profiles view the other profiles' chats too.
         let others = isAllProfilesChatsOn ? chatListSessions.filter(isOtherProfileRow) : []
-        // And the other combined dashboards' chats it lists beside them.
-        let far = chatListCombinedChats(excluding: Set(listedSessions.map(\.id)))
+        // And the other combined dashboards' chats it lists beside them:
+        // the rows the Chats list shows, none under an id it already holds
+        // (V2ChatsView's `listed`).
+        let shown = pulseHomeChat == nil ? chatListSessions : chatListSessions.filter { !isPulseHomeChat($0) }
+        let far = chatListCombinedChats(excluding: Set(shown.map(\.id)))
         markSessionsRead(activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) } + others + far)
     }
 
