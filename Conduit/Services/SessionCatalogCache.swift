@@ -192,6 +192,15 @@ struct SessionCatalogCache {
         sessionsByKey[key] = updated
     }
 
+    /// Removes the cached rows `shouldRemove` picks, so a delete takes from
+    /// the cache what it takes from the lists (`AppState.isRemovedWith`).
+    mutating func removeSessions(where shouldRemove: (SessionSummary) -> Bool) {
+        mutationGeneration &+= 1
+        for key in sessionsByKey.keys {
+            sessionsByKey[key]?.removeAll(where: shouldRemove)
+        }
+    }
+
     mutating func removeSession(withIDs sessionIDs: Set<String>) {
         mutationGeneration &+= 1
         for key in sessionsByKey.keys {

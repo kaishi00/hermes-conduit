@@ -2278,6 +2278,23 @@ extension AppStateMultiDashboardTests {
         var sameChatNoAlias = macSession("run-newer")
         sameChatNoAlias.storedSessionId = deleted.durableKey
         XCTAssertTrue(appState.isRemovedWith(sameChatNoAlias, deleted))
+        // A removed row under a runtime id: a row carrying its stored id as
+        // an alias carries its own id, so it goes.
+        var underRuntime = macSession("run-old")
+        underRuntime.storedSessionId = "chat-9"
+        var carriesStored = macSession("run-other")
+        carriesStored.alternateIds = ["chat-9"]
+        XCTAssertTrue(appState.isRemovedWith(carriesStored, underRuntime))
+        // The profile cache takes what the lists take: the alias-only
+        // sibling stays cached, the same chat under another id goes.
+        appState.sessionCatalogCache.removeSessions(where: { _ in true })
+        _ = appState.sessionCatalogCache.commit(
+            liveSessions: [sibling, sameChatNoAlias], liveKey: "cache-test:exclude",
+            cronSessions: [], cronKey: "cache-test:cron", historyMarkers: [:],
+            at: appState.sessionCatalogCache.mutationGeneration
+        )
+        appState.sessionCatalogCache.removeSessions { appState.isRemovedWith($0, deleted) }
+        XCTAssertEqual(appState.sessionCatalogCache.sessions(forKey: "cache-test:exclude").map(\.id), ["chat-3"])
 
         // A chat deleted on the dashboard on screen while another combined
         // dashboard's chat under the same id is open in place: what is kept
