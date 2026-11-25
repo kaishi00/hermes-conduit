@@ -2230,6 +2230,13 @@ extension AppStateMultiDashboardTests {
         sameProfiles.alternateIds = ["run-own"]
         appState.sessions = [sameProfiles]
         XCTAssertEqual(appState.idsNoOtherChatHereLists(deleted), ["chat-2", "run-shared"])
+        // The same chat listed a second time, under a new runtime id, is
+        // no other chat.
+        var listedAgain = macSession("chat-2-again")
+        listedAgain.storedSessionId = deleted.durableKey
+        listedAgain.alternateIds = ["run-own"]
+        appState.sessions = [listedAgain]
+        XCTAssertEqual(appState.idsNoOtherChatHereLists(deleted), ["chat-2", "run-shared", "run-own"])
         appState.sessions = []
         for id in ["chat-2", "run-shared", "run-own"] {
             appState.sessionYoloStore.setOverride(true, for: farProfile, sessionID: id)
@@ -2264,6 +2271,12 @@ extension AppStateMultiDashboardTests {
         appState.activeSessionId = "chat-1"
         appState.farChat = FarChatOwner(dashboardID: vps.id, profile: profile)
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "run-far", "chat-7"], profile: profile), ["chat-7"])
+        // Its dashboard lists it twice: both rows' ids are the open chat's.
+        var farOpenAgain = macSession("chat-1-again")
+        farOpenAgain.alternateIds = ["chat-1", "run-far-again"]
+        kept.runtime.sessions = [farOpen, farOpenAgain]
+        XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "run-far", "run-far-again", "chat-7"], profile: profile), ["chat-7"])
+        kept.runtime.sessions = [farOpen]
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-7"], profile: "another-profile"), ["chat-1", "chat-7"],
                        "another profile's chat is kept under other keys")
         // One Hermes saved twice lists the same chat on both: its ids all go,

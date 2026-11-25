@@ -894,7 +894,8 @@ extension AppState {
     }
 
     /// A deleted or archived chat's ids but the alternate ones another row
-    /// on hand lists too: the runtime-id mapping and the state kept under
+    /// of its profile on hand lists too (the same chat listed twice is no
+    /// other row): the runtime-id mapping and the state kept under
     /// such an id are that other chat's as well, and stay with it (issue
     /// 3147). The rows are the runtime in scope's, so another combined
     /// dashboard's chat, deleted on its own runtime, is checked against
@@ -917,7 +918,7 @@ extension AppState {
     }
 
     /// The ids a deleted chat alone answers to: its own and its stored id,
-    /// and an alternate id only while no other row lists it, since another
+    /// and an alternate id only while no other chat's row lists it, since another
     /// chat may share one (a pin made before the chat was listed, or a
     /// call attached then, may still name that runtime id). The rows on
     /// hand say so only for the dashboard and profile in scope, once their
