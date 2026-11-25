@@ -4451,6 +4451,50 @@ extension CrossProfilePresentationCacheTests {
         _ = outgoing
     }
 
+    /// A question answered on another combined dashboard that is the same
+    /// Hermes as the one on screen, through `answerBotQuestion` itself:
+    /// both dashboards' copies leave Needs you (issue 3147, #3223's review).
+    func testAnAnswerOnAFarTwinDropsBothCopiesOfItsQuestion() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        // Its answer goes out through a bridge this test answers.
+        let farHeld = HeldDashboardRequests(baseURL: mac.normalizedURL)
+        addTeardownBlock { @MainActor in farHeld.shutdown() }
+        kept.runtime.dashboardTicketBridge = farHeld.bridge
+
+        // One Hermes saved twice: both list the same chat and the question.
+        appState.runtimeOnScreen.sessions = [session("shared-1", profile: "default")]
+        var farRow = session("shared-1", profile: "default")
+        farRow.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [farRow], at: Date()
+        )
+        let asked = NeedsYouItem(waitID: "asked-P7", profile: "default", kind: .question, sessionIDs: ["shared-1"],
+                                 since: Date(timeIntervalSince1970: 10))
+        appState.needsYou.apply([asked], profile: "default", dashboardID: vps.id) { _ in false }
+        appState.needsYou.applyOther([asked], profile: "default", dashboardID: mac.id) { _ in false }
+        XCTAssertTrue(appState.needsYou.items.contains { $0.waitID == "asked-P7" })
+        XCTAssertNotNil(appState.needsYou.otherDashboards[mac.id])
+
+        let question = try XCTUnwrap(BotWorkCoordination.Item(row: [
+            "id": "P7", "kind": "proposal", "at": 10.0, "text": "Continue?", "status": "open", "actions": ["approve", "decline"],
+        ]))
+        let answer = Task {
+            await appState.actAcrossAwaits(onRuntime: kept.runtime) {
+                await appState.answerBotQuestion(question, profile: "default", approved: true)
+            }
+        }
+        try await farHeld.answer(["ok": true])
+        let took = await answer.value
+
+        XCTAssertTrue(took)
+        XCTAssertEqual(farHeld.sent.first?.method, "POST", "answered on its own dashboard")
+        XCTAssertFalse(appState.needsYou.items.contains { $0.waitID == "asked-P7" }, "the screen's copy goes with it")
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "and its own")
+    }
+
     /// What another combined dashboard's scope reads of the group and of
     /// its own connection (Yelan audits 3165, 3166, 3209 and 3210): one
     /// Hermes saved twice is found from there too, an answer asked there
@@ -4541,6 +4585,17 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertFalse(appState.endLiveCallStartLosingItsDashboard(vps.id))
         XCTAssertTrue(appState.endLiveCallStartLosingItsDashboard(mac.id))
         appState.liveCallDashboardID = nil
+        // Its chat on screen, on another profile than the start's: the
+        // resume its connection's return asks for is refused and owed, and
+        // is nobody's once the chat leaves the screen (issue 3147).
+        appState.farCallStartsInFlight[mac.id] = 1
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "another-profile")
+        appState.resumeFarChatAfterReconnect(mac.id)
+        XCTAssertEqual(appState.farChatResumeOwedAfterCallStart, mac.id, "refused under the start, it is owed")
+        appState.farChat = nil
+        appState.resumeFarChatAfterReconnect(mac.id)
+        XCTAssertNil(appState.farChatResumeOwedAfterCallStart, "its chat left the screen")
+        appState.farCallStartsInFlight[mac.id] = nil
         // A far chat's resume the start held off goes ahead when the last
         // start there ends, and is owed to nobody after.
         appState.farCallStartsInFlight[mac.id] = 2

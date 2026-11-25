@@ -39,7 +39,7 @@ struct V2BotsView: View {
 
     /// What shows Bots Home: its tab, and nothing pushed over it.
     private var visibility: V2ListVisibility {
-        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+        V2ListVisibility(shell: shell)
     }
 
     private var canCreate: Bool {

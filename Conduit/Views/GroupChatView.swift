@@ -1597,55 +1597,116 @@ extension EnvironmentValues {
 /// A room member's picture: the bot's own (its profile's avatar), else its
 /// starter face. Another person's member wears the look their Conduit sent.
 struct GroupMemberAvatar: View {
-    @EnvironmentObject private var appState: AppState
     let member: GroupMember?
     let name: String
     let size: CGFloat
     /// A person's look, for a bubble that isn't a member's.
     var look: RoomLook? = nil
+    /// Inside a tab that holds its updates back (a room's tile on Bots
+    /// Home), the face follows them, as `BotMonogramView` does; elsewhere
+    /// (the room's own screen) AppState itself (audit 1722, issue 3147).
+    @Environment(\.v2ShownUpdates) private var held
+
+    var body: some View {
+        if let held {
+            GroupMemberHeldAvatar(member: member, name: name, size: size, look: look, updates: held)
+        } else {
+            GroupMemberLiveAvatar(member: member, name: name, size: size, look: look)
+        }
+    }
+}
+
+/// GroupMemberAvatar following a tab's held updates.
+private struct GroupMemberHeldAvatar: View {
+    let member: GroupMember?
+    let name: String
+    let size: CGFloat
+    let look: RoomLook?
+    @ObservedObject var updates: V2ShownUpdates
+    @Environment(\.groupRoomLooks) private var roomLooks
+    @Environment(\.readsOpenRoomRuntime) private var readsOpenRoom
+
+    var body: some View {
+        groupMemberAvatarFace(
+            appState: updates.appState, member: member, name: name, size: size, look: look,
+            roomLooks: roomLooks, readsOpenRoom: readsOpenRoom
+        )
+    }
+}
+
+/// GroupMemberAvatar following AppState.
+private struct GroupMemberLiveAvatar: View {
+    let member: GroupMember?
+    let name: String
+    let size: CGFloat
+    let look: RoomLook?
+    @EnvironmentObject private var appState: AppState
     @Environment(\.groupRoomLooks) private var roomLooks
     /// Off outside the room's screen (Bots Home's tiles): a far room open
     /// in place doesn't lend them its bots.
     @Environment(\.readsOpenRoomRuntime) private var readsOpenRoom
 
+    var body: some View {
+        groupMemberAvatarFace(
+            appState: appState, member: member, name: name, size: size, look: look,
+            roomLooks: roomLooks, readsOpenRoom: readsOpenRoom
+        )
+    }
+}
+
+/// The face itself, drawn from whichever AppState its view follows: a
+/// function, not a view of its own, so it's built again with each redraw
+/// of the view that follows (a view holding only AppState would compare
+/// equal and skip it), as `botMonogramFace` is.
+@MainActor
+private func groupMemberAvatarFace(
+    appState: AppState, member: GroupMember?, name: String, size: CGFloat, look: RoomLook?,
+    roomLooks: RoomLooks, readsOpenRoom: Bool
+) -> some View {
     /// The open room's dashboard's, where this avatar is the room's.
-    private func reading<T>(_ body: () -> T) -> T {
+    func reading<T>(_ body: () -> T) -> T {
         readsOpenRoom ? appState.readingRoomRuntime(body) : body()
     }
+    // The roster bot this member is. A person's bubble, which comes with
+    // their look, is never matched to one of your bots by name.
+    let bot: BotProfile? = member == nil && look != nil ? nil : reading { appState.groupMemberBot(member, name: name) }
+    return groupMemberAvatarFace(
+        appState: appState, bot: bot, image: bot.flatMap { bot in reading { appState.botAvatarImage(for: bot) } },
+        fetchID: bot.map { "\($0.name)|\($0.hasAvatar)|\(reading { appState.botAvatarGeneration })|\(reading { appState.isConnected })" } ?? "",
+        name: name, size: size, look: look ?? roomLooks.member(member), readsOpenRoom: readsOpenRoom
+    )
+}
 
-    /// The roster bot this member is. A person's bubble, which comes with
-    /// their look, is never matched to one of your bots by name.
-    private var bot: BotProfile? {
-        if member == nil, look != nil { return nil }
-        return reading { appState.groupMemberBot(member, name: name) }
-    }
-
-    var body: some View {
-        if let bot {
-            BotAvatarView(
-                name: bot.name,
-                label: bot.displayLabel,
-                colorString: bot.shownColor,
-                image: reading { appState.botAvatarImage(for: bot) },
-                size: size,
-                face: bot.faceLook
-            )
-            // Connecting fetches again: a kept bot's fetch fails offline. A
-            // far room's bots are fetched from their own dashboard.
-            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(reading { appState.botAvatarGeneration })|\(reading { appState.isConnected })") {
-                if readsOpenRoom {
-                    await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }
-                } else {
-                    await appState.loadBotAvatarRetrying(bot)
-                }
+/// `groupMemberAvatarFace` with what it read: the member's bot and its
+/// picture, else the look another person's Conduit sent.
+@MainActor @ViewBuilder
+private func groupMemberAvatarFace(
+    appState: AppState, bot: BotProfile?, image: UIImage?, fetchID: String, name: String, size: CGFloat,
+    look: RoomLook?, readsOpenRoom: Bool
+) -> some View {
+    if let bot {
+        BotAvatarView(
+            name: bot.name,
+            label: bot.displayLabel,
+            colorString: bot.shownColor,
+            image: image,
+            size: size,
+            face: bot.faceLook
+        )
+        // Connecting fetches again: a kept bot's fetch fails offline. A
+        // far room's bots are fetched from their own dashboard.
+        .task(id: fetchID) {
+            if readsOpenRoom {
+                await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }
+            } else {
+                await appState.loadBotAvatarRetrying(bot)
             }
-            .accessibilityHidden(true)
-        } else {
-            // Another person's agent, or a person: as their own Conduit draws them.
-            let look = self.look ?? roomLooks.member(member)
-            BotAvatarView(name: name, label: name, colorString: look?.color, image: look?.image, size: size)
-                .accessibilityHidden(true)
         }
+        .accessibilityHidden(true)
+    } else {
+        // Another person's agent, or a person: as their own Conduit draws them.
+        BotAvatarView(name: name, label: name, colorString: look?.color, image: look?.image, size: size)
+            .accessibilityHidden(true)
     }
 }
 

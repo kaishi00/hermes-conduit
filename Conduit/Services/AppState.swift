@@ -3810,7 +3810,9 @@ final class AppState: ObservableObject {
     /// is held as a running call's is (issue 3164).
     var farCallStartsInFlight: [UUID: Int] = [:]
     /// The dashboard whose far chat's resume after a quiet sign-in waits
-    /// for a call start there to end (`resumeFarChatAfterReconnect`).
+    /// for its socket to be free for the chat's profile: a call start
+    /// there to end, or a frame to finish going out
+    /// (`resumeFarChatAfterReconnect`, which records and clears it).
     var farChatResumeOwedAfterCallStart: UUID?
     /// The ended call's dashboard while its hand-back waits.
     var callDashboardHandingBack: UUID?

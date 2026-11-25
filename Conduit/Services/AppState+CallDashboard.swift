@@ -215,8 +215,9 @@ extension AppState {
     func farCallStartEnded(_ dashboardID: UUID) {
         let left = (farCallStartsInFlight[dashboardID] ?? 1) - 1
         farCallStartsInFlight[dashboardID] = left > 0 ? left : nil
+        // The resume clears what it owes once it goes ahead: refused again
+        // (a frame still going out), it stays owed.
         guard left <= 0, farChatResumeOwedAfterCallStart == dashboardID else { return }
-        farChatResumeOwedAfterCallStart = nil
         resumeFarChatAfterReconnect(dashboardID)
     }
 

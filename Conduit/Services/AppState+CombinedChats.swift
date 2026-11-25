@@ -85,6 +85,10 @@ extension AppState {
             // Its chats' Done marks and mutes, at their own intervals: its
             // rows show them, and its chat's menu changes them, in place.
             refreshFarChatMarks(id, profiles: profiles, now: now)
+            // Its chat on screen's resume, refused when its connection came
+            // back (the socket couldn't go to the chat's profile then), is
+            // asked again.
+            if farChatResumeOwedAfterCallStart == id, !farCallStartHolds(dashboard: id) { resumeFarChatAfterReconnect(id) }
             // A profile its Hermes no longer lists leaves Siri, Spotlight and
             // the widgets once the list says so, whether or not its chats
             // are read on this pass (issue 3034).

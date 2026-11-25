@@ -366,8 +366,15 @@ final class SidebarLayoutTests: XCTestCase {
                        "a chat popping off it: it draws once the pop has slid")
         XCTAssertEqual(V2PulsePageHost.revealDelay(uncoveredByPop: false), 0)
 
-        // A pushed route starts held: restored under a chat, it never drew.
-        XCTAssertFalse(V2PulsePageHost.makeUpdates(state, root: false).isShown)
+        // A pushed route starts held: restored under a chat, it never drew,
+        // and what it held since says that chat's pop is what shows it
+        // (issue 3147).
+        let pushed = V2PulsePageHost.makeUpdates(state, root: false)
+        XCTAssertFalse(pushed.isShown)
+        XCTAssertFalse(pushed.heldAnUpdate)
+        state.sessions = [pinnedTestSession("under-a-chat")]
+        settle()
+        XCTAssertTrue(pushed.heldAnUpdate, "it holds what was published under the restored chat")
         // The root follows the shell's path: born under a restored chat it
         // starts held, and that chat's pop waits out the slide.
         let root = V2PulsePageHost.makeUpdates(state, root: true)

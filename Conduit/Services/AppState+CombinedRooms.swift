@@ -452,14 +452,7 @@ extension AppState {
         guard let kept = keptDashboardRuntimes[id], case .unknown = kept.runtime.notifierPlugin.state,
               let response = try? await readKeptDashboardJSON(kept.bridge, path: NotifierPluginStatus.path),
               keptDashboardRuntimes[id]?.bridge === kept.bridge else { return }
-        let state = NotifierPluginStatus.state(from: response)
-        guard state != .unknown, case .unknown = kept.runtime.notifierPlugin.state else { return }
-        kept.runtime.notifierPlugin.state = state
-        kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
-        if let report = KeptPluginReport(bridge: ObjectIdentifier(kept.bridge), response: response) {
-            combinedDashboardPluginCapabilities[id] = report
-        }
-        if farChatDashboardID == id { objectWillChange.send() }
+        keepPluginReport(response, of: kept, for: id, ifUnknown: true)
     }
 
     /// Opens the tile's room on its dashboard, the one acted on (in place,

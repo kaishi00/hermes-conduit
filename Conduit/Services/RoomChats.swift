@@ -268,8 +268,8 @@ extension AppState {
         let far = farRoomRuntime == nil ? nil : surface.dashboardID
         // The room as it stands now: left since (closed, or another room or a chat
         // opened), its far chat doesn't open over what's there.
-        // Its own first open closes the room, so the epoch is taken again
-        // after it for the open of the chat that replaces a gone one.
+        // Its own first open closes the room, so that one step of the epoch
+        // is taken after it for the open of the chat that replaces a gone one.
         final class RoomEpoch { var value = 0 }
         let roomEpoch = RoomEpoch()
         roomEpoch.value = groupRoomEpoch
@@ -312,7 +312,11 @@ extension AppState {
                     let outcome = await self.actAcrossAwaits(onRuntime: self.runtimeOnScreen) {
                         await self.openFarRoomChat(chatID, profile: profile, in: far)
                     }
-                    roomEpoch.value = self.groupRoomEpoch
+                    // Only the open's own close of the room is taken: a room
+                    // opened meanwhile keeps the screen from the replacement.
+                    if self.groupRoomEpoch == roomEpoch.value &+ 1, self.activeRoomSurface == nil {
+                        roomEpoch.value = self.groupRoomEpoch
+                    }
                     return outcome
                 }
                 return await self.openRoomChatSession(chatID, profile: profile, title: title)

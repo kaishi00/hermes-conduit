@@ -443,6 +443,11 @@ final class PinnedRepliesTests: XCTestCase {
         ), ["row-1"])
 
         appState.sessionCatalogLoadState.markLoaded(appState.sessionCatalogOwner)
+        // An archived row that lists the runtime id too may be the pin's chat.
+        appState.archivedSessions = [row("archived-1", alternates: ["runtime-1"])]
+        appState.dropPinnedReplies(forDeleted: listed)
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+        appState.archivedSessions = []
         appState.dropPinnedReplies(forDeleted: listed)
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
     }
