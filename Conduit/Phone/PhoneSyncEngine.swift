@@ -247,6 +247,8 @@ final class PhoneSyncEngine: ObservableObject {
     /// What the state file holds (or is about to): a pass that changed
     /// nothing writes nothing.
     private var saved: PhoneSyncState?
+    /// Whether the last state write didn't land, for tests to wait on.
+    var lastStateWriteFailed: Bool { saved == nil }
     /// A new frame's cleared hash that didn't reach disk: no upload goes
     /// until it does, even though the hash in memory already reads cleared
     /// (#3143).

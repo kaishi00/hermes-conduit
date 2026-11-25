@@ -1037,8 +1037,7 @@ private struct ArtifactsList: View {
     /// an open, when the dashboard or profile changes behind it. A file
     /// read for the one before isn't presented.
     private func stillOwns(_ key: ArtifactsListKey) -> Bool {
-        let now = currentKey
-        return now.showsRows(of: key) && now.profile == key.profile
+        currentKey.stillShows(openBegunOn: key)
     }
 
     /// The reader for a Markdown artifact: `MarkdownText`, the same view the
@@ -1098,11 +1097,8 @@ private struct ArtifactsList: View {
                 }
             }
             switch await resolver.file(for: path) {
-            case .downloaded(let download):
-                guard stillOwns(key) else {
-                    MediaPreviewPresenter.removeDirectory(download.directory)
-                    return
-                }
+            case .downloaded(let read):
+                guard let download = HeldListOpen.downloadToShow(read, stillOwned: stillOwns(key)) else { return }
                 if MediaPreviewPresenter.shared.presentSaveToFiles(downloaded: download) { return }
             case .tooLarge:
                 openFailed(item, tooLarge: true, key: key)
@@ -1129,9 +1125,8 @@ private struct ArtifactsList: View {
                                resolver: GatewayMediaDataURLResolver, key: ArtifactsListKey) async {
         guard !Task.isCancelled else { return }
         switch await resolver.file(for: path) {
-        case .downloaded(let download):
-            guard !Task.isCancelled, stillOwns(key) else {
-                MediaPreviewPresenter.removeDirectory(download.directory)
+        case .downloaded(let read):
+            guard let download = HeldListOpen.downloadToShow(read, stillOwned: !Task.isCancelled && stillOwns(key)) else {
                 return
             }
             if MediaPreviewPresenter.shared.present(downloaded: download) { return }
@@ -1494,10 +1489,34 @@ struct ArtifactsListKey: Equatable {
         loaded?.dashboard == dashboard
     }
 
+    /// Whether a list on this key still shows what an open began on: the
+    /// same dashboard and profile, whatever the filter or search since.
+    func stillShows(openBegunOn began: ArtifactsListKey) -> Bool {
+        showsRows(of: began) && profile == began.profile
+    }
+
     /// One host path can be another file in another profile, or on another
     /// server.
     static func thumbnailCacheKey(dashboard: UUID?, profile: String, path: String) -> NSString {
         NSString(string: "\(dashboard?.uuidString ?? "")\u{0}\(profile)\u{0}\(path)")
+    }
+}
+
+/// A file read for an open on a list that is held while hidden (audit
+/// 1722): the list doesn't reload, and so doesn't cancel the open, when
+/// the dashboard, profile or Folder root changes behind it.
+enum HeldListOpen {
+    /// The downloaded file to show: nil, its copy removed, once the list
+    /// no longer shows what the open began on.
+    static func downloadToShow(
+        _ download: DashboardDownloadedFile, stillOwned: Bool,
+        remove: (URL?) -> Void = MediaPreviewPresenter.removeDirectory
+    ) -> DashboardDownloadedFile? {
+        guard stillOwned else {
+            remove(download.directory)
+            return nil
+        }
+        return download
     }
 }
 

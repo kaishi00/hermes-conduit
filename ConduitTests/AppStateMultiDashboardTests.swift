@@ -2192,6 +2192,116 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1"]), ["chat-1"], "deleted on screen, it is its own")
     }
 
+    /// Issue 3147: what is kept by profile and chat id alone (the YOLO
+    /// override, the cached presentation, where the list was left) and a
+    /// dashboard's runtime-id mapping stay with another chat that answers
+    /// to the same id: a chat of the deleted one's own dashboard sharing
+    /// an alias, or another combined dashboard's chat open in place.
+    func testADeleteLeavesWhatAnotherChatUnderOneOfItsIdsKeeps() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let farHeld = HeldDashboardRequests(baseURL: vps.normalizedURL)
+        addTeardownBlock { @MainActor in farHeld.releaseAll() }
+        let connection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        appState.keptDashboardRuntimes[vps.id] = kept
+        let farProfile = appState.act(onRuntime: kept.runtime) { appState.activeProfile }
+
+        // A far chat deleted next to a chat of its own dashboard that
+        // shares one of its alternate ids.
+        var deleted = macSession("chat-2")
+        deleted.alternateIds = ["run-shared", "run-own"]
+        var sibling = macSession("chat-3")
+        sibling.alternateIds = ["run-shared"]
+        kept.runtime.sessions = [deleted, sibling]
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.idsNoOtherChatHereLists(deleted) }, ["chat-2", "run-own"],
+                       "checked against its own dashboard's rows")
+        XCTAssertEqual(appState.idsNoOtherChatHereLists(deleted), ["chat-2", "run-shared", "run-own"],
+                       "no row of the dashboard on screen lists them")
+        for id in ["chat-2", "run-shared", "run-own"] {
+            appState.sessionYoloStore.setOverride(true, for: farProfile, sessionID: id)
+        }
+        let farIndex = kept.runtime.conversationIdentityIndex
+        _ = farIndex.record(runtimeID: "run-shared", durableID: "chat-3", profile: farProfile, source: .catalog)
+        _ = farIndex.record(runtimeID: "run-own", durableID: "chat-2", profile: farProfile, source: .catalog)
+
+        var farRow = deleted
+        farRow.combinedDashboardID = vps.id
+        let delete = Task { await appState.deleteSession(farRow) }
+        try await farHeld.answer()      // the mutation snapshot read
+        try await farHeld.answer()      // the VPS deleted it
+        let wasDeleted = await delete.value
+
+        XCTAssertTrue(wasDeleted)
+        XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
+        XCTAssertNil(appState.sessionYoloStore.storedOverride(for: farProfile, sessionID: "chat-2"))
+        XCTAssertNil(appState.sessionYoloStore.storedOverride(for: farProfile, sessionID: "run-own"))
+        XCTAssertEqual(appState.sessionYoloStore.storedOverride(for: farProfile, sessionID: "run-shared"), true,
+                       "the chat that shares the alias keeps what is under it")
+        XCTAssertEqual(farIndex.durableID(forRuntime: "run-shared", profile: farProfile), "chat-3", "and its runtime id's mapping")
+        XCTAssertNil(farIndex.durableID(forRuntime: "run-own", profile: farProfile))
+
+        // A chat deleted on the dashboard on screen while another combined
+        // dashboard's chat under the same id is open in place: what is kept
+        // under the ids that chat answers to is now its own.
+        let profile = appState.activeProfile
+        var farOpen = macSession("chat-1")
+        farOpen.alternateIds = ["run-far"]
+        kept.runtime.sessions = [farOpen]
+        appState.activeSessionId = "chat-1"
+        appState.farChat = FarChatOwner(dashboardID: vps.id, profile: profile)
+        XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "run-far", "chat-7"], profile: profile), ["chat-7"])
+        XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-7"], profile: "another-profile"), ["chat-1", "chat-7"],
+                       "another profile's chat is kept under other keys")
+        appState.farChat = nil
+        XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-7"], profile: profile), ["chat-1", "chat-7"],
+                       "with no far chat open, it is all the deleted chat's")
+    }
+
+    /// Issue 3147: another combined dashboard's chat archived in place
+    /// clears the YOLO override under its own stored id, and leaves the
+    /// dashboard on screen's chat under the same id its override, its pin
+    /// and its lists.
+    func testAFarChatsArchiveClearsItsOwnOverrideAndLeavesTheScreensPins() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let farHeld = HeldDashboardRequests(baseURL: vps.normalizedURL)
+        addTeardownBlock { @MainActor in farHeld.releaseAll() }
+        let connection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        appState.keptDashboardRuntimes[vps.id] = kept
+        let profile = appState.activeProfile
+        let farProfile = appState.act(onRuntime: kept.runtime) { appState.activeProfile }
+        let screenChat = macSession("chat-1")
+        appState.sessions = [screenChat]
+        appState.setLocalPin(screenChat, pinned: true, profile: profile)
+        let pinsBefore = appState.pinnedSessionIDsByProfile[profile] ?? []
+        XCTAssertFalse(pinsBefore.isEmpty)
+        var farChat = macSession("chat-1")
+        farChat.storedSessionId = "stored-far"
+        kept.runtime.sessions = [farChat]
+        appState.sessionYoloStore.setOverride(true, for: profile, sessionID: "chat-1")
+        appState.sessionYoloStore.setOverride(true, for: farProfile, sessionID: "stored-far")
+
+        var farRow = farChat
+        farRow.combinedDashboardID = vps.id
+        let archive = Task { await appState.archiveSession(farRow) }
+        try await farHeld.answer()      // the mutation snapshot read
+        try await farHeld.answer()      // the VPS archived it
+        let archived = await archive.value
+
+        XCTAssertTrue(archived, "archived on its own dashboard")
+        XCTAssertTrue(kept.runtime.sessions.isEmpty, "its row leaves its own dashboard's list")
+        XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
+        XCTAssertNil(appState.sessionYoloStore.storedOverride(for: farProfile, sessionID: "stored-far"),
+                     "the override under its stored id goes with it")
+        XCTAssertEqual(appState.sessionYoloStore.storedOverride(for: profile, sessionID: "chat-1"), true,
+                       "the screen's chat under the same id keeps its own")
+        XCTAssertEqual(appState.pinnedSessionIDsByProfile[profile] ?? [], pinsBefore, "the pins are the dashboard on screen's")
+        XCTAssertTrue(appState.archivedSessions.isEmpty, "and so is the Archived list")
+        XCTAssertEqual(appState.sessions.map(\.id), ["chat-1"])
+    }
+
     func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let load = Task { await appState.loadArchivedSessions() }

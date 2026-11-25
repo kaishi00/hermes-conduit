@@ -269,7 +269,7 @@ extension AppState {
             try await sendSessionMutation(session.id, body: ["archived": true], profile: profile, bridge: owner.bridge)
             guard ownsDashboardRuntime(owner) else { return false }
             sessionYoloStore.clearOverride(
-                for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set(session.nestingIDs))))
+                for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(idsNoOtherChatHereLists(session), profile: profile)))
             // The pins are the dashboard on screen's: another dashboard's
             // chat, archived on its own runtime, leaves them alone.
             if actingOnRuntimeOnScreen { setLocalPin(session, pinned: false, profile: profile) }
@@ -290,6 +290,8 @@ extension AppState {
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
         let deletedSessionIDs = Set(session.nestingIDs)
+        // What is kept under its ids alone, by the rows on hand.
+        let stateSessionIDs = idsNoOtherChatHereLists(session)
         // What a call hears of it: another profile's rows aren't on hand
         // to say its alternate ids are its own.
         let callChatIDs = idsOnlyTheDeletedChatAnswersTo(session, dashboard: Self.dashboardPreferenceBucket(dashboardID), profile: profile)
@@ -304,8 +306,8 @@ extension AppState {
             // A call in it (a Bot Chat call's, say) goes on in a new chat (issue 1797).
             noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             guard ownsDashboardRuntime(owner) else { return false }
-            sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(deletedSessionIDs)))
-            revokeDeletedConversationIdentity(sessionIDs: deletedSessionIDs, profile: profile)
+            sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(stateSessionIDs, profile: profile)))
+            revokeDeletedConversationIdentity(sessionIDs: stateSessionIDs, profile: profile)
             removeFromAllProfilesCatalog(session)
             // The pins, the stars and the read ledger are the dashboard on
             // screen's (issue 3147).

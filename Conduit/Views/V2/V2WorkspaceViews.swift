@@ -944,11 +944,8 @@ struct WorkspaceFolderView: View {
         let resolver = resolver
         Task {
             switch await resolver.file(for: entry.path) {
-            case .downloaded(let download):
-                guard isOpening(token) else {
-                    MediaPreviewPresenter.removeDirectory(download.directory)
-                    return
-                }
+            case .downloaded(let read):
+                guard let download = HeldListOpen.downloadToShow(read, stillOwned: isOpening(token)) else { return }
                 // It removes the copy itself when it can't show it.
                 if MediaPreviewPresenter.shared.present(downloaded: download) {
                     _ = finishOpening(token)
