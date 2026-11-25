@@ -16,13 +16,15 @@ extension AppState {
     /// running): asks for a summary of its last run when summaries are on,
     /// the run folds within the step limit and it hasn't been asked about.
     func requestStepSummaryIfWanted(sessionId: String) {
+        // The far chat's run is drawn by its own dashboard's settings.
+        let shownStepPreferences = farChatDashboardIDInScope != nil ? chatDisplayPreferences : displayPreferences
         reapStepSummaryQuestions()
         guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, canAskStepSummaries,
               let run = ChatStepSummaries.lastRun(in: messages),
               ChatStepSummaries.isAsked(
                   run,
-                  showingTools: displayPreferences.showToolProgress,
-                  showingReasoning: displayPreferences.showReasoning
+                  showingTools: shownStepPreferences.showToolProgress,
+                  showingReasoning: shownStepPreferences.showReasoning
               ),
               let toolID = ChatStepSummaries.key(toolIDs: run.map { $0.tool?.id }) else { return }
         let target = ChatStepSummaries.Run(scope: toolCatalogKey, toolID: toolID)

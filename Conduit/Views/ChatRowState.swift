@@ -99,7 +99,7 @@ struct ChatRowState: Equatable {
         latestAssistantMessageID = facts.latestAssistantMessageID
         retryableReplyID = facts.retryableReplyID
         readAloudUnavailable = appState.readAloudUnavailableReason != nil
-        displayPreferences = appState.displayPreferences
+        displayPreferences = appState.chatDisplayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = facts.latestLiveRows
         // A tap sends, so the chips show only while a send can go.
@@ -294,7 +294,7 @@ extension ChatRowState {
         state.isBusy = isBusy
         state.isOffline = true
         state.readAloudUnavailable = true
-        state.displayPreferences = appState.displayPreferences
+        state.displayPreferences = appState.chatDisplayPreferences
         state.botLabels = appState.shownBotRoster.map { "\($0.name)=\($0.displayLabel)" }
         state.toolCatalog = appState.toolCatalog
         return state

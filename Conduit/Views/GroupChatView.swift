@@ -1688,6 +1688,25 @@ private func groupMemberAvatarFace(
         }
         return readsOpenRoom ? appState.readingRoomRuntime(body) : body()
     }
+    // A far room's tile whose dashboard isn't kept connected: its members
+    // are its own dashboard's bots as Bots Home last read them, faced by
+    // that dashboard's pictures kept here, never this dashboard's bots by
+    // name. Nothing is fetched until it's back.
+    if let tileDashboardID, appState.keptDashboardRuntimes[tileDashboardID] == nil {
+        let bot: BotProfile? = member == nil && look != nil ? nil : GroupRoomTurns.rosterBot(
+            for: member, name: name, in: appState.combinedDashboardBots[tileDashboardID]?.bots ?? []
+        )
+        let image = bot.flatMap { bot in
+            bot.hasAvatar
+                ? appState.farAvatarURL(for: bot.name, on: tileDashboardID).flatMap { ProfileAvatarImageCache.image(at: $0) }
+                : nil
+        }
+        return groupMemberAvatarFace(
+            appState: appState, bot: bot, image: image, fetchID: bot.map { "\($0.name)|\($0.hasAvatar)|far" } ?? "",
+            name: name, size: size, look: look ?? roomLooks.member(member), readsOpenRoom: readsOpenRoom,
+            tileDashboardID: tileDashboardID
+        )
+    }
     // The roster bot this member is. A person's bubble, which comes with
     // their look, is never matched to one of your bots by name.
     let bot: BotProfile? = member == nil && look != nil ? nil : reading { appState.groupMemberBot(member, name: name) }
@@ -1718,8 +1737,10 @@ private func groupMemberAvatarFace(
         // Connecting fetches again: a kept bot's fetch fails offline. A
         // far room's bots are fetched from their own dashboard.
         .task(id: fetchID) {
-            if let tileDashboardID, let runtime = appState.keptDashboardRuntimes[tileDashboardID]?.runtime {
-                // A far room's tile: fetched into its own dashboard's store.
+            if let tileDashboardID {
+                // A far room's tile: fetched into its own dashboard's store,
+                // and only through its own kept connection.
+                guard let runtime = appState.keptDashboardRuntimes[tileDashboardID]?.runtime else { return }
                 await appState.actAcrossAwaits(onRuntime: runtime) { await appState.loadBotAvatarRetrying(bot) }
             } else if readsOpenRoom {
                 await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }

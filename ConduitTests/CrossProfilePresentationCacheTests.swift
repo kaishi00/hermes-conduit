@@ -2732,6 +2732,77 @@ extension CrossProfilePresentationCacheTests {
         appState.farChat = nil
     }
 
+    /// A far chat wears its own dashboard's pictures and names (a bot whose
+    /// profile name this dashboard also has included), and draws and sends
+    /// by its own dashboard's display settings and busy mode, while this
+    /// dashboard's stay as Settings shows them.
+    func testAFarChatWearsAndDrawsByItsOwnDashboard() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        func picture(_ side: CGFloat, _ color: UIColor) throws -> URL {
+            let data = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { context in
+                color.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            }.pngData())
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("far-face-\(UUID().uuidString).png")
+            try data.write(to: url)
+            addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+            return url
+        }
+        let macAtlas = try picture(3, .systemRed)
+        let macMain = try picture(5, .systemGreen)
+        // This dashboard has its own picture under the same profile name.
+        appState.profileAvatarURLs["atlas"] = try picture(2, .systemBlue)
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: ["atlas": macAtlas, "default": macMain], at: Date()
+        )
+        _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
+
+        // Its Bot Chat's face is its own dashboard's picture.
+        appState.activeSessionId = "atlas-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        let face = try XCTUnwrap(appState.conversationAgentIdentity.botFace?.image)
+        XCTAssertTrue(face === ProfileAvatarImageCache.image(at: macAtlas), "the Mac's picture, not this dashboard's")
+
+        // Its ordinary chat is its own dashboard's main bot, by its name
+        // and picture.
+        appState.activeSessionId = "plain-far-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: kept.runtime.activeProfile)
+        XCTAssertEqual(appState.conversationAgentIdentity.name, "Mac main")
+        XCTAssertEqual(appState.conversationAgentIdentity.photoURL, macMain)
+
+        // Its display settings and busy mode are its own dashboard's kept
+        // ones; this dashboard's stay its own.
+        appState.farChat = nil
+        appState.displayPreferences = ProfileDisplayPreferences()
+        appState.busyInputMode = .steer
+        let owner = FarChatOwner(dashboardID: mac.id, profile: "default")
+        var macDisplay = ProfileDisplayPreferences()
+        macDisplay.showReasoning = false
+        macDisplay.thinkingOnRequest = false
+        macDisplay.showToolProgress = false
+        appState.rememberDisplayPreferences(macDisplay, dashboardID: mac.id, profile: "default")
+        appState.defaults.set(BusyInputMode.queue.rawValue, forKey: AppState.farBusyInputModeKey(owner))
+        XCTAssertEqual(appState.chatDisplayPreferences, ProfileDisplayPreferences(), "no far chat: this dashboard's")
+        XCTAssertEqual(appState.chatBusyInputMode, .steer)
+        appState.farChat = owner
+        XCTAssertEqual(appState.chatDisplayPreferences, macDisplay, "the Mac's")
+        XCTAssertEqual(appState.chatBusyInputMode, .queue, "the Mac's")
+        XCTAssertEqual(appState.displayPreferences, ProfileDisplayPreferences(), "this dashboard's stays its own")
+        XCTAssertEqual(appState.busyInputMode, .steer, "this dashboard's stays its own")
+        XCTAssertEqual(appState.storedDisplayPreferences(dashboardID: vps.id, profile: "default") ?? ProfileDisplayPreferences(),
+                       ProfileDisplayPreferences(), "nothing of the Mac's kept as this dashboard's")
+        appState.farChat = nil
+        XCTAssertNil(appState.farChatSettings)
+        XCTAssertEqual(appState.chatBusyInputMode, .steer)
+    }
+
     /// A Bot Chat's push, chat link or widget tap of a kept dashboard opens
     /// it in place, as its Chats row does: its bot's lookup and open through
     /// the kept connection, in its bot's profile, with no switch. A call's

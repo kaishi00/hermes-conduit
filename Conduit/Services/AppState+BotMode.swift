@@ -477,7 +477,7 @@ extension AppState {
         return turnState.composerAction(
             hasText: hasText,
             hasAttachments: hasAttachments,
-            busyInputMode: busyInputMode
+            busyInputMode: chatBusyInputMode
         )
     }
 
@@ -518,14 +518,14 @@ extension AppState {
         }
         switch turnState {
         case .running:
-            if busyInputMode == .queue {
+            if chatBusyInputMode == .queue {
                 return namingAgent
                     ? AppLocalization.string("Queue a message for \(conversationAgentIdentity.name)…")
                     : AppLocalization.string("Queue a message…")
             }
             return namingAgent
-                ? AppLocalization.string("\(busyInputMode.title) \(conversationAgentIdentity.name)…")
-                : AppLocalization.string("\(busyInputMode.title)…")
+                ? AppLocalization.string("\(chatBusyInputMode.title) \(conversationAgentIdentity.name)…")
+                : AppLocalization.string("\(chatBusyInputMode.title)…")
         case .synchronizing, .reconnecting:
             return AppLocalization.string("Checking agent activity…")
         case .unsupportedGateway:

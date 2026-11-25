@@ -783,7 +783,7 @@ extension AppState {
                 attachments: [],
                 submissionContext: current,
                 onBusy: nil,
-                busyMode: busyInputMode,
+                busyMode: chatBusyInputMode,
                 runsSlashCommands: false
             )
             return true
