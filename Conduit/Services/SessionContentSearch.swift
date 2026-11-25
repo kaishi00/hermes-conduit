@@ -18,8 +18,9 @@
 //  a message in it.
 //
 //  A Hermes without the route (404, 405, 410) is remembered per dashboard
-//  connection and never asked again on it; other failures keep the list's
-//  own matches and say nothing.
+//  connection, another combined dashboard's kept one included, and never
+//  asked again on it; other failures keep the list's own matches and say
+//  nothing.
 //
 
 import Foundation
@@ -384,11 +385,12 @@ final class SessionContentSearchModel: ObservableObject {
     struct FarSearch {
         let dashboardID: UUID
         let profile: String
-        /// Its kept connection: another one is a new search.
-        let scope: ObjectIdentifier
+        /// Its kept connection: another one is a new search, and its own
+        /// missing search route is remembered as the screen's is.
+        let scope: AnyObject
         let request: Requester
 
-        var key: String { "\(dashboardID.uuidString)|\(profile)|\(String(describing: scope))" }
+        var key: String { "\(dashboardID.uuidString)|\(profile)|\(String(describing: ObjectIdentifier(scope)))" }
     }
 
     /// The hits for `resultsQuery`, in Hermes' order.
@@ -434,7 +436,8 @@ final class SessionContentSearchModel: ObservableObject {
         // A Hermes on screen with no search route still lets the other
         // combined dashboards' be searched.
         guard let context, let query = SessionContentSearch.searchableQuery(raw),
-              !support.isUnsupported(context.scope) || !context.farSearches.isEmpty else {
+              !support.isUnsupported(context.scope)
+                || context.farSearches.contains(where: { !support.isUnsupported($0.scope) }) else {
             reset()
             return
         }
@@ -458,7 +461,8 @@ final class SessionContentSearchModel: ObservableObject {
         let others: [(profile: String, path: String)] = screenUnsupported ? [] : context.otherProfiles.map {
             (profile: $0, path: SessionContentSearch.path(query: query, profile: $0))
         }
-        let far = context.farSearches.map { (search: $0, path: SessionContentSearch.path(query: query, profile: $0.profile)) }
+        let support = support
+        let far = context.farSearches.filter { !support.isUnsupported($0.scope) }.map { (search: $0, path: SessionContentSearch.path(query: query, profile: $0.profile)) }
         let scope = context.scope
         let request = context.request
         let debounce = debounce
@@ -483,8 +487,18 @@ final class SessionContentSearchModel: ObservableObject {
                 // Another combined dashboard's: one that fails, or whose
                 // Hermes has no search route, is left out.
                 Task { @MainActor () -> [SessionContentSearchHit] in
-                    guard let response = try? await far.search.request(far.path) else { return [] }
-                    return (SessionContentSearch.hits(from: response, query: query) ?? []).map { hit in
+                    let response: [String: Any]
+                    do {
+                        response = try await far.search.request(far.path)
+                    } catch {
+                        if SessionContentSearch.isUnsupported(error) { support.markUnsupported(far.search.scope) }
+                        return []
+                    }
+                    guard let found = SessionContentSearch.hits(from: response, query: query) else {
+                        support.markUnsupported(far.search.scope)
+                        return []
+                    }
+                    return found.map { hit in
                         var hit = hit
                         hit.profile = far.search.profile
                         hit.dashboardID = far.search.dashboardID
@@ -616,7 +630,7 @@ extension AppState {
             let bridge = kept.bridge
             return profiles.map { profile in
                 SessionContentSearchModel.FarSearch(
-                    dashboardID: id, profile: profile, scope: ObjectIdentifier(bridge)
+                    dashboardID: id, profile: profile, scope: bridge
                 ) { [weak self, weak bridge] path in
                     guard let self, let bridge else { throw DashboardTicketBridgeError.notReady }
                     return try await self.readKeptDashboardJSON(bridge, path: path)
