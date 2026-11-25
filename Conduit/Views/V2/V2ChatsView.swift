@@ -2117,7 +2117,9 @@ struct V2ChatsView: View {
     private func contentMatchTime(_ row: SessionContentSearchRow) -> String {
         let time = row.session?.updatedLabel ?? ""
         // Another combined dashboard's match, listed or not: its dashboard's
-        // name and its profile's, so it never reads as this one's.
+        // name and its profile's, so it never reads as this one's. The
+        // profile's raw name, as CarPlay names far agents: this dashboard's
+        // display names are its own profiles', not that Hermes'.
         if let far = row.session?.combinedDashboardID ?? row.hit.dashboardID {
             let place = [appState.combinedDashboardBadge(far)?.name, row.session?.profile ?? row.hit.profile]
                 .compactMap { $0 }.joined(separator: " · ")
