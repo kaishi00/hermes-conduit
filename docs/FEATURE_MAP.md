@@ -3127,6 +3127,45 @@ profiles lines)
 
 **Checked:** 2026-11-06, #1862 (Generate is an item, or a submenu, in the bot editor's Edit Picture menu); 2026-11-05, #1813 (added)
 
+## Image and video generation models
+
+Which model a profile's image (and video) generation backend uses, picked on
+the backend's tool page in Capabilities > Tools, under Backends, since the
+list is the backend's own and changes with it. Models & providers has an
+Image generation row that opens the same page (Eric 2026-11-25: "tool page +
+Models row").
+
+**Siblings:** Capabilities > Tools > Image Generation and Video Generation
+(done: one Model section on the toolset page) · Models & providers' Image
+generation row (done) · the plugin's `/media-models` route (done,
+notifier#1089) · the Generate Picture sheet and group pictures (not needed:
+they use whatever backend and model are set) · Helper models' image reading
+(not needed: a model for reading images, not making them) · Hermes' own
+`hermes tools` picker and dashboard route (not needed: Hermes' own; the
+plugin works around their xAI and DeepInfra gap) · Watch and CarPlay (not
+needed: no model settings) · the text that describes it (the row's caption,
+the notifier's README section)
+
+**Desktop app:** has it: a toolset's page in Capabilities > Tools with its backends, keys and Model, and Settings > Models' Image generation row (`desktop/src/renderer/src/components/ToolsetPage.tsx`, desktop#571).
+
+**Code**
+- Page: `Conduit/Views/Capabilities/CapabilityToolsTab.swift` (CapabilityToolsetDetailPage's modelSection, modelRow, loadModels and choose(_ model:); CapabilityToolsetRoute; ImageGenerationSettingsSection), wired in `Conduit/Views/AuxiliaryViews.swift` (the `.model` page's trailing section)
+- Store and model: `Conduit/Services/CapabilitiesStore.swift` (toolsetModels, keptToolsetModels, selectToolsetModel, pluginModelsMissing), `Conduit/Models/CapabilityCatalogModels.swift` (ToolsetModels)
+- Notifier: `notifier/dashboard/api/media_models.py`, tested in `notifier/tests/test_media_models.py` and `notifier/upstream/test_media_models.py`
+- Tests: `ConduitTests/KanbanTests+Capabilities.swift` (testImageModelsReadAndPickThroughThePluginThenHermes)
+
+**Rulings**
+- Hermes keeps the model per profile: `image_gen.model`, and most backends read `image_gen.<backend>.model` first; xAI's and DeepInfra's image backends read only their own key, which Hermes' own pick never writes. The plugin saves a pick to `<section>.model` and to the backend's own key where it reads only that one or already holds one, so a pick always reaches the backend (2026-11-25, #3314, notifier#1089).
+- A model must be in the backend's catalog, as Hermes' route requires; no typed ids.
+- An env var on the host that the backend takes over its config (`OPENAI_IMAGE_MODEL`, `XAI_IMAGE_MODEL` and the like) is named under the list in orange, so a pick that can't take says why. FAL's image backend reads the config first, so its env var never overrides.
+- With a plugin before 0.198.0 Conduit uses Hermes' own routes, which can't name an override or reach xAI's and DeepInfra's own key.
+- The page opens on the models it showed last time for the dashboard and profile, and a pick Hermes took is what it opens on next (Screens that open on their last answer).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-25, #3314 (added)
+
 ## Starter faces
 
 A bot with no picture of its own wears one of twelve small robot faces, each
@@ -5287,7 +5326,7 @@ The installed skills' and toolsets' switches in Settings > Capabilities, and
 the lists they sit in.
 
 **Siblings:** installed skills and toolsets (AppState) · the catalog, tool
-counts, backends, MCP servers and plugins (CapabilitiesStore) · the Skills
+counts, backends, MCP servers and plugins (CapabilitiesStore) · an image or video toolset's Model section (see Image and video generation models) · the Skills
 and Tools tabs · the Connectors tab's list and server page (their tests) · the bot editor's skills, tools and MCP lists (see Bots:
 create and edit) · the skill, toolset and catalog skill detail pages · the Kanban
 task composer's skill picker · a connector's editor (Edit Server: the form
@@ -5331,7 +5370,7 @@ README.md's Capabilities line
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 - The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-11-17, #2659 (the page's search bar taps at 44 pt, see Sheets in Settings' look; the switches and lists unchanged). Earlier 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2429 (the capability state it lists moved into BotState, all-live stage 1; nothing else changed); 2026-11-13, #2391 (a server page's Test Connection tests on the profile it was pressed on, or not at all); 2026-11-13, #2387 (from #2386's reviews: the tests after an add, a save, a switch flipped on, a connector install or a key save, and a bulk test's later batches, go to no other profile or dashboard after a switch; the add sheet holds one target); 2026-11-13, #2386 (Add MCP Server on the Connectors tab and Edit Bot's MCP page, one sheet sharing Edit Server's fields; README's Capabilities line names it; issue 1570); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2212 (a category's name spells AI, MCP and the like in capitals, `prettyCategory`, here and on the bot editor's Skills page); 2026-11-11, #2209 (the bot editor's Skills page reads the same skill list for the bot's profile, for its categories and descriptions; these switches unchanged); 2026-11-08, #2024 (skills to install grouped by category, with a Category menu, and a loading row); 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #1999 (the Skills tab opens Browse Skill Hub, a hub skill's page removes it, the options menu updates hub skills; the switches unchanged); 2026-11-08, #1982 (the Connectors tab shows the Apps section above the servers and its pull to refresh reads both; the servers unchanged); 2026-11-05, #1793 (the Skills, Tools and MCP page and Kanban's skills sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-02, #1655 (Eric decided the key save follows Edit Server's test rules); 2026-11-02, #1647 (a key save reads the list again and tests the server only if the host says it's on, and a test running on the old key runs again, as after Edit Server's save; a save that fails part way does both for the keys Hermes took); 2026-11-02, #1640 (connectors sign in through the phone's callback with Edit Bot's flow; a catalog connector's key set from its page); 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1569 (the lists open on their kept copy and a switch Hermes took is kept in it, never one it refused; offline the switches wait for a dashboard; AppState's list reads are tested through held dashboard requests, its generation guard included, closing a gap; with #1574 merged in, a server's page waits for Hermes' list before its first test and a connector edit counts as a change, see Screens that open on their last answer); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
+**Checked:** 2026-11-25, #3314 (an image or video toolset's page has a Model section, see Image and video generation models); 2026-11-17, #2659 (the page's search bar taps at 44 pt, see Sheets in Settings' look; the switches and lists unchanged). Earlier 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2429 (the capability state it lists moved into BotState, all-live stage 1; nothing else changed); 2026-11-13, #2391 (a server page's Test Connection tests on the profile it was pressed on, or not at all); 2026-11-13, #2387 (from #2386's reviews: the tests after an add, a save, a switch flipped on, a connector install or a key save, and a bulk test's later batches, go to no other profile or dashboard after a switch; the add sheet holds one target); 2026-11-13, #2386 (Add MCP Server on the Connectors tab and Edit Bot's MCP page, one sheet sharing Edit Server's fields; README's Capabilities line names it; issue 1570); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2212 (a category's name spells AI, MCP and the like in capitals, `prettyCategory`, here and on the bot editor's Skills page); 2026-11-11, #2209 (the bot editor's Skills page reads the same skill list for the bot's profile, for its categories and descriptions; these switches unchanged); 2026-11-08, #2024 (skills to install grouped by category, with a Category menu, and a loading row); 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #1999 (the Skills tab opens Browse Skill Hub, a hub skill's page removes it, the options menu updates hub skills; the switches unchanged); 2026-11-08, #1982 (the Connectors tab shows the Apps section above the servers and its pull to refresh reads both; the servers unchanged); 2026-11-05, #1793 (the Skills, Tools and MCP page and Kanban's skills sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-02, #1655 (Eric decided the key save follows Edit Server's test rules); 2026-11-02, #1647 (a key save reads the list again and tests the server only if the host says it's on, and a test running on the old key runs again, as after Edit Server's save; a save that fails part way does both for the keys Hermes took); 2026-11-02, #1640 (connectors sign in through the phone's callback with Edit Bot's flow; a catalog connector's key set from its page); 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1569 (the lists open on their kept copy and a switch Hermes took is kept in it, never one it refused; offline the switches wait for a dashboard; AppState's list reads are tested through held dashboard requests, its generation guard included, closing a gap; with #1574 merged in, a server's page waits for Hermes' list before its first test and a connector edit counts as a change, see Screens that open on their last answer); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
 
 ## Skill Hub: browse and install
 
