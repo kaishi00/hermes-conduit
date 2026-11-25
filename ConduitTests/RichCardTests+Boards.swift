@@ -610,6 +610,10 @@ extension AppStateVoiceCapabilityTests {
         ])
         XCTAssertEqual(twice.placed, ["a1": [id]])
         XCTAssertEqual(twice.waiting, [:])
+        // A steer between the board and the reply is part of the same turn.
+        let steer = ChatMessage(id: "u3", role: .user, content: "Shorter", timestamp: "2026-11-25T09:00:01Z",
+                                displayKind: ChatMessage.steerDisplayKind)
+        XCTAssertEqual(LineBoards.placement(in: [ask, row, steer, reply]).placed, ["a1": [id]])
 
         // The rows: the reply draws the board and its follow-ups, by the row
         // it came from (a live card's place and the follow-ups go by it).

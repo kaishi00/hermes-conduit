@@ -57,7 +57,8 @@ enum LineBoards {
     }
 
     /// Where `rows`' boards go. A reply takes a board from a conduit_show
-    /// row above it in its own turn (no message of the user's between), the
+    /// row above it in its own turn (no message of the user's between; a
+    /// steer is part of the turn it steers), the
     /// first reply to name it; a board no row in `rows` drew is read from
     /// the host; a line naming an earlier turn's board, or one a reply
     /// already took, places nothing.
@@ -71,7 +72,7 @@ enum LineBoards {
         for row in rows {
             switch row.role {
             case .user:
-                turn = [:]
+                if !row.isSteer { turn = [:] }
             case .assistant:
                 let found = Self.ids(in: row.content)
                 guard !found.isEmpty else { continue }
