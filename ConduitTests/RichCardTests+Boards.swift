@@ -572,4 +572,76 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(LineBoards.latestLiveRows(early.latestLiveRows, order: early.rowOrder, waiting: early.lineBoardIDs,
                                                  boards: ["cb-0000000000a1": liveBoard]), ["plan": "t0"])
     }
+
+    @MainActor
+    func testAReplysLineTakesItsTurnsBoardFromTheConduitShowRow() throws {
+        // Issue 3215: conduit_show's answer names its board's line, and a
+        // reply that writes it draws the board there; the row draws nothing.
+        let id = "cb-0000000000d1"
+        let line = "::conduit-board{id=\"\(id)\"}"
+        let ask = ChatMessage(id: "u1", role: .user, content: "Compare them", timestamp: "2026-11-25T09:00:00Z")
+        let row = ChatMessage(id: "t1", role: .tool, content: "", timestamp: "2026-11-25T09:00:01Z", tool: try boardTool(
+            ["ok": true, "directive": line, "next": ["More"], "markdown": "Book early",
+             "cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]]], id: "t1"))
+        let reply = ChatMessage(id: "a1", role: .assistant, content: "First the plan.\n\n\(line)\n\nThen the rest.",
+                                timestamp: "2026-11-25T09:00:02Z")
+        let placement = LineBoards.placement(in: [ask, row, reply])
+        XCTAssertEqual(placement.placed, ["a1": [id]])
+        XCTAssertEqual(placement.rows, [id: "t1"])
+        XCTAssertEqual(placement.hiddenRows, ["t1"])
+        XCTAssertEqual(placement.shown[id]?.cards.count, 1)
+        XCTAssertEqual(placement.waiting, [:], "the row holds the board: nothing to read from the host")
+
+        // A reply without the line leaves the board at its row.
+        let plain = ChatMessage(id: "a1", role: .assistant, content: "Here it is.", timestamp: "2026-11-25T09:00:02Z")
+        XCTAssertEqual(LineBoards.placement(in: [ask, row, plain]), LineBoards.Placement())
+        // So does a later turn's reply that names it again: the line shows
+        // nothing, and the board isn't read from the host to be drawn twice.
+        let later = LineBoards.placement(in: [
+            ask, row, plain,
+            ChatMessage(id: "u2", role: .user, content: "And?", timestamp: "2026-11-25T09:01:00Z"),
+            ChatMessage(id: "a2", role: .assistant, content: "As before: \(line)", timestamp: "2026-11-25T09:01:01Z"),
+        ])
+        XCTAssertEqual(later, LineBoards.Placement())
+        // The first reply of the turn to name it takes it.
+        let twice = LineBoards.placement(in: [
+            ask, row, reply,
+            ChatMessage(id: "a3", role: .assistant, content: "Again \(line)", timestamp: "2026-11-25T09:00:03Z"),
+        ])
+        XCTAssertEqual(twice.placed, ["a1": [id]])
+        XCTAssertEqual(twice.waiting, [:])
+
+        // The rows: the reply draws the board and its follow-ups, by the row
+        // it came from (a live card's place and the follow-ups go by it).
+        var state = ChatRowState()
+        state.placedBoardIDs = placement.placed
+        state.shownBoards = placement.shown
+        state.shownBoardRows = placement.rows
+        XCTAssertEqual(state.placedBoards(in: "a1"), [id])
+        XCTAssertEqual(state.placedBoard(id, reply: "a1")?.rowID, "t1")
+        XCTAssertEqual(state.placedFollowUps(in: "a1"), [], "no follow-ups while a send can't go")
+        state.followUpBoardRowID = "t1"
+        XCTAssertEqual(state.placedFollowUps(in: "a1"), ["More"])
+        // One read from the host draws as the reply's own row; one not read yet draws nothing.
+        var waiting = ChatRowState()
+        waiting.placedBoardIDs = ["a1": [id]]
+        XCTAssertEqual(waiting.placedBoards(in: "a1"), [])
+        waiting.lineBoards = [id: try XCTUnwrap(placement.shown[id])]
+        XCTAssertEqual(waiting.placedBoard(id, reply: "a1")?.rowID, "a1")
+
+        // The reply is cut where the line was.
+        XCTAssertEqual(TranscriptDirectives.pieces(in: reply.content, placing: [id]),
+                       [.text("First the plan."), .board(id), .text("Then the rest.")])
+        XCTAssertEqual(TranscriptDirectives.pieces(in: reply.content, placing: []), [.text(reply.content)])
+        XCTAssertEqual(TranscriptDirectives.pieces(in: line, placing: [id]), [.board(id)])
+        // Words on the line stay before the board; a second line naming it,
+        // and one naming a board that isn't placed, show nothing.
+        let other = "::conduit-board{id=\"cb-0000000000d2\"}"
+        XCTAssertEqual(TranscriptDirectives.pieces(in: "See \(line)\n\(other)\nmore\n\(line)", placing: [id]),
+                       [.text("See"), .board(id), .text("\(other)\nmore\n\(line)")])
+        XCTAssertEqual(TranscriptDirectives.pieces(in: "\(line)\n\(other)", placing: [id]), [.board(id)])
+        // One in code, a quote or a table is an example: no cut.
+        let examples = "```\n\(line)\n```\n> \(line)\n\n| a | b |\n| --- | --- |\n| \(line) | x |"
+        XCTAssertEqual(TranscriptDirectives.pieces(in: examples, placing: [id]), [.text(examples)])
+    }
 }

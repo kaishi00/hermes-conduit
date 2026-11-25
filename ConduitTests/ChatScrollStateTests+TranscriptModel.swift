@@ -48,6 +48,20 @@ extension ChatScrollStateTests {
     }
 
     @MainActor
+    func testAConduitShowRowWhoseBoardAReplyPlacesIsLeftOut() {
+        // Issue 3215: the reply draws the board where its line is, so the
+        // row would draw nothing, and the transcript spaces every row.
+        let chat = targets([message("u1", .user), message("board", .system), message("a1", .assistant)])
+        let input = TranscriptModel.Input(targetsRevision: 1, isBusy: false)
+        XCTAssertEqual(rows(input, chat).map(\.id), ["u1", "board", "a1"])
+        XCTAssertEqual(
+            TranscriptModel.rows(for: input, targets: chat, disclosure: ChatRowDisclosure(), placedBoardRows: ["board"])
+                .map(\.id),
+            ["u1", "a1"]
+        )
+    }
+
+    @MainActor
     func testTheTranscriptDrawsTheChatsRowsThenTheLiveTurnThenTheWaitingSend() {
         // A finished run of steps folds into its first row.
         let chat = targets([

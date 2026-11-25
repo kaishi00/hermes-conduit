@@ -54,7 +54,7 @@ SET_INSIDE = re.compile(r"\bstatic\s+let\s+setInsideRows\s*=\s*\[([^\]]*)\]")
 # card that reads the wrong Hermes.
 SET_WHERE = {
     "richCardHostDashboard": [
-        ("Conduit/Views/ChatView.swift", r"\bfunc\s+boardView\s*\(", "appState.richCardHostDashboard"),
+        ("Conduit/Views/ChatView.swift", r"\bstruct\s+ChatBoardView\b", "appState.richCardHostDashboard"),
         ("Conduit/Views/GroupChatView.swift", r"\bfunc\s+roomRow\s*\(", "appState.activeRoomSurface?.dashboardID"),
         ("Conduit/Views/V2/V2PulsePage.swift", r"\bfunc\s+lookBody\s*\(", "appState.pulseDashboardID"),
         ("Conduit/Views/LiveVoiceCallJobs.swift", r"\bstruct\s+LiveVoiceScreenCardSheet\b",

@@ -72,6 +72,13 @@ struct ChatRowState: Equatable {
     var lineBoards: [String: RichBoard] = [:]
     /// Those the plugin no longer has, or that can't be drawn.
     var lineBoardsGone: Set<String> = []
+    /// Each reply's boards drawn where its ::conduit-board lines are, in
+    /// the lines' order (issue 3215): one taken from its turn's conduit_show
+    /// row (`shownBoards`, and the row in `shownBoardRows`), which then
+    /// draws nothing, or one read from the host (`lineBoards`).
+    var placedBoardIDs: [String: [String]] = [:]
+    var shownBoards: [String: RichBoard] = [:]
+    var shownBoardRows: [String: String] = [:]
 
     init() {}
 
@@ -111,6 +118,9 @@ struct ChatRowState: Equatable {
         canExplainStepRuns = appState.client != nil && !(appState.activeSessionId ?? "").isEmpty && !isOffline
         followUpReasons = appState.predictive.followUpReasons
         lineBoardIDs = facts.lineBoardIDs
+        placedBoardIDs = facts.boards.placed
+        shownBoards = facts.boards.shown
+        shownBoardRows = facts.boards.rows
         lineBoards = lineBoardIDs.isEmpty ? [:] : appState.lineBoards
         lineBoardsGone = lineBoardIDs.isEmpty ? [] : appState.lineBoardsGone
         if !lineBoards.isEmpty {
@@ -118,6 +128,31 @@ struct ChatRowState: Equatable {
             latestLiveRows = LineBoards.latestLiveRows(latestLiveRows, order: facts.rowOrder, waiting: lineBoardIDs,
                                                        boards: lineBoards)
         }
+    }
+
+    /// The board a reply's line names, as it can be drawn now, and the row
+    /// it draws as: its conduit_show row's (a live card's place and the
+    /// follow-ups go by that row), or the reply's own for one read from the
+    /// host. Nil for one not read yet, or gone.
+    func placedBoard(_ id: String, reply: String) -> (board: RichBoard, rowID: String)? {
+        if let board = shownBoards[id] { return (board: board, rowID: shownBoardRows[id] ?? reply) }
+        return lineBoards[id].map { (board: $0, rowID: reply) }
+    }
+
+    /// The boards `reply` draws where its lines are, those that can be
+    /// drawn now, in the lines' order.
+    func placedBoards(in reply: String) -> [String] {
+        (placedBoardIDs[reply] ?? []).filter { placedBoard($0, reply: reply) != nil }
+    }
+
+    /// The follow-ups under `reply`: those of the board it placed, when
+    /// that board is the one whose follow-ups show (`followUpBoardRowID`).
+    func placedFollowUps(in reply: String) -> [String] {
+        guard let row = followUpBoardRowID else { return [] }
+        for id in placedBoardIDs[reply] ?? [] where shownBoardRows[id] == row {
+            return shownBoards[id]?.followUps ?? []
+        }
+        return []
     }
 
     /// `AppState.canReact(to:)`, from these values alone.
@@ -145,6 +180,9 @@ struct ChatRowFacts: Equatable {
     var teammateReplies: [String: String] = [:]
     /// Each reply's ::conduit-board lines no conduit_show row drew (LineBoards).
     var lineBoardIDs: [String: [String]] = [:]
+    /// Where the chat's boards go: at their conduit_show row, or where a
+    /// reply's line puts them (LineBoards.placement).
+    var boards = LineBoards.Placement()
     /// Where those replies and each live card's last row are in the chat,
     /// to tell which of them brought a live card up to date last.
     var rowOrder: [String: Int] = [:]
@@ -163,7 +201,8 @@ struct ChatRowFacts: Equatable {
             in: rows,
             streamingMessageID: isBusy ? BotTeammateMessages.runningReplyID(in: rows) : nil
         )
-        lineBoardIDs = LineBoards.waiting(in: rows)
+        boards = LineBoards.placement(in: rows)
+        lineBoardIDs = boards.waiting
         if !lineBoardIDs.isEmpty {
             let placed = Set(lineBoardIDs.keys).union(latestLiveRows.values)
             for (index, row) in rows.enumerated() where placed.contains(row.id) { rowOrder[row.id] = index }
