@@ -1651,6 +1651,9 @@ extension PulseClient {
     /// Quiet times: quiet days and a vacation in Settings > Pulse, and Quiet
     /// for today on the Pulse screen and on a Pulse notification (0.80.2).
     static let quietCapability = "pulse_quiet"
+    /// Leave out takes one profile in or out, keeping the rest of the
+    /// stored list (0.196.6, issue 3269).
+    static let exclusionToggleCapability = "pulse_profile_exclusion_toggle"
     /// Pulse learns from thumbs, Do it and Done what to bring up and how
     /// loudly, and a kind's level is the loudest it gets (0.81.1).
     static let learnsCapability = "pulse_learns"
