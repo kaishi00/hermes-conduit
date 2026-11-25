@@ -1792,7 +1792,12 @@ struct V2PulsePage: View {
                     }
                 }
                 return
-            case .failed:
+            case .failed(let said):
+                // What went wrong there, when more than the page's own line says.
+                if let said {
+                    if appState.pulseDashboardID == dashboard { showError(said) }
+                    return
+                }
                 opened = nil
             case .notInPlace:
                 guard await appState.switchForFarPulseStep(for: dashboard) else { return }
