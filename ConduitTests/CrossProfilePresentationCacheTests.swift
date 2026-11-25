@@ -4522,9 +4522,13 @@ extension CrossProfilePresentationCacheTests {
         appState.voiceBackgroundJobSupervisor.attachLiveThread(callChat)
         XCTAssertEqual(appState.callChatsDashboardID, vps.id, "the call's chats are the dashboard on screen's")
 
+        // The stand-in Hermes opens any chat asked of it, so the switch may
+        // resume the Mac's open chat here and list it as this dashboard's
+        // own: the two share nothing before the chat below.
+        appState.runtimeOnScreen.sessions = []
         XCTAssertTrue(
             appState.combinedHermesTwins(of: mac.id).isEmpty,
-            "evidence \(appState.combinedHermesEvidence), groups \(appState.combinedHermesGroups), on screen \(appState.runtimeOnScreen.sessions.map { "\($0.id)@\($0.combinedDashboardID?.uuidString ?? "own")" }), bots \(appState.shownBotRoster.compactMap { $0.canonicalSession?.id }) far bots \(appState.combinedDashboardBots[mac.id]?.bots.compactMap { $0.canonicalSession?.id } ?? []), mac \(mac.id), vps \(vps.id)"
+            "the two share \(appState.combinedHermesEvidence)"
         )
         appState.noteCallChatDeleted(["shared-1"], dashboardID: mac.id)
         XCTAssertFalse(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat), "another Hermes' chat under the same id")

@@ -1736,7 +1736,17 @@ struct V2PulsePage: View {
                 // Its chat is up over the page, which shows the one on
                 // screen's Pulse again: Pulse is told on its own dashboard.
                 if actingCard == card.id { actingCard = nil }
-                if tells { try? await client.acted(card: card.id, chat: far.chat) }
+                if tells {
+                    do {
+                        try await client.acted(card: card.id, chat: far.chat)
+                    } catch {
+                        // Said, not marked: the page shows the one on
+                        // screen's Pulse by now, where the orange note
+                        // would land on another card of the same id. The
+                        // card stays on its own Pulse with its Done button.
+                        AccessibilityNotification.Announcement(Self.untoldNote).post()
+                    }
+                }
                 return
             case .failed:
                 opened = nil
