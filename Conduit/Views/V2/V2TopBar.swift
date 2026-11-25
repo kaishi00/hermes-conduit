@@ -461,6 +461,8 @@ struct V2ProfileStrip: View {
                     profile: profile,
                     stillWanted: { Self.farPickGeneration == generation }
                 ) else { return }
+                // A newer far pick started while this switch ran.
+                guard Self.farPickGeneration == generation else { return }
                 // Picked by the name its own list gives, never one it
                 // doesn't list (issue 2646).
                 if !appState.profilesMatch(appState.activeProfile, profile),
