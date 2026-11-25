@@ -2714,6 +2714,87 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(replayedToolIndex, partialIndex.map { $0 + 1 })
     }
 
+    /// Issue 3216: commentary and its tool start arrive while a resync
+    /// reads the chat, and the resync's rows already hold both (Hermes
+    /// saves a step's words with its tool calls, and the resume has no
+    /// live projection). Replayed, the words must not stay as the live
+    /// reply under the row that already shows them.
+    func testWordsHeldDuringAResyncThatItsRowsAlreadyHoldAreNotDrawnAgain() async {
+        let openGate = ControlledSuspension()
+        let active = session("stored-a")
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [active] },
+                openSession: { _, sessionID, _ in
+                    await openGate.suspend()
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [
+                            ChatMessage(id: "prompt", role: .user, content: "Why is it failing?", timestamp: "1"),
+                            ChatMessage(id: "step", role: .assistant, content: "Checking the logs.", timestamp: "2"),
+                            ChatMessage(
+                                id: "step-tool",
+                                role: .tool,
+                                content: "",
+                                timestamp: "2",
+                                tool: ToolActivity(id: "call-1", name: "terminal", input: "tail log", output: nil, status: .running)
+                            ),
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+
+        let refresh = Task { @MainActor in
+            await harness.appState.refreshActiveSession()
+        }
+        await openGate.waitUntilSuspended()
+        harness.appState.handleStreamEvent(.messageDelta(sessionId: active.id, text: "Checking the "))
+        harness.appState.handleStreamEvent(.messageDelta(sessionId: active.id, text: "logs."))
+        harness.appState.handleStreamEvent(
+            .toolStart(sessionId: active.id, toolName: "terminal", toolInput: "tail log", toolID: "call-1")
+        )
+        openGate.resume()
+        await refresh.value
+
+        harness.appState.showSidebar = true
+        harness.appState.showSidebar = false
+        XCTAssertEqual(harness.appState.streamingText, "")
+        XCTAssertEqual(harness.appState.shownChat.streamingBuffer, "")
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .partial }.count, 0)
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .tool }.count, 1)
+
+        // Words after the tool are the reply going on: they stay live when
+        // the same start comes again.
+        harness.appState.handleStreamEvent(.messageDelta(sessionId: active.id, text: "The disk is full."))
+        harness.appState.handleStreamEvent(
+            .toolStart(sessionId: active.id, toolName: "terminal", toolInput: "tail log", toolID: "call-1")
+        )
+        XCTAssertEqual(harness.appState.shownChat.streamingBuffer, "The disk is full.")
+    }
+
+    func testStreamedWordsAreSavedOnlyAsTheTailOfTheRowBeforeTheTool() {
+        let tool = ChatMessage(
+            id: "t", role: .tool, content: "", timestamp: "2",
+            tool: ToolActivity(id: "call-1", name: "terminal", input: nil, output: nil, status: .running)
+        )
+        let step = ChatMessage(id: "a", role: .assistant, content: "First.\n\nChecking the logs.", timestamp: "2")
+        let prompt = ChatMessage(id: "u", role: .user, content: "Checking the logs.", timestamp: "1")
+        XCTAssertTrue(AppState.streamedWordsAreSaved("Checking the logs.\n", beforeToolAt: 2, in: [prompt, step, tool]))
+        // Another tool of the same step sits between.
+        XCTAssertTrue(AppState.streamedWordsAreSaved(" Checking the logs.", beforeToolAt: 3, in: [prompt, step, tool, tool]))
+        XCTAssertFalse(AppState.streamedWordsAreSaved("Something new.", beforeToolAt: 2, in: [prompt, step, tool]))
+        XCTAssertFalse(AppState.streamedWordsAreSaved("  ", beforeToolAt: 2, in: [prompt, step, tool]))
+        // The user's own words before the tool aren't the reply's.
+        XCTAssertFalse(AppState.streamedWordsAreSaved("Checking the logs.", beforeToolAt: 1, in: [prompt, tool]))
+        XCTAssertFalse(AppState.streamedWordsAreSaved("Checking the logs.", beforeToolAt: 5, in: [prompt, step, tool]))
+    }
+
     func testResumeDedupAcceptsAlternateSessionIDForBufferedDelta() async {
         let openGate = ControlledSuspension()
         let active = session("stored-a", alternateIDs: ["runtime-a"])
@@ -10838,13 +10919,20 @@ extension AppStateChatResumeTests {
     func testAProfileSwitchClosesThePaneAndChatWindows() async {
         let gate = ControlledSuspension()
         let (appState, _, _) = supersededSwitchHarness(gateMint: false, gate: gate)
-        let dashboard = appState.activeDashboardID ?? UUID()
+        // A followed chat is its dashboard's, and the pane and the windows
+        // let go of theirs by dashboard and profile (#3206): the harness
+        // has no dashboard of its own, so the one on screen is saved here.
+        let home = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://home.example.com")
+        appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home])
+        let dashboard = home.id
         func kept(_ id: String, running: Bool) -> BackgroundChat {
             let state = ChatState()
             state.messages = [ChatMessage(id: "r-\(id)", role: .assistant, content: "Hi", timestamp: "1")]
             state.turnState = running ? .running : .idle
+            // On the profile being left, as the pane's and the windows'
+            // chats are matched by their dashboard and profile (#3206).
             return BackgroundChat(sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
-                                  profile: "default", isBotChat: false, state: state)
+                                  profile: appState.activeProfile, isBotChat: false, state: state)
         }
         appState.backgroundChats = [kept("pane", running: false), kept("idle", running: false), kept("busy", running: true)]
         appState.besideChatIDs = ["pane"]
