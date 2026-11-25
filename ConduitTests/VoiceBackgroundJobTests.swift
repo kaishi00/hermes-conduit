@@ -116,6 +116,8 @@ final class FakeVoiceJobBackend {
     /// The attached chat: whether a turn runs there, what was sent to it,
     /// and its latest reply.
     var threadBusy = false
+    /// Runtime ids of the chats that are busy while the others are free.
+    var busyThreads: Set<String> = []
     /// How long a threadIsBusy read takes, so two reads can overlap.
     var threadBusyDelay: Duration?
     var threadSubmitError: Error?
@@ -235,9 +237,9 @@ final class FakeVoiceJobBackend {
                 return self.sessionRunningResult
             },
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
-            threadIsBusy: { [self] _ in
+            threadIsBusy: { [self] thread in
                 if let delay = self.threadBusyDelay { try? await Task.sleep(for: delay) }
-                return self.threadBusy
+                return self.threadBusy || self.busyThreads.contains(thread.runtimeSessionID)
             },
             resolveThreadRuntime: { [self] thread in
                 if let error = self.threadRuntimeError { throw error }
@@ -2319,6 +2321,25 @@ extension VoiceConversationControllerTests {
         guard await waitFor({ supervisor.jobs.last?.status == .cancelled }) else { return }
         XCTAssertEqual(fake.threadSubmissions.count, 1)
         XCTAssertNil(supervisor.takePendingNotice())
+        supervisor.reset()
+    }
+
+    /// #3268's review: a chat that stays busy holds only its own requests.
+    func testAnEndedCallsWaitingRequestHoldsOnlyItsOwnChat() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.busyThreads = ["rt-chat"]
+        _ = supervisor.startThreadTurn(request: "later")
+        supervisor.detachLiveThread()
+
+        supervisor.liveThread = VoiceThreadTarget(runtimeSessionID: "rt-other", storedSessionID: "st-other", title: "Other")
+        _ = supervisor.startThreadTurn(request: "now")
+        guard await waitFor({ fake.threadSubmissions.count == 1 }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) now"], "the other chat is free")
+        XCTAssertTrue(supervisor.hasRequestWaitingSinceHangUp)
+
+        fake.busyThreads = []
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.last?.1, "(voice) later")
         supervisor.reset()
     }
 

@@ -1622,16 +1622,24 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let callID = liveCallID
             let waits = callID != nil && callChatClaim?.callID == callID
             let making = waits ? callChatClaim?.jobID : nil
+            // Counted as waiting from here, so a hang-up meanwhile keeps
+            // the hand-back's reset and the background time for it.
+            let ledger = generation
+            if waits { callChatClaimWaits += 1 }
             await waitForCallChatClaim()
-            if liveThread != nil { return joinCallChat(requested, onJobCreated: onJobCreated) }
             // The call hung up meanwhile: it attaches nothing, and the
             // request goes to the chat the first one makes once that chat
             // is free, as the call's turns still waiting theirs do (issue
-            // 3185). Read by no one: not localized.
-            if waits, callChatClosedCallID == callID {
-                if let making { await sendAfterHangUp(requested, toChatOf: making) }
-                return "The call ended; Hermes takes this request in the chat once it's free."
+            // 3185).
+            let hungUp = liveThread == nil && waits && callChatClosedCallID == callID
+            if hungUp, let making { await sendAfterHangUp(requested, toChatOf: making) }
+            if waits, ledger == generation {
+                callChatClaimWaits -= 1
+                releaseHangUpSendHoldIfDone()
             }
+            // Read by no one: not localized.
+            if hungUp { return "The call ended; Hermes takes this request in the chat once it's free." }
+            if liveThread != nil { return joinCallChat(requested, onJobCreated: onJobCreated) }
         }
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
@@ -2472,10 +2480,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// longer wanted.
     var ledgerGeneration: UInt64 { generation }
 
-    /// Whether a request of an ended call still waits to be sent.
+    /// Whether a request of an ended call still waits to be sent. One
+    /// waiting for the call's chat to be made counts: read at a hang-up, it
+    /// is about to be the ended call's.
     var hasRequestWaitingSinceHangUp: Bool {
         jobs.contains { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting && $0.waitsSinceHangUp != nil }
+            || callChatClaimWaits > 0
     }
+    /// Requests waiting for the call's first job to make its chat.
+    private var callChatClaimWaits = 0
 
     /// Returns once no request of an ended call waits to be sent, or after
     /// `limit`: a hand-back of the call's jobs waits for it as long as the
@@ -2632,30 +2645,56 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
         }
         while !Task.isCancelled, generation == self.generation {
-            guard let next = jobs.first(where: { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting }) else { return }
-            // Its call ended long ago and the chat never came free.
-            if let since = next.waitsSinceHangUp, now().timeIntervalSince(since) > Self.hangUpSendLimit {
-                update(next.id) { $0.status = .cancelled }
-                continue
+            let waiting = jobs.filter { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting }
+            guard !waiting.isEmpty else { return }
+            // The oldest turn of the first chat that is free: a chat that
+            // stays busy (an ended call's request can wait there for
+            // `hangUpSendLimit`) holds only its own turns, in their order.
+            var held: [VoiceThreadTarget] = []
+            var looksAgain = false
+            var chosen: (VoiceBackgroundJob, VoiceThreadTarget)?
+            for candidate in waiting {
+                // Settled or dropped while an earlier chat was checked.
+                guard let current = job(candidate.id), current.status == .starting, !current.threadTurnSubmitted else { continue }
+                // Its call ended long ago and the chat never came free.
+                if let since = current.waitsSinceHangUp, now().timeIntervalSince(since) > Self.hangUpSendLimit {
+                    update(current.id) { $0.status = .cancelled }
+                    continue
+                }
+                guard let thread = threadTargets[current.id] else {
+                    update(current.id) { $0.status = .failed(AppLocalization.string("Hermes could not send this to the chat.")) }
+                    continue
+                }
+                if held.contains(where: { Self.sameChat($0, thread) }) { continue }
+                // One at a time per chat: a sent turn still running there holds
+                // the rest. Its settling pumps the queue again. A turn left
+                // running in another chat (an earlier call's) doesn't.
+                let chatHasSentTurn = jobs.contains { job in
+                    job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
+                        && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
+                } || callChatJobRuns(in: thread) || continuedJobHoldsChat(thread)
+                if chatHasSentTurn {
+                    held.append(thread)
+                    continue
+                }
+                if current.waitsSinceHangUp != nil, endedCallRequestRuns(in: thread) {
+                    held.append(thread)
+                    looksAgain = true
+                    continue
+                }
+                if await backend.threadIsBusy(thread) {
+                    guard generation == self.generation else { return }
+                    held.append(thread)
+                    looksAgain = true
+                    continue
+                }
+                chosen = (current, thread)
+                break
             }
-            guard let thread = threadTargets[next.id] else {
-                update(next.id) { $0.status = .failed(AppLocalization.string("Hermes could not send this to the chat.")) }
-                continue
-            }
-            // One at a time per chat: a sent turn still running there holds
-            // the rest. Its settling pumps the queue again. A turn left
-            // running in another chat (an earlier call's) doesn't.
-            let chatHasSentTurn = jobs.contains { job in
-                job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
-                    && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
-            } || callChatJobRuns(in: thread) || continuedJobHoldsChat(thread)
-            if chatHasSentTurn { return }
-            if next.waitsSinceHangUp != nil, endedCallRequestRuns(in: thread) {
-                try? await Task.sleep(for: threadWaitInterval)
-                continue
-            }
-            if await backend.threadIsBusy(thread) {
-                guard generation == self.generation else { return }
+            guard let (next, thread) = chosen else {
+                // Chats held by a turn of the call's own pump this again
+                // when it settles; the others are looked at again.
+                guard looksAgain else { return }
                 try? await Task.sleep(for: threadWaitInterval)
                 continue
             }
@@ -3009,6 +3048,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         jobs.removeAll()
         hangUpSendHold?()
         hangUpSendHold = nil
+        callChatClaimWaits = 0
         lastJobNumber = 0
         keptCallChat = nil  // another dashboard's chat: never told to the next
         chatMatches = []

@@ -1864,7 +1864,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     /// meanwhile wait for its chat rather than make their own.
     private var startingCallChat = false
     /// Whether the call is still on: a request that waited past its end
-    /// goes no further.
+    /// goes to the chat the first one made, and no further when none was.
     var callIsLive: (@MainActor () -> Bool)?
     private var callChatWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -1884,7 +1884,12 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
             waited = true
             await withCheckedContinuation { callChatWaiters.append($0) }
         }
-        if waited, callIsLive?() == false { return "The call ended before Hermes took this request." }
+        // The call ended while it waited: with the chat made, it goes there
+        // as the call's other requests still waiting do (issue 3185). With
+        // none made it goes no further, and makes no chat of its own.
+        if waited, callIsLive?() == false, !(joins && callChat != nil) {
+            return "The call ended before Hermes took this request."
+        }
         if joins, let callChat {
             // Resumed on another runtime: the call's chat follows it, so a
             // delete naming that one is found where the chat has no stored
