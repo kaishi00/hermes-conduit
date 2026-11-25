@@ -2799,6 +2799,9 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(AppState.avatar(in: ["nova": macNova], for: "Nova"), macNova)
         XCTAssertEqual(AppState.avatar(in: ["Nova": macNova, "nova": macAtlas], for: "nova"), macAtlas, "its own spelling first")
         XCTAssertNil(AppState.avatar(in: ["nova": macNova], for: "atlas"))
+        XCTAssertEqual(AppState.avatar(in: ["nova": macAtlas], saved: ["Nova": macNova], for: "Nova"), macNova,
+                       "an exact saved spelling before another case in the roster")
+        XCTAssertEqual(AppState.avatar(in: [:], saved: ["nova": macNova], for: "Nova"), macNova, "a saved picture the roster lacks")
 
         // Its display settings and busy mode are its own dashboard's kept
         // ones; this dashboard's stay its own.

@@ -167,8 +167,8 @@ extension AppState {
 
     /// A far bot's saved avatar URL as its own dashboard knows it.
     func farAvatarURL(for profile: String, on dashboardID: UUID) -> URL? {
-        if let url = Self.avatar(in: combinedDashboardBots[dashboardID]?.avatars ?? [:], for: profile) { return url }
-        return Self.avatar(in: profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID), for: profile)
+        Self.avatar(in: combinedDashboardBots[dashboardID]?.avatars ?? [:],
+                    saved: profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID), for: profile)
     }
 
     /// A profile's picture among another dashboard's, under its own spelling
@@ -177,6 +177,17 @@ extension AppState {
     nonisolated static func avatar(in avatars: [String: URL], for profile: String) -> URL? {
         if let url = avatars[profile] { return url }
         return avatars.first { profilesMatch($0.key, profile) }?.value
+    }
+
+    /// The same across the roster's snapshot and the pictures saved on this
+    /// phone: an exact spelling in either before another case in either, as
+    /// a snapshot can predate a picture saved since. The saved folder is
+    /// listed only when the roster lacks the exact spelling, as before.
+    nonisolated static func avatar(in roster: [String: URL], saved: @autoclosure () -> [String: URL],
+                                   for profile: String) -> URL? {
+        if let url = roster[profile] { return url }
+        let saved = saved()
+        return saved[profile] ?? avatar(in: roster, for: profile) ?? avatar(in: saved, for: profile)
     }
 
     /// Runs an async action on the chat on screen's own runtime (the screen
