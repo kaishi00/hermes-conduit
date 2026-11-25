@@ -310,7 +310,7 @@ extension AppState {
             },
             // Fails closed: without the app state, the stored answer decides.
             missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(mode) ?? LiveVoiceProviderConsent.missing(mode) },
-            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens, requestWordsWait: GeminiLiveToolBridge.phoneRequestWordsWait),
             input: audio.input,
             output: audio.output,
             // The same "End conversation" phrases as the classic Voice mode.

@@ -1984,7 +1984,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// ended call does, sent when the chat is free and never announced.
     private func sendAfterHangUp(_ request: String, toChatOf firstID: UUID) async {
         let generation = generation
-        while generation == self.generation, job(firstID)?.status == .starting {
+        // Kept from the hang-up, the wait for the chat included.
+        let since = now()
+        while generation == self.generation, job(firstID)?.status == .starting,
+              now().timeIntervalSince(since) <= Self.hangUpSendLimit {
             try? await Task.sleep(for: threadWaitInterval)
         }
         let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2006,7 +2009,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         )
         turn.isDetachedThreadTurn = true
         turn.outcomeDelivered = true
-        turn.waitsSinceHangUp = now()
+        turn.waitsSinceHangUp = since
         jobs.append(turn)
         threadTargets[turn.id] = thread
         if hangUpSendHold == nil { hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest") }
@@ -2484,11 +2487,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// waiting for the call's chat to be made counts: read at a hang-up, it
     /// is about to be the ended call's.
     var hasRequestWaitingSinceHangUp: Bool {
-        jobs.contains { $0.isThreadTurn && !$0.threadTurnSubmitted && $0.status == .starting && $0.waitsSinceHangUp != nil }
+        // One whose send is in flight counts too: a busy chat sends it back
+        // to wait, and a hand-back's reset meanwhile would drop it.
+        jobs.contains {
+            $0.isThreadTurn && $0.isDetachedThreadTurn && $0.id == threadSubmitInFlight
+                || $0.isThreadTurn && $0.status == .starting
+                && ($0.threadTurnSubmitted ? $0.isDetachedThreadTurn : $0.waitsSinceHangUp != nil)
+        }
             || callChatClaimWaits > 0
     }
     /// Requests waiting for the call's first job to make its chat.
     private var callChatClaimWaits = 0
+    /// The thread turn whose send Hermes hasn't answered yet.
+    private var threadSubmitInFlight: UUID?
 
     /// Returns once no request of an ended call waits to be sent, or after
     /// `limit`: a hand-back of the call's jobs waits for it as long as the
@@ -2736,8 +2747,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 contextLines = trimmed.lines
                 let turnText = Self.threadTurnText(for: trimmed.text)
                 notePromptSent(turnText, for: next.id)
-                let runtimeID = try await backend.submitThreadTurn(thread, target, turnText)
+                // In flight whatever a typed turn's events make of its
+                // status meanwhile: a hand-back waits for the answer.
+                threadSubmitInFlight = next.id
+                let runtimeID: String
+                do {
+                    runtimeID = try await backend.submitThreadTurn(thread, target, turnText)
+                } catch {
+                    if generation == self.generation { threadSubmitInFlight = nil }
+                    throw error
+                }
                 guard generation == self.generation else { return }
+                threadSubmitInFlight = nil
                 // Only once Hermes took it: a turn sent back in line goes
                 // again with its own lines.
                 noteContextSent(trimmed.lines, to: thread)
@@ -3049,6 +3070,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         hangUpSendHold?()
         hangUpSendHold = nil
         callChatClaimWaits = 0
+        threadSubmitInFlight = nil
         lastJobNumber = 0
         keptCallChat = nil  // another dashboard's chat: never told to the next
         chatMatches = []
@@ -4217,7 +4239,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A readable session title: the task itself, cut at a word boundary.
     static func title(for instructions: String) -> String {
-        let collapsed = instructions
+        // The request as the live model wrote it: the user's words sent
+        // with it (issue 3236) aren't its name.
+        let collapsed = VoiceRequestWords.modelWords(of: instructions)
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")

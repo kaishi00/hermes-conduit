@@ -3616,6 +3616,42 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
     }
 
+    func testANoAboutAWaitingRequestStaysOutOfTheNextRequestsWords() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        bridge.lateYesWait = .zero
+        var spokeAt = Date(timeIntervalSince1970: 1_000)
+        var lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Clean the inbox")]
+        bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { lines.last?.text ?? "" }
+        bridge.userLines = { lines }
+        func say(_ words: String) {
+            lines.append((id: UUID(), text: words))
+            spokeAt = spokeAt.addingTimeInterval(5)
+        }
+
+        // Told no through send_request: the no was that request's.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Clean the inbox."]))
+        say("No")
+        let dropped = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+        guard case .toolResponse("call_2", _, let droppedResult, _)? = dropped.first else { return XCTFail("\(dropped)") }
+        XCTAssertEqual(droppedResult["status"], "dropped")
+
+        // Let go by the model without send_request: the bare no stays
+        // behind, what they said next goes along.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "Clean the drafts."]))
+        say("No")
+        say("Only the newsletters this time")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "start_job", arguments: ["instructions": "Archive the newsletters."]))
+        say("Yes")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_5", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 1)
+        let prompt = try XCTUnwrap(fake.submissions.first?.1)
+        XCTAssertTrue(prompt.contains("Archive the newsletters." + VoiceRequestWords.marker + "Only the newsletters this time"), prompt)
+        XCTAssertFalse(prompt.contains(VoiceRequestWords.marker + "No"), prompt)
+    }
+
     func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {
         let (supervisor, fake) = makeSupervisor()
         supervisor.beginLiveCall(asksBeforeSending: true)

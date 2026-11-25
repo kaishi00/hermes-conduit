@@ -1030,6 +1030,52 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingNotice(), "The result is announced once, on the call")
     }
 
+    /// Issue 3236: a live model writes the request itself, and turned
+    /// "Brand only." into "post them from the brand account".
+    func testARequestCarriesWhatTheUserSaidSinceTheirLastOne() async {
+        let (supervisor, _, bridge) = makeJobs()
+        var lines: [(id: UUID, text: String)] = [(id: UUID(), text: "I trust what it's going to say")]
+        bridge.userLines = { lines }
+        _ = await bridge.handle(.init(id: "c1", name: "start_job", arguments: ["instructions": "Update the drafts, then post the ad."]))
+        let first = "Update the drafts, then post the ad." + VoiceRequestWords.marker + "I trust what it's going to say"
+        XCTAssertTrue(supervisor.jobs.contains { $0.instructions.contains(first) }, "\(supervisor.jobs.map(\.instructions))")
+
+        // Only what they said since: the rest of a line that grew, and the new one.
+        lines[0].text += " they'll need their own truck"
+        lines.append((id: UUID(), text: "Brand only."))
+        _ = await bridge.handle(.init(id: "c2", name: "start_job", arguments: ["instructions": "Post them from the brand account."]))
+        let second = "Post them from the brand account." + VoiceRequestWords.marker + "they'll need their own truck\nBrand only."
+        XCTAssertTrue(supervisor.jobs.contains { $0.instructions.contains(second) }, "\(supervisor.jobs.map(\.instructions))")
+    }
+
+    func testTheUsersWordsGoWithARequestOnlyWhenTheyAddSomething() {
+        let marker = VoiceRequestWords.marker
+        XCTAssertEqual(VoiceRequestWords.adding([" Brand only. ", ""], to: "Post them."), "Post them." + marker + "Brand only.")
+        XCTAssertEqual(VoiceRequestWords.adding([], to: "Post them."), "Post them.")
+        // Passed on as they said it: nothing to add.
+        XCTAssertEqual(VoiceRequestWords.adding(["Check the server, please"], to: "check the server please"), "check the server please")
+        XCTAssertEqual(VoiceRequestWords.adding(["check the server"], to: "The user said: check the server."), "The user said: check the server.")
+        // A Watch call's request arrives with them: never twice.
+        let carried = "Post them." + marker + "Brand only."
+        XCTAssertEqual(VoiceRequestWords.adding(["Brand only."], to: carried), carried)
+        XCTAssertEqual(VoiceRequestWords.modelWords(of: carried), "Post them.")
+        XCTAssertEqual(VoiceRequestWords.modelWords(of: "Post them."), "Post them.")
+        // The newest of a long stretch, and none of it past a Watch job's limit.
+        let long = (1...40).map { "Thing number \($0) I said on the call just now." }
+        let kept = VoiceRequestWords.adding(long, to: "Do it.")
+        XCTAssertTrue(kept.hasSuffix(long[39]))
+        XCTAssertFalse(kept.contains(long[0]))
+        XCTAssertLessThanOrEqual(kept.count, "Do it.".count + marker.count + VoiceRequestWords.maxCharacters + 40)
+        XCTAssertEqual(VoiceRequestWords.adding(["Brand only."], to: "Post them.", maxBytes: 20), "Post them.")
+        // A Watch call's request and correction carry them; its other calls don't.
+        XCTAssertEqual(VoiceRequestWords.watchArguments(name: "start_job", arguments: ["instructions": "Post them.", "profile": "Fam"], said: "Brand only."),
+                       ["instructions": "Post them." + marker + "Brand only.", "profile": "Fam"])
+        XCTAssertEqual(VoiceRequestWords.watchArguments(name: "interrupt_job", arguments: ["job_id": "1", "message": "Stop it."], said: "Hold on a minute"),
+                       ["job_id": "1", "message": "Stop it." + marker + "Hold on a minute"])
+        XCTAssertEqual(VoiceRequestWords.watchArguments(name: "web_search", arguments: ["query": "ramen"], said: "Find ramen"), ["query": "ramen"])
+        XCTAssertEqual(VoiceRequestWords.watchArguments(name: "start_job", arguments: ["instructions": "Post them."], said: nil), ["instructions": "Post them."])
+    }
+
     func testGeminiLiveCancelJobSettlesOpenCallsSilentlyAndListReportsJobs() async throws {
         let (supervisor, fake, bridge) = makeJobs()
         _ = await bridge.handle(.init(id: "c1", name: "start_job", arguments: ["instructions": "long task"]))
