@@ -249,6 +249,9 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(state.reportProfiles, "all")
         XCTAssertEqual(state.otherProfiles, ["work"])
         XCTAssertTrue(state.offersProfileChoice)
+        // A plugin that can't leave single profiles out sends no list, so none is offered.
+        XCTAssertNil(state.excludedProfiles)
+        XCTAssertTrue(state.leaveOutChoices.isEmpty)
         XCTAssertTrue(state.memory)
         XCTAssertEqual(state.inboxDeadlines, false)
         XCTAssertEqual(state.lookFirst, false)
@@ -266,6 +269,32 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertFalse(state.backfill.canStart)
         XCTAssertEqual(state.backfillDays, 30)
         XCTAssertEqual(state.ratings["commitment"], PulseRating(yes: 3, no: 1))
+    }
+
+    /// Issue 3241: while Pulse reads every profile, single ones can be left out.
+    func testProfilesLeftOutWhileEveryProfileIsRead() throws {
+        var state = try XCTUnwrap(PulseState(json: json("""
+        {"ok": true, "report_profiles": "all", "other_profiles": ["work", "default"],
+         "excluded_profiles": ["nahida", 5]}
+        """)))
+        XCTAssertEqual(state.excludedProfiles, ["nahida"])
+        XCTAssertEqual(state.leaveOutChoices.map(\.name), ["default", "nahida", "work"])
+        XCTAssertEqual(state.leaveOutChoices.map(\.leftOut), [false, true, false])
+        state.leaveOut("work", true)
+        XCTAssertEqual(state.excludedProfiles, ["nahida", "work"])
+        XCTAssertEqual(state.otherProfiles, ["default"])
+        state.leaveOut("nahida", false)
+        XCTAssertEqual(state.excludedProfiles, ["work"])
+        XCTAssertEqual(state.otherProfiles, ["default", "nahida"])
+        // Every other profile left out: the choice stays, so one can be read again.
+        state.leaveOut("default", true)
+        state.leaveOut("nahida", true)
+        XCTAssertTrue(state.otherProfiles.isEmpty)
+        XCTAssertTrue(state.offersProfileChoice)
+        XCTAssertEqual(state.leaveOutChoices.count, 3)
+        // Reading only its own profile, there is nothing to leave out.
+        state.reportProfiles = "this"
+        XCTAssertTrue(state.leaveOutChoices.isEmpty)
     }
 
     func testAStateWithoutAHomeChatOrBackfill() throws {

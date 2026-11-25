@@ -8695,6 +8695,88 @@
         }
       }
     },
+    "Leave out" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auslassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exclure"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kecualikan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escludi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除外"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제외"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pomiń"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixar de fora"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Исключить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hariç tut"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排除"
+          }
+        }
+      }
+    },
     "Left out of the look ahead" : {
       "localizations" : {
         "de" : {
@@ -13693,6 +13775,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pulse 正在儀表板上執行。"
+          }
+        }
+      }
+    },
+    "Pulse doesn't read the chats, memories or scheduled jobs of a profile you leave out. What it already remembers from one stays until you remove it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse liest die Chats, Erinnerungen und geplanten Aufgaben eines ausgelassenen Profils nicht. Was es sich aus einem solchen Profil bereits gemerkt hat, bleibt, bis du es entfernst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse no lee los chats, los recuerdos ni las tareas programadas de un perfil que excluyas. Lo que ya recuerda de ese perfil se conserva hasta que lo quites."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ne lit ni les discussions, ni les souvenirs, ni les tâches planifiées d'un profil que vous excluez. Ce qu'il en a déjà retenu reste jusqu'à ce que vous le supprimiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse tidak membaca chat, memori, atau tugas terjadwal dari profil yang Anda kecualikan. Yang sudah diingatnya dari profil itu tetap ada sampai Anda menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse non legge le chat, i ricordi né le attività pianificate di un profilo che escludi. Quello che ricorda già di quel profilo resta finché non lo rimuovi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除外したプロフィールのチャット、メモリ、スケジュール済みジョブをPulseは読みません。そのプロフィールからすでに覚えた内容は、削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제외한 프로필의 채팅, 메모리, 예약된 작업은 Pulse가 읽지 않습니다. 그 프로필에서 이미 기억한 내용은 직접 삭제할 때까지 남아 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse nie czyta czatów, wspomnień ani zaplanowanych zadań pominiętego profilu. To, co już z niego zapamiętał, zostaje, dopóki tego nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse não lê os chats, as memórias nem as tarefas agendadas de um perfil que você deixa de fora. O que ele já lembra desse perfil fica até você remover."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse не читает чаты, память и запланированные задачи исключённого профиля. То, что он уже запомнил из такого профиля, остаётся, пока вы это не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse, hariç tuttuğunuz bir profilin sohbetlerini, anılarını ve zamanlanmış işlerini okumaz. O profilden zaten hatırladıkları, siz kaldırana kadar kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 不会读取被排除的配置文件的聊天、记忆和定时任务。它已从该配置文件记住的内容会保留，直到你将其移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 不會讀取被排除的設定檔的聊天、記憶和排程工作。它已從該設定檔記住的內容會保留，直到你將其移除。"
           }
         }
       }

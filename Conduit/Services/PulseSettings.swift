@@ -145,6 +145,9 @@ struct PulseState: Equatable {
     /// "all" or "this".
     var reportProfiles = "this"
     var otherProfiles: [String] = []
+    /// The other profiles left out by name while Pulse reads every profile
+    /// (issue 3241); nil from a plugin that can't leave any out.
+    var excludedProfiles: [String]?
     var memory = false
     /// Memory keeps deadlines from the Shortcuts inbox (0.90.0); nil from an
     /// older plugin.
@@ -243,6 +246,7 @@ struct PulseState: Equatable {
         nextReportAt = PulseJSON.date(json["next_report_at"])
         reportProfiles = json["report_profiles"] as? String == "all" ? "all" : "this"
         otherProfiles = PulseJSON.strings(json["other_profiles"])
+        excludedProfiles = json["excluded_profiles"] is [Any] ? PulseJSON.strings(json["excluded_profiles"]) : nil
         memory = PulseJSON.bool(json["memory"]) ?? false
         inboxDeadlines = PulseJSON.bool(json["inbox_deadlines"])
         lookFirst = PulseJSON.bool(json["look_first"])
@@ -284,8 +288,42 @@ struct PulseState: Equatable {
     }
 
     /// The profile choice is offered when there's more than this profile to
-    /// report on, or the user already narrowed it to this one.
-    var offersProfileChoice: Bool { !otherProfiles.isEmpty || reportProfiles == "this" }
+    /// report on, or the user already narrowed it: to this one, or by
+    /// leaving every other one out.
+    var offersProfileChoice: Bool {
+        !otherProfiles.isEmpty || reportProfiles == "this" || excludedProfiles?.isEmpty == false
+    }
+
+    /// The other profiles Pulse can leave out, each with whether it is: the
+    /// ones it reads and the ones left out, the default profile first as
+    /// the plugin lists them. Empty unless Pulse reads every profile on a
+    /// plugin that takes the list.
+    var leaveOutChoices: [PulseLeaveOutChoice] {
+        guard reportProfiles == "all", let excludedProfiles else { return [] }
+        let leftOut = Set(excludedProfiles)
+        var seen = Set<String>()
+        return (otherProfiles + excludedProfiles)
+            .filter { seen.insert($0).inserted }
+            .sorted { ($0 == "default" ? 0 : 1, $0) < ($1 == "default" ? 0 : 1, $1) }
+            .map { PulseLeaveOutChoice(name: $0, leftOut: leftOut.contains($0)) }
+    }
+
+    /// Leaves `name` out, or reads it again: `excludedProfiles` and
+    /// `otherProfiles` as the plugin will answer.
+    mutating func leaveOut(_ name: String, _ leftOut: Bool) {
+        var excluded = (excludedProfiles ?? []).filter { $0 != name }
+        var read = otherProfiles.filter { $0 != name }
+        if leftOut { excluded.append(name) } else { read.append(name) }
+        excludedProfiles = excluded
+        otherProfiles = read
+    }
+}
+
+/// One other profile Pulse can leave out (`PulseState.leaveOutChoices`).
+struct PulseLeaveOutChoice: Identifiable, Equatable {
+    let name: String
+    let leftOut: Bool
+    var id: String { name }
 }
 
 /// The note to Pulse (0.78.2): the plugin's reports, morning brief and
