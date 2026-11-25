@@ -328,6 +328,15 @@ struct ChatView: View {
             planDock
             // Predictive guesses (off unless turned on in Settings > Chat).
             PredictiveRow(store: appState.predictive, appState: appState)
+            // The Kanban tasks the chat handed to the board (desktop issue 553).
+            // Not under a saved copy of another chat, which isn't this one.
+            ChatKanbanTasksDock(
+                appState: appState,
+                openChatID: appState.activeSessionId,
+                isBusy: appState.isBusy,
+                isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
+                    && (!appState.showSidebar || shell.hasChatBeside)
+            )
             // The chat's standing goal, loop and heartbeat (issue 821).
             SessionControlDock(store: appState.sessionControl, appState: appState, openChatID: appState.activeSessionId)
             // The chat's queue on the Webapp's listener: messages waiting

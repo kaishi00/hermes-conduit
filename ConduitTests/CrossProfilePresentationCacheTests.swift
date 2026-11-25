@@ -3519,6 +3519,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(unread)
         lists.fails = false
 
+        // Still listed, but a newer far pick replaced this one while the
+        // list was read (a strip's generation moved on, #3301): nothing
+        // switches, and the profile isn't remembered for a later visit.
+        let rememberedBefore = appState.rememberedActiveProfile(for: mac.id)
+        let stale = await appState.switchForCombinedProfile(in: mac.id, profile: "atlas", stillWanted: { false })
+        XCTAssertFalse(stale)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "a replaced pick switches nothing")
+        XCTAssertEqual(appState.rememberedActiveProfile(for: mac.id), rememberedBefore, "nor is it remembered there")
+
         // Deleted on Mac's Hermes since, after a visit there left it
         // remembered.
         appState.rememberActiveProfile("atlas", for: mac.id)
