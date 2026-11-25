@@ -41,11 +41,39 @@ enum VoiceRequestWords {
         }
         guard !lines.isEmpty else { return request }
         let theirs = WatchBridgeDelegation.comparable(lines.joined(separator: " "))
-        guard !theirs.isEmpty,
-              !(" " + WatchBridgeDelegation.comparable(request) + " ").contains(" " + theirs + " ") else { return request }
+        guard !theirs.isEmpty, !carries(request, words: theirs) else { return request }
         let whole = request + marker + lines.joined(separator: "\n")
         if let maxBytes, whole.utf8.count > maxBytes { return request }
         return whole
+    }
+
+    /// Whether `request` already carries the user's `words` (`comparable`
+    /// already): as whole words, or, for Chinese and Japanese, written
+    /// without spaces, as their letters and numbers anywhere in it, with
+    /// punctuation on either side left out (desktop#529). A short answer
+    /// ("不", "好的") sits inside too many longer words to be found that way,
+    /// so under `unspacedMinimum` letters it must stand as a run of its own.
+    static func carries(_ request: String, words: String) -> Bool {
+        if words.unicodeScalars.contains(where: isUnspaced) {
+            let bare = { (text: String) in
+                String(String.UnicodeScalarView(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }))
+            }
+            let theirs = bare(words)
+            if theirs.unicodeScalars.count >= unspacedMinimum { return bare(request).contains(theirs) }
+        }
+        return (" " + WatchBridgeDelegation.comparable(request) + " ").contains(" " + words + " ")
+    }
+
+    /// Letters an unspaced answer needs before it's looked for inside the request's words.
+    static let unspacedMinimum = 3
+
+    /// A Han, Hiragana or Katakana letter: scripts written without spaces.
+    private static func isUnspaced(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040...0x30FF, 0x31F0...0x31FF, 0x3400...0x4DBF, 0x4E00...0x9FFF,
+             0xF900...0xFAFF, 0xFF66...0xFF9F, 0x20000...0x2FA1F: return true
+        default: return false
+        }
     }
 
     /// A Watch job's request may be 3,000 bytes as JSON on the host
