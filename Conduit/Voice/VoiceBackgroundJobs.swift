@@ -1876,7 +1876,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // Only a Watch call continues a chat this way: its later
             // requests say so too, not just its first job's (#888).
             let sessionID = runtimeID.isEmpty ? chat.runtimeSessionID : runtimeID
-            let prompt = Self.jobPrompt(for: request)
+            // The chat already holds the recent lines the call's earlier
+            // requests brought it (issue 3236), as a phone call's chat does.
+            let trimmed = Self.requestWithoutContextSent(request, sent: contextSent(to: chat))
+            let prompt = Self.jobPrompt(for: trimmed.text)
             let dropTurnSurface = await backend.reportTurnSurface(sessionID, prompt, true)
             // A cancel while the report went sends nothing. Until the submit
             // begins, a cancel never interrupts the chat, whose running turn
@@ -1905,6 +1908,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 throw error
             }
             guard generation == self.generation else { return }
+            noteContextSent(trimmed.lines, to: chat)
             // A cancel that landed mid-submit reached Hermes before the turn
             // existed, so it is repeated now that there is one to stop, as a
             // first job's start does (issue 2295).
@@ -2327,6 +2331,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         chatNotes.removeAll()
         callChatPrompts.removeAll()
         callChatContextSent.removeAll()
+        callChatContextChat = nil
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
     }
@@ -2365,6 +2370,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         callChatContextSent.removeAll()
+        callChatContextChat = nil
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
@@ -2566,16 +2572,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
                 // The chat already holds the recent lines an earlier
                 // request of this call brought it (issue 3236).
-                let trimmed = Self.requestWithoutContextSent(request, sent: callChatContextSent)
+                let trimmed = Self.requestWithoutContextSent(request, sent: contextSent(to: thread))
                 let turnText = Self.threadTurnText(for: trimmed.text)
                 notePromptSent(turnText, for: next.id)
                 let runtimeID = try await backend.submitThreadTurn(thread, target, turnText)
                 guard generation == self.generation else { return }
                 // Only once Hermes took it: a turn sent back in line goes
                 // again with its own lines.
-                if liveThread.map({ Self.sameChat($0, thread) }) == true {
-                    callChatContextSent.formUnion(trimmed.lines)
-                }
+                noteContextSent(trimmed.lines, to: thread)
                 update(next.id) {
                     // A resumed chat can run on a new runtime id.
                     if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
@@ -2919,6 +2923,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         workUpdatesOut.removeAll()
         callChatPrompts.removeAll()
         callChatContextSent.removeAll()
+        callChatContextChat = nil
         screenshotNotesHeard.removeAll()
         notedChatTurns.removeAll()
         lastUnidentifiedChatReply = nil
@@ -3238,6 +3243,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// 89% of what GPT-Live sent, a third of it sent before). Emptied as
     /// the call leaves the chat.
     private var callChatContextSent: Set<String> = []
+    /// The chat those lines went to: another chat starts over.
+    private var callChatContextChat: VoiceThreadTarget?
+
+    /// The recent-conversation lines `chat` already holds from this call's
+    /// requests: the ones noted for it, else those of the request that made it.
+    private func contextSent(to chat: VoiceThreadTarget) -> Set<String> {
+        if let held = callChatContextChat, Self.sameChat(held, chat) { return callChatContextSent }
+        var sent: Set<String> = []
+        for job in jobs where (job.isCallChat || job.opensCallChat) && job.requestSent
+            && [job.runtimeSessionID, job.storedSessionID].compactMap({ $0 }).contains(where: { chat.owns(sessionID: $0) }) {
+            sent.formUnion(Self.requestWithoutContextSent(job.instructions, sent: []).lines)
+        }
+        return sent
+    }
+
+    private func noteContextSent(_ lines: Set<String>, to chat: VoiceThreadTarget) {
+        let sent = contextSent(to: chat)
+        callChatContextChat = chat
+        callChatContextSent = sent.union(lines)
+    }
 
     /// Lines shorter than this are kept whatever was sent: "Yes." said
     /// again answers something else, and costs nothing.

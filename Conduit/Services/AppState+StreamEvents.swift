@@ -463,6 +463,16 @@ extension AppState {
         return row.content.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(words)
     }
 
+    /// Drops the words still streaming when the rows already hold them
+    /// before the tool at `toolIndex`, with the pace kept for them.
+    private func dropStreamedWordsSaved(beforeToolAt toolIndex: Int) {
+        guard Self.streamedWordsAreSaved(shownChat.streamingBuffer, beforeToolAt: toolIndex, in: messages) else { return }
+        shownChat.streamingBuffer = ""
+        streamingText = ""
+        shownChat.lastStreamingPublishBurst = 0
+        shownChat.lastStreamingPublishDate = nil
+    }
+
     /// A tool's start: its running card, after the reasoning and words
     /// before it. On a chat left mid-reply too (all-live stage 2), without
     /// what the start asks of the screen.
@@ -487,15 +497,15 @@ extension AppState {
                 // The rows that brought this tool brought the words before
                 // it: the same words replayed after a resync aren't a live
                 // reply (issue 3216).
-                if Self.streamedWordsAreSaved(shownChat.streamingBuffer, beforeToolAt: known, in: messages) {
-                    shownChat.streamingBuffer = ""
-                    streamingText = ""
-                }
+                dropStreamedWordsSaved(beforeToolAt: known)
                 return
             }
-        } else if let lastRunningTool = messages.last(where: { $0.role == .tool && $0.tool?.status == .running })?.tool,
+        } else if let running = messages.lastIndex(where: { $0.role == .tool && $0.tool?.status == .running }),
+                  let lastRunningTool = messages[running].tool,
                   lastRunningTool.name == name,
                   lastRunningTool.input == input {
+            // A start with no id, replayed: its words came with it too.
+            dropStreamedWordsSaved(beforeToolAt: running)
             return
         }
         // The tool card must land after a complete reasoning card; commit
