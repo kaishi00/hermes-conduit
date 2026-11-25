@@ -2235,7 +2235,7 @@ final class AppState: ObservableObject {
             missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.grokLive) ?? LiveVoiceProviderConsent.missing(.grokLive) },
             // xAI has no non-blocking calls: start_job is answered once the
             // job runs, and its outcome follows as a text update.
-            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false, requestWordsWait: GeminiLiveToolBridge.phoneRequestWordsWait),
             input: audio.input,
             output: audio.output,
             // The same "End conversation" phrases as the other voice modes.
@@ -2481,7 +2481,7 @@ final class AppState: ObservableObject {
             // them; otherwise Hermes does the work in the call's chat. Like
             // Grok's, start_job answers once the job runs and its outcome
             // follows as a text update.
-            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
+            tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false, requestWordsWait: GeminiLiveToolBridge.phoneRequestWordsWait),
             input: audio.input,
             output: audio.output,
             // The same "End conversation" phrases as the other voice modes.

@@ -470,6 +470,10 @@ final class GeminiLiveConversationController: ObservableObject {
         tools.lastUserSpeechAt = { [weak self] in self?.lastUserSpeechAt }
         // A call from Hermes approves only on the user's own yes (#449).
         tools.lastUserWords = { [weak self] in self?.transcript.last(where: { $0.speaker == .user })?.text ?? "" }
+        // A request carries what the user said for it (issue 3236).
+        tools.userLines = { [weak self] in
+            self?.transcript.filter { $0.speaker == .user }.map { (id: $0.id, text: $0.text) } ?? []
+        }
     }
 
     /// The Interrupt button: stop the model now. On an open speaker this is

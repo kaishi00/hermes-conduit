@@ -4217,7 +4217,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A readable session title: the task itself, cut at a word boundary.
     static func title(for instructions: String) -> String {
-        let collapsed = instructions
+        // The request as the live model wrote it: the user's words sent
+        // with it (issue 3236) aren't its name.
+        let collapsed = VoiceRequestWords.modelWords(of: instructions)
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")

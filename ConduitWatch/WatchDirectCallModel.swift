@@ -1742,6 +1742,9 @@ final class WatchDirectCallModel: ObservableObject {
         // The words a change on the iPhone checks for the user's own yes.
         if let line = exchangeUserLine, transcript.indices.contains(line), transcript[line].role == .user {
             wire.userWords = transcript[line].text
+            // A request carries what the user said for it, marked as
+            // theirs (issue 3236).
+            wire.arguments = VoiceRequestWords.watchArguments(name: call.name, arguments: call.arguments, said: transcript[line].text)
             // Counted from the call's first line, so trimming the
             // transcript never gives two utterances one turn.
             wire.userTurn = line + transcriptLinesDropped
