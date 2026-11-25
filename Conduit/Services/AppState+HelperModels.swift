@@ -167,6 +167,48 @@ extension AppState {
         )
     }
 
+    /// The open group chat's helper page (Group Settings' router): another
+    /// combined dashboard's room, open in place, reads and saves it on its
+    /// own dashboard through its kept connection, whose answers are kept
+    /// under that dashboard. Let go meanwhile, its reads throw and its
+    /// saves are refused.
+    func roomHelperModelSettings(task: String, inProfile profile: String) -> VoiceReplyModelSettingsModel {
+        guard let dashboardID = activeRoomSurface?.dashboardID, farRoomRuntime != nil else {
+            return helperModelSettings(task: task, inProfile: profile)
+        }
+        let roomRuntime = { [weak self] in self?.runtime(for: dashboardID) }
+        return VoiceReplyModelSettingsModel(
+            kept: {
+                guard let far = roomRuntime() else { return nil }
+                return self.act(onRuntime: far) { self.keptHelperModel(task: task, inProfile: profile) }
+            },
+            keptProviders: {
+                guard let far = roomRuntime() else { return [] }
+                return self.act(onRuntime: far) { self.keptModelProviders(inProfile: profile) }
+            },
+            load: {
+                guard let far = roomRuntime() else { throw DashboardTicketBridgeError.notReady }
+                return try await self.actAcrossAwaits(onRuntime: far) {
+                    try await self.loadHelperModel(task: task, inProfile: profile)
+                }
+            },
+            loadProviders: {
+                guard let far = roomRuntime() else { return nil }
+                return await self.actAcrossAwaits(onRuntime: far) { await self.loadModelProviders(inProfile: profile) }
+            },
+            save: { setting, confirmed in
+                guard let far = roomRuntime() else {
+                    return .refused(AppLocalization.string("Connect to Hermes to change this profile's models."))
+                }
+                return await self.actAcrossAwaits(onRuntime: far) {
+                    await self.setHelperModel(setting, confirmed: confirmed, profile: profile)
+                }
+            },
+            // Refresh models asks the open profile's Hermes.
+            offersRefresh: false
+        )
+    }
+
     func loadHelperModel(task: String, inProfile profile: String) async throws -> VoiceReplyModelSetting? {
         VoiceReplyModelSetting(auxiliaryResponse: try await readHelperModels(inProfile: profile), task: task)
     }

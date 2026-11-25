@@ -222,12 +222,13 @@ extension AppState {
         notifierPlugin.reports(RoomChatsClient.capability)
     }
 
-    /// Your agents in the open room Group Info offers a chat with.
-    /// None yet in another combined dashboard's room opened in place: its
-    /// chat would open on that dashboard, which waits for far chats to open
-    /// in place too (no-switch stage 2, the chat screen's part).
+    /// Your agents in the open room Group Info offers a chat with. Another
+    /// combined dashboard's room, open in place, offers its own: by that
+    /// dashboard's plugin and bots, their chats opening in place there.
     var activeRoomChatAgents: [RoomChatAgent] {
-        guard canOpenRoomChats, activeRoomSurface != nil, farRoomRuntime == nil else { return [] }
+        guard activeRoomSurface != nil else { return [] }
+        if let runtime = roomRuntimeToEnter { return act(onRuntime: runtime) { activeRoomChatAgents } }
+        guard canOpenRoomChats else { return [] }
         return RoomChatAgent.agents(in: GroupRoomTurns.members(activeRoomMembers, namedBy: botRoster))
     }
 
@@ -254,11 +255,26 @@ extension AppState {
     }
 
     private func openRoomChatFailure(with agent: RoomChatAgent, wrapUp: Bool) async -> String? {
+        // Another combined dashboard's room: its chat is read, made and
+        // registered on its own dashboard, across the steps' awaits.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await openRoomChatFailure(with: agent, wrapUp: wrapUp) }
+        }
         guard canOpenRoomChats, isConnected, client != nil, let surface = activeRoomSurface else {
             return RoomLinksClient.message(for: HermesError.notConnected)
         }
+        // A far room's chat opens in place on its dashboard, in its
+        // agent's profile there, with no switch.
+        let far = farRoomRuntime == nil ? nil : surface.dashboardID
+        // The room as it stands now: left since (closed, or another room or a chat
+        // opened), its far chat doesn't open over what's there.
+        // Its own first open closes the room, so that one step of the epoch
+        // is taken after it for the open of the chat that replaces a gone one.
+        final class RoomEpoch { var value = 0 }
+        let roomEpoch = RoomEpoch()
+        roomEpoch.value = groupRoomEpoch
         // Another profile's chat opens after a switch to it, which would end the call.
-        if !profilesMatch(agent.profile, activeProfile), isCallEndingProfileSwitch {
+        if far == nil, !profilesMatch(agent.profile, activeProfile), isCallEndingProfileSwitch {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
         let roomID = surface.room.roomID
@@ -289,6 +305,20 @@ extension AppState {
             },
             open: { [weak self] chatID, profile, title in
                 guard let self, self.activeDashboardID == dashboardID else { return .failed }
+                if let far {
+                    guard self.groupRoomEpoch == roomEpoch.value else { return .superseded }
+                    // From the screen's own scope, as a chat link of that
+                    // dashboard opens: the open enters its runtime itself.
+                    let outcome = await self.actAcrossAwaits(onRuntime: self.runtimeOnScreen) {
+                        await self.openFarRoomChat(chatID, profile: profile, in: far)
+                    }
+                    // Only the open's own close of the room is taken: a room
+                    // opened meanwhile keeps the screen from the replacement.
+                    if self.groupRoomEpoch == roomEpoch.value &+ 1, self.activeRoomSurface == nil {
+                        roomEpoch.value = self.groupRoomEpoch
+                    }
+                    return outcome
+                }
                 return await self.openRoomChatSession(chatID, profile: profile, title: title)
             },
             send: { [weak self] chatID, text in
