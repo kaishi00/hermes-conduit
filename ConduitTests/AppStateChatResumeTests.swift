@@ -10924,8 +10924,10 @@ extension AppStateChatResumeTests {
             let state = ChatState()
             state.messages = [ChatMessage(id: "r-\(id)", role: .assistant, content: "Hi", timestamp: "1")]
             state.turnState = running ? .running : .idle
+            // On the profile being left, as the pane's and the windows'
+            // chats are matched by their dashboard and profile (#3206).
             return BackgroundChat(sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
-                                  profile: "default", isBotChat: false, state: state)
+                                  profile: appState.activeProfile, isBotChat: false, state: state)
         }
         appState.backgroundChats = [kept("pane", running: false), kept("idle", running: false), kept("busy", running: true)]
         appState.besideChatIDs = ["pane"]
