@@ -199,8 +199,11 @@ struct ShareDraftInbox {
         guard ShareDraftNames.isSafeStoredName(name) else { return nil }
         let url = folder.appendingPathComponent(name, isDirectory: false)
         let base = resolvedPath(folder)
-        // A safe stored name is one path component, so its folder is this one.
-        guard resolvedPath(url.deletingLastPathComponent()) == base else { return nil }
+        // A file not written yet is inside because its name is one plain
+        // component: this holds even if stored names weren't checked. Its
+        // path is never standardized or resolved, which can drop `/private`
+        // from the folder's path but not from the file's.
+        guard !name.contains("/"), name != ".", name != ".." else { return nil }
         // One already there (a link, say) must still resolve inside.
         if (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil {
             let resolved = resolvedPath(url)
