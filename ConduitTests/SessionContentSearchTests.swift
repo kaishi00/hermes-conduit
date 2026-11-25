@@ -627,6 +627,59 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertFalse(model.isSearching)
     }
 
+    /// All in a combined group searches the other dashboards' profiles
+    /// too, each through its own kept connection, their hits after the
+    /// dashboard on screen's and tagged with their dashboard (no-switch
+    /// stage 4b); a far match matches only that dashboard's chat.
+    func testOtherCombinedDashboardsAreSearchedThroughTheirOwnConnections() async {
+        let stub = StubSearchRequester()
+        let farStub = StubSearchRequester()
+        let mac = UUID()
+        stub.responses[path("recycling")] = .success(["results": [result("own")]])
+        farStub.responses[path("recycling")] = .success(["results": [result("same")]])
+        farStub.responses[path("recycling", profile: "atlas")] = .failure(URLError(.timedOut))
+        let model = SessionContentSearchModel(support: SessionContentSearchSupport(), debounce: .zero)
+        let farScope = ObjectIdentifier(NSObject())
+        var context = SessionContentSearchModel.Context(scope: scope, profile: "default") { path in
+            try await stub.request(path)
+        }
+        context.farSearches = ["default", "atlas"].map { profile in
+            SessionContentSearchModel.FarSearch(dashboardID: mac, profile: profile, scope: farScope) { path in
+                try await farStub.request(path)
+            }
+        }
+        model.update(query: "recycling", context: context)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(stub.paths, [path("recycling")], "the dashboard on screen asked for its own alone")
+        XCTAssertEqual(Set(farStub.paths), [path("recycling"), path("recycling", profile: "atlas")],
+                       "each far profile through its own connection")
+        // A far profile whose search failed is left out.
+        XCTAssertEqual(model.hits.map(\.sessionID), ["own", "same"])
+        XCTAssertEqual(model.hits.map(\.dashboardID), [nil, mac])
+        XCTAssertEqual(model.hits.map(\.profile), [nil, "default"])
+        XCTAssertFalse(model.isSearching)
+
+        // The same chat id on screen and on Mac: Mac's match isn't the
+        // screen's listed row, and maps onto Mac's own.
+        var macChat = session("same", title: "Mac chat")
+        macChat.combinedDashboardID = mac
+        let owner: (SessionSummary) -> String = { session in
+            SessionContentSearch.scopeKey(dashboard: session.combinedDashboardID, profile: session.profile ?? "default")
+        }
+        let rows = SessionContentSearch.rows(
+            hits: model.hits, listed: [session("same")], known: [session("same"), macChat],
+            activeProfile: "default", owner: owner
+        )
+        XCTAssertEqual(rows.map(\.openID), ["own", "same"])
+        XCTAssertEqual(rows.last?.session?.combinedDashboardID, mac)
+        XCTAssertEqual(rows.last?.title, "Mac chat")
+        XCTAssertNotEqual(rows.first?.id, rows.last?.id)
+        // Listed among Mac's rows: dropped as the list shows it.
+        XCTAssertEqual(SessionContentSearch.rows(
+            hits: model.hits, listed: [macChat], known: [macChat], activeProfile: "default", owner: owner
+        ).map(\.openID), ["own"])
+    }
+
     /// The Chats search's own matching (titles, previews, project names), desktop issue 399.
     func testAChatsSearchIgnoresAccentsAndCaseBothWays() {
         XCTAssertTrue("Reunião com André".matchesChatSearch("andre"))

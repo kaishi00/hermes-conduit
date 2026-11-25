@@ -1424,7 +1424,9 @@ struct V2ChatsView: View {
     private var contentSearchKey: String {
         let bridge = appState.dashboardTicketBridge.map { String(describing: ObjectIdentifier($0)) } ?? "-"
         let others = appState.isAllProfilesChatsOn ? appState.allProfilesIncluded.joined(separator: ",") : ""
-        return [showingProjects ? "" : searchText, appState.activeProfile, others, String(appState.isConnected), bridge]
+        // The other combined dashboards searched with All, by connection.
+        let far = appState.isAllProfilesChatsOn ? appState.farContentSearches.map(\.key).joined(separator: ",") : ""
+        return [showingProjects ? "" : searchText, appState.activeProfile, others, String(appState.isConnected), bridge, far]
             .joined(separator: "\u{1F}")
     }
 
@@ -1440,14 +1442,22 @@ struct V2ChatsView: View {
     private func contentSearchRows(_ displayed: [SessionSummary]) -> [SessionContentSearchRow] {
         guard isSearching, !contentSearch.hits.isEmpty else { return [] }
         let known = appState.activeProfileSessions + appState.activeProfileCronSessions
-            + (appState.isAllProfilesChatsOn ? listed.sessions.filter(appState.isOtherProfileRow) : [])
+            + (appState.isAllProfilesChatsOn
+                ? listed.sessions.filter { appState.isOtherProfileRow($0) || $0.combinedDashboardID != nil } : [])
         let rows = SessionContentSearch.rows(
             hits: contentSearch.hits,
             listed: displayed,
             known: known,
             allowed: selection.isEmpty ? nil : filterRows(selection, searching: true),
             activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
-            owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
+            owner: { session in
+                guard appState.isAllProfilesChatsOn else { return "" }
+                // Another combined dashboard's row: its own profile, on its dashboard.
+                if let far = session.combinedDashboardID {
+                    return SessionContentSearch.scopeKey(dashboard: far, profile: session.profile ?? "default")
+                }
+                return appState.rowProfile(session)
+            }
         )
         // A bot's workstreams belong to its Work panel, as its Bot Chat does.
         let shown = rows.filter { row in
@@ -2049,7 +2059,12 @@ struct V2ChatsView: View {
         let button = Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            if let session = row.session, appState.isOtherProfileRow(session) {
+            if let session = row.session, session.combinedDashboardID != nil {
+                // Another combined dashboard's chat opens as its row does.
+                appState.openListedSession(session)
+            } else if row.hit.dashboardID != nil {
+                appState.openFarContentSearchHit(row.hit)
+            } else if let session = row.session, appState.isOtherProfileRow(session) {
                 appState.openListedSession(session)
             } else if row.session != nil {
                 appState.requestOpenSession(row.openID)
@@ -2070,7 +2085,7 @@ struct V2ChatsView: View {
                 isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
                 isDone: row.session.map { appState.isSessionDone($0) } ?? false,
                 selection: .chat(
-                    isActive: row.openID == appState.activeSessionId && row.hit.profile == nil
+                    isActive: row.openID == appState.activeSessionId && row.hit.profile == nil && row.hit.dashboardID == nil
                         && !(row.session.map(appState.isOtherProfileRow) ?? false),
                     beside: openBeside
                 )
@@ -2086,6 +2101,8 @@ struct V2ChatsView: View {
                     appState: appState,
                     session: session,
                     nest: nil,
+                    // Another combined dashboard's chat only opens, as its row does.
+                    isSavedRow: session.combinedDashboardID != nil,
                     onRename: { sessionPendingRename = session },
                     onDelete: { sessionPendingDeletion = session }
                 )
