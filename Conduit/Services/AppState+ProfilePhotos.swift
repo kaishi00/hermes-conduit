@@ -69,7 +69,7 @@ extension AppState {
                 if (self.profileAvatarLastWrite[bot.name] ?? 0) > rosterWriteSerial { continue }
                 switch ProfileAvatarSyncAction.action(
                     hermesHasAvatar: bot.hasAvatar,
-                    hasPhotoOnDevice: self.profileAvatarURLs[bot.name] != nil,
+                    hasPhotoOnDevice: self.profileAvatarURL(for: bot.name) != nil,
                     photoIsMirror: self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID)
                 ) {
                 case .fetch:

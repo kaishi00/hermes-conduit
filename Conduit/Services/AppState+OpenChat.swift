@@ -2267,7 +2267,7 @@ extension AppState {
         guard let notifiedProfile else { return nil }
         // Another combined dashboard names its default profile itself:
         // its caller passes that name, in its runtime's scope for the list.
-        let defaultProfileName = defaultName ?? self.defaultProfileName
+        let defaultProfileName = defaultName ?? mainProfileNameInScope
         let normalized = notifiedProfile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return nil }
         if normalized.caseInsensitiveCompare("default") == .orderedSame

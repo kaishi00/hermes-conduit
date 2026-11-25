@@ -724,13 +724,7 @@ extension AppState {
     func botAvatarImage(for bot: BotProfile) -> UIImage? {
         guard bot.hasAvatar else { return nil }
         if let image = botAvatarImages[bot.name] { return image }
-        let url: URL?
-        if !actingOnRuntimeOnScreen, let dashboardID = dashboardID(of: shownRuntime) {
-            url = farAvatarURL(for: bot.name, on: dashboardID)
-        } else {
-            url = profileAvatarURLs[bot.name]
-        }
-        return url.flatMap { ProfileAvatarImageCache.image(at: $0) }
+        return profileAvatarURL(for: bot.name).flatMap { ProfileAvatarImageCache.image(at: $0) }
     }
 
     /// The bot's picture to play where its face is the focus, when it moves
@@ -742,7 +736,7 @@ extension AppState {
     }
 
     func profileAvatarPlayback(for profile: String) -> AnimatedAvatarPlayback? {
-        guard let url = profileAvatarURLs[profile], ProfileAvatarImageCache.isAnimated(at: url) else { return nil }
+        guard let url = profileAvatarURL(for: profile), ProfileAvatarImageCache.isAnimated(at: url) else { return nil }
         return .file(url, revision: ProfileAvatarImageCache.revision(of: url))
     }
 
@@ -893,7 +887,7 @@ extension AppState {
         guard let dashboardID = activeDashboardID,
               let fetchedAt = botPictureFetchedAt[Self.botPictureKey(name, dashboardID: dashboardID)],
               Self.botPictureIsFresh(fetchedAt: fetchedAt, reloadedAt: botPicturesPulledAt[dashboardID], now: now),
-              profileAvatarURLs[name] != nil,
+              profileAvatarURL(for: name) != nil,
               profileAppearanceStore.isMirrored(name, dashboardID: dashboardID) else { return false }
         return true
     }

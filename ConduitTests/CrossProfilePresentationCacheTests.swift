@@ -2699,6 +2699,12 @@ extension CrossProfilePresentationCacheTests {
         }
         XCTAssertEqual(appState.profileAvatarURLs["default"], screensMain, "this dashboard's main picture stays its own")
         XCTAssertNotNil(appState.profileAppearanceStore.loadAvatarURLs(dashboardID: mac.id)["default"], "kept for the Mac")
+        // Acting for it, its pictures and its main bot's name are its own.
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.profileAvatarURL(for: "default") },
+                       appState.profileAppearanceStore.loadAvatarURLs(dashboardID: mac.id)["default"])
+        _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.profileDisplayName("default") }, "Mac main")
+        XCTAssertNotEqual(appState.profileDisplayName("default"), "Mac main", "this dashboard's main name stays its own")
         kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
         appState.activeSessionId = "plain-far-chat"
