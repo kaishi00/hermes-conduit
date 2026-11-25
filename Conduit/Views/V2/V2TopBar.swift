@@ -342,12 +342,12 @@ struct V2ProfileStrip: View {
             : CombinedBotsHomeOrder.key(appState.activeDashboardID, appState.activeProfile)
     }
 
-    /// Chats in a combined group: every dashboard's profiles in one row,
-    /// in the group's order, each with its dashboard's badge (Eric,
-    /// 2026-11-16). Empty elsewhere, and until another dashboard's
-    /// profiles are known.
+    /// A combined group: every dashboard's profiles in one row, in the
+    /// group's order, each with its dashboard's badge (Eric, 2026-11-16),
+    /// in Chats, Tasks and Settings alike (Eric, 2026-11-25: Tasks and
+    /// Settings had no way to another dashboard's profiles). Empty outside
+    /// a group, and until another dashboard's profiles are known.
     private var groupChips: [CombinedProfileChip] {
-        guard showsAllChip else { return [] }
         let chips = appState.combinedProfileStrip(own: profiles)
         return chips.contains(where: \.isOther) ? chips : []
     }
@@ -437,6 +437,9 @@ struct V2ProfileStrip: View {
         return urls
     }
 
+    /// Counts far picks across every strip (Chats, Tasks, Settings).
+    @MainActor private static var farPickGeneration = 0
+
     /// Another combined dashboard's profile: its picture, dimmed as an
     /// unselected chip, with the dashboard's badge and what waits there. A
     /// tap switches to that dashboard (through its kept connection), then
@@ -447,8 +450,19 @@ struct V2ProfileStrip: View {
         let dashboardName = appState.combinedDashboardBadge(dashboardID)?.name ?? ""
         return Button {
             Haptics.selection()
+            // Of two far picks in a row, from any tab's strip, only the
+            // last switches: an earlier one whose list read ends later
+            // would otherwise land on its dashboard after it.
+            Self.farPickGeneration += 1
+            let generation = Self.farPickGeneration
             Task { @MainActor in
-                guard await appState.switchForCombinedProfile(in: dashboardID, profile: profile) else { return }
+                guard await appState.switchForCombinedProfile(
+                    in: dashboardID,
+                    profile: profile,
+                    stillWanted: { Self.farPickGeneration == generation }
+                ) else { return }
+                // A newer far pick started while this switch ran.
+                guard Self.farPickGeneration == generation else { return }
                 // Picked by the name its own list gives, never one it
                 // doesn't list (issue 2646).
                 if !appState.profilesMatch(appState.activeProfile, profile),
