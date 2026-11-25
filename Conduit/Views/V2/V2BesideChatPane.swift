@@ -350,6 +350,9 @@ private struct V2BesideChatRows: View {
 
     /// The newest rows it draws: Swap shows the whole chat.
     private static let rowLimit = 60
+    /// Where the settled rows' boards go, worked out again only when those
+    /// rows change, not for each streamed event (issue 3266).
+    @State private var placement = LineBoards.PlacementMemo()
 
     var body: some View {
         // Behind another tab the pane stays mounted: it draws no rows
@@ -368,7 +371,7 @@ private struct V2BesideChatRows: View {
         // A board a reply's line places is drawn there, and its
         // conduit_show row left out, as in the chat opened (issue 3215).
         let settled = chat.newestSettledRows(Self.rowLimit)
-        let boards = LineBoards.placement(in: settled)
+        let boards = placement.placement(in: settled)
         let hidden = boards.hiddenRows
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {

@@ -615,6 +615,30 @@ extension AppStateVoiceCapabilityTests {
                                 displayKind: ChatMessage.steerDisplayKind)
         XCTAssertEqual(LineBoards.placement(in: [ask, row, steer, reply]).placed, ["a1": [id]])
         XCTAssertEqual(RichBoard.followUpRow(in: [ask, row, steer, reply]), "t1", "its follow-ups still show")
+        // So is a prompt queued while the turn ran, which Hermes stores
+        // between the turn's prompt and its reply (issue 3266).
+        var queued = ChatMessage(id: "u4", role: .user, content: "Then book it", timestamp: "2026-11-25T09:00:01Z")
+        queued.isQueuedPrompt = true
+        XCTAssertEqual(LineBoards.placement(in: [ask, row, queued, reply]).placed, ["a1": [id]])
+        // The turn still ends with its reply: the queued prompt's own turn,
+        // which follows with no user row, can't take the earlier board.
+        XCTAssertEqual(LineBoards.placement(in: [
+            ask, row, queued, plain,
+            ChatMessage(id: "a5", role: .assistant, content: "Booked. \(line)", timestamp: "2026-11-25T09:00:05Z"),
+        ]), LineBoards.Placement())
+        // A conduit_show row whose board can't be drawn drew none: the
+        // reply's line is read from the host.
+        let bare = ChatMessage(id: "t5", role: .tool, content: "", timestamp: "2026-11-25T09:00:01Z", tool: try boardTool(
+            ["ok": true, "directive": line], id: "t5"))
+        let undrawn = LineBoards.placement(in: [ask, bare, reply])
+        XCTAssertEqual(undrawn.waiting, ["a1": [id]])
+        XCTAssertEqual(undrawn.placed, ["a1": [id]])
+        XCTAssertEqual(undrawn.shown, [:])
+        // Worked out again only for other rows.
+        let memo = LineBoards.PlacementMemo()
+        XCTAssertEqual(memo.placement(in: [ask, row, reply]), placement)
+        XCTAssertEqual(memo.placement(in: [ask, row, reply]), placement)
+        XCTAssertEqual(memo.placement(in: [ask, row, plain]), LineBoards.Placement())
 
         // The rows: the reply draws the board and its follow-ups, by the row
         // it came from (a live card's place and the follow-ups go by it).

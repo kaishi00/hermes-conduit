@@ -595,12 +595,12 @@ extension AppState {
                     // its kept connection, joins its own Archived list at
                     // that list's next read there.
                     if actingOnRuntimeOnScreen {
-                        archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
+                        archivedSessions = [updated] + archivedSessions.filter { !isRemovedWith($0, updated) }
                         removePinnedState(for: updated, unpinOnHost: true)
                     }
                     clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
-                    archivedSessions.removeAll { sessionMatches($0, updated) }
+                    archivedSessions.removeAll { isRemovedWith($0, updated) }
                     // A restored cron run goes back to the Cron list, not the chats.
                     if updated.source == .cron {
                         cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
@@ -772,7 +772,7 @@ extension AppState {
             // deleted on its own runtime, leaves this one's chat under the
             // same id as it was (issue 3147).
             if actingOnRuntimeOnScreen {
-                archivedSessions.removeAll { sessionMatches($0, session) }
+                archivedSessions.removeAll { isRemovedWith($0, session) }
                 removePinnedState(for: session)
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
@@ -873,11 +873,20 @@ extension AppState {
         guard !actingOnRuntimeOnScreen else {
             guard let far = farChat, let open = activeSessionId,
                   far.profile.caseInsensitiveCompare(profile ?? activeProfile) == .orderedSame,
-                  far.dashboardID != dashboardIDOnScreen,
-                  !combinedHermesTwins(of: far.dashboardID).contains(where: { $0 == dashboardIDOnScreen })
+                  far.dashboardID != dashboardIDOnScreen
             else { return sessionIDs }
+            // A twin of the dashboard on screen lists the same chats: every id
+            // goes only when the chat open in place is the one deleted, not
+            // another chat of that Hermes (issue 3256).
             // The far chat's rows, where its dashboard lists it.
             let rows = runtime(for: far.dashboardID)?.sessions.filter { $0.nestingIDs.contains(open) } ?? []
+            // The open chat's own ids, its stored one included, so a chat
+            // open under a runtime id the deleted row doesn't list is still
+            // found; an alias it shares with another chat doesn't count.
+            let openOwn = Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } }.filter { !$0.isEmpty }).union([open])
+            if combinedHermesTwins(of: far.dashboardID).contains(where: { $0 == dashboardIDOnScreen }), !sessionIDs.isDisjoint(with: openOwn) {
+                return sessionIDs
+            }
             return sessionIDs.subtracting(Set(rows.flatMap(\.nestingIDs)).union([open]))
         }
         if let onScreen = dashboardIDOnScreen, combinedHermesTwins(of: activeDashboardID).contains(onScreen) {
@@ -1002,6 +1011,20 @@ extension AppState {
         let left = Set([lhs.id] + lhs.alternateIds)
         let right = Set([rhs.id] + rhs.alternateIds)
         return !left.isDisjoint(with: right)
+    }
+
+    /// Whether a delete or archive of `removed` takes `row` off the lists:
+    /// any id the two share, unless they are different chats (their durable
+    /// keys differ) that share only aliases each carries, which leaves
+    /// `row`, as `owningSessionRow` leaves such an alias neither's (issue
+    /// 3256). The same chat listed under two runtime ids goes whole.
+    func isRemovedWith(_ row: SessionSummary, _ removed: SessionSummary) -> Bool {
+        guard row.durableKey != removed.durableKey else { return true }
+        guard sessionMatches(row, removed) else { return false }
+        let own = { (session: SessionSummary) in Set([session.id, session.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }) }
+        let rowOwn = own(row), removedOwn = own(removed)
+        return !rowOwn.isDisjoint(with: removedOwn.union(removed.alternateIds))
+            || !removedOwn.isDisjoint(with: rowOwn.union(row.alternateIds))
     }
 
     /// The catalog row that is `sessionID`'s own chat: one whose id or
@@ -1129,17 +1152,17 @@ extension AppState {
     }
 
     func removeSessionFromLiveCatalog(_ session: SessionSummary) {
-        sessions.removeAll { sessionMatches($0, session) }
+        sessions.removeAll { isRemovedWith($0, session) }
         // The Cron rows and the saved list are the dashboard on screen's:
         // another combined dashboard's chat, deleted or archived on its
         // own runtime, never takes a row of this one's under the same id.
-        if actingOnRuntimeOnScreen { cronSessions.removeAll { sessionMatches($0, session) } }
+        if actingOnRuntimeOnScreen { cronSessions.removeAll { isRemovedWith($0, session) } }
         // A row deleted or archived while the saved list still shows goes
         // from it too, not only once the live list lands without it.
         if actingOnRuntimeOnScreen, var saved = savedChatList {
-            saved.list.sessions.removeAll { sessionMatches($0, session) }
-            saved.list.cronSessions.removeAll { sessionMatches($0, session) }
-            saved.keptPinnedRows?.removeAll { sessionMatches($0, session) }
+            saved.list.sessions.removeAll { isRemovedWith($0, session) }
+            saved.list.cronSessions.removeAll { isRemovedWith($0, session) }
+            saved.keptPinnedRows?.removeAll { isRemovedWith($0, session) }
             if saved != savedChatList { savedChatList = saved }
         }
         // Every non-forced catalog load merges the profile cache back into
@@ -1155,7 +1178,7 @@ extension AppState {
         // archives that don't list it (other profiles') stay.
         if actingOnRuntimeOnScreen {
             archivedCallsReads = archivedCallsReads.filter { _, read in
-                !read.calls.contains { sessionMatches($0, session) }
+                !read.calls.contains { isRemovedWith($0, session) }
             }
         }
         publishWidgetSnapshot()
