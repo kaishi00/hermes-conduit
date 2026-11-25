@@ -2253,6 +2253,31 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "run-far", "chat-7"], profile: profile), ["chat-7"])
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-7"], profile: "another-profile"), ["chat-1", "chat-7"],
                        "another profile's chat is kept under other keys")
+        // One Hermes saved twice lists the same chat on both: its ids all go,
+        // from the screen with the far copy open and from the far scope.
+        var twinRow = macSession("chat-1")
+        twinRow.combinedDashboardID = vps.id
+        var registry = appState.savedDashboardRegistry
+        registry.dashboards = registry.dashboards.map { dashboard in
+            var dashboard = dashboard
+            dashboard.combined = true
+            return dashboard
+        }
+        appState.savedDashboardRegistry = registry
+        appState.sessions = [macSession("chat-1")]
+        appState.combinedDashboardChats[vps.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: [farProfile], sessions: [twinRow], at: Date()
+        )
+        if let onScreen = appState.dashboardIDOnScreen, appState.combinedHermesTwins(of: vps.id) == [onScreen] {
+            XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "run-far"], profile: profile), ["chat-1", "run-far"],
+                           "the far copy open in place is the same chat")
+            XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.idsKeptOnlyForTheDeletedChat(["chat-1"], profile: farProfile) },
+                           ["chat-1"], "deleted on its other address, the screen's copy is the same chat")
+        } else {
+            XCTFail("the two dashboards weren't found to be one Hermes")
+        }
+        appState.combinedDashboardChats[vps.id] = nil
+        appState.sessions = []
         appState.farChat = nil
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1", "chat-7"], profile: profile), ["chat-1", "chat-7"],
                        "with no far chat open, it is all the deleted chat's")

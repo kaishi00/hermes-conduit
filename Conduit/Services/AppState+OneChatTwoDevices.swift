@@ -876,9 +876,9 @@ extension AppState {
                   far.dashboardID != dashboardIDOnScreen,
                   !combinedHermesTwins(of: far.dashboardID).contains(where: { $0 == dashboardIDOnScreen })
             else { return sessionIDs }
-            // The far chat's row, where its dashboard lists it.
-            let row = runtime(for: far.dashboardID)?.sessions.first { $0.nestingIDs.contains(open) }
-            return sessionIDs.subtracting(Set(row?.nestingIDs ?? []).union([open]))
+            // The far chat's rows, where its dashboard lists it.
+            let rows = runtime(for: far.dashboardID)?.sessions.filter { $0.nestingIDs.contains(open) } ?? []
+            return sessionIDs.subtracting(Set(rows.flatMap(\.nestingIDs)).union([open]))
         }
         if let onScreen = dashboardIDOnScreen, combinedHermesTwins(of: activeDashboardID).contains(onScreen) {
             return sessionIDs
@@ -926,7 +926,7 @@ extension AppState {
         // The same rows `idsKeptOnlyForTheDeletedChat` reads: an archived
         // row, or another profile's in All, can list the id too.
         let others = [sessions, cronSessions, archivedSessions, allProfilesCatalog.sessions].joined()
-            .filter { $0.id != session.id }
+            .filter { $0.id != session.id && $0.durableKey != session.durableKey }
         return own.union(session.alternateIds.filter { id in
             !id.isEmpty && !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
         })
