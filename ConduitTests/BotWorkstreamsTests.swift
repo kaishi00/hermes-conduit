@@ -346,6 +346,12 @@ extension BotModeTests {
         XCTAssertEqual(brief.bot, "Hermes")
         XCTAssertEqual(brief.task, "Run `df -h /` and return the Avail value.")
         XCTAssertEqual(brief.userWords, "Check how much disk is free")
+        // A "Task:" line in the user's own words stays theirs.
+        let pasted = try XCTUnwrap(WorkstreamBrief.parse(
+            text.replacingOccurrences(of: "«Check how much disk is free»", with: "«Notes:\n\nTask:\ncheck disk»")
+        ))
+        XCTAssertEqual(pasted.task, "Run `df -h /` and return the Avail value.")
+        XCTAssertEqual(pasted.userWords, "Notes:\n\nTask:\ncheck disk")
         XCTAssertNil(WorkstreamBrief.parse("Run df -h / please.\n\nTask:\nNothing"))
         XCTAssertNil(WorkstreamBrief.parse("You're working on a task for Hermes, who coordinates it."))
     }
