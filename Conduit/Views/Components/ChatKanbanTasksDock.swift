@@ -48,10 +48,10 @@ struct ChatKanbanTasksDock: View {
         }
         // A task that opens again (or a new one) shows the line again.
         .onChange(of: anyOpen) { _, open in if open { hidden = false } }
-        // Read as the chat opens and as each turn ends, then every 15 s
-        // while a task is still open and the chat shows.
+        // Read as the chat opens (mid-turn too) and as each turn ends, then
+        // every 15 s while a task is still open and the chat shows.
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
-            guard openChatID != nil, isShowing, !isBusy else { return }
+            guard openChatID != nil, isShowing else { return }
             repeat {
                 await read()
                 guard anyOpen else { return }
@@ -110,7 +110,7 @@ struct ChatKanbanTasksDock: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("Dismiss"))
+                .accessibilityLabel(Text(AppLocalization.string("Dismiss")))
             }
         }
         .padding(.horizontal, 14)

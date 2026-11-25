@@ -6562,8 +6562,8 @@ a squad's fan-out counts too. The chat's subagents are Delegate agents a
 chat started.
 
 **Siblings:** the phone's line above the composer and its sheet (done,
-#3304: "2 Kanban tasks in progress", "· 1 blocked" in red, "Kanban tasks
-finished" with ×; the sheet's row per task opens it in Tasks) in chats,
+#3304: "2 Kanban tasks in progress", "· 1 blocked", the line red while
+one is, "Kanban tasks finished" with ×; the sheet's row per task opens it in Tasks) in chats,
 project chats, a Bot Chat and a workstream's own chat · the notifier's
 `GET /sessions/kanban-tasks` (done, notifier #1083, 0.197.0: every board,
 through the chat's compressions, `supported: false` from a Hermes that
@@ -6573,7 +6573,7 @@ place (done: read on its own runtime; its rows don't open in Tasks, which
 shows this dashboard's boards) · not needed: the Chats list's rows (Eric
 2026-11-25 picked the line above the composer; reading every listed chat's
 tasks on each refresh isn't worth it), Delegate agents a chat started
-(their own line), Watch, CarPlay and voice calls (no composer) · Text: the
+(their own line), group rooms (a room's turns run in each bot's own session, so its cards carry no room of their own to read by), Watch, CarPlay and voice calls (no composer) · Text: the
 line's, sheet's and caption's words in every language (done); README and
 docs name no such line
 
