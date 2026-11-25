@@ -2116,6 +2116,13 @@ struct V2ChatsView: View {
     /// A match's time, led in All by the other profile it was found in.
     private func contentMatchTime(_ row: SessionContentSearchRow) -> String {
         let time = row.session?.updatedLabel ?? ""
+        // Another combined dashboard's match, listed or not: its dashboard's
+        // name and its profile's, so it never reads as this one's.
+        if let far = row.session?.combinedDashboardID ?? row.hit.dashboardID {
+            let place = [appState.combinedDashboardBadge(far)?.name, row.session?.profile ?? row.hit.profile]
+                .compactMap { $0 }.joined(separator: " · ")
+            return [place, time].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
         let owner = row.session.map { appState.isOtherProfileRow($0) ? appState.rowProfile($0) : nil } ?? row.hit.profile
         guard let owner, !AppState.profilesMatch(owner, appState.activeProfile) else { return time }
         let name = appState.profileDisplayName(owner)

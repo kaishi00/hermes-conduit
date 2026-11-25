@@ -639,7 +639,7 @@ final class SessionContentSearchTests: XCTestCase {
         farStub.responses[path("recycling")] = .success(["results": [result("same")]])
         farStub.responses[path("recycling", profile: "atlas")] = .failure(URLError(.timedOut))
         let model = SessionContentSearchModel(support: SessionContentSearchSupport(), debounce: .zero)
-        let farScope = ObjectIdentifier(NSObject())
+        let farScope = NSObject()
         var context = SessionContentSearchModel.Context(scope: scope, profile: "default") { path in
             try await stub.request(path)
         }
@@ -695,6 +695,20 @@ final class SessionContentSearchTests: XCTestCase {
         await model.waitForPendingSearch()
         XCTAssertEqual(stub.paths.count, asked, "the screen's Hermes isn't asked again")
         XCTAssertEqual(model.hits.map(\.sessionID), ["mac-mulch"])
+
+        // Mac's Hermes turns out to have no search route either: it's
+        // remembered for that connection, and nothing is asked any more.
+        farStub.responses = [:]
+        farStub.fallback = .failure(DashboardTicketBridgeError.http(status: 404, detail: "Not Found"))
+        model.update(query: "loam", context: context)
+        await model.waitForPendingSearch()
+        XCTAssertTrue(model.hits.isEmpty)
+        let farAsked = farStub.paths.count
+        model.update(query: "peat", context: context)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(farStub.paths.count, farAsked, "Mac's connection isn't asked again")
+        XCTAssertEqual(stub.paths.count, asked)
+        XCTAssertFalse(model.isSearching)
     }
 
     /// The Chats search's own matching (titles, previews, project names), desktop issue 399.
