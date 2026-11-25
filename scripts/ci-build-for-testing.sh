@@ -8,8 +8,10 @@
 #
 # One retry only: an incremental build (from a restored cache) that fails with
 # no error in a source file is retried once from scratch, since the cache
-# itself could be the cause. Any other failure is deterministic. Budget:
-# BUILD_TIMEOUT_SECS per attempt, so a retried build can take twice that.
+# itself could be the cause. A build its budget stopped with no error in a
+# source file goes on once from what it compiled (BUILD_RESUME_TIMEOUT_SECS,
+# 900 s by default). Any other failure is deterministic. Budget:
+# BUILD_TIMEOUT_SECS per attempt.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -201,6 +203,36 @@ if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$build_kind" = "incrementa
   mv "$LOG_DIR/build.log" "$LOG_DIR/build-incremental.log"
   rm -rf "$DERIVED_DATA_PATH"
   build_kind="clean retry"
+  status=0
+  start_sampler
+  XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
+fi
+# A build its budget stopped (exit 124) with no error in a source file gets
+# one more run on the same DerivedData, which goes on from what the first one
+# compiled. The budget is there to stop a wedged xcodebuild, and a slow hosted
+# runner can spend it on a healthy build: on 2026-11-25 (run 45615420344,
+# TestFlight 283) the Conduit module started compiling 574 s into the build,
+# against 27-349 s on the 31 runs before it, and the 1500 s budget ran out
+# mid-compile with no errors. A second stop fails the build.
+if [ "$status" -eq 124 ] \
+  && ! grep -E ':[0-9]+:[0-9]+: error:' "$LOG_DIR/build.log" | grep -F "$PWD/" >/dev/null; then
+  BUILD_RESUME_TIMEOUT_SECS=$(decimal_seconds "${BUILD_RESUME_TIMEOUT_SECS:-}" 900)
+  echo "::warning title=Build ran out of its ${BUILD_TIMEOUT_SECS}s budget::no error in a source file; going on from what it compiled, with ${BUILD_RESUME_TIMEOUT_SECS}s more"
+  stop_sampler
+  mv "$LOG_DIR/build.log" "$LOG_DIR/build-stopped.log"
+  # The deadline kills xcodebuild's process group, but the build service it
+  # started, and that service's compiler jobs, are not in it (the 283 run's
+  # cleanup still found a swift-frontend). One left running would hold the
+  # build database the next run opens. Hosted runners only: on a developer
+  # Mac these could be the user's own Xcode builds.
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    pkill -x SWBBuildService 2>/dev/null || true
+    pkill -x XCBBuildService 2>/dev/null || true
+    pkill -x swift-frontend 2>/dev/null || true
+    sleep 2
+  fi
+  build_kind="$build_kind, resumed"
+  BUILD_TIMEOUT_SECS="$BUILD_RESUME_TIMEOUT_SECS"
   status=0
   start_sampler
   XCODEBUILD_POLL_INTERVAL_S=2 run_build || status=$?
