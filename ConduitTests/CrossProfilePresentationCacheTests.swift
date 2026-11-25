@@ -1846,7 +1846,11 @@ extension CrossProfilePresentationCacheTests {
             )
         }
         XCTAssertNotNil(appState.combinedHermesGroups[vps.id])
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        // One reading for both: each reading numbers the Hermes anew.
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertEqual(groups[mac.id], groups[vps.id])
+        }
         XCTAssertTrue(appState.needsYou.otherDashboards[mac.id]?.contains { $0.waitID == "wr1" } == true)
         XCTAssertNil(appState.needsYou.banner, "the same Hermes' room on screen")
         // Two by the time it's back: another Hermes' room with the same id
@@ -3134,13 +3138,19 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue((before[mac.id] ?? []).isDisjoint(with: before[vps.id] ?? []),
                       "evidence: \(before), Bot Chats: \(botChats), waits: \(appState.needsYou.items.map(\.hostKey))")
         XCTAssertTrue(appState.otherCombinedDashboardsBots.isEmpty, "a late roster read: \(botChats)")
-        XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertNotEqual(groups[mac.id], groups[vps.id])
+        }
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-run-7f3a", "42"]
         let evidence = appState.combinedHermesEvidence
         XCTAssertTrue(evidence[mac.id]?.contains("cron-run-7f3a") ?? false, "its cron runs are its evidence")
         XCTAssertTrue(evidence[vps.id]?.contains("cron-run-7f3a") ?? false, "as this one's cron rows are")
         XCTAssertFalse(evidence[mac.id]?.contains("42") ?? true, "never a placeholder number")
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertEqual(groups[mac.id], groups[vps.id])
+        }
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 2, "its profile shows once")
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["42"]
         appState.cronSessions = [SessionSummary(id: "42", alternateIds: [], title: "Daily brief", model: "Hermes",
@@ -3156,7 +3166,10 @@ extension CrossProfilePresentationCacheTests {
                                             profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
                        [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertEqual(groups[mac.id], groups[vps.id])
+        }
         appState.sessions = ownSessions
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
