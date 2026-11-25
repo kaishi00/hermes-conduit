@@ -2680,11 +2680,13 @@ extension CrossProfilePresentationCacheTests {
         appState.activeSessionId = "atlas-chat"
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its dashboard's bots name its open id")
+        XCTAssertTrue(appState.placesConversationAsBotChat, "a far Bot Chat is pushed in Bots, so Back returns to Bots Home")
         kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
         appState.activeSessionId = "plain-far-chat"
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         XCTAssertNil(appState.farBotChatProfile(in: mac.id), "an ordinary far chat")
+        XCTAssertFalse(appState.placesConversationAsBotChat, "an ordinary far chat goes to Sessions")
         appState.activeSessionId = "atlas-chat"
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
 
