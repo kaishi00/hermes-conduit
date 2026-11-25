@@ -3703,6 +3703,12 @@ extension VoiceConversationControllerTests {
         let flyers = try XCTUnwrap(fake.submissions.last?.1)
         XCTAssertFalse(flyers.contains(VoiceRequestWords.marker), flyers)
 
+        // The three jobs so far finish, so the admission limit leaves room.
+        for index in 1...3 {
+            supervisor.observe(.messageComplete(sessionId: "rt-\(index)", messageId: nil, content: "done", reasoning: nil))
+        }
+        while supervisor.takePendingNotice() != nil {}
+
         // A bare no through send_request drops only itself: what they said
         // before it goes with the next request.
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_10", name: "start_job", arguments: ["instructions": "Archive the coupons."]))

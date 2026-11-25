@@ -2767,7 +2767,8 @@ final class WatchDirectCallModel: ObservableObject {
     /// one leaves them for the model's retry.
     private func settleRequestWords(id: String, taken: Bool) {
         guard let words = requestWordsPending.removeValue(forKey: id), taken else { return }
-        if let sent = requestWordsSent, sent.turn == words.turn, sent.length >= words.length { return }
+        // One answered after a later turn's request keeps that later record.
+        if let sent = requestWordsSent, sent.turn > words.turn || (sent.turn == words.turn && sent.length >= words.length) { return }
         requestWordsSent = words
     }
 
