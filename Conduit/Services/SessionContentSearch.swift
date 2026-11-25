@@ -174,6 +174,9 @@ struct SessionContentSearchHit: Identifiable, Equatable {
     /// The profile it was found in, when a search went to more than the
     /// one in use (the Chats list's All view).
     var profile: String? = nil
+    /// Another combined dashboard it was found on, through its kept
+    /// connection (All in a combined group, no-switch stage 4b).
+    var dashboardID: UUID? = nil
 
     var id: String { sessionID }
 
@@ -193,7 +196,9 @@ struct SessionContentSearchRow: Identifiable, Equatable {
 
     /// Another profile's match carries its profile, as All's list rows do:
     /// two profiles can hold the same chat id.
-    var id: String { (hit.profile.map { $0.lowercased() + "\u{1F}" } ?? "") + openID }
+    var id: String {
+        (hit.dashboardID.map { $0.uuidString + "\u{1F}" } ?? "") + (hit.profile.map { $0.lowercased() + "\u{1F}" } ?? "") + openID
+    }
     /// The id that opens it: the listed chat's, else Hermes' tip.
     var openID: String { session?.id ?? hit.sessionID }
 
@@ -272,7 +277,9 @@ enum SessionContentSearch {
     ///
     /// In All, `owner` names each chat's profile and a hit's profile is its
     /// tag (else `activeProfile`), so a chat id two profiles share matches
-    /// only within its own profile.
+    /// only within its own profile. Another combined dashboard's chat and
+    /// hit lead theirs with that dashboard (`scopeKey`), so a chat id two
+    /// dashboards share matches only on its own.
     static func rows(
         hits: [SessionContentSearchHit],
         listed: [SessionSummary],
@@ -294,7 +301,7 @@ enum SessionContentSearch {
         let allowedIDs = allowed.map { Set($0.flatMap(keys)) }
         var shown = Set<String>()
         return hits.compactMap { hit -> SessionContentSearchRow? in
-            let profile = hit.profile ?? activeProfile
+            let profile = scopeKey(dashboard: hit.dashboardID, profile: hit.profile ?? activeProfile)
             let hitIDs = Set(scoped(profile, Array(hit.identities)))
             guard hitIDs.isDisjoint(with: listedIDs) else { return nil }
             if let allowedIDs, hitIDs.isDisjoint(with: allowedIDs) { return nil }
@@ -307,6 +314,12 @@ enum SessionContentSearch {
             guard shown.insert(row.id).inserted else { return nil }
             return row
         }
+    }
+
+    /// The owner a chat or hit is matched under in All: its profile, led by
+    /// its dashboard when it's another combined dashboard's.
+    static func scopeKey(dashboard: UUID?, profile: String) -> String {
+        (dashboard.map { $0.uuidString + "|" } ?? "") + profile
     }
 
     static func identities(of session: SessionSummary) -> [String] {
@@ -362,6 +375,20 @@ final class SessionContentSearchModel: ObservableObject {
         /// one request each, their hits after the profile in use's.
         var otherProfiles: [String] = []
         let request: Requester
+        /// The other combined dashboards' profiles to search too, each
+        /// through its own kept connection, their hits after these.
+        var farSearches: [FarSearch] = []
+    }
+
+    /// One profile of another combined dashboard to search, and how to ask it.
+    struct FarSearch {
+        let dashboardID: UUID
+        let profile: String
+        /// Its kept connection: another one is a new search.
+        let scope: ObjectIdentifier
+        let request: Requester
+
+        var key: String { "\(dashboardID.uuidString)|\(profile)|\(String(describing: scope))" }
     }
 
     /// The hits for `resultsQuery`, in Hermes' order.
@@ -383,6 +410,7 @@ final class SessionContentSearchModel: ObservableObject {
         let profile: String
         let otherProfiles: [String]
         let scope: ObjectIdentifier
+        var far: [String] = []
     }
 
     init(
@@ -403,16 +431,20 @@ final class SessionContentSearchModel: ObservableObject {
     /// clears its hits; the same query on the same connection and profile
     /// changes nothing. Nil context (not connected) or a short query clears.
     func update(query raw: String, context: Context?) {
+        // A Hermes on screen with no search route still lets the other
+        // combined dashboards' be searched.
         guard let context, let query = SessionContentSearch.searchableQuery(raw),
-              !support.isUnsupported(context.scope) else {
+              !support.isUnsupported(context.scope) || !context.farSearches.isEmpty else {
             reset()
             return
         }
+        let screenUnsupported = support.isUnsupported(context.scope)
         let key = Key(
             query: query,
             profile: context.profile,
             otherProfiles: context.otherProfiles,
-            scope: ObjectIdentifier(context.scope)
+            scope: ObjectIdentifier(context.scope),
+            far: context.farSearches.map(\.key)
         )
         guard key != currentKey else { return }
         reset()
@@ -423,7 +455,10 @@ final class SessionContentSearchModel: ObservableObject {
         generation += 1
         let generation = generation
         let path = SessionContentSearch.path(query: query, profile: context.profile)
-        let others = context.otherProfiles.map { (profile: $0, path: SessionContentSearch.path(query: query, profile: $0)) }
+        let others: [(profile: String, path: String)] = screenUnsupported ? [] : context.otherProfiles.map {
+            (profile: $0, path: SessionContentSearch.path(query: query, profile: $0))
+        }
+        let far = context.farSearches.map { (search: $0, path: SessionContentSearch.path(query: query, profile: $0.profile)) }
         let scope = context.scope
         let request = context.request
         let debounce = debounce
@@ -434,7 +469,7 @@ final class SessionContentSearchModel: ObservableObject {
             // The other profiles are asked alongside this one, not one after
             // another behind it; one that fails is left out, as the list's
             // own matches still show (issue 1965).
-            let otherSearches = others.map { other in
+            let sameHost: [Task<[SessionContentSearchHit], Never>] = others.map { other in
                 Task { @MainActor () -> [SessionContentSearchHit] in
                     guard let response = try? await request(other.path) else { return [] }
                     return (SessionContentSearch.hits(from: response, query: query) ?? []).map { hit in
@@ -444,66 +479,91 @@ final class SessionContentSearchModel: ObservableObject {
                     }
                 }
             }
+            let farSearches: [Task<[SessionContentSearchHit], Never>] = far.map { far in
+                // Another combined dashboard's: one that fails, or whose
+                // Hermes has no search route, is left out.
+                Task { @MainActor () -> [SessionContentSearchHit] in
+                    guard let response = try? await far.search.request(far.path) else { return [] }
+                    return (SessionContentSearch.hits(from: response, query: query) ?? []).map { hit in
+                        var hit = hit
+                        hit.profile = far.search.profile
+                        hit.dashboardID = far.search.dashboardID
+                        return hit
+                    }
+                }
+            }
+            let all: [Task<[SessionContentSearchHit], Never>] = sameHost + farSearches
+            let primary: Requester? = screenUnsupported ? nil : request
             await withTaskCancellationHandler {
                 await self.collect(
-                    primary: { try await request(path) },
-                    others: otherSearches,
+                    primary: primary,
+                    path: path,
+                    others: sameHost,
+                    far: farSearches,
                     query: query,
                     scope: scope,
                     generation: generation
                 )
             } onCancel: {
-                otherSearches.forEach { $0.cancel() }
+                all.forEach { $0.cancel() }
             }
         }
     }
 
     /// Publishes this profile's hits as soon as they land, then each other
     /// profile's as it answers, in profile order so rows never reshuffle.
-    /// The search reads as running until the last profile answers.
+    /// The search reads as running until the last profile answers. The
+    /// other combined dashboards' (`far`) go on whatever the one on screen
+    /// answered, its search route missing included (nil `primary`).
     private func collect(
-        primary: @MainActor () async throws -> [String: Any],
+        primary: Requester?,
+        path: String,
         others: [Task<[SessionContentSearchHit], Never>],
+        far: [Task<[SessionContentSearchHit], Never>],
         query: String,
         scope: AnyObject,
         generation: Int
     ) async {
-        let outcome: Result<[String: Any], Error>
-        do { outcome = .success(try await primary()) } catch { outcome = .failure(error) }
-        // The bridge doesn't stop a request it already sent: an answer
-        // for a query the field has moved past is dropped here.
-        guard self.generation == generation else { return }
-        switch outcome {
-        case .success(let response):
-            guard let primaryHits = SessionContentSearch.hits(from: response, query: query) else {
+        var hits: [SessionContentSearchHit] = []
+        var gathered = far
+        if let primary {
+            let outcome: Result<[String: Any], Error>
+            do { outcome = .success(try await primary(path)) } catch { outcome = .failure(error) }
+            // The bridge doesn't stop a request it already sent: an answer
+            // for a query the field has moved past is dropped here.
+            guard self.generation == generation else { return }
+            switch outcome {
+            case .success(let response):
+                if let primaryHits = SessionContentSearch.hits(from: response, query: query) {
+                    hits = primaryHits
+                    gathered = others + far
+                    self.hits = hits
+                    resultsQuery = query
+                } else {
+                    others.forEach { $0.cancel() }
+                    support.markUnsupported(scope)
+                }
+            case .failure(let error):
                 others.forEach { $0.cancel() }
-                isSearching = false
-                support.markUnsupported(scope)
-                return
-            }
-            var hits = primaryHits
-            isSearching = !others.isEmpty
-            self.hits = hits
-            resultsQuery = query
-            for other in others {
-                let found = await other.value
-                guard self.generation == generation else { return }
-                guard !found.isEmpty else { continue }
-                hits += found
-                self.hits = hits
-            }
-            isSearching = false
-        case .failure(let error):
-            others.forEach { $0.cancel() }
-            isSearching = false
-            if SessionContentSearch.isUnsupported(error) {
-                support.markUnsupported(scope)
-            } else {
-                // A failed answer settles nothing: the same query,
-                // asked again, is sent again.
-                currentKey = nil
+                if SessionContentSearch.isUnsupported(error) {
+                    support.markUnsupported(scope)
+                } else {
+                    // A failed answer settles nothing: the same query,
+                    // asked again, is sent again.
+                    currentKey = nil
+                }
             }
         }
+        isSearching = !gathered.isEmpty
+        for other in gathered {
+            let found = await other.value
+            guard self.generation == generation else { return }
+            guard !found.isEmpty else { continue }
+            hits += found
+            self.hits = hits
+            resultsQuery = query
+        }
+        isSearching = false
     }
 
     /// Drops the hits and any search in flight.
@@ -535,10 +595,44 @@ extension AppState {
     func sessionContentSearchContext(acrossAllProfiles: Bool) -> SessionContentSearchModel.Context? {
         guard isConnected, let bridge = dashboardTicketBridge else { return nil }
         let others = acrossAllProfiles ? allProfilesIncluded.filter { !AppState.profilesMatch($0, activeProfile) } : []
-        return SessionContentSearchModel.Context(scope: bridge, profile: activeProfile, otherProfiles: others) { [weak bridge] path in
+        var context = SessionContentSearchModel.Context(scope: bridge, profile: activeProfile, otherProfiles: others) { [weak bridge] path in
             guard let bridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path)
         }
+        // All lists the other combined dashboards' chats too: their
+        // messages are searched through their kept connections.
+        if acrossAllProfiles { context.farSearches = farContentSearches }
+        return context
+    }
+
+    /// Each other combined dashboard's profiles whose chats All lists, kept
+    /// and connected, to search through its kept connection (no-switch
+    /// stage 4b).
+    var farContentSearches: [SessionContentSearchModel.FarSearch] {
+        guard isInCombinedGroup(activeDashboardID) else { return [] }
+        return combinedDashboardChats.keys.sorted(by: { $0.uuidString < $1.uuidString }).flatMap { id -> [SessionContentSearchModel.FarSearch] in
+            guard id != dashboardIDOnScreen, let kept = keptDashboardRuntimes[id], kept.runtime.isConnected,
+                  let profiles = combinedDashboardChats[id]?.profiles else { return [] }
+            let bridge = kept.bridge
+            return profiles.map { profile in
+                SessionContentSearchModel.FarSearch(
+                    dashboardID: id, profile: profile, scope: ObjectIdentifier(bridge)
+                ) { [weak self, weak bridge] path in
+                    guard let self, let bridge else { throw DashboardTicketBridgeError.notReady }
+                    return try await self.readKeptDashboardJSON(bridge, path: path)
+                }
+            }
+        }
+    }
+
+    /// Opens a match Hermes found on another combined dashboard that its
+    /// list doesn't hold: as a chat link naming that dashboard is routed,
+    /// in place through its kept connection, else through a switch there.
+    func openFarContentSearchHit(_ hit: SessionContentSearchHit) {
+        guard let dashboardID = hit.dashboardID else { return }
+        PushNotificationService.shared.routeChatLink(ConduitNotificationTarget(
+            profile: hit.profile ?? "default", sessionId: hit.sessionID, dashboardID: dashboardID, type: nil, isChatLink: true
+        ))
     }
 }
 

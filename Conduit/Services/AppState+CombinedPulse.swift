@@ -231,7 +231,7 @@ extension AppState {
                 notificationProfileID(card.profile.isEmpty ? pulseHomeProfile : card.profile, defaultName: farDefault)
             )
         }
-        guard allowed else { return .failed }
+        guard allowed else { return .failed(nil) }
         var chat: PulseActedChat?
         if hasChat {
             let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
@@ -258,25 +258,26 @@ extension AppState {
             }
             guard opened else {
                 if pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
-                return .failed
+                return .failed(nil)
             }
         } else if let bot {
             guard let open = openFarBotChatInPlace(of: bot, in: id) else { return .notInPlace }
-            guard await open.value else { return .failed }
+            guard await open.value else { return .failed(nil) }
             // As a bot link's open: its chat comes forward over the Pulse screen.
             dismissSidebarDrawer()
             chat = act(onRuntime: runtime) { pulseActedChat(in: bot) }
         } else {
             // A card from no chat: a new chat in that dashboard's Pulse
             // profile, made and opened there.
-            guard let started = await startFarPulseNewChat(profile: profile ?? "default", in: id) else {
-                return .notInPlace
+            switch await startFarPulseNewChat(profile: profile ?? "default", in: id) {
+            case .notInPlace: return .notInPlace
+            case .failed(let said): return .failed(said)
+            case .started: break
             }
-            guard started else { return .failed }
         }
         // Only into that dashboard's chat: another chat opened meanwhile
         // gets nothing.
-        guard farChat?.dashboardID == id, activeSessionId != nil else { return .failed }
+        guard farChat?.dashboardID == id, activeSessionId != nil else { return .failed(nil) }
         prefillComposer(words ?? card.actionMessage)
         return .opened(PulseDoItOpened(chat: chat))
     }
@@ -296,11 +297,13 @@ extension AppState {
     /// `profile` (its Pulse's) through its kept connection, then opened in
     /// place there, as its workstream chats open, with no switch. Nil when
     /// that connection can't take it now (gone, or its socket busy with a
-    /// request on another profile): the caller switches there. False when
-    /// no chat opened, said in the error line.
-    func startFarPulseNewChat(profile: String, in id: UUID) async -> Bool? {
+    /// request on another profile): the caller switches there. Failed when
+    /// no chat opened, with what to say when there's more than the page's
+    /// own line, a chat made there that couldn't then be opened (its
+    /// connection dropped meanwhile) included: a switch would make a second one.
+    func startFarPulseNewChat(profile: String, in id: UUID) async -> FarPulseNewChat {
         guard id != dashboardIDOnScreen, keptRuntime(id, on: profile) != nil,
-              let client = keptDashboardRuntimes[id]?.client else { return nil }
+              let client = keptDashboardRuntimes[id]?.client else { return .notInPlace }
         let created: (sessionId: String, storedSessionId: String?, profile: String?)
         do {
             if let createSession = chatResumeLifecycleOperations.createSession {
@@ -310,22 +313,19 @@ extension AppState {
                 created = try await client.createSession(inProfile: profile)
             }
         } catch {
-            if pulseDashboardID == id { errorMessage = UserFacingError.message(for: error) }
-            return false
+            return .failed(UserFacingError.message(for: error))
         }
         // The page left that Pulse meanwhile: nothing opens over what's there now.
-        guard !Task.isCancelled, pulseDashboardID == id else { return false }
+        guard !Task.isCancelled, pulseDashboardID == id else { return .failed(nil) }
         if let returned = created.profile, !profilesMatch(returned, profile) {
-            errorMessage = AppLocalization.string("Hermes created this conversation in \(returned), not \(profile). It was not opened.")
-            return false
+            return .failed(AppLocalization.string("Hermes created this conversation in \(returned), not \(profile). It was not opened."))
         }
         let chatID = created.sessionId.isEmpty ? (created.storedSessionId ?? "") : created.sessionId
         guard !chatID.isEmpty else {
-            errorMessage = AppLocalization.string("Hermes didn't finish creating the conversation. Try again.")
-            return false
+            return .failed(AppLocalization.string("Hermes didn't finish creating the conversation. Try again."))
         }
-        guard let open = openFarWorkstreamInPlace(chatID, profile: profile, in: id) else { return false }
-        return await open.value
+        guard let open = openFarWorkstreamInPlace(chatID, profile: profile, in: id) else { return .failed(nil) }
+        return await open.value ? .started : .failed(nil)
     }
 
     /// Before a Pulse card's step on another combined dashboard's Pulse
@@ -372,17 +372,16 @@ extension AppState {
     /// dashboard's, `farPulseTaskStore`), its board loaded, for its sheet.
     /// Throws what the read threw, or that no board there has it.
     func findFarPulseTask(_ taskID: String, in store: KanbanStore) async throws -> KanbanTask {
+        // A board that didn't load doesn't stop the lookup: findTask reads
+        // every board, and the one it's on is loaded below.
         await store.reload()
-        guard store.loadedBoardSlug != nil else {
-            throw KanbanServiceError.invalidResponse(store.errorMessage
-                ?? AppLocalization.string("Kanban is not connected.", table: .tasks))
-        }
         guard let found = try await store.findTask(id: taskID) else {
             throw KanbanServiceError.invalidResponse(
                 AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
         }
         if found.board != store.loadedBoardSlug {
-            await store.selectBoard(slug: found.board)
+            // Archived tasks too, as the Tasks page's lookup loads them.
+            await store.selectBoard(slug: found.board, includeArchived: true)
             guard store.loadedBoardSlug == found.board else {
                 throw KanbanServiceError.invalidResponse(store.errorMessage
                     ?? AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
@@ -402,10 +401,21 @@ struct FarPulseTaskSheet: Identifiable {
 }
 
 /// How Do it went on another combined dashboard's Pulse shown in place.
+/// `startFarPulseNewChat`'s answer.
+enum FarPulseNewChat {
+    /// That connection can't take it now: the caller switches there.
+    case notInPlace
+    /// No chat opened, with what to say when there's more than the page's
+    /// own line.
+    case failed(String?)
+    case started
+}
+
 enum FarPulseDoIt {
     /// Not one that opens in place: the caller switches there as before.
     case notInPlace
-    /// No chat opened.
-    case failed
+    /// No chat opened, with what to say when there's more than the page's
+    /// own line.
+    case failed(String?)
     case opened(PulseDoItOpened)
 }

@@ -791,6 +791,10 @@ final class AppState: ObservableObject {
     /// a project's page, Bots Home), read by name beside the profile in
     /// use's.
     @Published var otherProfilesLiveStatus = OtherProfilesLiveStatus()
+    /// Each other combined dashboard's registries, read by profile through
+    /// its kept connection for its rows' status (AppState+FarLiveStatus).
+    @Published var farLiveStatus: [UUID: FarLiveStatus] = [:]
+    var farLiveStatusReading = false
     /// What on screen shows other profiles' live status, by what asked:
     /// their registries are read with the profile in use's while it shows.
     var liveStatusAsks: [String: LiveStatusAsk] = [:]
@@ -4404,7 +4408,7 @@ final class AppState: ObservableObject {
     /// profile, and the calendar changes Hermes asks for (AppState+PhoneSync).
     lazy var phoneSync: PhoneSyncEngine = {
         let engine = PhoneSyncEngine(calendarSource: EventKitPhoneSource(), statusSource: DevicePhoneStatusSource(),
-                                     deviceName: { UIDevice.current.name })
+                                     defaults: defaults, deviceName: { UIDevice.current.name })
         engine.onRanWithoutAsking = { [weak self] in _ = await self?.runPhoneSync(reason: .answered) }
         return engine
     }()
