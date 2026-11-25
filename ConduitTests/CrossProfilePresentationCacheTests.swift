@@ -4039,11 +4039,22 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.pulseApprovalRuntime(for: mac.id, sharingWith: nil))
         XCTAssertNil(appState.pulseApprovalRuntime(for: mac.id, sharingWith: UUID()), "shared with another Hermes")
         XCTAssertTrue(appState.pulseApprovalRuntime(for: vps.id, sharingWith: vps.id) === appState.runtimeOnScreen)
-        if appState.phoneSync.preferences.destination == nil {
-            let unshared = await appState.applyPulseApproval("change-1", kind: .addEvent, sharing: appState.phoneSync.sharingSession,
-                                                             from: mac.id)
-            XCTAssertEqual(unshared, .off, "sharing is off")
-        }
+        XCTAssertNil(appState.phoneSync.preferences.destination, "sharing is off here")
+        let unshared = await appState.applyPulseApproval("change-1", kind: .addEvent, sharing: appState.phoneSync.sharingSession,
+                                                         from: mac.id)
+        XCTAssertEqual(unshared, .off, "sharing is off")
+        // A card's task on Mac's Pulse opens on Mac's own board, through
+        // its kept connection, while it's connected; the one on screen's
+        // opens in Tasks, and a dropped connection switches there.
+        XCTAssertNil(appState.farPulseTaskStore(for: vps.id), "the one on screen's opens in Tasks")
+        XCTAssertNil(appState.farPulseTaskStore(for: nil))
+        let wasConnected = kept.runtime.isConnected
+        kept.runtime.isConnected = false
+        XCTAssertNil(appState.farPulseTaskStore(for: mac.id), "a dropped connection switches there")
+        kept.runtime.isConnected = true
+        XCTAssertTrue(kept.runtime.dashboardTicketBridge === kept.bridge)
+        XCTAssertNotNil(appState.farPulseTaskStore(for: mac.id), "on Mac's own board")
+        kept.runtime.isConnected = wasConnected
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         // A step from the one on screen's Pulse doesn't go on another's.
         let screensStep = await appState.switchForFarPulseStep(for: vps.id)

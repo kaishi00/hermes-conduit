@@ -286,10 +286,11 @@ extension AppState {
         return runtime(for: id) != nil
     }
 
-    /// Before a Pulse card's step that opens a task or starts Do it's chat
-    /// on another combined dashboard's Pulse: the switch there (its board
-    /// and its new chats are that dashboard's own pages). A calendar change
-    /// doesn't come here (`pulseStepStands`). A card's chat link doesn't come here while that
+    /// Before a Pulse card's step that starts Do it's new chat on another
+    /// combined dashboard's Pulse, or opens a task there once its kept
+    /// connection is gone: the switch there (its new chats are that
+    /// dashboard's own pages). A task on a kept, connected one opens in
+    /// place (`farPulseTaskStore`). A card's chat link doesn't come here while that
     /// dashboard is kept connected (`openFarPulseCardChat`). `dashboard`
     /// is the one whose Pulse the page showed at the tap (`pulseDashboardID`
     /// then). True when the step can go ahead on that dashboard, the page
@@ -306,6 +307,57 @@ extension AppState {
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         return pulseDashboardID == id
     }
+}
+
+extension AppState {
+    /// A Kanban store pointed at another combined dashboard's boards
+    /// through its kept connection, for a card's task on its Pulse shown in
+    /// place: that board is its own Hermes', so the task opens over the
+    /// Pulse page with no switch. Nil when `dashboard` is the one on
+    /// screen, the page no longer shows its Pulse, or it isn't kept and
+    /// connected (the step then switches there, `switchForFarPulseStep`).
+    func farPulseTaskStore(for dashboard: UUID?) -> KanbanStore? {
+        guard let id = dashboard, id != dashboardIDOnScreen, pulseDashboardID == id,
+              let runtime = runtime(for: id), runtime.isConnected,
+              let bridge = runtime.dashboardTicketBridge else { return nil }
+        // Its answers kept under its own dashboard, as its Tasks page keeps them there.
+        let answers = act(onRuntime: runtime) { screenAnswers(profile: KeptRoute.everyProfile) }
+        let store = KanbanStore()
+        store.configure(requester: bridge, serverIdentity: bridge.baseURL, answers: answers)
+        return store
+    }
+
+    /// The task `taskID` on the boards `store` reads (another combined
+    /// dashboard's, `farPulseTaskStore`), its board loaded, for its sheet.
+    /// Throws what the read threw, or that no board there has it.
+    func findFarPulseTask(_ taskID: String, in store: KanbanStore) async throws -> KanbanTask {
+        await store.reload()
+        guard store.loadedBoardSlug != nil else {
+            throw KanbanServiceError.invalidResponse(store.errorMessage
+                ?? AppLocalization.string("Kanban is not connected.", table: .tasks))
+        }
+        guard let found = try await store.findTask(id: taskID) else {
+            throw KanbanServiceError.invalidResponse(
+                AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
+        }
+        if found.board != store.loadedBoardSlug {
+            await store.selectBoard(slug: found.board)
+            guard store.loadedBoardSlug == found.board else {
+                throw KanbanServiceError.invalidResponse(store.errorMessage
+                    ?? AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
+            }
+        }
+        return found.task
+    }
+}
+
+/// A Kanban task of another combined dashboard's Pulse card, open over the
+/// Pulse page on that dashboard's own board (`farPulseTaskStore`).
+struct FarPulseTaskSheet: Identifiable {
+    let id = UUID()
+    let dashboardID: UUID
+    let store: KanbanStore
+    let task: KanbanTask
 }
 
 /// How Do it went on another combined dashboard's Pulse shown in place.
