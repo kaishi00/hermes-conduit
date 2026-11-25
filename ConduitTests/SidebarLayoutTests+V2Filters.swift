@@ -519,6 +519,80 @@ extension SidebarLayoutTests {
         XCTAssertTrue(appState.farChatMutes.isEmpty)
     }
 
+    /// Another combined dashboard's chat is starred under its own
+    /// dashboard on this phone, and its read flag is Hermes' there, set
+    /// through that dashboard's kept bridge: the screen's chat under the
+    /// same id keeps its own star and read state.
+    @MainActor
+    func testAFarChatsStarAndReadFlagAreKeptOnItsOwnDashboard() async throws {
+        let (appState, held) = try chatMuteAppState()
+        defer { held.shutdown() }
+        let far = UUID()
+        let farHeld = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { farHeld.shutdown() }
+        let connection = HermesConnection(baseUrl: "http://127.0.0.1:1", ticket: "held")
+        appState.keptDashboardRuntimes[far] = KeptDashboardRuntime(
+            client: HermesClient(connection: connection, profile: "default"),
+            bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        let screenChat = filterRow("chat-1", source: .chat)
+        var chat = screenChat
+        chat.combinedDashboardID = far
+        appState.combinedDashboardChats[far] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(farHeld.bridge), profiles: ["default"], sessions: [chat], at: Date())
+        let farScope = AppState.dashboardPreferenceBucket(far)
+
+        // Its star: this phone's, under its dashboard.
+        XCTAssertFalse(appState.isSessionStarred(chat))
+        appState.toggleSessionStarred(chat)
+        XCTAssertTrue(appState.isSessionStarred(chat))
+        XCTAssertFalse(appState.isSessionStarred(screenChat), "the screen's chat under its id isn't")
+        XCTAssertEqual(appState.sessionStars, SessionStars(), "the screen's stars are untouched")
+        XCTAssertTrue(SessionStars(defaults: appState.defaults, scope: farScope).isStarred(screenChat, profile: "default"),
+                      "where its own list reads it once it's on screen")
+        appState.toggleSessionStarred(chat)
+        XCTAssertFalse(appState.isSessionStarred(chat))
+        // A star kept under another spelling of its profile is still its star.
+        var stars = SessionStars()
+        stars.set(screenChat, starred: true, profile: "Default")
+        stars.save(to: appState.defaults, scope: farScope)
+        appState.farSessionStarsByDashboard = [:]
+        XCTAssertTrue(appState.isSessionStarred(chat))
+        appState.toggleSessionStarred(chat)
+        XCTAssertFalse(appState.isSessionStarred(chat))
+        XCTAssertEqual(SessionStars(defaults: appState.defaults, scope: farScope), SessionStars())
+
+        // Its read flag: shown at once, written on its own dashboard.
+        XCTAssertFalse(appState.isSessionUnread(chat))
+        appState.markSessionUnread(chat)
+        XCTAssertTrue(appState.isSessionUnread(chat), "shown at once")
+        XCTAssertFalse(appState.isSessionUnread(screenChat))
+        XCTAssertNotNil(appState.combinedDashboardChats[far]?.seededAt, "a list read from before can't put the old flag back")
+        try await farHeld.waitForRequests(1)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(2)
+        XCTAssertEqual(farHeld.sent.map(\.method), ["GET", "PATCH"])
+        XCTAssertTrue(farHeld.sent.last?.path.hasSuffix("/api/sessions/chat-1") ?? false)
+        try await farHeld.answer()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(appState.isSessionUnread(chat))
+
+        // Refused: the row goes back.
+        appState.markSessionRead(chat)
+        XCTAssertFalse(appState.isSessionUnread(chat))
+        try await farHeld.waitForRequests(3)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(4)
+        try await farHeld.answer(["detail": "no"], status: 500)
+        try await untilChatDone({ appState.isSessionUnread(chat) }, "the refused change goes back")
+        XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
+
+        // Not connected: nothing changes.
+        appState.keptDashboardRuntimes[far] = nil
+        appState.markSessionRead(chat)
+        XCTAssertTrue(appState.isSessionUnread(chat))
+        XCTAssertEqual(farHeld.sent.count, 4)
+    }
+
     /// Issue 3032: a timed mute that ends takes its bell with it then, not
     /// at the next read.
     @MainActor
