@@ -2777,6 +2777,25 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.conversationAgentIdentity.name, "Mac main")
         XCTAssertEqual(appState.conversationAgentIdentity.photoURL, macMain)
 
+        // A profile spelled otherwise than its roster bot wears the bot's
+        // picture, keyed by the roster's spelling, and one keyed only by the
+        // profile's spelling is still found (#3306).
+        let mainProfile = kept.runtime.activeProfile
+        kept.runtime.activeProfile = "ATLAS"
+        XCTAssertEqual(appState.conversationAgentIdentity.photoURL, macAtlas, "the roster bot's picture")
+        let macNova = try picture(4, .systemOrange)
+        let nova = BotProfile(name: "Nova", botTitle: nil, displayName: "Nova", profileDescription: "", model: nil,
+                              provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                              canonicalSession: BotCanonicalSession(id: "nova-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                              lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas, nova],
+            avatars: ["atlas": macAtlas, "default": macMain, "nova": macNova], at: Date()
+        )
+        kept.runtime.activeProfile = "nova"
+        XCTAssertEqual(appState.conversationAgentIdentity.photoURL, macNova, "the profile-spelled picture")
+        kept.runtime.activeProfile = mainProfile
+
         // Its display settings and busy mode are its own dashboard's kept
         // ones; this dashboard's stay its own.
         appState.farChat = nil
