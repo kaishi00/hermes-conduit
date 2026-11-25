@@ -405,6 +405,69 @@ struct ToolsetConfig: Equatable {
     }
 }
 
+/// The models an image or video backend offers and the one it uses
+/// (the plugin's `GET /media-models/{name}`, or Hermes' own
+/// `GET /api/tools/toolsets/{name}/models` before plugin 0.198.0).
+struct ToolsetModels: Equatable {
+    struct Model: Equatable, Identifiable {
+        let id: String
+        var display: String
+        var speed: String
+        var strengths: String
+        var price: String
+
+        /// Speed and price on one line, whichever the backend gives.
+        var facts: String {
+            [speed, price].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+    }
+
+    /// The env var on the host that the backend takes over the pick.
+    struct Override: Equatable {
+        let env: String
+        let model: String
+    }
+
+    /// The toolsets whose backends have a model to pick.
+    static let toolsets: Set<String> = ["image_gen", "video_gen"]
+
+    var hasModels: Bool
+    var plugin: String?
+    var models: [Model]
+    var current: String?
+    var defaultModel: String?
+    var override: Override?
+
+    init(_ dict: [String: Any]) {
+        plugin = dict["plugin"] as? String
+        current = dict["current"] as? String
+        defaultModel = dict["default"] as? String
+        models = (dict["models"] as? [Any] ?? []).compactMap { value in
+            guard let row = value as? [String: Any], let id = row["id"] as? String, !id.isEmpty else { return nil }
+            let display = (row["display"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id
+            return Model(
+                id: id,
+                display: display,
+                speed: row["speed"] as? String ?? "",
+                strengths: row["strengths"] as? String ?? "",
+                price: row["price"] as? String ?? ""
+            )
+        }
+        hasModels = (dict["has_models"] as? Bool ?? false) && !models.isEmpty
+        if let override = dict["override"] as? [String: Any],
+           let env = override["env"] as? String, let model = override["model"] as? String {
+            self.override = Override(env: env, model: model)
+        }
+    }
+
+    /// The answer as Hermes holds it once `model` is picked.
+    static func choosing(_ model: String, in answer: [String: Any]) -> [String: Any] {
+        var answer = answer
+        answer["current"] = model
+        return answer
+    }
+}
+
 /// Where the terminal tool runs (`GET /api/tools/terminal/backends`).
 struct TerminalBackendOption: Equatable, Identifiable {
     var id: String { name }

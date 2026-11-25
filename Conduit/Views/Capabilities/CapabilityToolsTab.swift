@@ -208,6 +208,12 @@ struct CapabilityToolsetDetailPage: View {
     @State private var keyPrompt: ToolsetConfig.EnvVar?
     @State private var keyValue = ""
     @State private var backendToConfirm: TerminalBackendOption?
+    /// The image or video backend's models, for the toolsets that have one.
+    @State private var models: ToolsetModels?
+    @State private var modelsError: String?
+    /// Counts models reads, so only the newest lands: one sent before a
+    /// backend switch or a pick can't put the old list back.
+    @State private var modelsRead = 0
 
     /// Reads again for another dashboard or profile, and once the store
     /// has been pointed at it.
@@ -257,6 +263,9 @@ struct CapabilityToolsetDetailPage: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }
+            if appState.capabilitiesAreCurrent, ToolsetModels.toolsets.contains(name) {
+                modelSection
+            }
             Text("Changes apply to new sessions.")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
@@ -277,6 +286,7 @@ struct CapabilityToolsetDetailPage: View {
             keyPrompt = nil
             keyValue = ""
             backendToConfirm = nil
+            modelsError = nil
             guard store.serves(appState.currentCapabilitiesOwner) else { return }
             await load()
         }
@@ -355,6 +365,75 @@ struct CapabilityToolsetDetailPage: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Color.primary.opacity(0.06), in: Capsule())
+    }
+
+    /// The active backend's models, the one it uses checked. Shown under
+    /// Backends, since the list is the backend's own and changes with it.
+    @ViewBuilder
+    private var modelSection: some View {
+        if let models, models.hasModels {
+            ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
+                ForEach(Array(models.models.enumerated()), id: \.element.id) { index, model in
+                    if index > 0 { Divider().opacity(0.6) }
+                    modelRow(model, models: models)
+                }
+            }
+            if let override = models.override {
+                Text(verbatim: AppLocalization.string("\(override.env) on your host picks \(override.model), over this setting.", table: .bots))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 16)
+            }
+        } else if let modelsError {
+            Text(verbatim: modelsError)
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+        }
+    }
+
+    private func modelRow(_ model: ToolsetModels.Model, models: ToolsetModels) -> some View {
+        let inUse = model.id == models.current
+        return Button {
+            guard !inUse else { return }
+            choose(model)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: model.display)
+                            .scaledFont(.subheadline.weight(.semibold))
+                        if model.id == models.defaultModel {
+                            CapabilityPill(text: AppLocalization.string("Default"), tint: .conduitAura)
+                        }
+                    }
+                    if !model.facts.isEmpty {
+                        Text(verbatim: model.facts)
+                            .scaledFont(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    if !model.strengths.isEmpty {
+                        Text(verbatim: model.strengths)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                if working == model.id {
+                    ProgressView().controlSize(.small)
+                } else if inUse {
+                    Image(systemName: "checkmark")
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.conduitAccent)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // Off with no dashboard to write through, as the switches are.
+        .disabled(working != nil || !appState.canChangeCapabilities)
+        .accessibilityAddTraits(inUse ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -528,6 +607,7 @@ struct CapabilityToolsetDetailPage: View {
         let serves = store.serves(appState.currentCapabilitiesOwner)
         config = serves ? store.keptToolsetConfig(name: name) : nil
         backends = serves && name == "terminal" ? store.keptTerminalBackends() : nil
+        models = serves && ToolsetModels.toolsets.contains(name) ? store.keptToolsetModels(name: name) : nil
     }
 
     private func load() async {
@@ -551,6 +631,43 @@ struct CapabilityToolsetDetailPage: View {
         } else if config == nil {
             configError = AppLocalization.string("Couldn't read this toolset's backends.", table: .bots)
         }
+        await loadModels()
+    }
+
+    /// The active backend's models, read again after a backend change.
+    private func loadModels(while current: () -> Bool = { true }) async {
+        guard ToolsetModels.toolsets.contains(name) else { return }
+        modelsRead += 1
+        let mine = modelsRead
+        let fresh = try? await store.toolsetModels(name: name)
+        guard !Task.isCancelled, mine == modelsRead, current() else { return }
+        if let fresh {
+            models = fresh
+            modelsError = nil
+        } else if models == nil {
+            modelsError = AppLocalization.string("Couldn't read this backend's models.", table: .bots)
+        }
+    }
+
+    private func choose(_ model: ToolsetModels.Model) {
+        Haptics.selection()
+        working = model.id
+        notice = nil
+        let owner = appState.currentCapabilitiesOwner
+        Task {
+            defer { working = nil }
+            do {
+                guard serves(owner) else { return }
+                try await store.selectToolsetModel(toolset: name, model: model.id)
+                guard serves(owner) else { return }
+                // Shown as Hermes now holds it, as the kept answer is.
+                models?.current = model.id
+                await loadModels(while: { serves(owner) })
+            } catch {
+                guard serves(owner) else { return }
+                notice = UserFacingError.message(for: error)
+            }
+        }
     }
 
     private func choose(_ provider: ToolsetConfig.Provider, capability: String?) {
@@ -573,6 +690,12 @@ struct CapabilityToolsetDetailPage: View {
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }
+                // The models are the new backend's; a read that fails says so.
+                if ToolsetModels.toolsets.contains(name) {
+                    models = nil
+                    await loadModels(while: { serves(owner) })
+                    guard serves(owner) else { return }
+                }
                 await appState.loadCapabilities()
             } catch {
                 guard serves(owner) else { return }
@@ -631,5 +754,72 @@ struct CapabilityToolsetDetailPage: View {
     /// after a dashboard or profile switch it belongs to the old one.
     private func serves(_ owner: CapabilitySnapshotOwner) -> Bool {
         appState.currentCapabilitiesOwner == owner && store.serves(owner)
+    }
+}
+
+/// A toolset's page reached from outside Capabilities (Models & providers'
+/// Image generation row): a store of its own, pointed at the dashboard and
+/// profile in use as Capabilities points its own, and the toolsets read so
+/// the page has its header.
+struct CapabilityToolsetRoute: View {
+    @EnvironmentObject private var appState: AppState
+    let name: String
+    @State private var store = CapabilitiesStore()
+    @State private var configuredOwner: CapabilitySnapshotOwner?
+
+    var body: some View {
+        CapabilityToolsetDetailPage(name: name, store: store)
+            .onAppear(perform: configure)
+            // A switch reads again for the new dashboard or profile.
+            .task(id: appState.currentCapabilitiesOwner) {
+                configure()
+                _ = await appState.loadCapabilities()
+            }
+    }
+
+    private func configure() {
+        let owner = appState.currentCapabilitiesOwner
+        guard configuredOwner != owner else { return }
+        store.configure(
+            requester: appState.dashboardTicketBridge,
+            profile: owner.profile,
+            answers: appState.screenAnswers(profile: owner.profile),
+            dashboardAnswers: appState.screenAnswers(profile: AppState.KeptRoute.everyProfile)
+        )
+        appState.showKeptCapabilities()
+        configuredOwner = owner
+    }
+}
+
+/// Models & providers' Image generation row: the Image Generation tool's
+/// page, where its backend and model are picked.
+struct ImageGenerationSettingsSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Image generation", table: .bots), symbol: "photo.on.rectangle", tint: .conduitAura) {
+            Text(AppLocalization.string("The backend and model Hermes makes pictures with, as in Capabilities > Tools.", table: .bots))
+                .scaledFont(.footnote).foregroundStyle(.secondary)
+            NavigationLink {
+                CapabilityToolsetRoute(name: "image_gen")
+                    .v2TabBarClearance()
+            } label: {
+                HStack(spacing: 12) {
+                    Text(AppLocalization.string("Image generation", table: .bots))
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.models.imageGeneration")
+        }
     }
 }
