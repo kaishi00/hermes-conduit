@@ -1932,11 +1932,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             armCallback(jobID)
             startPollingIfNeeded()
         } catch {
-            guard generation == self.generation, job(jobID)?.status.isActive == true else { return }
-            // Events that already moved it on mean Hermes took it, its
-            // context lines with it.
-            guard job(jobID)?.status == .starting else {
+            guard generation == self.generation, let status = job(jobID)?.status else { return }
+            // Events that already moved it on (to its end, even) mean Hermes
+            // took it, its context lines with it.
+            if status != .starting, status != .cancelled, !contextLines.isEmpty {
                 noteContextSent(contextLines, to: chat)
+            }
+            guard status.isActive else { return }
+            guard status == .starting else {
                 startPollingIfNeeded()
                 return
             }
@@ -2475,8 +2478,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// Returns once no request of an ended call waits to be sent, or after
-    /// `limit`: a hand-back of the call's jobs waits for it this long.
-    func hangUpRequestsSent(within limit: Duration = .seconds(30)) async {
+    /// `limit`: a hand-back of the call's jobs waits for it as long as the
+    /// request itself is kept, since the hand-back's reset would drop it.
+    func hangUpRequestsSent(within limit: Duration = .seconds(VoiceBackgroundJobSupervisor.hangUpSendLimit)) async {
         let generation = generation
         let deadline = ContinuousClock.now + limit
         while generation == self.generation, hasRequestWaitingSinceHangUp, ContinuousClock.now < deadline, !Task.isCancelled {
@@ -2729,6 +2733,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     $0.inputRequestDelivered = false
                     $0.outcomeDelivered = $0.isDetachedThreadTurn
                     if $0.isDetachedThreadTurn, $0.waitsSinceHangUp == nil { $0.waitsSinceHangUp = self.now() }
+                }
+                // Its call ended during the send: it waits with the time iOS
+                // allows, like one that was waiting at hang-up.
+                if hasRequestWaitingSinceHangUp, hangUpSendHold == nil {
+                    hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest")
                 }
                 try? await Task.sleep(for: threadWaitInterval)
             } catch {
@@ -3397,8 +3406,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let marker = WatchBridgeDelegation.contextMarker
         let handledPrefix = "User (handled separately): "
         let speakers = ["User: ", handledPrefix, "Assistant: "]
+        // A line's key ends at its words, so a line counts as sent whether
+        // or not a blank line followed it then.
         func key(_ line: String) -> String {
-            line.hasPrefix(handledPrefix) ? "User: " + line.dropFirst(handledPrefix.count) : line
+            let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            return line.hasPrefix(handledPrefix) ? "User: " + line.dropFirst(handledPrefix.count) : line
         }
         guard let cut = request.range(of: marker) else {
             return (request, ["User: " + request.trimmingCharacters(in: .whitespacesAndNewlines)])
@@ -3420,8 +3432,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         let block = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? rest
         let tail = blockEnd.map { String(rest[$0.lowerBound...]) } ?? ""
+        // The block ends with a newline (WatchBridgeDelegation.request):
+        // only the blank lines inside it are kept.
+        var blockLines = block.split(separator: "\n", omittingEmptySubsequences: false)
+        while blockLines.last?.isEmpty == true { blockLines.removeLast() }
         var lines: [String] = []
-        for line in block.split(separator: "\n", omittingEmptySubsequences: false) {
+        for line in blockLines {
             if lines.isEmpty || speakers.contains(where: line.hasPrefix) {
                 lines.append(String(line))
             } else {

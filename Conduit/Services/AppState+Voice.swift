@@ -1511,15 +1511,17 @@ extension AppState {
     /// it like a typed message. Off screen it goes to `runtimeID`, the live
     /// runtime `liveVoiceThreadRuntime` already resolved.
     func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, runtimeID: String, text: String) async throws -> String {
-        let client = try await clientForVoiceRequest()
         // Wanted while the call's jobs are still this ledger's: a request
         // still waiting at hang-up is sent after it (issue 3185), a later
         // call's start included, and only a reset (a boundary, a hand-back
         // of an ended call's jobs) neither takes the chat nor sends it.
+        // Read before the wait for the client, which a reset can fall in.
         let ledger = voiceBackgroundJobSupervisor.ledgerGeneration
         let stillWanted: () -> Bool = { [weak self] in
             self?.voiceBackgroundJobSupervisor.ledgerGeneration == ledger
         }
+        let client = try await clientForVoiceRequest()
+        guard stillWanted() else { throw CancellationError() }
         if isOpenChat(thread), let sessionID = activeSessionId {
             // A turn found running, here or by the composer's own stale-idle
             // probe, is waited for: never steered or interrupted.
