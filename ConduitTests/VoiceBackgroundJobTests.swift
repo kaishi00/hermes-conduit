@@ -2271,6 +2271,15 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(trimmed.lines.contains("User: something new that was not sent before"))
         // The other live modes' requests carry no block.
         XCTAssertEqual(VoiceBackgroundJobSupervisor.requestWithoutContextSent("The user wants the build checked.", sent: sent).text, "The user wants the build checked.")
+        // A blank line inside a speaker's words doesn't end the block.
+        let answer = "Assistant: The first paragraph of the answer.\n\nIts second paragraph, after a blank line."
+        let later = "User (handled separately): and book the hotel for the same dates"
+        let spaced = "do it" + marker + answer + "\n" + later + "\n\nmake it the blue one"
+        let first = VoiceBackgroundJobSupervisor.requestWithoutContextSent(spaced, sent: [])
+        XCTAssertEqual(first.text, spaced)
+        XCTAssertTrue(first.lines.contains(answer))
+        XCTAssertTrue(first.lines.contains("User: and book the hotel for the same dates"))
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.requestWithoutContextSent(spaced, sent: first.lines).text, "do it\n\nmake it the blue one")
     }
 
     /// Issue 3185 (Eric, 2026-11-25): a request still waiting its turn when

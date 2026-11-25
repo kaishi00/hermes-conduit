@@ -1869,6 +1869,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             try? await Task.sleep(for: threadWaitInterval)
         }
         guard generation == self.generation, job(jobID)?.status == .starting else { return }
+        // What the request brings the chat's ledger once Hermes takes it.
+        var contextLines: Set<String> = []
         do {
             let runtimeID = try await resolveRuntime(of: chat)
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
@@ -1888,6 +1890,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // The chat already holds the recent lines the call's earlier
             // requests brought it (issue 3236), as a phone call's chat does.
             let trimmed = Self.requestWithoutContextSent(request, sent: contextSent(to: chat))
+            contextLines = trimmed.lines
             let prompt = Self.jobPrompt(for: trimmed.text)
             let dropTurnSurface = await backend.reportTurnSurface(sessionID, prompt, true)
             // A cancel while the report went sends nothing. Until the submit
@@ -1930,8 +1933,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             startPollingIfNeeded()
         } catch {
             guard generation == self.generation, job(jobID)?.status.isActive == true else { return }
-            // Events that already moved it on mean Hermes took it.
-            guard job(jobID)?.status == .starting else { startPollingIfNeeded(); return }
+            // Events that already moved it on mean Hermes took it, its
+            // context lines with it.
+            guard job(jobID)?.status == .starting else {
+                noteContextSent(contextLines, to: chat)
+                startPollingIfNeeded()
+                return
+            }
             update(jobID) { $0.status = .failed(UserFacingError.message(for: error)) }
             noticeMayBePending()
         }
@@ -2649,6 +2657,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             // Dropped (the call ended) while the chat was checked.
             guard generation == self.generation, job(next.id)?.status == .starting else { continue }
+            // What the turn brings the chat's ledger once Hermes takes it.
+            var contextLines: Set<String> = []
             do {
                 // The runtime id is known before the send, so none of the
                 // turn's events arrive under an id it doesn't own yet.
@@ -2680,6 +2690,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // The chat already holds the recent lines an earlier
                 // request of this call brought it (issue 3236).
                 let trimmed = Self.requestWithoutContextSent(request, sent: contextSent(to: thread))
+                contextLines = trimmed.lines
                 let turnText = Self.threadTurnText(for: trimmed.text)
                 notePromptSent(turnText, for: next.id)
                 let runtimeID = try await backend.submitThreadTurn(thread, target, turnText)
@@ -2727,6 +2738,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if job(next.id)?.status == .starting {
                     update(next.id) { $0.status = .failed(UserFacingError.message(for: error)) }
                     noticeMayBePending()
+                } else if !contextLines.isEmpty {
+                    noteContextSent(contextLines, to: thread)
                 }
             }
         }
@@ -3392,12 +3405,23 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         let own = String(request[..<cut.lowerBound])
         let rest = String(request[cut.upperBound...])
-        // A follow-up said while the request waited comes after a blank line.
-        let blockEnd = rest.range(of: "\n\n")
+        // A follow-up said while the request waited comes after a blank
+        // line. A speaker's words can hold blank lines too, so the block
+        // runs to the first blank line no speaker's line follows.
+        var blockEnd: Range<String.Index>?
+        var search = rest.startIndex..<rest.endIndex
+        while let blank = rest.range(of: "\n\n", range: search) {
+            let after = rest[blank.upperBound...]
+            if !after.split(separator: "\n").contains(where: { line in speakers.contains(where: { line.hasPrefix($0) }) }) {
+                blockEnd = blank
+                break
+            }
+            search = blank.upperBound..<rest.endIndex
+        }
         let block = blockEnd.map { String(rest[..<$0.lowerBound]) } ?? rest
         let tail = blockEnd.map { String(rest[$0.lowerBound...]) } ?? ""
         var lines: [String] = []
-        for line in block.split(separator: "\n", omittingEmptySubsequences: true) {
+        for line in block.split(separator: "\n", omittingEmptySubsequences: false) {
             if lines.isEmpty || speakers.contains(where: line.hasPrefix) {
                 lines.append(String(line))
             } else {
