@@ -87,8 +87,11 @@ enum LineBoards {
                 guard let tool = row.tool, tool.name.lowercased() == RichCard.toolName,
                       let output = tool.output, output.contains("conduit-board") else { continue }
                 let ids = Self.ids(in: (jsonObject(output)?["directive"] as? String) ?? "")
+                // A row whose board can't be drawn here drew none: its
+                // line is read from the host, like any board no row drew.
+                guard let board = RichBoard.board(for: tool) else { continue }
                 drawn.formUnion(ids)
-                if let id = ids.first, let board = RichBoard.board(for: tool) { turn[id] = (row.id, board) }
+                if let id = ids.first { turn[id] = (row.id, board) }
             default:
                 continue
             }

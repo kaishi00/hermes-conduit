@@ -260,9 +260,11 @@ extension View {
     /// Hands the rows of the chat kept beside the one on screen
     /// (V2BesideChatPane) their state: its own profile's name and picture,
     /// and nothing that acts on a chat, as a saved copy's rows have none.
-    /// `isBusy`: a reply runs in that chat.
-    func chatRowsBeside(profile: String, isBusy: Bool) -> some View {
-        modifier(BesideChatRowsEnvironment(profile: profile, isBusy: isBusy))
+    /// `isBusy`: a reply runs in that chat. `boards`: where its rows' boards
+    /// go (LineBoards.placement), so a reply draws the board its line places
+    /// as it does in the chat opened.
+    func chatRowsBeside(profile: String, isBusy: Bool, boards: LineBoards.Placement = .init()) -> some View {
+        modifier(BesideChatRowsEnvironment(profile: profile, isBusy: isBusy, boards: boards))
     }
 }
 
@@ -271,8 +273,17 @@ extension ChatRowState {
     /// chat on screen's own facts (its latest reply, its pins, its Pulse
     /// cards, whether a send can go) aren't that chat's, so none carry over.
     @MainActor
-    static func beside(_ appState: AppState, profile: String, isBusy: Bool) -> ChatRowState {
+    static func beside(_ appState: AppState, profile: String, isBusy: Bool,
+                       boards: LineBoards.Placement = .init()) -> ChatRowState {
         var state = ChatRowState()
+        // Only the boards its own rows hold: nothing is read from the host
+        // for a chat kept beside.
+        state.placedBoardIDs = boards.placed.compactMapValues { ids in
+            let held = ids.filter { boards.shown[$0] != nil }
+            return held.isEmpty ? nil : held
+        }
+        state.shownBoards = boards.shown
+        state.shownBoardRows = boards.rows
         state.activeProfile = profile
         state.agentIdentity = ConversationAgentIdentity.workspace(
             name: appState.profileDisplayName(profile),
@@ -295,10 +306,12 @@ private struct BesideChatRowsEnvironment: ViewModifier {
     @State private var last = LastChatRowState()
     let profile: String
     let isBusy: Bool
+    let boards: LineBoards.Placement
 
     func body(content: Content) -> some View {
         content
-            .environment(\.chatRowState, last.keeping(ChatRowState.beside(appState, profile: profile, isBusy: isBusy)))
+            .environment(\.chatRowState, last.keeping(ChatRowState.beside(appState, profile: profile, isBusy: isBusy,
+                                                                          boards: boards)))
             .environment(\.chatRowActions, ChatRowActions(appState: appState))
     }
 }
