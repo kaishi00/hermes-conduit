@@ -57,7 +57,8 @@ enum LineBoards {
     }
 
     /// Where `rows`' boards go. A reply takes a board from a conduit_show
-    /// row above it in its own turn (no message of the user's between), the
+    /// row above it in its own turn (no message of the user's between; a
+    /// steer is part of the turn it steers), the
     /// first reply to name it; a board no row in `rows` drew is read from
     /// the host; a line naming an earlier turn's board, or one a reply
     /// already took, places nothing.
@@ -71,7 +72,7 @@ enum LineBoards {
         for row in rows {
             switch row.role {
             case .user:
-                turn = [:]
+                if !row.isSteer { turn = [:] }
             case .assistant:
                 let found = Self.ids(in: row.content)
                 guard !found.isEmpty else { continue }
@@ -86,8 +87,11 @@ enum LineBoards {
                 guard let tool = row.tool, tool.name.lowercased() == RichCard.toolName,
                       let output = tool.output, output.contains("conduit-board") else { continue }
                 let ids = Self.ids(in: (jsonObject(output)?["directive"] as? String) ?? "")
+                // A row whose board can't be drawn here drew none: its
+                // line is read from the host, like any board no row drew.
+                guard let board = RichBoard.board(for: tool) else { continue }
                 drawn.formUnion(ids)
-                if let id = ids.first, let board = RichBoard.board(for: tool) { turn[id] = (row.id, board) }
+                if let id = ids.first { turn[id] = (row.id, board) }
             default:
                 continue
             }
