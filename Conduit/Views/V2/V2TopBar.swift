@@ -342,12 +342,12 @@ struct V2ProfileStrip: View {
             : CombinedBotsHomeOrder.key(appState.activeDashboardID, appState.activeProfile)
     }
 
-    /// Chats in a combined group: every dashboard's profiles in one row,
-    /// in the group's order, each with its dashboard's badge (Eric,
-    /// 2026-11-16). Empty elsewhere, and until another dashboard's
-    /// profiles are known.
+    /// A combined group: every dashboard's profiles in one row, in the
+    /// group's order, each with its dashboard's badge (Eric, 2026-11-16),
+    /// in Chats, Tasks and Settings alike (Eric, 2026-11-25: Tasks and
+    /// Settings had no way to another dashboard's profiles). Empty outside
+    /// a group, and until another dashboard's profiles are known.
     private var groupChips: [CombinedProfileChip] {
-        guard showsAllChip else { return [] }
         let chips = appState.combinedProfileStrip(own: profiles)
         return chips.contains(where: \.isOther) ? chips : []
     }
