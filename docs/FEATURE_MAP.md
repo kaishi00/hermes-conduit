@@ -5028,7 +5028,7 @@ dashboards screen · the switch's captions in 13 languages · the embedded
 browser sign-in (AuthWebView, a different flow) · the bot MCP sign-in
 browser (separate)
 
-**Desktop app:** partly: native PKCE sign-in opens the system browser and receives the loopback callback (desktop#409); the iOS Private sign-in page switch is not offered. Browser sign-in cannot send proxy headers.
+**Desktop app:** partly: native PKCE sign-in opens the system browser and receives the loopback callback (desktop#409); the iOS Private sign-in page switch is not offered. Browser sign-in cannot send proxy headers. The phone's embedded browser sign-in (a login proxy's own page, or a Hermes without native sign-in whose provider signs in on its page) is the desktop's sign-in window, Open Sign-In Page: a sandboxed window with a browser session of its own per dashboard address, whose cookies are the sign-in once they open the dashboard (`desktop/src/main/browserSignIn.ts`, desktop#508); a real Google sign-in inside it is untested.
 
 **Code**
 - Browser and setting: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController, NativeOAuthLoginModel.run)
@@ -5140,7 +5140,7 @@ with a session cookie, see A connection's first reads) · the background session
 redirect rule · the dashboard socket's handshake · the login screen's
 signed-in check
 
-**Desktop app:** has it: sign-in and its redirects in the main process (`desktop/src/main/auth.ts`).
+**Desktop app:** has it: sign-in and its redirects in the main process (`desktop/src/main/auth.ts`). A first read answered by a redirect to a sign-in page (another origin, or a sign-in path on the dashboard's own, the phone's isSignInPath rule), a 401 or a refusal that is a page offers the sign-in window (`desktop/src/main/browserSignIn.ts`, desktop#508); its cookies go on every request and the socket's handshake, a redirect is never followed off the dashboard or to a sign-in page, and cookies that stop passing end the connection asking to sign in again (`desktop/src/main/connection.ts`). The http to https allowance is not made.
 
 **Code**
 - The decision: `Conduit/Services/DashboardSignInRedirect.swift` (isSignIn, redirectIsSignIn, isSignInPath)
