@@ -4510,7 +4510,7 @@ system's Paste) · not needed: group rooms' ⌘. (a room has no Stop
 of its own), the model picker's, image gallery's and suggestion list's own
 keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 
-**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘1 to ⌘6 (Ctrl+1 to Ctrl+6) follow the rail's pinned sections in the user's order, the Mac's View menu and the sheet's Go to rows with them, and an unpinned section has no key (desktop#470); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224).
+**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘1 to ⌘6 (Ctrl+1 to Ctrl+6) follow the rail's pinned sections in the user's order, the Mac's View menu and the sheet's Go to rows with them, and an unpinned section has no key (desktop#470); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224); Ctrl with the scroll wheel (a trackpad's pinch) also steps the chat text size, in the main window and a chat's own, desktop only (desktop#510).
 
 **Code**
 - Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
@@ -9682,7 +9682,7 @@ sizes have to grow by point size, the app's text styles through
 width, and Chat text size's caption is about its slider, which still applies
 on top
 
-**Desktop app:** has it (desktop#92): the chat's column stays 780 px until the chat passes about 1180 px, then it and everything in it, the composer included, steps up one text size at a time to 23 pt's worth, the header kept (`desktop/src/renderer/src/styles/app.css`, the `chat` container query); the desktop draws text at its true size, so it follows the iPhone and iPad steps, not the Mac's growth.
+**Desktop app:** partly, by ruling (Eric, 2026-11-25, desktop#509): the chat's column is 780 px at every width, and its text is the size Chat text size sets (Settings, or Ctrl/Cmd with + and −), never stepped up with the pane, so opening or closing the sidebar or a side panel doesn't change the font size (a reader on Reddit found the change unusual for a desktop app; Eric chose the text size setting alone over steps that follow the window). A wider chat shows wider margins (`desktop/src/renderer/src/styles/app.css`, the `chat` container; `desktop/test/textSizeSteady.test.ts` holds it). The rulings below on bigger text for a wider column are the phone's, iPad's and Mac's; desktop#92's steps are gone.
 
 **Code**
 - Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:systemGrowsTextStyles:), chatMax, chatShare, settings(available:systemGrowsTextStyles:), settingsMax, macLineGrowth, macMaxTextScale, macShare, textSteps(column:base:), textSteps(column:base:from:), chatTextGrowth, columnText(column:base:scalesChatText:size:systemGrowsTextStyles:): the Dynamic Type size, transcript steps and ColumnText a column sets, readableChatColumn, readableSettingsColumn)
