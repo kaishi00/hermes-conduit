@@ -299,7 +299,8 @@ struct RichBoard: Equatable {
     /// it without follow-ups means there are none to offer.
     static func followUpRow(in rows: [ChatMessage]) -> String? {
         for row in rows.reversed() {
-            if row.role == .user { return nil }
+            // A steer is part of the turn it steers: the board before it is still the turn's.
+            if row.role == .user { if row.isSteer { continue } else { return nil } }
             guard row.role == .tool, let tool = row.tool, tool.name.lowercased() == RichCard.toolName,
                   let board = board(for: tool) else { continue }
             return board.followUps.isEmpty ? nil : row.id

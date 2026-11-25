@@ -614,6 +614,7 @@ extension AppStateVoiceCapabilityTests {
         let steer = ChatMessage(id: "u3", role: .user, content: "Shorter", timestamp: "2026-11-25T09:00:01Z",
                                 displayKind: ChatMessage.steerDisplayKind)
         XCTAssertEqual(LineBoards.placement(in: [ask, row, steer, reply]).placed, ["a1": [id]])
+        XCTAssertEqual(RichBoard.followUpRow(in: [ask, row, steer, reply]), "t1", "its follow-ups still show")
 
         // The rows: the reply draws the board and its follow-ups, by the row
         // it came from (a live card's place and the follow-ups go by it).
