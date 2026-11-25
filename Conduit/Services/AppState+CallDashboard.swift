@@ -18,6 +18,27 @@ extension AppState {
         return activeDashboardID
     }
 
+    /// The dashboard the call supervisor's chats are on: the call's own as
+    /// `voiceCallDashboardID` has it, else the one on screen, whatever
+    /// dashboard's work runs in scope (a far chat's delete reads this from
+    /// that dashboard's scope, and the call isn't there).
+    var callChatsDashboardID: UUID? {
+        if isLiveCallUp, let liveCallDashboardID { return liveCallDashboardID }
+        if callProfileHandingBack != nil, let callDashboardHandingBack { return callDashboardHandingBack }
+        return dashboardIDOnScreen
+    }
+
+    /// Hermes deleted the chat `sessionIDs` name on `dashboardID`: a call
+    /// in it there goes on in a new chat (issue 1797). A call on another
+    /// combined dashboard, in a chat that shares one of the ids, keeps its
+    /// chat (issue 3147). One Hermes saved twice lists the same chat on
+    /// both, so a delete on either counts as on the call's.
+    func noteCallChatDeleted(_ sessionIDs: Set<String>, dashboardID: UUID?) {
+        var deletedOn = dashboardID
+        if let call = callChatsDashboardID, combinedHermesTwins(of: dashboardID).contains(call) { deletedOn = call }
+        voiceBackgroundJobSupervisor.noteChatDeleted(sessionIDs, dashboard: Self.dashboardPreferenceBucket(deletedOn))
+    }
+
     /// The call's dashboard when it isn't the one on screen: its requests go
     /// through that dashboard's runtime. Nil while they're the same, or
     /// with no live call.

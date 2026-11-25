@@ -418,6 +418,7 @@ final class PinnedRepliesTests: XCTestCase {
         appState.activeSessionId = "row-b"
         appState.messages = [reply("b", "Chat B", rowId: 8)]
         XCTAssertTrue(appState.openChatPinnedReplies.isEmpty)
+        appState.sessionCatalogLoadState.markLoaded(appState.sessionCatalogOwner)
         appState.dropPinnedReplies(forDeleted: row("row-b", alternates: ["row-a"]))
         XCTAssertEqual(appState.activePinnedReplies.count, 1, "deleting B keeps A's pin")
     }
@@ -432,6 +433,16 @@ final class PinnedRepliesTests: XCTestCase {
         // Listed, but the pin has not moved to the row yet.
         let listed = row("row-1", alternates: ["runtime-1"])
         appState.sessions = [listed]
+        // Before its catalog has loaded (right after a switch back) the
+        // rows on hand can't say no other chat shares the runtime id, so
+        // the pin under it stays (issue 3147).
+        appState.dropPinnedReplies(forDeleted: listed)
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+        XCTAssertEqual(appState.idsOnlyTheDeletedChatAnswersTo(
+            listed, dashboard: AppState.dashboardPreferenceBucket(appState.activeDashboardID), profile: appState.activeProfile
+        ), ["row-1"])
+
+        appState.sessionCatalogLoadState.markLoaded(appState.sessionCatalogOwner)
         appState.dropPinnedReplies(forDeleted: listed)
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
     }
