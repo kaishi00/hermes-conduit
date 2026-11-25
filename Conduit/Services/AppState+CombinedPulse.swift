@@ -212,10 +212,10 @@ extension AppState {
     /// (or an Ask's `words`) in its composer. `dashboard` is the one whose
     /// Pulse the page showed at the tap. `.notInPlace` for a card of the
     /// dashboard on screen, a page that has left that Pulse, a kept
-    /// connection that's gone, a chat that can only open through a switch,
-    /// and a card from no chat that starts a new one (New Chat isn't made on
-    /// another dashboard's runtime): the caller goes on as before
-    /// (`switchForFarPulseStep`).
+    /// connection that's gone, and a chat that can only open through a
+    /// switch: the caller goes on as before (`switchForFarPulseStep`). A
+    /// card from no chat gets a new chat made and opened in place there
+    /// (`startFarPulseNewChat`).
     func doFarPulseCard(
         _ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil, for dashboard: UUID?
     ) async -> FarPulseDoIt {
@@ -267,7 +267,12 @@ extension AppState {
             dismissSidebarDrawer()
             chat = act(onRuntime: runtime) { pulseActedChat(in: bot) }
         } else {
-            return .notInPlace
+            // A card from no chat: a new chat in that dashboard's Pulse
+            // profile, made and opened there.
+            guard let started = await startFarPulseNewChat(profile: profile ?? "default", in: id) else {
+                return .notInPlace
+            }
+            guard started else { return .failed }
         }
         // Only into that dashboard's chat: another chat opened meanwhile
         // gets nothing.
@@ -276,11 +281,57 @@ extension AppState {
         return .opened(PulseDoItOpened(chat: chat))
     }
 
-    /// Before a Pulse card's step that opens a task or starts Do it's chat,
-    /// or changes this phone's calendar, on another combined dashboard's
-    /// Pulse: the switch there (its board and its new chats are that
-    /// dashboard's own pages, and this phone shares its calendar with the
-    /// one on screen). A card's chat link doesn't come here while that
+    /// Whether a step tapped on `dashboard`'s Pulse (`pulseDashboardID` at
+    /// the tap) still goes ahead there with no switch: the page still shows
+    /// that Pulse, the one on screen's or one read through a connection
+    /// still kept. A calendar change asks through it
+    /// (`applyPulseApproval(_:kind:sharing:from:)`).
+    func pulseStepStands(on dashboard: UUID?) -> Bool {
+        guard let id = dashboard, pulseDashboardID == id else { return false }
+        return runtime(for: id) != nil
+    }
+
+    /// Do it's new chat on another combined dashboard's Pulse shown in
+    /// place, for a card from no chat: made on that dashboard's Hermes in
+    /// `profile` (its Pulse's) through its kept connection, then opened in
+    /// place there, as its workstream chats open, with no switch. Nil when
+    /// that connection can't take it now (gone, or its socket busy with a
+    /// request on another profile): the caller switches there. False when
+    /// no chat opened, said in the error line.
+    func startFarPulseNewChat(profile: String, in id: UUID) async -> Bool? {
+        guard id != dashboardIDOnScreen, keptRuntime(id, on: profile) != nil,
+              let client = keptDashboardRuntimes[id]?.client else { return nil }
+        let created: (sessionId: String, storedSessionId: String?, profile: String?)
+        do {
+            if let createSession = chatResumeLifecycleOperations.createSession {
+                created = try await createSession(client, nil)
+            } else {
+                // No model: the profile's default, as New Chat's (#916).
+                created = try await client.createSession(inProfile: profile)
+            }
+        } catch {
+            if pulseDashboardID == id { errorMessage = UserFacingError.message(for: error) }
+            return false
+        }
+        // The page left that Pulse meanwhile: nothing opens over what's there now.
+        guard !Task.isCancelled, pulseDashboardID == id else { return false }
+        if let returned = created.profile, !profilesMatch(returned, profile) {
+            errorMessage = AppLocalization.string("Hermes created this conversation in \(returned), not \(profile). It was not opened.")
+            return false
+        }
+        let chatID = created.sessionId.isEmpty ? (created.storedSessionId ?? "") : created.sessionId
+        guard !chatID.isEmpty else {
+            errorMessage = AppLocalization.string("Hermes didn't finish creating the conversation. Try again.")
+            return false
+        }
+        guard let open = openFarWorkstreamInPlace(chatID, profile: profile, in: id) else { return false }
+        return await open.value
+    }
+
+    /// Before a Pulse card's step on another combined dashboard's Pulse
+    /// whose kept connection is gone (a task, Do it): the switch there. A
+    /// kept, connected one's task opens in place (`farPulseTaskStore`), and
+    /// its Do it too (`doFarPulseCard`), a new chat included. A card's chat link doesn't come here while that
     /// dashboard is kept connected (`openFarPulseCardChat`). `dashboard`
     /// is the one whose Pulse the page showed at the tap (`pulseDashboardID`
     /// then). True when the step can go ahead on that dashboard, the page
@@ -297,6 +348,57 @@ extension AppState {
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         return pulseDashboardID == id
     }
+}
+
+extension AppState {
+    /// A Kanban store pointed at another combined dashboard's boards
+    /// through its kept connection, for a card's task on its Pulse shown in
+    /// place: that board is its own Hermes', so the task opens over the
+    /// Pulse page with no switch. Nil when `dashboard` is the one on
+    /// screen, the page no longer shows its Pulse, or it isn't kept and
+    /// connected (the step then switches there, `switchForFarPulseStep`).
+    func farPulseTaskStore(for dashboard: UUID?) -> KanbanStore? {
+        guard let id = dashboard, id != dashboardIDOnScreen, pulseDashboardID == id,
+              let runtime = runtime(for: id), runtime.isConnected,
+              let bridge = runtime.dashboardTicketBridge else { return nil }
+        // Its answers kept under its own dashboard, as its Tasks page keeps them there.
+        let answers = act(onRuntime: runtime) { screenAnswers(profile: KeptRoute.everyProfile) }
+        let store = KanbanStore()
+        store.configure(requester: bridge, serverIdentity: bridge.baseURL, answers: answers)
+        return store
+    }
+
+    /// The task `taskID` on the boards `store` reads (another combined
+    /// dashboard's, `farPulseTaskStore`), its board loaded, for its sheet.
+    /// Throws what the read threw, or that no board there has it.
+    func findFarPulseTask(_ taskID: String, in store: KanbanStore) async throws -> KanbanTask {
+        await store.reload()
+        guard store.loadedBoardSlug != nil else {
+            throw KanbanServiceError.invalidResponse(store.errorMessage
+                ?? AppLocalization.string("Kanban is not connected.", table: .tasks))
+        }
+        guard let found = try await store.findTask(id: taskID) else {
+            throw KanbanServiceError.invalidResponse(
+                AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
+        }
+        if found.board != store.loadedBoardSlug {
+            await store.selectBoard(slug: found.board)
+            guard store.loadedBoardSlug == found.board else {
+                throw KanbanServiceError.invalidResponse(store.errorMessage
+                    ?? AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
+            }
+        }
+        return found.task
+    }
+}
+
+/// A Kanban task of another combined dashboard's Pulse card, open over the
+/// Pulse page on that dashboard's own board (`farPulseTaskStore`).
+struct FarPulseTaskSheet: Identifiable {
+    let id = UUID()
+    let dashboardID: UUID
+    let store: KanbanStore
+    let task: KanbanTask
 }
 
 /// How Do it went on another combined dashboard's Pulse shown in place.

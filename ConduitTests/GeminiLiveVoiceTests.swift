@@ -1067,6 +1067,15 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(kept.contains(long[0]))
         XCTAssertLessThanOrEqual(kept.count, "Do it.".count + marker.count + VoiceRequestWords.maxCharacters + 40)
         XCTAssertEqual(VoiceRequestWords.adding(["Brand only."], to: "Post them.", maxBytes: 20), "Post them.")
+        // Chinese and Japanese have no spaces between words: words the request
+        // already carries aren't added, whatever the punctuation (desktop#529).
+        // A short answer must stand on its own: "不" inside "不要" isn't the user's no.
+        XCTAssertEqual(VoiceRequestWords.adding(["不"], to: "帮我订车，不要订贵的"), "帮我订车，不要订贵的" + marker + "不")
+        XCTAssertEqual(VoiceRequestWords.adding(["好的"], to: "好的帮我订车"), "好的帮我订车" + marker + "好的")
+        XCTAssertEqual(VoiceRequestWords.adding(["好的"], to: "好的，帮我订车"), "好的，帮我订车")
+        XCTAssertEqual(VoiceRequestWords.adding(["好的，帮我"], to: "好的，帮我订车"), "好的，帮我订车")
+        XCTAssertEqual(VoiceRequestWords.adding(["好的帮我"], to: "好的，帮我订车"), "好的，帮我订车")
+        XCTAssertEqual(VoiceRequestWords.adding(["是的"], to: "好的，帮我订车"), "好的，帮我订车" + marker + "是的")
         // A Watch call's request and correction carry them; its other calls don't.
         XCTAssertEqual(VoiceRequestWords.watchArguments(name: "start_job", arguments: ["instructions": "Post them.", "profile": "Fam"], said: "Brand only."),
                        ["instructions": "Post them." + marker + "Brand only.", "profile": "Fam"])

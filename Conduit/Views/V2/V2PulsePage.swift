@@ -214,6 +214,8 @@ struct V2PulsePage: View {
     @State private var keptCards: Set<Int> = []
     /// The added suggestion Undo asks about before it comes off the phone.
     @State private var undoCard: PulseCard?
+    /// Another combined dashboard's task, open on its own board (`openFarTask`).
+    @State private var farTask: FarPulseTaskSheet?
 
     private var client: PulseClient { appState.shownPulseClient }
 
@@ -409,6 +411,17 @@ struct V2PulsePage: View {
                 Task { await load(in: visit) }
             }
             .environmentObject(appState)
+        }
+        .sheet(item: $farTask) { sheet in
+            KanbanTaskDetailView(task: sheet.task)
+                .environment(sheet.store)
+                .environmentObject(appState)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .onChange(of: appState.pulseDashboardID) { _, shown in
+            // Its board is the Pulse's it came from: another one shown closes it.
+            if let open = farTask, open.dashboardID != shown { farTask = nil }
         }
         .sheet(isPresented: $showsLeftOut) {
             PulseLeftOutSheet(currentVisit: { visit }) { card, visit in
@@ -1378,8 +1391,14 @@ struct V2PulsePage: View {
     /// The Kanban task, opened in Tasks, where it can be unblocked or run again.
     private func taskLink(_ card: PulseCard, task: String) -> some View {
         Button {
-            // Another dashboard's Pulse: its task opens there.
             let dashboard = appState.pulseDashboardID
+            // Another dashboard's Pulse shown in place: its task opens here,
+            // on its own board through its kept connection, with no switch.
+            if let dashboard, let store = appState.farPulseTaskStore(for: dashboard) {
+                openFarTask(task, on: dashboard, in: store)
+                return
+            }
+            // One whose connection was let go: its task opens there.
             Task { if await appState.switchForFarPulseStep(for: dashboard) { appState.openPulseCardTask(card) } }
         } label: {
             HStack(spacing: 6) {
@@ -1395,6 +1414,24 @@ struct V2PulsePage: View {
         .buttonStyle(.borderless)
         .accessibilityHint(Text(AppLocalization.string("Opens the task on the board", table: .pulse)))
         .accessibilityIdentifier("pulse.card.task")
+    }
+
+    /// Another combined dashboard's task, opened over the page on its own
+    /// board: shown only while the page still shows that dashboard's Pulse.
+    private func openFarTask(_ taskID: String, on dashboard: UUID, in store: KanbanStore) {
+        let visit = self.visit
+        Task {
+            do {
+                let task = try await appState.findFarPulseTask(taskID, in: store)
+                guard isOnScreen(in: visit), appState.pulseDashboardID == dashboard else { return }
+                farTask = FarPulseTaskSheet(dashboardID: dashboard, store: store, task: task)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard isOnScreen(in: visit), appState.pulseDashboardID == dashboard else { return }
+                showError(UserFacingError.message(for: error))
+            }
+        }
     }
 
     /// The chat it came from, a tap away.
@@ -1728,9 +1765,9 @@ struct V2PulsePage: View {
             // the page back to the one on screen's.
             let tells = appState.canMarkPulseCardDone(card) && appState.pulsePlugin.reports(PulseClient.actedCapability)
             let opened: PulseDoItOpened?
-            // Another dashboard's Pulse: the card's chat, or the Bot Chat
-            // Do it goes to, opens in place there; a new chat still opens
-            // after a switch there.
+            // Another dashboard's Pulse: the card's chat, the Bot Chat Do
+            // it goes to, or a new chat made there, opens in place; only a
+            // dashboard whose connection was let go switches.
             switch await appState.doFarPulseCard(card, words: ask?.value, in: picked, for: dashboard) {
             case .opened(let far):
                 // Its chat is up over the page, which shows the one on
@@ -2058,9 +2095,10 @@ struct V2PulsePage: View {
         let visit = self.visit
         Task {
             defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
-            // Another dashboard's Pulse: this phone shares with the one on
-            // screen, so the change is made there.
-            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
+            // Another dashboard's Pulse shown in place: its own Hermes is
+            // asked, with no switch, and this phone applies the change when
+            // it shares with that Hermes.
+            guard appState.pulseStepStands(on: dashboard) else { return }
             // The sharing the tap was made in: turned off before the answer
             // comes, the tap applies nothing here.
             let sharing = appState.phoneSync.sharingSession
@@ -2073,7 +2111,8 @@ struct V2PulsePage: View {
                     AccessibilityNotification.Announcement(answer.stateText).post()
                     return
                 }
-                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing)
+                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing,
+                                                                from: dashboard)
                 guard appState.pulseDashboardID == dashboard else { return }
                 await load(in: visit)
                 guard appState.pulseDashboardID == dashboard,

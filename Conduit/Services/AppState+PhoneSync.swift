@@ -273,6 +273,47 @@ extension AppState {
         return outcome
     }
 
+    /// As `applyPulseApproval`, for a card of the Pulse `dashboard` shows:
+    /// another combined dashboard's, shown in place, is this phone's to
+    /// apply when it shares with that dashboard (or with the same Hermes
+    /// at the address on screen), and the pass runs through that
+    /// dashboard's kept connection with no switch. Sharing with another
+    /// Hermes, this phone never gets the change: `.off`, as with sharing
+    /// off, and nothing is approved here.
+    func applyPulseApproval(_ changeID: String, kind: PhoneChange.Kind, sharing: Int,
+                            from dashboard: UUID?) async -> PhoneSyncEngine.Outcome {
+        guard let dashboard, dashboard != dashboardIDOnScreen else {
+            return await applyPulseApproval(changeID, kind: kind, sharing: sharing)
+        }
+        let destination = phoneSync.preferences.destination?.dashboardID
+        guard let runtime = pulseApprovalRuntime(for: dashboard, sharingWith: destination) else {
+            // Shared with that dashboard, whose kept connection went since
+            // the tap: the approval waits here for the pass that dashboard
+            // gets once it's on screen, as before.
+            if destination == dashboard {
+                return await applyPulseApproval(changeID, kind: kind, sharing: sharing)
+            }
+            return .off
+        }
+        return await actAcrossAwaits(onRuntime: runtime) {
+            await applyPulseApproval(changeID, kind: kind, sharing: sharing)
+        }
+    }
+
+    /// The runtime a phone change approved on `dashboard`'s Pulse is
+    /// fetched through, this phone sharing with `destination`: that
+    /// dashboard's own (the one on screen's, or its kept one), or the one
+    /// on screen's when the phone shares with it and both are one Hermes.
+    /// Nil when the phone shares with another Hermes, or with none.
+    func pulseApprovalRuntime(for dashboard: UUID, sharingWith destination: UUID?) -> DashboardRuntime? {
+        guard let destination else { return nil }
+        if destination == dashboard { return runtime(for: dashboard) }
+        guard destination == dashboardIDOnScreen, combinedHermesTwins(of: dashboard).contains(destination) else {
+            return nil
+        }
+        return runtimeOnScreen
+    }
+
     /// A push from the host about a change Hermes asked for. Returns once
     /// the pass is done, so a background wake can report how it went.
     @discardableResult

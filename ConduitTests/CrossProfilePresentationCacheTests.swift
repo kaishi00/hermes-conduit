@@ -1846,7 +1846,11 @@ extension CrossProfilePresentationCacheTests {
             )
         }
         XCTAssertNotNil(appState.combinedHermesGroups[vps.id])
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        // One reading for both: each reading numbers the Hermes anew.
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertEqual(groups[mac.id], groups[vps.id])
+        }
         XCTAssertTrue(appState.needsYou.otherDashboards[mac.id]?.contains { $0.waitID == "wr1" } == true)
         XCTAssertNil(appState.needsYou.banner, "the same Hermes' room on screen")
         // Two by the time it's back: another Hermes' room with the same id
@@ -3134,13 +3138,19 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue((before[mac.id] ?? []).isDisjoint(with: before[vps.id] ?? []),
                       "evidence: \(before), Bot Chats: \(botChats), waits: \(appState.needsYou.items.map(\.hostKey))")
         XCTAssertTrue(appState.otherCombinedDashboardsBots.isEmpty, "a late roster read: \(botChats)")
-        XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertNotEqual(groups[mac.id], groups[vps.id])
+        }
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-run-7f3a", "42"]
         let evidence = appState.combinedHermesEvidence
         XCTAssertTrue(evidence[mac.id]?.contains("cron-run-7f3a") ?? false, "its cron runs are its evidence")
         XCTAssertTrue(evidence[vps.id]?.contains("cron-run-7f3a") ?? false, "as this one's cron rows are")
         XCTAssertFalse(evidence[mac.id]?.contains("42") ?? true, "never a placeholder number")
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertEqual(groups[mac.id], groups[vps.id])
+        }
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 2, "its profile shows once")
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["42"]
         appState.cronSessions = [SessionSummary(id: "42", alternateIds: [], title: "Daily brief", model: "Hermes",
@@ -3156,7 +3166,10 @@ extension CrossProfilePresentationCacheTests {
                                             profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
                        [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        do {
+            let groups = appState.combinedHermesGroups
+            XCTAssertEqual(groups[mac.id], groups[vps.id])
+        }
         appState.sessions = ownSessions
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
@@ -4009,10 +4022,40 @@ extension CrossProfilePresentationCacheTests {
         let leftStep = await appState.switchForFarPulseStep(for: mac.id)
         XCTAssertFalse(leftStep, "the page left Mac's Pulse")
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertFalse(appState.pulseStepStands(on: mac.id), "nor a calendar change for it")
+        XCTAssertTrue(appState.pulseStepStands(on: vps.id))
 
         // A step that opens a task or starts Do it's chat there switches
         // first, through the kept connection.
         appState.openCombinedPulse(mac.id)
+        // A calendar change on Mac's Pulse goes ahead with no switch: this
+        // phone fetches it through Mac's kept connection when it shares
+        // with Mac, and never gets it when it shares with another Hermes
+        // or with none.
+        XCTAssertTrue(appState.pulseStepStands(on: mac.id))
+        XCTAssertFalse(appState.pulseStepStands(on: vps.id), "the page shows Mac's now")
+        XCTAssertFalse(appState.pulseStepStands(on: nil))
+        XCTAssertTrue(appState.pulseApprovalRuntime(for: mac.id, sharingWith: mac.id) === kept.runtime)
+        XCTAssertNil(appState.pulseApprovalRuntime(for: mac.id, sharingWith: nil))
+        XCTAssertNil(appState.pulseApprovalRuntime(for: mac.id, sharingWith: UUID()), "shared with another Hermes")
+        XCTAssertTrue(appState.pulseApprovalRuntime(for: vps.id, sharingWith: vps.id) === appState.runtimeOnScreen)
+        XCTAssertNil(appState.phoneSync.preferences.destination, "sharing is off here")
+        let unshared = await appState.applyPulseApproval("change-1", kind: .addEvent, sharing: appState.phoneSync.sharingSession,
+                                                         from: mac.id)
+        XCTAssertEqual(unshared, .off, "sharing is off")
+        // A card's task on Mac's Pulse opens on Mac's own board, through
+        // its kept connection, while it's connected; the one on screen's
+        // opens in Tasks, and a dropped connection switches there.
+        XCTAssertNil(appState.farPulseTaskStore(for: vps.id), "the one on screen's opens in Tasks")
+        XCTAssertNil(appState.farPulseTaskStore(for: nil))
+        let wasConnected = kept.runtime.isConnected
+        kept.runtime.isConnected = false
+        XCTAssertNil(appState.farPulseTaskStore(for: mac.id), "a dropped connection switches there")
+        kept.runtime.isConnected = true
+        XCTAssertTrue(kept.runtime.dashboardTicketBridge === kept.bridge)
+        XCTAssertNotNil(appState.farPulseTaskStore(for: mac.id), "on Mac's own board")
+        kept.runtime.isConnected = wasConnected
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         // A step from the one on screen's Pulse doesn't go on another's.
         let screensStep = await appState.switchForFarPulseStep(for: vps.id)
         XCTAssertFalse(screensStep, "the page shows Mac's now")
@@ -5005,6 +5048,7 @@ extension CrossProfilePresentationCacheTests {
             var botLookupError: Error?
             var opened: [(ObjectIdentifier, String, String?)] = []
             var roomClients: [String: [ObjectIdentifier]] = [:]
+            var created: [ObjectIdentifier] = []
         }
         let script = Script()
         let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
@@ -5034,6 +5078,10 @@ extension CrossProfilePresentationCacheTests {
         operations.findBotChat = { _, _ in
             if let error = script.botLookupError { throw error }
             return script.botLookupRows
+        }
+        operations.createSession = { client, _ in
+            script.created.append(ObjectIdentifier(client))
+            return ("new-doit-\(script.created.count)", nil, nil)
         }
         operations.openSessionWithProfile = { client, sessionID, _, profile in
             if let error = script.error { throw error }
@@ -5226,9 +5274,8 @@ extension CrossProfilePresentationCacheTests {
 
         // Do it on a card of Mac's Pulse shown in place opens the card's
         // chat in place too, with the reminder in its composer under Mac's
-        // own dashboard and profile, and no switch; a card from no chat,
-        // whose new chat isn't made on another dashboard's runtime, and a
-        // tap from another Pulse than the one shown leave it to the switch.
+        // own dashboard and profile, and no switch; a tap from another
+        // Pulse than the one shown leaves it to the switch.
         appState.openCombinedPulse(mac.id)
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         kept.runtime.pulseHomeChatID = "pulse-mac"
@@ -5242,10 +5289,7 @@ extension CrossProfilePresentationCacheTests {
         if case .notInPlace = await appState.doFarPulseCard(doItCards[0], for: vps.id) {} else {
             XCTFail("not the Pulse the page shows")
         }
-        if case .notInPlace = await appState.doFarPulseCard(doItCards[1], for: mac.id) {} else {
-            XCTFail("a new chat still starts after a switch")
-        }
-        XCTAssertEqual(appState.activeSessionId, "unlisted-link-1", "neither opened anything")
+        XCTAssertEqual(appState.activeSessionId, "unlisted-link-1", "it opened nothing")
         guard case .opened(let didIt) = await appState.doFarPulseCard(doItCards[0], for: mac.id) else {
             return XCTFail("the card's chat opens in place")
         }
@@ -5259,6 +5303,22 @@ extension CrossProfilePresentationCacheTests {
             ComposerBar.composerDraftKey(for: "unlisted-doit-1", profile: "atlas", dashboard: mac.id),
             "left in the far chat's own composer"
         )
+        appState.composerPrefillDraftKey = nil
+        // A card from no chat: a new chat made on Mac's Hermes through its
+        // kept connection, in Mac's Pulse profile, and opened there in
+        // place with the reminder in its composer, with no switch.
+        XCTAssertTrue(script.created.isEmpty)
+        guard case .opened(let newChat) = await appState.doFarPulseCard(doItCards[1], for: mac.id) else {
+            return XCTFail("a card from no chat starts its new chat in place")
+        }
+        XCTAssertNil(newChat.chat, "a new chat: acted names none")
+        XCTAssertEqual(script.created.count, 1)
+        XCTAssertEqual(script.created.first, appState.keptDashboardRuntimes[mac.id].map { ObjectIdentifier($0.client) },
+                       "made through Mac's kept connection")
+        XCTAssertEqual(appState.activeSessionId, "new-doit-1")
+        XCTAssertEqual(appState.farChat?.dashboardID, mac.id)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for Do it's new chat")
+        XCTAssertEqual(appState.composerPrefillText, doItCards[1].actionMessage)
         appState.composerPrefillDraftKey = nil
         appState.pulseShownDashboardID = nil
 
