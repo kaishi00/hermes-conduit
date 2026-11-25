@@ -4022,10 +4022,29 @@ extension CrossProfilePresentationCacheTests {
         let leftStep = await appState.switchForFarPulseStep(for: mac.id)
         XCTAssertFalse(leftStep, "the page left Mac's Pulse")
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertFalse(appState.pulseStepStands(on: mac.id), "nor a calendar change for it")
+        XCTAssertTrue(appState.pulseStepStands(on: vps.id))
 
         // A step that opens a task or starts Do it's chat there switches
         // first, through the kept connection.
         appState.openCombinedPulse(mac.id)
+        // A calendar change on Mac's Pulse goes ahead with no switch: this
+        // phone fetches it through Mac's kept connection when it shares
+        // with Mac, and never gets it when it shares with another Hermes
+        // or with none.
+        XCTAssertTrue(appState.pulseStepStands(on: mac.id))
+        XCTAssertFalse(appState.pulseStepStands(on: vps.id), "the page shows Mac's now")
+        XCTAssertFalse(appState.pulseStepStands(on: nil))
+        XCTAssertTrue(appState.pulseApprovalRuntime(for: mac.id, sharingWith: mac.id) === kept.runtime)
+        XCTAssertNil(appState.pulseApprovalRuntime(for: mac.id, sharingWith: nil))
+        XCTAssertNil(appState.pulseApprovalRuntime(for: mac.id, sharingWith: UUID()), "shared with another Hermes")
+        XCTAssertTrue(appState.pulseApprovalRuntime(for: vps.id, sharingWith: vps.id) === appState.runtimeOnScreen)
+        if appState.phoneSync.preferences.destination == nil {
+            let unshared = await appState.applyPulseApproval("change-1", kind: .addEvent, sharing: appState.phoneSync.sharingSession,
+                                                             from: mac.id)
+            XCTAssertEqual(unshared, .off, "sharing is off")
+        }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         // A step from the one on screen's Pulse doesn't go on another's.
         let screensStep = await appState.switchForFarPulseStep(for: vps.id)
         XCTAssertFalse(screensStep, "the page shows Mac's now")

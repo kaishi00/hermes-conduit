@@ -276,11 +276,20 @@ extension AppState {
         return .opened(PulseDoItOpened(chat: chat))
     }
 
-    /// Before a Pulse card's step that opens a task or starts Do it's chat,
-    /// or changes this phone's calendar, on another combined dashboard's
-    /// Pulse: the switch there (its board and its new chats are that
-    /// dashboard's own pages, and this phone shares its calendar with the
-    /// one on screen). A card's chat link doesn't come here while that
+    /// Whether a step tapped on `dashboard`'s Pulse (`pulseDashboardID` at
+    /// the tap) still goes ahead there with no switch: the page still shows
+    /// that Pulse, the one on screen's or one read through a connection
+    /// still kept. A calendar change asks through it
+    /// (`applyPulseApproval(_:kind:sharing:from:)`).
+    func pulseStepStands(on dashboard: UUID?) -> Bool {
+        guard let id = dashboard, pulseDashboardID == id else { return false }
+        return runtime(for: id) != nil
+    }
+
+    /// Before a Pulse card's step that opens a task or starts Do it's chat
+    /// on another combined dashboard's Pulse: the switch there (its board
+    /// and its new chats are that dashboard's own pages). A calendar change
+    /// doesn't come here (`pulseStepStands`). A card's chat link doesn't come here while that
     /// dashboard is kept connected (`openFarPulseCardChat`). `dashboard`
     /// is the one whose Pulse the page showed at the tap (`pulseDashboardID`
     /// then). True when the step can go ahead on that dashboard, the page

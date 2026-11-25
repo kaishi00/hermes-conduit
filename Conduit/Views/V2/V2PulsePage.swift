@@ -2058,9 +2058,10 @@ struct V2PulsePage: View {
         let visit = self.visit
         Task {
             defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
-            // Another dashboard's Pulse: this phone shares with the one on
-            // screen, so the change is made there.
-            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
+            // Another dashboard's Pulse shown in place: its own Hermes is
+            // asked, with no switch, and this phone applies the change when
+            // it shares with that Hermes.
+            guard appState.pulseStepStands(on: dashboard) else { return }
             // The sharing the tap was made in: turned off before the answer
             // comes, the tap applies nothing here.
             let sharing = appState.phoneSync.sharingSession
@@ -2073,7 +2074,8 @@ struct V2PulsePage: View {
                     AccessibilityNotification.Announcement(answer.stateText).post()
                     return
                 }
-                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing)
+                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing,
+                                                                from: dashboard)
                 guard appState.pulseDashboardID == dashboard else { return }
                 await load(in: visit)
                 guard appState.pulseDashboardID == dashboard,
