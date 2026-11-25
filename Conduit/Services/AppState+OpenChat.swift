@@ -901,7 +901,7 @@ extension AppState {
             if let dashboardID = farChatDashboardIDInScope {
                 let farBot = farBotRoster(in: dashboardID).first { profilesMatch($0.name, activeProfile) }
                 return ConversationAgentIdentity.workspace(
-                    name: farBot?.displayLabel ?? farBotName(activeProfile, on: dashboardID),
+                    name: farBot?.displayLabel ?? profileDisplayName(activeProfile),
                     photoURL: farAvatarURL(for: activeProfile, on: dashboardID),
                     profile: activeProfile
                 )
