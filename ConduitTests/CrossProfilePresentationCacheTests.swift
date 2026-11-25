@@ -4522,7 +4522,10 @@ extension CrossProfilePresentationCacheTests {
         appState.voiceBackgroundJobSupervisor.attachLiveThread(callChat)
         XCTAssertEqual(appState.callChatsDashboardID, vps.id, "the call's chats are the dashboard on screen's")
 
-        XCTAssertTrue(appState.combinedHermesTwins(of: mac.id).isEmpty)
+        XCTAssertTrue(
+            appState.combinedHermesTwins(of: mac.id).isEmpty,
+            "evidence \(appState.combinedHermesEvidence), groups \(appState.combinedHermesGroups), on screen \(appState.runtimeOnScreen.sessions.map { "\($0.id)@\($0.combinedDashboardID?.uuidString ?? "own")" }), bots \(appState.shownBotRoster.compactMap { $0.canonicalSession?.id }) far bots \(appState.combinedDashboardBots[mac.id]?.bots.compactMap { $0.canonicalSession?.id } ?? []), mac \(mac.id), vps \(vps.id)"
+        )
         appState.noteCallChatDeleted(["shared-1"], dashboardID: mac.id)
         XCTAssertFalse(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat), "another Hermes' chat under the same id")
         XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, callChat)

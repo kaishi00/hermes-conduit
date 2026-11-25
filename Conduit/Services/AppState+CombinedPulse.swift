@@ -240,7 +240,12 @@ extension AppState {
             var opened = false
             if let workstreamProfile = runtime.botWork.workstreamProfile(forSession: [card.chatID]) {
                 // A workstream's hidden chat opens on its bot's profile.
-                opened = await openFarWorkstreamInPlace(card.chatID, profile: profile ?? workstreamProfile, in: id)?.value ?? false
+                // No open in place (its connection let go since): the switch's.
+                guard let open = openFarWorkstreamInPlace(card.chatID, profile: profile ?? workstreamProfile, in: id) else {
+                    if pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
+                    return .notInPlace
+                }
+                opened = await open.value
             } else {
                 let target = ConduitNotificationTarget(
                     profile: profile, sessionId: card.chatID, dashboardID: id, type: nil, isChatLink: true
@@ -256,7 +261,8 @@ extension AppState {
                 return .failed
             }
         } else if let bot {
-            guard let open = openFarBotChatInPlace(of: bot, in: id), await open.value else { return .failed }
+            guard let open = openFarBotChatInPlace(of: bot, in: id) else { return .notInPlace }
+            guard await open.value else { return .failed }
             // As a bot link's open: its chat comes forward over the Pulse screen.
             dismissSidebarDrawer()
             chat = act(onRuntime: runtime) { pulseActedChat(in: bot) }
