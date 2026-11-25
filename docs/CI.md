@@ -368,7 +368,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 |---|---|---|
 | `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR or push needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape (each entry's Desktop app line included) and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ and desktop/ paths are looked up on the plugin's and the desktop app's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
-| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores the PR's own last build, else main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no test retried; an invocation that lost its simulator runtime before any test ran runs once more after a reboot, `scripts/ci-recover-lost-runtime.sh`) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache after the build and its weak-imports check and before the tests: a push's for later PRs, a PR's for its own next push. |
+| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores the PR's own last build, else main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate; a build its budget stopped goes on once), then runs the pinned unit tests (one invocation, no test retried; an invocation that lost its simulator runtime before any test ran runs once more after a reboot, `scripts/ci-recover-lost-runtime.sh`) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache after the build and its weak-imports check and before the tests: a push's for later PRs, a PR's for its own next push. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites
@@ -494,13 +494,20 @@ caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
   logs, retry evidence and preparation timings are uploaded as UI diagnostics;
   large result bundles are not uploaded on the normal path.
 * **No timing history.** The EWMA cache + `update-timing-history.py` and the
-  main-only job that wrote it are gone; nothing produces the planner's
-  `--history` input any more.
+  main-only job that wrote it are gone, and so is the lane planner that read
+  it.
 * **No watchdogs or recovery plumbing.** A wedged hosted runner fails the job
-  and is re-run by a human, deliberately. The one exception: a test invocation
-  whose simulator runtime was lost before any test ran reboots the device and
-  runs once more (`scripts/ci-recover-lost-runtime.sh`, the Nightly reruns
-  entry in docs/FEATURE_MAP.md).
+  and is re-run by a human, deliberately. Two bounded exceptions: a test
+  invocation whose simulator runtime was lost before any test ran reboots the
+  device and runs once more (`scripts/ci-recover-lost-runtime.sh`, the Nightly
+  reruns entry in docs/FEATURE_MAP.md); and a build its budget stopped with no
+  error in a source file goes on once from what it compiled, with
+  `BUILD_RESUME_TIMEOUT_SECS` (900 s) more, so a wedged build fails after its
+  budget plus 900 s and a second stop fails it (#3295). The job ceilings bound
+  the rare compounds: a failed incremental build, then a clean retry its budget
+  stopped, then the resume can reach Smoke's 75 minutes, and a nightly build
+  stopped at 1800 s that then resumes leaves little of its job's 60 minutes for
+  the tests; either way the job fails, as it would have without the resume.
 
 ### Cost
 
@@ -565,13 +572,14 @@ suites.
   the August seed had drifted until half the unit classes had no entry and
   app-code PRs ran 4-6 minutes of changed classes against the 120 s budget
   (refreshed 2026-11-17). Unseen classes get a conservative default (20 s)
-  in lane planning so a batch of new tests cannot all pile into one lane.
+  when the nightly shards are split, so new classes don't all pile into one
+  shard.
 * **Timing history** - there is none any more. The `timing-history-v1-*`
-  Actions cache and the main-only job that wrote it were removed in CI v3: they
-  existed to rebalance the hosted lane matrix, which no longer exists.
-  Nothing produces `plan-tests.py`'s `--history` input now; estimates come
-  from the checked-in baseline (or the planner default) and planning
-  correctness never depended on either.
+  Actions cache and the main-only job that wrote it were removed in CI v3, and
+  the CI v2 lane planner they fed (`plan-tests.py plan`: 8 unit lanes of 4
+  batches of 7 classes) was removed on 2026-11-25, after no workflow had run
+  its lanes since CI v5 and its batch policy still capped the unit suite at
+  224 classes.
 
 ## Destination readiness gate
 
@@ -679,7 +687,8 @@ python3 scripts/plan-tests.py smoke
 python3 -m unittest discover -s scripts/tests
 ```
 
-`validate` checks inventory completeness; `smoke` is the command that actually
+`validate` checks inventory completeness (every class discovered, none
+duplicated or malformed, no cap on how many); `smoke` is the command that actually
 reads `scripts/smoke-suite.json`, so it is the one that catches a pinned test
 whose class or method was renamed, deleted or moved between targets, or a list
 over its cap — the same check the hosted

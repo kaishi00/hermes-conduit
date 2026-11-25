@@ -862,6 +862,19 @@ class WorkflowContractTests(unittest.TestCase):
                       "-skipPackageUpdates only when the restored cache holds the checkout")
         self.assertIn('${package_flag:+"$package_flag"}', build)
 
+    def test_the_resume_stops_build_services_only_on_hosted_runners(self):
+        """Before a budget-stopped build goes on, the leftover build service and
+        compiler jobs are stopped, on hosted runners only: on a developer Mac
+        they could be the user's own Xcode builds (#3295)."""
+        build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
+        resume = build[build.index('if [ "$status" -eq 124 ]'):]
+        guard = resume.index('if [ "${GITHUB_ACTIONS:-}" = "true" ]; then')
+        guard_end = resume.index("\n  fi\n", guard)
+        for name in ("SWBBuildService", "XCBBuildService", "swift-frontend"):
+            kill = resume.index("pkill -x " + name)
+            self.assertTrue(guard < kill < guard_end, name + " is stopped outside the hosted guard")
+        self.assertLess(guard_end, resume.index("XCODEBUILD_POLL_INTERVAL_S=2 run_build"))
+
     def test_a_failed_build_posts_its_source_errors(self):
         """A failed build posts its first source errors as annotations, which
         the API serves when the job log can't be read."""

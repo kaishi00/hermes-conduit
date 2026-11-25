@@ -31,8 +31,7 @@
 #     bash scripts/bench-unit-batches.sh ...
 #
 # --classes FILE is one class name per line, in the order the planner stored
-# them (the gate's lanes/unit/lane-result.json "classes" array, or
-# `plan-tests.py plan` output).
+# them (a nightly unit shard's classes, `plan-tests.py hosted` output).
 
 set -uo pipefail
 
