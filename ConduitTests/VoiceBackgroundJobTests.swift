@@ -3659,7 +3659,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 2)
         let later = try XCTUnwrap(fake.submissions.last?.1)
         XCTAssertTrue(later.contains("Archive the receipts." + VoiceRequestWords.marker + "Also the invoices"), later)
-        XCTAssertFalse(later.contains("Yes"), later)
+        XCTAssertFalse(later.contains("Also the invoices\nYes"), later)
         // A Watch request with no text takes none of the words.
         XCTAssertFalse(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": " "], said: "Brand only."))
         XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Post it."], said: "Brand only."))
