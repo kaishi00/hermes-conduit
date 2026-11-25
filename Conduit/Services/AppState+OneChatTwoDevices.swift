@@ -903,7 +903,13 @@ extension AppState {
     func idsNoOtherChatHereLists(_ session: SessionSummary) -> Set<String> {
         var rows = sessions + allProfilesCatalog.sessions
         if actingOnRuntimeOnScreen { rows += cronSessions + archivedSessions }
-        let others = rows.filter { $0.id != session.id && $0.durableKey != session.durableKey }
+        // The state is kept per profile: another profile's row that lists
+        // the id keeps its own under other keys.
+        let profile = rowProfile(session)
+        let others = rows.filter {
+            $0.id != session.id && $0.durableKey != session.durableKey
+                && rowProfile($0).caseInsensitiveCompare(profile) == .orderedSame
+        }
         let shared = session.alternateIds.filter { id in
             id != session.id && id != session.storedSessionId && others.contains { $0.nestingIDs.contains(id) }
         }

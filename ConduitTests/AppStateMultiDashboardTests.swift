@@ -2218,6 +2218,19 @@ extension AppStateMultiDashboardTests {
                        "checked against its own dashboard's rows")
         XCTAssertEqual(appState.idsNoOtherChatHereLists(deleted), ["chat-2", "run-shared", "run-own"],
                        "no row of the dashboard on screen lists them")
+        // Another profile's row that lists one keeps its own state under
+        // other keys; a row of the same profile shares it.
+        appState.profiles = ["default", "work"]
+        var otherProfiles = macSession("chat-8")
+        otherProfiles.profile = "work"
+        otherProfiles.alternateIds = ["run-own"]
+        appState.sessions = [otherProfiles]
+        XCTAssertEqual(appState.idsNoOtherChatHereLists(deleted), ["chat-2", "run-shared", "run-own"])
+        var sameProfiles = macSession("chat-9")
+        sameProfiles.alternateIds = ["run-own"]
+        appState.sessions = [sameProfiles]
+        XCTAssertEqual(appState.idsNoOtherChatHereLists(deleted), ["chat-2", "run-shared"])
+        appState.sessions = []
         for id in ["chat-2", "run-shared", "run-own"] {
             appState.sessionYoloStore.setOverride(true, for: farProfile, sessionID: id)
         }
