@@ -660,7 +660,7 @@ final class GeminiLiveConversationController: ObservableObject {
         // Best effort, as on GPT-Live: the chat still has the exchange.
         pendingContextNotes = []
         withdrawnCallIDs = []
-        tools.connectionReplaced()
+        tools.conversationEnded()
         closeOpenEntries()
         phase = .idle
     }

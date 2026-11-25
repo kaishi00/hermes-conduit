@@ -761,8 +761,7 @@ final class GeminiLiveToolBridge {
             // model reaches for start_job out of habit; routing here keeps the
             // chat's work in the chat whichever tool it picks.
             let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let said = await saidForRequest()
-            guard !isEnding else { return [] }
+            guard let said = await saidForRequest(), !isEnding else { return [] }
             // Routing reads the model's request, not the user's words a
             // Watch call's request arrives with.
             let routed = VoiceRequestWords.modelWords(of: instructions)
@@ -778,8 +777,7 @@ final class GeminiLiveToolBridge {
             guard !request.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "request is required"], scheduling: .whenIdle)]
             }
-            let said = await saidForRequest()
-            guard !isEnding else { return [] }
+            guard let said = await saidForRequest(), !isEnding else { return [] }
             return await sendToThread(call, request: request, said: said)
         case .sendRequest:
             guard !isEnding else { return [] }
@@ -827,10 +825,14 @@ final class GeminiLiveToolBridge {
                 name: call.name,
                 arguments: call.arguments.merging(waiting.kind.map { ["kind": $0] } ?? [:]) { _, kind in kind }
             )
+            // A yes that says more ("yes, make it for four") is their word
+            // on it too: it goes under the marker with what they asked.
+            var said = waiting.said
+            if case .yes(let addition?) = answer { said.append(addition) }
             if waiting.toChat {
-                return await sendToThread(approved, request: request, said: waiting.said, confirmed: true)
+                return await sendToThread(approved, request: request, said: said, confirmed: true)
             }
-            return await startBackgroundJob(approved, instructions: request, profile: waiting.profile, said: waiting.said)
+            return await startBackgroundJob(approved, instructions: request, profile: waiting.profile, said: said)
         case .setAskFirst:
             let mode = call.arguments["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
             guard mode == "on" || mode == "off" else {
@@ -932,8 +934,7 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "message is required"], scheduling: .whenIdle)]
             }
             // With what they said themselves, as a new request has (issue 3236).
-            let said = await saidForRequest()
-            guard !isEnding else { return [] }
+            guard let said = await saidForRequest(), !isEnding else { return [] }
             let outcome = await supervisor.followUp(jobID: id, words: VoiceRequestWords.adding(said, to: words), kind: call.arguments["kind"])
             guard !isEnding else { return [] }
             return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
@@ -1050,6 +1051,16 @@ final class GeminiLiveToolBridge {
         isEnding = false
     }
 
+    /// The conversation stopped: a request still collecting the user's
+    /// words belongs to it and is dropped. A replaced connection inside a
+    /// conversation keeps its requests.
+    func conversationEnded() {
+        conversationEpoch &+= 1
+        connectionReplaced()
+    }
+
+    private var conversationEpoch = 0
+
     /// Bumped by each replaced connection: an answer still waiting on the
     /// user's words when it changes belongs to a call that's gone (#1792).
     private(set) var callGeneration = 0
@@ -1111,7 +1122,9 @@ final class GeminiLiveToolBridge {
     /// rest of a line that grew since. Their words reach the transcript a
     /// moment after the model heard them, so they are given
     /// `requestWordsWait` to arrive and to stop growing.
-    private func saidForRequest() async -> [String] {
+    /// Nil when the conversation ended meanwhile: its request goes nowhere.
+    private func saidForRequest() async -> [String]? {
+        let conversation = conversationEpoch
         let deadline = ContinuousClock.now + requestWordsWait
         var earlier: [String]?
         // The model may let a held request go on the user's no without
@@ -1128,6 +1141,9 @@ final class GeminiLiveToolBridge {
                 noteWordsSent()
                 return fresh
             }
+            // A stop clears `isEnding` for the next conversation, so the
+            // wait checks the conversation itself.
+            guard conversation == conversationEpoch else { return nil }
         }
     }
 

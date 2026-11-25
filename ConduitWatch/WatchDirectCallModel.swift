@@ -207,6 +207,9 @@ final class WatchDirectCallModel: ObservableObject {
     private var endPhrases: [String] = []
     /// The transcript line of the user's latest utterance.
     private var exchangeUserLine: Int?
+    /// The user's line (counted from the call's first) and how much of it
+    /// went with a request already.
+    private var requestWordsSent: (turn: Int, length: Int)?
     private var hasSentOpening = false
     private(set) var callID: UInt32 = 0
     private var callUUID = UUID()
@@ -1744,7 +1747,17 @@ final class WatchDirectCallModel: ObservableObject {
             wire.userWords = transcript[line].text
             // A request carries what the user said for it, marked as
             // theirs (issue 3236).
-            wire.arguments = VoiceRequestWords.watchArguments(name: call.name, arguments: call.arguments, said: transcript[line].text)
+            // Only what hasn't gone with an earlier request: a second
+            // call on the same words carries none.
+            let turn = line + transcriptLinesDropped
+            var said: String? = transcript[line].text
+            if call.name == WatchJobAnswer.startJob || call.name == WatchJobAnswer.interruptJob {
+                if let sent = requestWordsSent, sent.turn == turn {
+                    said = transcript[line].text.count > sent.length ? String(transcript[line].text.dropFirst(sent.length)) : nil
+                }
+                requestWordsSent = (turn, transcript[line].text.count)
+            }
+            wire.arguments = VoiceRequestWords.watchArguments(name: call.name, arguments: call.arguments, said: said)
             // Counted from the call's first line, so trimming the
             // transcript never gives two utterances one turn.
             wire.userTurn = line + transcriptLinesDropped
@@ -3391,6 +3404,7 @@ final class WatchDirectCallModel: ObservableObject {
         openingPrompt = nil
         endPhrases = []
         exchangeUserLine = nil
+        requestWordsSent = nil
         hasSentOpening = false
         caption = nil
         isMuted = false

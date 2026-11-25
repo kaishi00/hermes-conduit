@@ -14,7 +14,8 @@ enum VoiceRequestWords {
     static let marker = "\n\n[The user's own words on the call since their last request, as transcribed. The request above is the voice model's wording of them: where it adds steps, details or a go-ahead the user didn't say, go by the user's words.]\n"
 
     /// The most of what the user said that goes with one request: the
-    /// newest of it.
+    /// newest things they said, whole, that fit in it (an older one that
+    /// doesn't fit is left out, and the newest alone is cut to its end).
     static let maxCharacters = 1_000
 
     /// `request` with what the user `said` since their last one under the
