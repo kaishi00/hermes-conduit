@@ -167,8 +167,14 @@ extension AppState {
 
     /// Puts `text` in the open chat's composer, replacing the draft, and
     /// focuses it.
+    /// Another combined dashboard's chat open in place takes it under its
+    /// own dashboard and profile, as its composer keeps its draft.
     func prefillComposer(_ text: String) {
-        composerPrefillDraftKey = ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile, dashboard: activeDashboardID)
+        composerPrefillDraftKey = ComposerBar.composerDraftKey(
+            for: activeSessionId,
+            profile: farChat?.profile ?? activeProfile,
+            dashboard: farChat?.dashboardID ?? activeDashboardID
+        )
         composerPrefillText = text
         composerPrefillToken = UUID()
     }

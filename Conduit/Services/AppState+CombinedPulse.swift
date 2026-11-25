@@ -205,6 +205,77 @@ extension AppState {
         return true
     }
 
+    /// Do it on a card of another combined dashboard's Pulse shown in
+    /// place: the card's own chat, or the Bot Chat Do it goes to there,
+    /// opens in place on that dashboard's runtime through its kept
+    /// connection with no switch, so a call goes on, and gets the reminder
+    /// (or an Ask's `words`) in its composer. `dashboard` is the one whose
+    /// Pulse the page showed at the tap. `.notInPlace` for a card of the
+    /// dashboard on screen, a page that has left that Pulse, a kept
+    /// connection that's gone, a chat that can only open through a switch,
+    /// and a card from no chat that starts a new one (New Chat isn't made on
+    /// another dashboard's runtime): the caller goes on as before
+    /// (`switchForFarPulseStep`).
+    func doFarPulseCard(
+        _ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil, for dashboard: UUID?
+    ) async -> FarPulseDoIt {
+        guard let id = dashboard, id != dashboardIDOnScreen, pulseDashboardID == id,
+              let runtime = runtime(for: id) else { return .notInPlace }
+        // What the card may do and where it goes, as its own Pulse reads it.
+        let farDefault = profileAppearanceStore.loadDefaultName(dashboardID: id)
+        let (allowed, hasChat, bot, profile) = act(onRuntime: runtime) {
+            (
+                words != nil ? canAskFromPulseCard(card) : canActOnPulseCard(card),
+                pulseCardHasChat(card),
+                pulseDoItBot(for: card, in: picked),
+                notificationProfileID(card.profile.isEmpty ? pulseHomeProfile : card.profile, defaultName: farDefault)
+            )
+        }
+        guard allowed else { return .failed }
+        var chat: PulseActedChat?
+        if hasChat {
+            let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
+            pendingArtifactReveal = reveal
+            widgetLaunchCoordinator.supersede()
+            var opened = false
+            if let workstreamProfile = runtime.botWork.workstreamProfile(forSession: [card.chatID]) {
+                // A workstream's hidden chat opens on its bot's profile.
+                // No open in place (its connection let go since): the switch's.
+                guard let open = openFarWorkstreamInPlace(card.chatID, profile: profile ?? workstreamProfile, in: id) else {
+                    if pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
+                    return .notInPlace
+                }
+                opened = await open.value
+            } else {
+                let target = ConduitNotificationTarget(
+                    profile: profile, sessionId: card.chatID, dashboardID: id, type: nil, isChatLink: true
+                )
+                guard let outcome = await openFarNotificationInPlace(target, in: id) else {
+                    if pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
+                    return .notInPlace
+                }
+                opened = outcome == .opened
+            }
+            guard opened else {
+                if pendingArtifactReveal == reveal { pendingArtifactReveal = nil }
+                return .failed
+            }
+        } else if let bot {
+            guard let open = openFarBotChatInPlace(of: bot, in: id) else { return .notInPlace }
+            guard await open.value else { return .failed }
+            // As a bot link's open: its chat comes forward over the Pulse screen.
+            dismissSidebarDrawer()
+            chat = act(onRuntime: runtime) { pulseActedChat(in: bot) }
+        } else {
+            return .notInPlace
+        }
+        // Only into that dashboard's chat: another chat opened meanwhile
+        // gets nothing.
+        guard farChat?.dashboardID == id, activeSessionId != nil else { return .failed }
+        prefillComposer(words ?? card.actionMessage)
+        return .opened(PulseDoItOpened(chat: chat))
+    }
+
     /// Before a Pulse card's step that opens a task or starts Do it's chat,
     /// or changes this phone's calendar, on another combined dashboard's
     /// Pulse: the switch there (its board and its new chats are that
@@ -226,4 +297,13 @@ extension AppState {
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         return pulseDashboardID == id
     }
+}
+
+/// How Do it went on another combined dashboard's Pulse shown in place.
+enum FarPulseDoIt {
+    /// Not one that opens in place: the caller switches there as before.
+    case notInPlace
+    /// No chat opened.
+    case failed
+    case opened(PulseDoItOpened)
 }

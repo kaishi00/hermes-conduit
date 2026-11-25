@@ -1724,9 +1724,36 @@ struct V2PulsePage: View {
         Task {
             // A newer step on another dashboard's card with the same id keeps its mark.
             defer { if appState.pulseDashboardID == dashboard, actingCard == card.id { actingCard = nil } }
-            // Another dashboard's Pulse: its chat opens there.
-            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
-            let opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
+            // Told as its own Pulse says: its chat covering the page takes
+            // the page back to the one on screen's.
+            let tells = appState.canMarkPulseCardDone(card) && appState.pulsePlugin.reports(PulseClient.actedCapability)
+            let opened: PulseDoItOpened?
+            // Another dashboard's Pulse: the card's chat, or the Bot Chat
+            // Do it goes to, opens in place there; a new chat still opens
+            // after a switch there.
+            switch await appState.doFarPulseCard(card, words: ask?.value, in: picked, for: dashboard) {
+            case .opened(let far):
+                // Its chat is up over the page, which shows the one on
+                // screen's Pulse again: Pulse is told on its own dashboard.
+                if actingCard == card.id { actingCard = nil }
+                if tells {
+                    do {
+                        try await client.acted(card: card.id, chat: far.chat)
+                    } catch {
+                        // Said, not marked: the page shows the one on
+                        // screen's Pulse by now, where the orange note
+                        // would land on another card of the same id. The
+                        // card stays on its own Pulse with its Done button.
+                        AccessibilityNotification.Announcement(Self.untoldNote).post()
+                    }
+                }
+                return
+            case .failed:
+                opened = nil
+            case .notInPlace:
+                guard await appState.switchForFarPulseStep(for: dashboard) else { return }
+                opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
+            }
             guard appState.pulseDashboardID == dashboard else { return }
             guard let opened else {
                 showError(failure)
@@ -1736,7 +1763,7 @@ struct V2PulsePage: View {
             let chat = opened.chat
             // Pulse reads the chat once Hermes has answered and marks the card done itself.
             // Only a card Pulse can mark done, with a Done button to fall back on.
-            if appState.canMarkPulseCardDone(card), appState.pulsePlugin.reports(PulseClient.actedCapability) {
+            if tells {
                 do {
                     try await client.acted(card: card.id, chat: chat)
                     untoldCards.remove(card.id)
