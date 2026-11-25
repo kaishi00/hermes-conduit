@@ -5475,7 +5475,7 @@ Capabilities line (done)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #2018 (the page around the form reads the store's profile live too, see Plugin catalog); 2026-11-08, #2011 (the form, saving, secrets to `.env`)
+**Checked:** 2026-11-25, #3297 (the Tests line no longer says the unit suite is at a 224-class cap, retired in #3296; no behavior change); 2026-11-08, #2018 (the page around the form reads the store's profile live too, see Plugin catalog); 2026-11-08, #2011 (the form, saving, secrets to `.env`)
 
 ## Reply progress signals
 
