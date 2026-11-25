@@ -4213,7 +4213,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A job whose submit is still out stays too: its cancel can land
         // and put it back to starting.
         let settled = jobs.filter {
-            !$0.status.isActive && $0.outcomeDelivered && noticesInFlight[$0.id] == nil && $0.id != callChatJobID && !$0.submitInFlight
+            !$0.status.isActive && $0.outcomeDelivered && noticesInFlight[$0.id] == nil && $0.id != callChatJobID && !$0.submitInFlight && $0.id != threadSubmitInFlight
         }
         let excess = settled.count - Self.maximumSettledJobs
         guard excess > 0 else { return }

@@ -818,17 +818,21 @@ final class GeminiLiveToolBridge {
             }
             draft = nil
             // Their yes, and anything said while it waited, was this
-            // request's: none of it goes with the next one.
+            // request's: it goes under the marker with what they asked (a
+            // yes that says more, "yes, make it for four", included; a bare
+            // yes is no words of the request's), and none of it goes with
+            // the next one.
+            let saidWaiting = unsentWords().filter { VoiceThreadRouting.heldRequestAnswer($0) != .yes(addition: nil) }
             noteWordsSent()
             let approved = GeminiLiveProtocol.FunctionCall(
                 id: call.id,
                 name: call.name,
                 arguments: call.arguments.merging(waiting.kind.map { ["kind": $0] } ?? [:]) { _, kind in kind }
             )
-            // A yes that says more ("yes, make it for four") is their word
-            // on it too: it goes under the marker with what they asked.
-            var said = waiting.said
-            if case .yes(let addition?) = answer { said.append(addition) }
+            var said = waiting.said + saidWaiting
+            // A transcript that hasn't caught up with the yes the model
+            // heard: its addition still goes with the request.
+            if case .yes(let addition?) = answer, !saidWaiting.contains(where: { $0.contains(addition) }) { said.append(addition) }
             if waiting.toChat {
                 return await sendToThread(approved, request: request, said: said, confirmed: true)
             }
@@ -1138,6 +1142,7 @@ final class GeminiLiveToolBridge {
             }
             earlier = fresh
             do { try await Task.sleep(for: .milliseconds(250)) } catch {
+                guard conversation == conversationEpoch else { return nil }
                 noteWordsSent()
                 return fresh
             }
