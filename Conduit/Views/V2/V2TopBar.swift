@@ -437,6 +437,9 @@ struct V2ProfileStrip: View {
         return urls
     }
 
+    /// Counts far picks across every strip (Chats, Tasks, Settings).
+    @MainActor private static var farPickGeneration = 0
+
     /// Another combined dashboard's profile: its picture, dimmed as an
     /// unselected chip, with the dashboard's badge and what waits there. A
     /// tap switches to that dashboard (through its kept connection), then
@@ -447,8 +450,17 @@ struct V2ProfileStrip: View {
         let dashboardName = appState.combinedDashboardBadge(dashboardID)?.name ?? ""
         return Button {
             Haptics.selection()
+            // Of two far picks in a row, from any tab's strip, only the
+            // last switches: an earlier one whose list read ends later
+            // would otherwise land on its dashboard after it.
+            Self.farPickGeneration += 1
+            let generation = Self.farPickGeneration
             Task { @MainActor in
-                guard await appState.switchForCombinedProfile(in: dashboardID, profile: profile) else { return }
+                guard await appState.switchForCombinedProfile(
+                    in: dashboardID,
+                    profile: profile,
+                    stillWanted: { Self.farPickGeneration == generation }
+                ) else { return }
                 // Picked by the name its own list gives, never one it
                 // doesn't list (issue 2646).
                 if !appState.profilesMatch(appState.activeProfile, profile),
