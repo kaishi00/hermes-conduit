@@ -6489,7 +6489,8 @@ Settings links to its page, see Who answers in a group chat)
 The agents Hermes starts for a chat with `delegate_task` (subagents), as the
 chat that started them shows them. Hermes runs them in the background and
 starts the chat's next turn with their results, so the turn that started
-them ends while they work. Their settings are Subagent settings.
+them ends while they work. Their settings are Subagent settings. Cards the chat
+hands to the Kanban board are A chat's Kanban tasks.
 
 **Siblings:** the chat's waiting line (done, #2201: "Waiting for 1 background
 agent", once the chat's own turn has ended and agents it started are queued
@@ -6549,7 +6550,50 @@ state, and the notifier's README says how a workstream waits (done)
 - A queued card whose agent never starts and never ends keeps the line: the roster lists an agent only once it runs, so it can't end a queued card.
 - The plugin's count of a workstream's agents is in memory: after a Hermes restart the workstream is recovered as any running one, without the wait on its card. What its last turn said before the wait is kept on disk (`held:<ref>`), so the Bot Chat's restart line carries it (notifier #717).
 
-**Checked:** 2026-11-13, #2364 (the sheet's Background processes and /agents; the waiting line, notice, Bots Home and the notifier unchanged; Watch, CarPlay and rooms have no sheet); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2265 with notifier #735 (issue 2206: the Bot Chat's own agents on Bots Home, "2 agents running", Coordinate Work off too; stopping a waiting workstream stops its agents; the title line needed nothing); 2026-11-12, #2274 (#2263's review leftovers: a multiline single goal stays whole, the report is read from the filtered text, an unreadable header keeps the plain notice, a late end's Hermes time is kept, a roster-found end shows no time); 2026-11-12, #2263 (issue 1553: each card's running time, and the finished notice opens to every agent's result, from Hermes' report, kept with the chat; the waiting line, the Watch, CarPlay, the voice modes and the notifier needed no change); 2026-11-11, #2220 with notifier #720 (a refused Steer or Stop trusts the roster it read only while the chat is still on that runtime, from #2218's last commit; the plugin clears a held reply a reload left on disk when the next turn starts, 0.164.3); 2026-11-11, #2218 (a refused Steer or Stop on a card kept across a resume knows it by the chat's resume-wide aliases or the card itself, so it reads the new runtime's roster before ending it); 2026-11-11, #2218 with notifier #717 (the plugin keeps a held reply on disk for a restart and queues no stale finished line; stopping a waiting workstream still leaves its agents running, in Open gaps); 2026-11-11, #2218 (issue 2206: cards move to the runtime the roster was read for, a refused control on a card from an earlier runtime asks that roster before ending it, a failed roster read at resume is tried once more; the waiting line, the Watch, CarPlay and the voice modes needed no change; the plugin's items are notifier's own PR); 2026-11-11, #2201 with notifier #711 (added: the waiting line, the cards from Hermes' roster after a reopen, and a workstream held as working while its agents run; issue 2142)
+**Checked:** 2026-11-25, #3304 (points at A chat's Kanban tasks; nothing here changed); 2026-11-13, #2364 (the sheet's Background processes and /agents; the waiting line, notice, Bots Home and the notifier unchanged; Watch, CarPlay and rooms have no sheet); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2265 with notifier #735 (issue 2206: the Bot Chat's own agents on Bots Home, "2 agents running", Coordinate Work off too; stopping a waiting workstream stops its agents; the title line needed nothing); 2026-11-12, #2274 (#2263's review leftovers: a multiline single goal stays whole, the report is read from the filtered text, an unreadable header keeps the plain notice, a late end's Hermes time is kept, a roster-found end shows no time); 2026-11-12, #2263 (issue 1553: each card's running time, and the finished notice opens to every agent's result, from Hermes' report, kept with the chat; the waiting line, the Watch, CarPlay, the voice modes and the notifier needed no change); 2026-11-11, #2220 with notifier #720 (a refused Steer or Stop trusts the roster it read only while the chat is still on that runtime, from #2218's last commit; the plugin clears a held reply a reload left on disk when the next turn starts, 0.164.3); 2026-11-11, #2218 (a refused Steer or Stop on a card kept across a resume knows it by the chat's resume-wide aliases or the card itself, so it reads the new runtime's roster before ending it); 2026-11-11, #2218 with notifier #717 (the plugin keeps a held reply on disk for a restart and queues no stale finished line; stopping a waiting workstream still leaves its agents running, in Open gaps); 2026-11-11, #2218 (issue 2206: cards move to the runtime the roster was read for, a refused control on a card from an earlier runtime asks that roster before ending it, a failed roster read at resume is tried once more; the waiting line, the Watch, CarPlay and the voice modes needed no change; the plugin's items are notifier's own PR); 2026-11-11, #2201 with notifier #711 (added: the waiting line, the cards from Hermes' roster after a reopen, and a workstream held as working while its agents run; issue 2142)
+
+## A chat's Kanban tasks
+
+The cards a chat handed to the Kanban board (`kanban_create`), as the chat
+that made them shows them, so the user can tell they're being worked on
+after the turn that made them ended (desktop issue 553). Hermes stamps each
+card with the session that made it, and a worker's own cards inherit it, so
+a squad's fan-out counts too. The chat's subagents are Delegate agents a
+chat started.
+
+**Siblings:** the phone's line above the composer and its sheet (done,
+#3304: "2 Kanban tasks in progress", "· 1 blocked", the line red while
+one is, "Kanban tasks finished" with ×; the sheet's row per task opens it in Tasks) in chats,
+project chats, a Bot Chat and a workstream's own chat · the notifier's
+`GET /sessions/kanban-tasks` (done, notifier #1083, 0.197.0: every board,
+through the chat's compressions, `supported: false` from a Hermes that
+doesn't stamp cards) · Tasks › Board opening the task (done: the phone's
+`kanbanTaskOpenRequest`, the desktop's `focus`) · a far chat opened in
+place (done: read on its own runtime; its rows don't open in Tasks, which
+shows this dashboard's boards) · not needed: the Chats list's rows (Eric
+2026-11-25 picked the line above the composer; reading every listed chat's
+tasks on each refresh isn't worth it), Delegate agents a chat started
+(their own line), group rooms (a room's turns run in each bot's own session, so its cards carry no room of their own to read by), Watch, CarPlay and voice calls (no composer) · Text: the
+line's, sheet's and caption's words in every language (done); README and
+docs name no such line
+
+**Desktop app:** has it: the bar beside the agents bar, Open in Tasks from the main window (`desktop/src/renderer/src/components/ChatTasksDock.tsx`, desktop#559).
+
+**Code**
+- The route: `notifier/dashboard/api/chat_tasks.py` (chat_tasks, `_chain_ids` through session_usage's `_chain`, `_boards`, `_board_tasks`), `notifier/dashboard/api/capabilities.py` (`chat-kanban-tasks`); tests `notifier/tests/test_chat_tasks.py`
+- The phone: `Conduit/Models/ChatKanbanTasks.swift` (ChatKanbanTask, `shown`, `label`), `Conduit/Services/AppState+ChatKanbanTasks.swift` (loadOpenChatKanbanTasks, openChatKanbanTask), `Conduit/Views/Components/ChatKanbanTasksDock.swift`, `Conduit/Views/ChatView.swift` (bottomBar); tests `ConduitTests/ChatKanbanTasksTests.swift`
+
+**Rulings**
+- The line shows above the composer, on phone and desktop, for the open chat's own tasks only: not cron jobs or other chats' (Eric 2026-11-25, desktop issue 553).
+- A chat's tasks are those stamped with any of its sessions through its compressions, on every board but archived ones; archived tasks never show (desktop issue 553).
+- It is read as the chat opens, at each turn's end, and every 15 s while a task is still open and the chat shows (see Reads while a screen shows); a saved copy of another chat reads nothing.
+- Finished tasks show only once the chat has seen its tasks open while it showed, so a chat reopened after they all finished shows nothing; the board keeps them.
+- A plugin without the route, or a Hermes whose tasks carry no session, shows no line, never "no tasks".
+
+**Open gaps**
+- A task Hermes creates without a session (from the CLI or the dashboard) can't be told apart as the chat's, so it never shows.
+
+**Checked:** 2026-11-25, #3304 with notifier #1083 and desktop#559 (added: the line on phone and desktop, the plugin's route; desktop issue 553)
 
 ## Subagent settings
 
@@ -10045,7 +10089,9 @@ workstreams) · the drawer's scheduled-jobs list and the V2 Scheduled tab (not
 on a timer: their reads key on the connection, so a reconnect makes them read
 again) · the chat's
 waiting line's 15 s read of Hermes' delegate roster (while the chat shows and
-waits; see Delegate agents a chat started) · not needed, already gated on what
+waits; see Delegate agents a chat started) · the chat's Kanban tasks line's
+15 s read while one of its tasks is open and the chat shows (see A chat's
+Kanban tasks) · not needed, already gated on what
 shows: the Chats list's live
 registry poll (Running and Needs approval in the chats list), All profiles'
 catalog poll, Tasks and the Kanban board, Pulse's page, Bots Home's portraits
@@ -10064,6 +10110,7 @@ Settings caption or doc gives the cadence)
 - Links and invites: `Conduit/Views/RoomLinkSheets.swift` (followNewLink, followLink), `Conduit/Views/PeopleSettingsViews.swift` (followWaitingLinks), `Conduit/Views/RoomInviteViews.swift` (RoomInviteSheet.follow)
 - Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh, its inChat: the Bot Overview's panel isn't in a chat)
 - The waiting line: `Conduit/Views/ChatView.swift` (the task beside openChatSyncTick's, with the same gate), `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine.refreshInterval)
+- The Kanban tasks line: `Conduit/Views/Components/ChatKanbanTasksDock.swift` (its read task, gated on isShowing from ChatView)
 - The drawer's scheduled-jobs list: `Conduit/Views/SidebarView.swift` (CronList's read task and its refreshable); the V2 Scheduled tab: `Conduit/Views/V2/V2TasksView.swift` (V2ScheduledList's read task)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
@@ -10078,7 +10125,7 @@ Settings caption or doc gives the cadence)
 **Open gaps**
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
-**Checked:** 2026-11-17, #2685 (the V2 Scheduled tab's read task, #2674 and #2678: it keys on the tab's own visibility too, so a tab return reads at once and only a Board → Scheduled slide waits pageSlideWait; recorded after #2678's reviews); 2026-11-14, #2400 (the Bot Overview's live status read named beside its talking-rooms read); 2026-11-12, #2312 (the V2 Scheduled tab named beside the drawer's list in Siblings and Code, review follow-up to #2306); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-12, #2306 (carries #1928: the drawer's scheduled-jobs list and the V2 Scheduled tab read again after a reconnect, not while disconnected, and a cancelled read isn't bannered, issue 1000 F1-41; Code, Rulings); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
+**Checked:** 2026-11-25, #3304 (added: the chat's Kanban tasks line's 15 s read, gated on the chat showing like the waiting line's); 2026-11-17, #2685 (the V2 Scheduled tab's read task, #2674 and #2678: it keys on the tab's own visibility too, so a tab return reads at once and only a Board → Scheduled slide waits pageSlideWait; recorded after #2678's reviews); 2026-11-14, #2400 (the Bot Overview's live status read named beside its talking-rooms read); 2026-11-12, #2312 (the V2 Scheduled tab named beside the drawer's list in Siblings and Code, review follow-up to #2306); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-12, #2306 (carries #1928: the drawer's scheduled-jobs list and the V2 Scheduled tab read again after a reconnect, not while disconnected, and a cancelled read isn't bannered, issue 1000 F1-41; Code, Rulings); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
 
 ## Allowing Conduit in Settings
 
