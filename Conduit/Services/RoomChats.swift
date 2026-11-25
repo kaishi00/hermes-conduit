@@ -266,6 +266,13 @@ extension AppState {
         // A far room's chat opens in place on its dashboard, in its
         // agent's profile there, with no switch.
         let far = farRoomRuntime == nil ? nil : surface.dashboardID
+        // The room as it stands now: left since (closed, or another room or a chat
+        // opened), its far chat doesn't open over what's there.
+        // Its own first open closes the room, so the epoch is taken again
+        // after it for the open of the chat that replaces a gone one.
+        final class RoomEpoch { var value = 0 }
+        let roomEpoch = RoomEpoch()
+        roomEpoch.value = groupRoomEpoch
         // Another profile's chat opens after a switch to it, which would end the call.
         if far == nil, !profilesMatch(agent.profile, activeProfile), isCallEndingProfileSwitch {
             return AppLocalization.string("End the call to open a chat in another profile.")
@@ -299,11 +306,14 @@ extension AppState {
             open: { [weak self] chatID, profile, title in
                 guard let self, self.activeDashboardID == dashboardID else { return .failed }
                 if let far {
+                    guard self.groupRoomEpoch == roomEpoch.value else { return .superseded }
                     // From the screen's own scope, as a chat link of that
                     // dashboard opens: the open enters its runtime itself.
-                    return await self.actAcrossAwaits(onRuntime: self.runtimeOnScreen) {
+                    let outcome = await self.actAcrossAwaits(onRuntime: self.runtimeOnScreen) {
                         await self.openFarRoomChat(chatID, profile: profile, in: far)
                     }
+                    roomEpoch.value = self.groupRoomEpoch
+                    return outcome
                 }
                 return await self.openRoomChatSession(chatID, profile: profile, title: title)
             },

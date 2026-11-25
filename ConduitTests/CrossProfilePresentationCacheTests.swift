@@ -5102,7 +5102,11 @@ extension CrossProfilePresentationCacheTests {
         appState.errorMessage = nil
         // From its room's Group Info: the room's chats are read from its
         // own dashboard's plugin, and the chat opens there with no switch.
-        kept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [RoomChatsClient.capability])
+        // The chat links above handed its connection to the agent's profile,
+        // which keeps it again on its own bridge: the stand-in goes back on.
+        let keptAgain = try XCTUnwrap(appState.runtime(for: mac.id))
+        keptAgain.dashboardTicketBridge = held.bridge
+        keptAgain.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [RoomChatsClient.capability])
         let roomAgain = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
         XCTAssertEqual(roomAgain, .opened)
         XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
