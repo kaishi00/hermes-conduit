@@ -5463,7 +5463,7 @@ Capabilities line (done)
 - Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
 - Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given in ProfileConfigWriteQueue, fenced by the store's generation; PluginSettings.PartialSave names the keys that landed)
 - Views: `Conduit/Views/Capabilities/PluginSettingsViews.swift` (PluginSettingsSection, PluginSettingFieldRow), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the section on AgentPluginDetailPage)
-- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch before or during a save)
+- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests, written while the unit suite had a 224-class cap, retired in #3296), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch before or during a save)
 
 **Rulings**
 - A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
