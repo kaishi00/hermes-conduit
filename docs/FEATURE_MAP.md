@@ -1951,7 +1951,7 @@ heard · chat bubbles (the file card; a Markdown file opens in the
 Markdown reader, see Artifacts) · a bot's message in a group room (the same
 cards, read from the bot's profile, see Pictures in messages)
 
-**Desktop app:** has it: replies naming delivered files instead of reading paths (`desktop/src/renderer/src/state/media.ts`, desktop#51).
+**Desktop app:** has it: replies naming delivered files instead of reading paths (`desktop/src/renderer/src/state/media.ts`, desktop#51). The file card's Open shows its file over the window, as the phone's card opens it: a page in the sandboxed frame, a picture, sound, video (seekable) or PDF from a copy served on `conduit-file://` (the last six kept, emptied at start and quit), Markdown formatted, other text as is; Download stays, and a page's card also offers Open in Browser, a copy opened in the default browser (Eric 2026-11-25, desktop issue 554; `desktop/src/renderer/src/components/FileViewer.tsx`, `desktop/src/main/viewFiles.ts`, desktop#556). No Open in Finder: the file is on the Hermes host (Eric 2026-11-25).
 
 **Code**
 - The file card: `Conduit/Views/Components/MarkdownText.swift` (GatewayMediaFileCard; a Markdown file opens `Conduit/Views/Components/MarkdownDocumentSheet.swift`)
@@ -8801,7 +8801,7 @@ Artifacts and the Folder · text that describes it (README.md's Chat list: the
 since Conduit sends no prompt from a page; the stand-in `window.hermes` only
 keeps a Desktop widget's buttons from throwing)
 
-**Desktop app:** has it: pages Hermes draws (`desktop/src/renderer/src/components/PagePreview.tsx`, `desktop/src/main/pages.ts`, desktop#38).
+**Desktop app:** has it: pages Hermes draws (`desktop/src/renderer/src/components/PagePreview.tsx`, `desktop/src/main/pages.ts`, desktop#38); full screen, and in Artifacts' viewer for this dashboard's page, Open in Browser opens a copy in the default browser (Eric 2026-11-25, desktop#556).
 
 **Code**
 - HTML previews: `Conduit/Views/Components/HTMLPreviewBlock.swift` (HTMLPreviewBlock, heightKey, HTMLPreviewPage.inlineViewportHeight and inlineLayoutHeight, HTMLPreviewDocuments and removeAll, wiped with the saved chats in `Conduit/Services/AppState+ChatList.swift` wipeOfflineChatCache (that dashboard's pages only) and deleteSavedChats; a read's outcome: `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` GatewayMediaRead, isRefusal and read(for:), from AppState.gatewayMediaRead; test in `ConduitTests/HTMLPreviewDocumentsTests.swift`, sheetPage, HTMLPreviewPage.placeholderHeight, SheetPage, clampedInlineHeight, maximumInlineHeight: the 900 pt a preview draws to in a message, full screen showing the rest, since previews shipped; isCutInline, CutFootFade, bridgeScript); full screen from Artifacts and the Folder: `Conduit/Views/V2/V2ArtifactsViews.swift`, `Conduit/Views/V2/V2WorkspaceViews.swift` (OpenPage); the `::preview` grammar, shared with Desktop cards: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, isHTML)
