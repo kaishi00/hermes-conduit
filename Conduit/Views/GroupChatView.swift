@@ -1597,12 +1597,59 @@ extension EnvironmentValues {
 /// A room member's picture: the bot's own (its profile's avatar), else its
 /// starter face. Another person's member wears the look their Conduit sent.
 struct GroupMemberAvatar: View {
-    @EnvironmentObject private var appState: AppState
     let member: GroupMember?
     let name: String
     let size: CGFloat
     /// A person's look, for a bubble that isn't a member's.
     var look: RoomLook? = nil
+    /// Inside a tab that holds its updates back (a room's tile on Bots
+    /// Home), the face follows them, as `BotMonogramView` does; elsewhere
+    /// (the room's own screen) AppState itself (audit 1722, issue 3147).
+    @Environment(\.v2ShownUpdates) private var held
+
+    var body: some View {
+        if let held {
+            GroupMemberHeldAvatar(member: member, name: name, size: size, look: look, updates: held)
+        } else {
+            GroupMemberLiveAvatar(member: member, name: name, size: size, look: look)
+        }
+    }
+}
+
+/// GroupMemberAvatar following a tab's held updates.
+private struct GroupMemberHeldAvatar: View {
+    let member: GroupMember?
+    let name: String
+    let size: CGFloat
+    let look: RoomLook?
+    @ObservedObject var updates: V2ShownUpdates
+
+    var body: some View {
+        GroupMemberAvatarFace(appState: updates.appState, member: member, name: name, size: size, look: look)
+    }
+}
+
+/// GroupMemberAvatar following AppState.
+private struct GroupMemberLiveAvatar: View {
+    let member: GroupMember?
+    let name: String
+    let size: CGFloat
+    let look: RoomLook?
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        GroupMemberAvatarFace(appState: appState, member: member, name: name, size: size, look: look)
+    }
+}
+
+/// The face itself, drawn when the wrapper that follows AppState or a
+/// tab's held updates draws.
+private struct GroupMemberAvatarFace: View {
+    let appState: AppState
+    let member: GroupMember?
+    let name: String
+    let size: CGFloat
+    let look: RoomLook?
     @Environment(\.groupRoomLooks) private var roomLooks
     /// Off outside the room's screen (Bots Home's tiles): a far room open
     /// in place doesn't lend them its bots.

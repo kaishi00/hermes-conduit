@@ -404,16 +404,26 @@ extension AppState {
         Task { @MainActor [weak self] in
             guard let self, let response = try? await self.readKeptDashboardJSON(kept.bridge, path: NotifierPluginStatus.path),
                   self.keptDashboardRuntimes[id]?.bridge === kept.bridge else { return }
-            let state = NotifierPluginStatus.state(from: response)
-            guard state != .unknown else { return }
-            kept.runtime.notifierPlugin.state = state
-            kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
-            if let report = KeptPluginReport(bridge: ObjectIdentifier(kept.bridge), response: response) {
-                self.combinedDashboardPluginCapabilities[id] = report
-                self.noteDashboardHermesName(id, NotifierPluginStatus.hermesName(from: response))
-            }
-            if self.farChatDashboardID == id { self.objectWillChange.send() }
+            self.keepPluginReport(response, of: kept, for: id)
         }
+    }
+
+    /// Takes a kept dashboard's plugin status as read: on its runtime, and
+    /// cached for its bridge with its Hermes' name. `ifUnknown`: only while
+    /// the runtime still knows nothing (a read that waited for one, where
+    /// the refresh on every keep may have answered first); the refresh
+    /// itself writes what it read.
+    func keepPluginReport(_ response: [String: Any], of kept: KeptDashboardRuntime, for id: UUID, ifUnknown: Bool = false) {
+        let state = NotifierPluginStatus.state(from: response)
+        guard state != .unknown else { return }
+        if ifUnknown, kept.runtime.notifierPlugin.state != .unknown { return }
+        kept.runtime.notifierPlugin.state = state
+        kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
+        if let report = KeptPluginReport(bridge: ObjectIdentifier(kept.bridge), response: response) {
+            combinedDashboardPluginCapabilities[id] = report
+            noteDashboardHermesName(id, NotifierPluginStatus.hermesName(from: response))
+        }
+        if farChatDashboardID == id { objectWillChange.send() }
     }
 
     /// Ensures a kept runtime knows what its plugin serves (from the report

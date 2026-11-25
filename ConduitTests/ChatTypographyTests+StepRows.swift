@@ -86,6 +86,11 @@ extension ChatTypographyTests {
         state.setRunning(true)
         XCTAssertEqual(cache.scan(state).tool?.id, "t1", "the turn started: looked up")
         XCTAssertEqual(cache.scan(state).startedAt, MessageTimestampFormatter.date(from: "2026-11-23T03:00:00Z"))
+        XCTAssertEqual(cache.lookups, 1, "the second read took what the first found")
+        // AppState publishing something else looks nothing up again.
+        state.objectWillChange.send()
+        _ = cache.scan(state)
+        XCTAssertEqual(cache.lookups, 1)
         state.messages = [user, tool("t1", .complete)]
         XCTAssertNil(cache.scan(state).tool, "the transcript changed: looked up again")
         state.messages.append(tool("t2", .running))
@@ -94,9 +99,11 @@ extension ChatTypographyTests {
         state.messages.append(next)
         XCTAssertEqual(cache.scan(state).startedAt, MessageTimestampFormatter.date(from: "2026-11-23T03:05:00Z"),
                        "the start follows the turn's own message")
+        let lookedUp = cache.lookups
         state.setRunning(false)
         XCTAssertNil(cache.scan(state).tool, "the turn ended")
         XCTAssertNil(cache.scan(state).startedAt)
+        XCTAssertEqual(cache.lookups, lookedUp, "with no turn running the transcript isn't looked through")
     }
 
     func testStepSubjectFallsBackToOutputWhenInputIsEmpty() {

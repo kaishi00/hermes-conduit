@@ -499,7 +499,7 @@ struct V2ChatsView: View {
 
     /// What shows the list: its tab, and nothing pushed over it.
     private var visibility: V2ListVisibility {
-        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+        V2ListVisibility(shell: shell)
     }
 
     /// No chat covers the list: none is open, or a wide window shows the

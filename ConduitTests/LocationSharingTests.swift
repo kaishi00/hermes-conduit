@@ -763,7 +763,13 @@ extension NotificationE2ETests {
             if script.ingests == 1 {
                 // Switched off while this batch, carrying it on, is out.
                 script.change = Task { @MainActor in await controller.setVoiceRead(.grokLive, allowed: false) }
-                for _ in 0..<20 { await Task.yield() }
+                // This answer is released once the change is in (the
+                // reader reads off here), not after a count of yields.
+                var waits = 0
+                while await MainActor.run(body: { controller.allowsVoiceRead(.grokLive) }), waits < 1_000 {
+                    waits += 1
+                    try? await Task.sleep(for: .milliseconds(5))
+                }
                 return ["ok": true]
             }
             throw URLError(.notConnectedToInternet)
