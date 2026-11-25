@@ -5217,6 +5217,44 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeSessionId, "unlisted-link-1")
         XCTAssertEqual(appState.activeDashboardID, vps.id)
 
+        // Do it on a card of Mac's Pulse shown in place opens the card's
+        // chat in place too, with the reminder in its composer under Mac's
+        // own dashboard and profile, and no switch; a card from no chat,
+        // whose new chat isn't made on another dashboard's runtime, and a
+        // tap from another Pulse than the one shown leave it to the switch.
+        appState.openCombinedPulse(mac.id)
+        XCTAssertEqual(appState.pulseDashboardID, mac.id)
+        kept.runtime.pulseHomeChatID = "pulse-mac"
+        let doItJSON: [String: Any] = ["home_chat_id": "pulse-mac", "cards": [
+            ["id": 11, "kind": "followup", "level": "push", "news": "Send the deck", "chat_id": "unlisted-doit-1",
+             "profile": "atlas"] as [String: Any],
+            ["id": 12, "kind": "followup", "level": "push", "news": "Renew the pass", "topic": "deadline"] as [String: Any],
+        ]]
+        let doItCards = try XCTUnwrap(PulseFeedPage(json: doItJSON)?.cards)
+        XCTAssertEqual(doItCards.count, 2)
+        if case .notInPlace = await appState.doFarPulseCard(doItCards[0], for: vps.id) {} else {
+            XCTFail("not the Pulse the page shows")
+        }
+        if case .notInPlace = await appState.doFarPulseCard(doItCards[1], for: mac.id) {} else {
+            XCTFail("a new chat still starts after a switch")
+        }
+        XCTAssertEqual(appState.activeSessionId, "unlisted-link-1", "neither opened anything")
+        guard case .opened(let didIt) = await appState.doFarPulseCard(doItCards[0], for: mac.id) else {
+            return XCTFail("the card's chat opens in place")
+        }
+        XCTAssertNil(didIt.chat, "the card's own chat: acted names none")
+        XCTAssertEqual(appState.activeSessionId, "unlisted-doit-1")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for Do it on a far card")
+        XCTAssertEqual(appState.composerPrefillText, doItCards[0].actionMessage)
+        XCTAssertEqual(
+            appState.composerPrefillDraftKey,
+            ComposerBar.composerDraftKey(for: "unlisted-doit-1", profile: "atlas", dashboard: mac.id),
+            "left in the far chat's own composer"
+        )
+        appState.composerPrefillDraftKey = nil
+        appState.pulseShownDashboardID = nil
+
         // A far room's Ask Your Agent chat opens the same way, in place:
         // one its Hermes refused reads gone with the error from before it
         // left as it was, for the opener to replace the chat.
