@@ -176,7 +176,9 @@ extension AppState {
     /// profile differently (#3306 follow-up).
     nonisolated static func avatar(in avatars: [String: URL], for profile: String) -> URL? {
         if let url = avatars[profile] { return url }
-        return avatars.first { profilesMatch($0.key, profile) }?.value
+        // The first by key, so two other cases of it (never in one folder,
+        // but a merged map could hold both) always give the same one.
+        return avatars.filter { profilesMatch($0.key, profile) }.min { $0.key < $1.key }?.value
     }
 
     /// The same across the roster's snapshot and the pictures saved on this
