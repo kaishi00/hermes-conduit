@@ -533,6 +533,8 @@ struct PulseSettingsPage: View {
                 )) {
                     Text(verbatim: appState.profileDisplayName(choice.name))
                 }
+                // Stays open while profiles are ticked, like the Chats filters (Eric, 2026-11-25, issue 3269).
+                .menuActionDismissBehavior(.disabled)
             }
         } label: {
             HStack {
