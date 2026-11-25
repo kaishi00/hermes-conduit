@@ -16,9 +16,11 @@ import Foundation
 /// `key="value"` or `key='value'`, and a preview without a file stays the
 /// text it is. `::preview{file="…"}` draws its file; any other directive is
 /// a Desktop plugin's card (#1522), which Conduit names instead of showing
-/// the raw line. The plugin's own `::conduit-board{id="…"}` says where Hermes
-/// Desktop draws a conduit_show board; Conduit draws that board from the tool
-/// call already, so the line is hidden everywhere: no segment, said or shown.
+/// the raw line. The plugin's own `::conduit-board{id="…"}` says where a
+/// conduit_show board goes in the reply. It is no segment, and nothing says
+/// or shows it: the chat cuts the reply there and draws the board between
+/// the two parts (`pieces`, issue 3215), and every other surface draws the
+/// board from the tool call or not at all.
 enum TranscriptDirectives {
     /// The directive the plugin's Desktop half draws (notifier's desktop/plugin.js).
     static let conduitBoardName = "conduit-board"
@@ -154,47 +156,98 @@ enum TranscriptDirectives {
     /// not in code, a quote or a table, where it's shown as written.
     static func boardIDs(in text: String) -> [String] {
         guard text.contains("::\(conduitBoardName){") else { return [] }
+        return readLines(text).flatMap { $0.reads ? boardIDs(inLine: $0.line) : [] }
+    }
+
+    /// The `id` of each board line in one line the chat reads directives in.
+    private static func boardIDs(inLine line: String) -> [String] {
+        guard segments(in: line) != nil else { return [] }
+        let nsLine = line as NSString
+        let codeSpans = inlineCodeSpans(in: line)
         var ids: [String] = []
-        _ = rewritingLines(text) { line in
-            guard segments(in: line) != nil else { return line }
-            let nsLine = line as NSString
-            let codeSpans = inlineCodeSpans(in: line)
-            for match in directiveExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)) {
-                let body = nsLine.substring(with: match.range(at: 2))
-                guard nsLine.substring(with: match.range(at: 1)) == conduitBoardName, isAttributesOnly(body),
-                      !codeSpans.contains(where: { $0.location < match.range.location && match.range.location < NSMaxRange($0) }),
-                      let id = attributes(in: body)["id"] else { continue }
-                ids.append(id.trimmingCharacters(in: .whitespaces))
-            }
-            return line
+        for match in directiveExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)) {
+            let body = nsLine.substring(with: match.range(at: 2))
+            guard nsLine.substring(with: match.range(at: 1)) == conduitBoardName, isAttributesOnly(body),
+                  !codeSpans.contains(where: { $0.location < match.range.location && match.range.location < NSMaxRange($0) }),
+                  let id = attributes(in: body)["id"] else { continue }
+            ids.append(id.trimmingCharacters(in: .whitespaces))
         }
         return ids
     }
 
+    /// A reply cut at its board lines: the text between them, and each
+    /// board where its line was.
+    enum BoardPiece: Equatable {
+        case text(String)
+        case board(String)
+    }
+
+    /// `text` cut at the lines naming a board in `ids`, each board once,
+    /// at the first line that names it (issue 3215). Such a line leaves the
+    /// text, any words on it staying before the board; a part with nothing
+    /// to show is left out, and the blank lines a cut leaves at a part's
+    /// ends go. A line in a fenced block, a quote or a table is never a
+    /// cut, so each part is whole Markdown. Without a board to place, the
+    /// text is one piece.
+    static func pieces(in text: String, placing ids: [String]) -> [BoardPiece] {
+        var left = Set(ids)
+        guard !left.isEmpty, text.contains("::\(conduitBoardName){") else { return [.text(text)] }
+        var pieces: [BoardPiece] = []
+        var run: [String] = []
+        func endRun() {
+            let part = run.joined(separator: "\n").trimmingCharacters(in: .newlines)
+            run = []
+            // Another board's line left in the part is hidden, and shows nothing.
+            if !removingBoards(from: part).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                pieces.append(.text(part))
+            }
+        }
+        for (line, reads) in readLines(text) {
+            let placed = reads && !left.isEmpty ? boardIDs(inLine: line).filter { left.remove($0) != nil } : []
+            guard !placed.isEmpty else {
+                run.append(line)
+                continue
+            }
+            let words = removingBoards(from: line)
+            if !words.isEmpty { run.append(words) }
+            endRun()
+            pieces.append(contentsOf: placed.map(BoardPiece.board))
+        }
+        endRun()
+        return pieces
+    }
+
     /// `text` with `rewrite` applied to each line the chat would read
-    /// directives in. A fenced code block is code, a quoted directive an
-    /// example, and a table's lines (header, rule and rows) table text: the
-    /// chat shows all three as written. nil drops the line.
+    /// directives in (`readLines`). nil drops the line.
     private static func rewritingLines(_ text: String, _ rewrite: (String) -> String?) -> String {
         guard text.contains("::") else { return text }
+        return readLines(text).compactMap { $0.reads ? rewrite($0.line) : $0.line }.joined(separator: "\n")
+    }
+
+    /// `text`'s lines, each with whether the chat reads directives in it.
+    /// A fenced code block is code, a quoted directive an example, and a
+    /// table's lines (header, rule and rows) table text: the chat shows all
+    /// three as written.
+    private static func readLines(_ text: String) -> [(line: String, reads: Bool)] {
         // Line endings normalized as the parser does, so its table check sees the same lines.
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var fence = CodeFence()
         var tableEnd = -1
-        var result: [String] = []
+        var result: [(line: String, reads: Bool)] = []
+        result.reserveCapacity(lines.count)
         for index in lines.indices {
             let line = lines[index]
-            if fence.isCode(line) { result.append(line); continue }
+            if fence.isCode(line) { result.append((line, false)); continue }
             if index > tableEnd, isTableHeader(lines, at: index) {
                 // The parser reads the rows that follow while each holds a pipe.
                 tableEnd = index + 1
                 while tableEnd + 1 < lines.count, lines[tableEnd + 1].contains("|"),
                       !lines[tableEnd + 1].trimmingCharacters(in: .whitespaces).isEmpty { tableEnd += 1 }
             }
-            if index <= tableEnd || line.trimmingCharacters(in: .whitespaces).hasPrefix(">") { result.append(line); continue }
-            if let rewritten = rewrite(line) { result.append(rewritten) }
+            let reads = index > tableEnd && !line.trimmingCharacters(in: .whitespaces).hasPrefix(">")
+            result.append((line, reads))
         }
-        return result.joined(separator: "\n")
+        return result
     }
 
     /// A file's name from its path.

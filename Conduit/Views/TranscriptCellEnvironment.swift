@@ -181,6 +181,9 @@ struct TranscriptCellEnvironment: Equatable {
         rest.chatRowState.retryableReplyID = new.retryableReplyID
         rest.chatRowState.followUpBoardRowID = new.followUpBoardRowID
         rest.chatRowState.teammateReplies = new.teammateReplies
+        rest.chatRowState.placedBoardIDs = new.placedBoardIDs
+        rest.chatRowState.shownBoards = new.shownBoards
+        rest.chatRowState.shownBoardRows = new.shownBoardRows
         rest.chatRowState.stepSummaries = new.stepSummaries
         rest.chatRowState.stepSummariesAsked = new.stepSummariesAsked
         guard measuresLike(rest) else { return .all }
@@ -198,6 +201,23 @@ struct TranscriptCellEnvironment: Equatable {
         for id in Set(old.teammateReplies.keys).union(new.teammateReplies.keys)
         where old.teammateReplies[id] != new.teammateReplies[id] {
             messages.insert(id)
+        }
+        // A reply draws the boards its lines place (issue 3215), and the
+        // follow-ups of the one whose follow-ups show: a board taken from
+        // its conduit_show row, or that row's follow-ups coming or going,
+        // changes that reply's height. The row itself leaves the transcript.
+        let followUpRows = old.followUpBoardRowID != new.followUpBoardRowID
+            ? Set([old.followUpBoardRowID, new.followUpBoardRowID].compactMap { $0 })
+            : Set<String>()
+        for reply in Set(old.placedBoardIDs.keys).union(new.placedBoardIDs.keys) {
+            let before = old.placedBoardIDs[reply] ?? []
+            let after = new.placedBoardIDs[reply] ?? []
+            if before != after || after.contains(where: { id in
+                old.shownBoards[id] != new.shownBoards[id] || old.shownBoardRows[id] != new.shownBoardRows[id]
+                    || (new.shownBoardRows[id].map { followUpRows.contains($0) } ?? false)
+            }) {
+                messages.insert(reply)
+            }
         }
         var runs: Set<String> = []
         for key in Set(old.stepSummaries.keys).union(new.stepSummaries.keys)

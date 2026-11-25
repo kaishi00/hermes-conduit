@@ -10919,13 +10919,20 @@ extension AppStateChatResumeTests {
     func testAProfileSwitchClosesThePaneAndChatWindows() async {
         let gate = ControlledSuspension()
         let (appState, _, _) = supersededSwitchHarness(gateMint: false, gate: gate)
-        let dashboard = appState.activeDashboardID ?? UUID()
+        // A followed chat is its dashboard's, and the pane and the windows
+        // let go of theirs by dashboard and profile (#3206): the harness
+        // has no dashboard of its own, so the one on screen is saved here.
+        let home = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://home.example.com")
+        appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home])
+        let dashboard = home.id
         func kept(_ id: String, running: Bool) -> BackgroundChat {
             let state = ChatState()
             state.messages = [ChatMessage(id: "r-\(id)", role: .assistant, content: "Hi", timestamp: "1")]
             state.turnState = running ? .running : .idle
+            // On the profile being left, as the pane's and the windows'
+            // chats are matched by their dashboard and profile (#3206).
             return BackgroundChat(sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
-                                  profile: "default", isBotChat: false, state: state)
+                                  profile: appState.activeProfile, isBotChat: false, state: state)
         }
         appState.backgroundChats = [kept("pane", running: false), kept("idle", running: false), kept("busy", running: true)]
         appState.besideChatIDs = ["pane"]

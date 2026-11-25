@@ -344,7 +344,8 @@ struct TranscriptModel {
         if previous?.targetsRevision != input.targetsRevision || previous?.isBusy != input.isBusy {
             facts = ChatRowFacts(rows: targets.map(\.message), isBusy: input.isBusy)
         }
-        let next = Self.rows(for: input, targets: targets, disclosure: disclosure, repeatedIDs: &repeatedIDs)
+        let next = Self.rows(for: input, targets: targets, disclosure: disclosure,
+                             placedBoardRows: facts.boards.hiddenRows, repeatedIDs: &repeatedIDs)
         let changes = TranscriptChangeSet.between(rows, next)
         rows = next
         return changes
@@ -353,17 +354,21 @@ struct TranscriptModel {
     /// The rows, in order: Load earlier; the saved copy's status or an
     /// empty chat's welcome while there are no rows; the chat's rows that
     /// draw (a step folded into its run, or a review into its run, draws
-    /// nothing); the live turn's; the send waiting. Ids are unique, the
+    /// nothing, and so does a conduit_show row in `placedBoardRows`, whose
+    /// board a reply's line places, issue 3215); the live turn's; the send
+    /// waiting. Ids are unique, the
     /// chat's rows winning: a live row's id matching a settled row (the
     /// thinking card a moment after it settles) isn't drawn twice.
     @MainActor
     static func rows(
         for input: Input,
         targets: [ChatMessageScrollTarget],
-        disclosure: ChatRowDisclosure
+        disclosure: ChatRowDisclosure,
+        placedBoardRows: Set<String> = []
     ) -> [TranscriptRow] {
         var repeatedIDs: [String] = []
-        return rows(for: input, targets: targets, disclosure: disclosure, repeatedIDs: &repeatedIDs)
+        return rows(for: input, targets: targets, disclosure: disclosure, placedBoardRows: placedBoardRows,
+                    repeatedIDs: &repeatedIDs)
     }
 
     /// The rows, with `repeatedIDs` set to the chat's rows left out for an
@@ -373,6 +378,7 @@ struct TranscriptModel {
         for input: Input,
         targets: [ChatMessageScrollTarget],
         disclosure: ChatRowDisclosure,
+        placedBoardRows: Set<String> = [],
         repeatedIDs: inout [String]
     ) -> [TranscriptRow] {
         repeatedIDs = []
@@ -383,7 +389,7 @@ struct TranscriptModel {
             preferences: input.displayPreferences,
             isBusy: input.isBusy,
             disclosure: disclosure
-        ) {
+        ) && !placedBoardRows.contains(target.id) {
             guard ids.insert(target.id).inserted else {
                 repeatedIDs.append(target.id)
                 continue

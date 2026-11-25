@@ -2561,19 +2561,19 @@ struct GroupRouterModelRow: View {
         // nothing runs no onAppear or onReceive).
         ModifierHost {
             // Another dashboard's room open in place: its router is that
-            // Hermes', which this row's reads and saves don't reach yet.
-            if let slot, appState.farRoomRuntime == nil {
+            // Hermes', read and saved through its kept connection.
+            if let slot {
                 // The section's own spacing between the row and its caption.
                 VStack(alignment: .leading, spacing: 14) {
                     NavigationLink {
-                        HelperModelPage(slot: slot, settings: appState.helperModelSettings(task: slot.id, inProfile: Self.profile))
+                        HelperModelPage(slot: slot, settings: appState.roomHelperModelSettings(task: slot.id, inProfile: Self.profile))
                     } label: {
                         ModelChooserLinkRow(title: AppLocalization.string("Model"), value: slot.value)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("room.settings.routerModel")
                     Text(AppLocalization.string(
-                        "This is \(appState.profileDisplayName(Self.profile))’s Group router helper. It picks who answers in every group chat on this Hermes set to pick automatically.", table: .rooms
+                        "This is \(appState.readingRoomRuntime { appState.profileDisplayName(Self.profile) })’s Group router helper. It picks who answers in every group chat on this Hermes set to pick automatically.", table: .rooms
                     ))
                     .settingsCaption()
                 }
@@ -2589,10 +2589,11 @@ struct GroupRouterModelRow: View {
     private func read() async {
         reads += 1
         let read = reads
-        if let kept = Self.router(in: appState.keptHelperModels(inProfile: Self.profile)) {
+        if let kept = Self.router(in: appState.readingRoomRuntime { appState.keptHelperModels(inProfile: Self.profile) }) {
             slot = kept
         }
-        guard let loaded = try? await appState.loadHelperModels(inProfile: Self.profile), read == reads else { return }
+        let answer = await appState.onRoomRuntime { try? await appState.loadHelperModels(inProfile: Self.profile) }
+        guard let loaded = answer, read == reads else { return }
         slot = Self.router(in: loaded)
     }
 

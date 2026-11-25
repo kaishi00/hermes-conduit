@@ -587,7 +587,7 @@ extension AppState {
                 if archived {
                     sessionYoloStore.clearOverride(
                         for: profile,
-                        sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set(updated.nestingIDs)))
+                        sessionIDs: Array(idsKeptOnlyForTheDeletedChat(idsNoOtherChatHereLists(updated), profile: profile))
                     )
                     removeSessionFromLiveCatalog(updated)
                     // The Archived list and the pins are the dashboard on
@@ -734,7 +734,9 @@ extension AppState {
         defer { sessionMutationID = nil }
         // One set for the success path and a delete answered after a switch.
         let deletedSessionIDs = Set(session.nestingIDs)
-        // What a call hears of it, read while its dashboard's rows are on hand.
+        // What is kept under its ids alone, and what a call hears of it,
+        // read while its dashboard's rows are on hand.
+        let stateSessionIDs = idsNoOtherChatHereLists(session)
         let callChatIDs = idsOnlyTheDeletedChatAnswersTo(session, dashboard: Self.dashboardPreferenceBucket(dashboardID), profile: profile)
         do {
             if let widgetSessionMutationRequestOverride {
@@ -758,10 +760,10 @@ extension AppState {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
             sessionYoloStore.clearOverride(
                 for: profile,
-                sessionIDs: Array(idsKeptOnlyForTheDeletedChat(deletedSessionIDs))
+                sessionIDs: Array(idsKeptOnlyForTheDeletedChat(stateSessionIDs, profile: profile))
             )
             revokeDeletedConversationIdentity(
-                sessionIDs: deletedSessionIDs,
+                sessionIDs: stateSessionIDs,
                 profile: profile
             )
             removeSessionFromLiveCatalog(session)
@@ -839,7 +841,7 @@ extension AppState {
         // The index is its own dashboard's.
         conversationIdentityIndex.removeSessionIDs(sessionIDs, profile: profile)
         // The rest is kept by profile and chat id alone.
-        let kept = idsKeptOnlyForTheDeletedChat(sessionIDs)
+        let kept = idsKeptOnlyForTheDeletedChat(sessionIDs, profile: profile)
         guard !kept.isEmpty else { return }
         chatResumeCoordinator.removeSessions(
             profile: profile,
@@ -859,14 +861,25 @@ extension AppState {
 
     /// Of a deleted chat's ids, those whose state kept by profile and chat
     /// id alone (where the list was left, the cached presentation, the YOLO
-    /// override) is its own. That state follows the dashboard on screen, so
-    /// for a chat deleted there it is all of them. Another combined
-    /// dashboard's chat, deleted on its own runtime, can share an id with a
-    /// chat this dashboard lists, whose state it would take (issue 3147):
-    /// those ids stay. One Hermes saved twice lists the same chat on both,
-    /// so its ids all go.
-    func idsKeptOnlyForTheDeletedChat(_ sessionIDs: Set<String>) -> Set<String> {
-        guard !actingOnRuntimeOnScreen else { return sessionIDs }
+    /// override) is its own. That state follows the chat on screen, so for
+    /// a chat deleted on the dashboard on screen it is all of them, but
+    /// those another combined dashboard's chat, open in place under the
+    /// same profile, answers to: what is kept under them now is that
+    /// chat's. Another combined dashboard's chat, deleted on its own
+    /// runtime, can share an id with a chat this dashboard lists, whose
+    /// state it would take (issue 3147): those ids stay. One Hermes saved
+    /// twice lists the same chat on both, so its ids all go.
+    func idsKeptOnlyForTheDeletedChat(_ sessionIDs: Set<String>, profile: String? = nil) -> Set<String> {
+        guard !actingOnRuntimeOnScreen else {
+            guard let far = farChat, let open = activeSessionId,
+                  far.profile.caseInsensitiveCompare(profile ?? activeProfile) == .orderedSame,
+                  far.dashboardID != dashboardIDOnScreen,
+                  !combinedHermesTwins(of: far.dashboardID).contains(where: { $0 == dashboardIDOnScreen })
+            else { return sessionIDs }
+            // The far chat's rows, where its dashboard lists it.
+            let rows = runtime(for: far.dashboardID)?.sessions.filter { $0.nestingIDs.contains(open) } ?? []
+            return sessionIDs.subtracting(Set(rows.flatMap(\.nestingIDs)).union([open]))
+        }
         if let onScreen = dashboardIDOnScreen, combinedHermesTwins(of: activeDashboardID).contains(onScreen) {
             return sessionIDs
         }
@@ -880,8 +893,32 @@ extension AppState {
         return sessionIDs.subtracting(listed)
     }
 
+    /// A deleted or archived chat's ids but the alternate ones another row
+    /// of its profile on hand lists too (the same chat listed twice is no
+    /// other row): the runtime-id mapping and the state kept under
+    /// such an id are that other chat's as well, and stay with it (issue
+    /// 3147). The rows are the runtime in scope's, so another combined
+    /// dashboard's chat, deleted on its own runtime, is checked against
+    /// its own dashboard's rows; the Cron rows and the Archived list are
+    /// the dashboard on screen's. With no rows on hand they all go.
+    func idsNoOtherChatHereLists(_ session: SessionSummary) -> Set<String> {
+        var rows = sessions + allProfilesCatalog.sessions
+        if actingOnRuntimeOnScreen { rows += cronSessions + archivedSessions }
+        // The state is kept per profile: another profile's row that lists
+        // the id keeps its own under other keys.
+        let profile = rowProfile(session)
+        let others = rows.filter {
+            $0.id != session.id && $0.durableKey != session.durableKey
+                && rowProfile($0).caseInsensitiveCompare(profile) == .orderedSame
+        }
+        let shared = session.alternateIds.filter { id in
+            id != session.id && id != session.storedSessionId && others.contains { $0.nestingIDs.contains(id) }
+        }
+        return Set(session.nestingIDs).subtracting(shared)
+    }
+
     /// The ids a deleted chat alone answers to: its own and its stored id,
-    /// and an alternate id only while no other row lists it, since another
+    /// and an alternate id only while no other chat's row lists it, since another
     /// chat may share one (a pin made before the chat was listed, or a
     /// call attached then, may still name that runtime id). The rows on
     /// hand say so only for the dashboard and profile in scope, once their
@@ -896,7 +933,7 @@ extension AppState {
         // The same rows `idsKeptOnlyForTheDeletedChat` reads: an archived
         // row, or another profile's in All, can list the id too.
         let others = [sessions, cronSessions, archivedSessions, allProfilesCatalog.sessions].joined()
-            .filter { $0.id != session.id }
+            .filter { $0.id != session.id && $0.durableKey != session.durableKey }
         return own.union(session.alternateIds.filter { id in
             !id.isEmpty && !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
         })

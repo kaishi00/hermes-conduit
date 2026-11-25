@@ -1376,14 +1376,6 @@ struct MessageBubble: View, Equatable {
         }
     }
 
-    /// The boards this reply's ::conduit-board lines name that the plugin
-    /// kept and Conduit read (LineBoards), in the lines' order; nil for none.
-    private var lineBoards: [RichBoard]? {
-        guard let ids = rowState.lineBoardIDs[message.id] else { return nil }
-        let boards = ids.compactMap { rowState.lineBoards[$0] }
-        return boards.isEmpty ? nil : boards
-    }
-
     /// One of this reply's ::conduit-board lines names a board the plugin
     /// no longer has, or one Conduit can't draw.
     private var hasGoneLineBoard: Bool {
@@ -1391,38 +1383,21 @@ struct MessageBubble: View, Equatable {
         return ids.contains { rowState.lineBoardsGone.contains($0) && rowState.lineBoards[$0] == nil }
     }
 
-    /// A board as the chat draws it. A live card shows only where it was
-    /// last brought up to date. A board this Conduit can't draw every card
-    /// of shows as its Markdown. `followUps`: the row's own conduit_show,
-    /// whose follow-ups show while nothing was sent after it.
+    /// The follow-ups of the board this reply's line placed, under the
+    /// reply: at the end of the turn, where the board's own row drew them.
     @ViewBuilder
-    private func boardView(_ board: RichBoard, rowID: String, followUps: Bool) -> some View {
-        let current = RichCard.current(board.cards, row: rowID, latestLiveRows: rowState.latestLiveRows)
-        VStack(alignment: .leading, spacing: 10) {
-            if board.cards.isEmpty, let markdown = board.markdown {
-                RichBoardMarkdown(markdown: markdown)
-            } else if current.isEmpty {
-                RichLiveUpdatedLine(title: board.cards.first?.title)
-            } else {
-                RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
-            }
-            if followUps, rowID == rowState.followUpBoardRowID, !board.followUps.isEmpty {
-                RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
-                                   send: { appState.requestBoardFollowUp(.send, text: $0) },
-                                   edit: { appState.requestBoardFollowUp(.edit, text: $0) })
-            }
+    private var placedFollowUps: some View {
+        let followUps = rowState.placedFollowUps(in: message.id)
+        if !followUps.isEmpty {
+            RichBoardFollowUps(followUps: followUps, composer: appState.predictive,
+                               send: { appState.requestBoardFollowUp(.send, text: $0) },
+                               edit: { appState.requestBoardFollowUp(.edit, text: $0) })
+                .frame(maxWidth: 560, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .environment(\.richChecklistContext, appState.richChecklistContext)
-        .environment(\.richChecklistInChat, true)
-        // The row state carries cardTaps, so a card-taps report redraws this row.
-        .environment(\.richCardActions, appState.richCardActionContext(canSend: rowState.cardsCanSend))
-        // A far chat's diffs and review rounds are its own dashboard's.
-        .environment(\.richCardHostDashboard, appState.richCardHostDashboard)
-        .frame(maxWidth: 560, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A reply as it draws, without the boards its lines name.
+    /// A reply as it draws, the boards its lines place inside it.
     @ViewBuilder
     private var assistantRow: some View {
         if let note = VoiceJobLinkNote(text: message.content) {
@@ -1521,16 +1496,16 @@ struct MessageBubble: View, Equatable {
                 )
             }
         case .assistant:
-            if lineBoards != nil || hasGoneLineBoard {
-                // The boards its ::conduit-board lines name, under it: a card
-                // the plugin showed for a call the model wrote out as text.
-                // One the plugin no longer has leaves a line saying so, as
-                // the line itself is hidden (issue 2093).
+            if hasGoneLineBoard || !rowState.placedFollowUps(in: message.id).isEmpty {
+                // The boards its ::conduit-board lines name draw inside the
+                // reply, where the lines are (SettledAssistantMessageContent,
+                // issue 3215). Under it: the follow-ups of the one it took
+                // from its conduit_show row, and for a board the plugin no
+                // longer has a line saying so, as the line itself is hidden
+                // (issue 2093).
                 VStack(alignment: .leading, spacing: 10) {
                     assistantRow
-                    ForEach(Array((lineBoards ?? []).enumerated()), id: \.offset) { _, board in
-                        boardView(board, rowID: message.id, followUps: false)
-                    }
+                    placedFollowUps
                     if hasGoneLineBoard {
                         Label("A board this reply showed is no longer available.", systemImage: "rectangle.on.rectangle.slash")
                             .scaledFont(.footnote)
@@ -1558,7 +1533,7 @@ struct MessageBubble: View, Equatable {
                 // The board Hermes showed (conduit_show): drawn from the
                 // call's saved answer, so it comes back with the chat,
                 // whatever the tool-progress setting.
-                boardView(board, rowID: message.id, followUps: true)
+                ChatBoardView(board: board, rowID: message.id, followUps: true)
             } else if let step {
                 ChatStepRow(message: message, placement: step)
             } else {
@@ -2816,6 +2791,11 @@ struct SettledAssistantMessageContent: View, Equatable {
     /// re-renders (the render cache keys on the chat-size identity), while
     /// unrelated streaming publishes — equal inputs — stay gated.
     let chatTextSize: ChatTextAppearance
+    /// The boards this reply's ::conduit-board lines place that can be
+    /// drawn now, in the lines' order (ChatRowState.placedBoards, issue
+    /// 3215): the reply is cut at those lines and each board drawn between
+    /// the parts. The boards themselves come from the row state.
+    var placedBoards: [String] = []
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // ONE comparison expression for every configuration: the field list a
@@ -2827,6 +2807,7 @@ struct SettledAssistantMessageContent: View, Equatable {
             && lhs.gatewayResolver === rhs.gatewayResolver
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.chatTextSize == rhs.chatTextSize
+            && lhs.placedBoards == rhs.placedBoards
         #if DEBUG
         // Consultation counter: a fixture asserting "the gate reported no
         // input change" is vacuous unless the gate was reached at all, and a
@@ -2840,6 +2821,7 @@ struct SettledAssistantMessageContent: View, Equatable {
             if lhs.gatewayResolver !== rhs.gatewayResolver { fields.append("gatewayResolver") }
             if lhs.sizeCategory != rhs.sizeCategory { fields.append("sizeCategory") }
             if lhs.chatTextSize != rhs.chatTextSize { fields.append("chatTextSize") }
+            if lhs.placedBoards != rhs.placedBoards { fields.append("placedBoards") }
             TranscriptPerf.noteGateReopen(component: "SettledAssistantMessageContent", fields: fields)
         }
         #endif
@@ -2862,13 +2844,23 @@ struct SettledAssistantMessageContent: View, Equatable {
             }
 
             if !message.content.isEmpty {
-                MarkdownText(
-                    source: message.content,
-                    gatewayMediaDataURL: gatewayResolver.map { resolver in
-                        { path in await resolver.dataURL(for: path) }
+                if placedBoards.isEmpty {
+                    markdown(message.content)
+                } else {
+                    // Cut at the lines that place a board, each board drawn
+                    // where its line was.
+                    let pieces = TranscriptDirectives.pieces(in: message.content, placing: placedBoards)
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                            switch piece {
+                            case .text(let text):
+                                markdown(text)
+                            case .board(let id):
+                                PlacedBoardView(id: id, reply: message.id)
+                            }
+                        }
                     }
-                )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 
             if let code = message.code {
@@ -2878,7 +2870,74 @@ struct SettledAssistantMessageContent: View, Equatable {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private func markdown(_ source: String) -> some View {
+        MarkdownText(
+            source: source,
+            gatewayMediaDataURL: gatewayResolver.map { resolver in
+                { path in await resolver.dataURL(for: path) }
+            }
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
+
+/// A board as the chat draws it. A live card shows only where it was last
+/// brought up to date. A board this Conduit can't draw every card of shows
+/// as its Markdown. `followUps`: the row's own conduit_show, whose
+/// follow-ups show while nothing was sent after it.
+struct ChatBoardView: View {
+    let board: RichBoard
+    let rowID: String
+    var followUps = false
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
+
+    var body: some View {
+        let current = RichCard.current(board.cards, row: rowID, latestLiveRows: rowState.latestLiveRows)
+        VStack(alignment: .leading, spacing: 10) {
+            if board.cards.isEmpty, let markdown = board.markdown {
+                RichBoardMarkdown(markdown: markdown)
+            } else if current.isEmpty {
+                RichLiveUpdatedLine(title: board.cards.first?.title)
+            } else {
+                RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
+            }
+            if followUps, rowID == rowState.followUpBoardRowID, !board.followUps.isEmpty {
+                RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
+                                   send: { appState.requestBoardFollowUp(.send, text: $0) },
+                                   edit: { appState.requestBoardFollowUp(.edit, text: $0) })
+            }
+        }
+        .environment(\.richChecklistContext, appState.richChecklistContext)
+        .environment(\.richChecklistInChat, true)
+        // The row state carries cardTaps, so a card-taps report redraws this row.
+        .environment(\.richCardActions, appState.richCardActionContext(canSend: rowState.cardsCanSend))
+        // A far chat's diffs and review rounds are its own dashboard's.
+        .environment(\.richCardHostDashboard, appState.richCardHostDashboard)
+        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The board a reply's ::conduit-board line names, where the line was
+/// (issue 3215): the one its turn's conduit_show row would have drawn, or
+/// one the plugin kept for a call written out as text (LineBoards). Reads
+/// the board from the row state, so it draws only in the chat's rows.
+struct PlacedBoardView: View {
+    let id: String
+    let reply: String
+    @Environment(\.chatRowState) private var rowState
+
+    var body: some View {
+        if let placed = rowState.placedBoard(id, reply: reply) {
+            ChatBoardView(board: placed.board, rowID: placed.rowID)
+        }
+    }
+}
+
 
 /// The dynamic half of an assistant row: the copy control (quote, branch
 /// and pin sit in `AssistantMessageMoreMenu`), kept small so its
@@ -3178,7 +3237,8 @@ struct AssistantBubble: View {
                 identity: identity,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,
-                chatTextSize: chatTextSize
+                chatTextSize: chatTextSize,
+                placedBoards: message.role == .assistant ? rowState.placedBoards(in: message.id) : []
             )
             .equatable()
             // Pin sits in the reply's long-press menu, not its action row

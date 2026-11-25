@@ -481,6 +481,15 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(summarized.measurementChange(from: idle).rowIDs(in: rows), ["old"])
 
         XCTAssertEqual(idle.measurementChange(from: idle), .none)
+        // A reply that takes a board from its conduit_show row (issue 3215),
+        // or whose placed board's follow-ups come to show, is measured again alone.
+        var placed = idle
+        placed.chatRowState.placedBoardIDs = ["old": ["cb-0000000000d1"]]
+        placed.chatRowState.shownBoardRows = ["cb-0000000000d1": "t1"]
+        XCTAssertEqual(placed.measurementChange(from: idle).rowIDs(in: rows), ["old"])
+        var followedUp = placed
+        followedUp.chatRowState.followUpBoardRowID = "t1"
+        XCTAssertEqual(followedUp.measurementChange(from: placed).rowIDs(in: rows), ["old"])
         var pinned = idle
         pinned.chatRowState.pinnedMessageIDs = ["old"]
         XCTAssertNil(pinned.measurementChange(from: idle).rowIDs(in: rows), "a change naming no rows forgets them all")

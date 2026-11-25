@@ -422,9 +422,22 @@ final class ClarifyBatchStateTests: XCTestCase {
                 return try refusal()
             }
 
+            // Its row on the Needs you list, whose copy of the questions the
+            // settle keeps out of the chat (notifier#965, issue 3147).
+            let listed = NeedsYouItem(
+                waitID: "w1", profile: appState.activeProfile, kind: .question, sessionIDs: ["stored-a"],
+                card: .clarifyBatch(requestId: "conduit-push-batch", questions: makeBatchActivity().questions)
+            )
+            appState.needsYou.apply([listed], profile: appState.activeProfile, dashboardID: appState.activeDashboardID) { _ in false }
+            XCTAssertFalse(appState.needsYou.cardsHermesDrew.contains("conduit-push-batch"), label)
+
             await appState.respondToClarify(requestId: "req-batch", questionId: "environment", answer: "staging")
 
             XCTAssertTrue(sawSubmitting, "The send in flight owns the card while it is on its way (\(label))")
+            XCTAssertTrue(appState.needsYou.cardsHermesDrew.contains("conduit-push-batch"),
+                          "The settle left for the last send keeps the row's copy out (\(label))")
+            appState.showWaitingQuestionCards()
+            XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["req-batch"], "nor is it drawn after (\(label))")
             let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
             XCTAssertTrue(settled.isExpired, label)
             XCTAssertEqual(settled.questions.map(\.status), [.expired, .expired, .expired], label)

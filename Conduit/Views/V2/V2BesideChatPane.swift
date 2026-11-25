@@ -365,9 +365,14 @@ private struct V2BesideChatRows: View {
     private var rows: some View {
         let state = chat.state
         let isRunning = chat.isRunning
+        // A board a reply's line places is drawn there, and its
+        // conduit_show row left out, as in the chat opened (issue 3215).
+        let settled = chat.newestSettledRows(Self.rowLimit)
+        let boards = LineBoards.placement(in: settled)
+        let hidden = boards.hiddenRows
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(chat.newestSettledRows(Self.rowLimit)) { row in
+                ForEach(hidden.isEmpty ? settled : settled.filter { !hidden.contains($0.id) }) { row in
                     MessageBubble(message: row, gatewayResolver: gatewayResolver)
                         .equatable()
                 }
@@ -390,6 +395,6 @@ private struct V2BesideChatRows: View {
             .allowsHitTesting(false)
         }
         .defaultScrollAnchor(.bottom)
-        .chatRowsBeside(profile: chat.profile, isBusy: isRunning)
+        .chatRowsBeside(profile: chat.profile, isBusy: isRunning, boards: boards)
     }
 }

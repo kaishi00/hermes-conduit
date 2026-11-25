@@ -603,6 +603,15 @@ extension AppState {
         }
         current.isLoadingEarlier = false
         defer { persistedTranscriptWindow = current }
+        // Load earlier is retired with pages unread: the call cards held
+        // back for those pages show now, at the top of what is loaded,
+        // instead of waiting for some later merge (issue 3233). By the
+        // window this leaves, as the last page's merge below.
+        func retireLoadEarlier() {
+            current.canLoadEarlier = false
+            let withCalls = mergeVoiceCallMarkers(into: messages, sessionId: requestedSessionId, window: current)
+            if withCalls != messages { messages = withCalls }
+        }
 
         switch outcome {
         case .payload(let response):
@@ -611,7 +620,7 @@ extension AppState {
                 // failure: stop offering older pages rather than erroring
                 // the already-hydrated conversation.
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned a malformed payload; retiring the affordance")
-                current.canLoadEarlier = false
+                retireLoadEarlier()
                 return false
             }
             // Response ownership: the page must still describe THIS
@@ -632,7 +641,7 @@ extension AppState {
                  conversationAliasIds: knownSessionIDs(for: returnedId)
                ) {
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned foreign session \(returnedId, privacy: .private(mask: .hash)); discarding and retiring the affordance")
-                current.canLoadEarlier = false
+                retireLoadEarlier()
                 return false
             }
             let fetchedRowCount = rawRows.count
@@ -644,7 +653,7 @@ extension AppState {
             // retires the affordance instead.
             guard let page, page.honorsTailContract else {
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) lost the tail contract; retiring the affordance")
-                current.canLoadEarlier = false
+                retireLoadEarlier()
                 return false
             }
             // Overlap dedup keys on the durable persisted row ID. A page
@@ -653,7 +662,7 @@ extension AppState {
             // silently corrupt dedup.
             guard PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else {
                 sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned rows without durable IDs; retiring the affordance")
-                current.canLoadEarlier = false
+                retireLoadEarlier()
                 return false
             }
             var didPrepend = false
@@ -766,7 +775,7 @@ extension AppState {
         case .unavailable:
             // The history source went away mid-conversation; there is no
             // older page to offer.
-            current.canLoadEarlier = false
+            retireLoadEarlier()
             return false
         case .failed(let error):
             // Only a structurally gone history source retires the
@@ -775,7 +784,7 @@ extension AppState {
             // another explicit tap. A failed backfill never loops on its
             // own.
             sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .private(mask: .hash)): \(LogRedaction.message(error), privacy: .public)")
-            current.canLoadEarlier = !Self.historySourceIsUnavailable(error)
+            if Self.historySourceIsUnavailable(error) { retireLoadEarlier() }
             return false
         }
     }

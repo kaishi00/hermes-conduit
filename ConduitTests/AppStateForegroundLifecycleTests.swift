@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 import XCTest
 @testable import Conduit
@@ -10154,5 +10155,53 @@ extension AppStateForegroundLifecycleTests {
             "the message doesn't just vanish"
         )
         box.client.disconnect()
+    }
+}
+
+extension AppStateForegroundLifecycleTests {
+    /// Issue 3227: a roster read comes with every return to Bots, and
+    /// mostly brings what the last one did. It writes its groups and its
+    /// phase only when they changed, since each write redraws every view
+    /// reading AppState.
+    func testARosterReadThatChangesNothingWritesNeitherItsGroupsNorItsPhase() async {
+        let researcher = BotProfile(
+            name: "researcher",
+            botTitle: nil,
+            displayName: "",
+            profileDescription: "",
+            model: nil,
+            provider: nil,
+            hasAvatar: false,
+            isPinned: false,
+            isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: nil,
+            lastActive: nil,
+            lastPreview: nil
+        )
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                botRoster: { _ in BotRosterSnapshot(bots: [researcher], supportsBotProtocol: true) }
+            )
+        )
+        installDisconnectedClient(into: harness)
+        harness.appState.isConnected = true
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.botRoster.map(\.name), ["researcher"])
+        XCTAssertEqual(harness.appState.botModePhase, .available)
+
+        var groupWrites = 0
+        var phaseWrites = 0
+        let runtime = harness.appState.shownRuntime
+        // Each @Published sends its value on subscribing: only writes after that count.
+        let watching = [
+            runtime.$desktopGroupChats.dropFirst().sink { _ in groupWrites += 1 },
+            runtime.$botModePhase.dropFirst().sink { _ in phaseWrites += 1 }
+        ]
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(groupWrites, 0, "the same groups aren't written again")
+        XCTAssertEqual(phaseWrites, 0, "an available roster isn't marked available again")
+        XCTAssertEqual(harness.appState.botModePhase, .available)
+        withExtendedLifetime(watching) {}
     }
 }

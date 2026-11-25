@@ -877,6 +877,9 @@ final class AppState: ObservableObject {
                 let sameChat = leftChatIsOnScreen
                     || sessionControl.sessionID.map(sessionControlIsOpenChat) == true
                 if !sameChat { sessionControl.clear() }
+                // A far chat's owed resume was the chat left's: another one
+                // opened there since is read as it opens (issue 3147).
+                if !leftChatIsOnScreen { farChatResumeOwedAfterCallStart = nil }
                 // The Model and Context sheets act on the chat they came up
                 // over. Another chat taking its place (a notification, an
                 // app link) takes them down; a new id for the same
