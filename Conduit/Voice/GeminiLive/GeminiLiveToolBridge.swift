@@ -576,7 +576,16 @@ final class GeminiLiveToolBridge {
         let heardUntil: Date?
         /// What the user said for it, sent with it (issue 3236).
         var said: [String] = []
+        /// Where those words' lines stood before they were marked sent, so
+        /// a refused send gives them back for the retry.
+        var marks: WordMarks = [:]
     }
+    /// A user line's sent count before and after a request marked it.
+    struct WordMark: Equatable {
+        let before: Int?
+        let after: Int
+    }
+    typealias WordMarks = [UUID: WordMark]
     private var draft: Draft?
     /// When the user last said to send something to Hermes: the next new
     /// request goes at once.
@@ -638,7 +647,7 @@ final class GeminiLiveToolBridge {
     /// the call's own request still runs there, it goes into that request
     /// as a follow-up instead (#451), answered at once. A new request waits
     /// for the user's OK while asking first is on, unless `confirmed`.
-    private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String, said: [String], confirmed: Bool = false) async -> [Outgoing] {
+    private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String, said: [String], marks: WordMarks, confirmed: Bool = false) async -> [Outgoing] {
         guard !isEnding else { return [] }
         let words = VoiceRequestWords.adding(said, to: request)
         if let target = supervisor.threadFollowUpTarget() {
@@ -646,13 +655,14 @@ final class GeminiLiveToolBridge {
             guard !isEnding else { return [] }
             // Finished meanwhile: it is the chat's next turn after all.
             if !outcome.foundRequestFinished {
+                if case .failed = outcome { requestNotTaken(marks) }
                 return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
             }
         }
-        if !confirmed, let held = heldForOK(call, request: request, profile: "", toChat: true, said: said) { return held }
+        if !confirmed, let held = heldForOK(call, request: request, profile: "", toChat: true, said: said, marks: marks) { return held }
         // The call's chat was deleted (issue 1797): the request makes the
         // call a new chat, as an unattached call's first request does.
-        if supervisor.liveThread == nil { return await startBackgroundJob(call, instructions: request, profile: "", said: said) }
+        if supervisor.liveThread == nil { return await startBackgroundJob(call, instructions: request, profile: "", said: said, marks: marks) }
         // A workstream's chat: once asking first lets it go, its session
         // takes the request, never a chat turn queued behind the question
         // it waits on.
@@ -665,6 +675,7 @@ final class GeminiLiveToolBridge {
         }
         let sent = supervisor.startThreadTurn(request: words)
         guard let jobID = sent.jobID else {
+            requestNotTaken(marks)
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]
         }
         openCalls[jobID] = call.id
@@ -682,7 +693,7 @@ final class GeminiLiveToolBridge {
 
     /// Starts `instructions` as a background job; its outcome answers
     /// `call` (start_job, or send_request for a draft).
-    private func startBackgroundJob(_ call: GeminiLiveProtocol.FunctionCall, instructions: String, profile: String, said: [String]) async -> [Outgoing] {
+    private func startBackgroundJob(_ call: GeminiLiveProtocol.FunctionCall, instructions: String, profile: String, said: [String], marks: WordMarks) async -> [Outgoing] {
         // "Quick:" only routed the request; it isn't part of the task.
         let task = VoiceRequestWords.adding(said, to: VoiceThreadRouting.removingQuickMarker(instructions))
         // Routing reads the model's request, not the user's words with it.
@@ -705,8 +716,14 @@ final class GeminiLiveToolBridge {
             return []
         }
         guard let jobID = createdJobID else {
-            // Refused (too many jobs): answer now.
+            // Refused (too many jobs): answer now, its words kept for the retry.
+            requestNotTaken(marks)
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
+        }
+        // Made but its submit refused (a busy session, say): Hermes didn't
+        // take it, so its words go with the retry too.
+        if let job = supervisor.jobs.first(where: { $0.id == jobID }), case .failed = job.status, !job.requestTaken {
+            requestNotTaken(marks)
         }
         if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
             // Withdrawn while starting: its outcome arrives later as a
@@ -761,24 +778,24 @@ final class GeminiLiveToolBridge {
             // model reaches for start_job out of habit; routing here keeps the
             // chat's work in the chat whichever tool it picks.
             let profile = call.arguments["profile"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard let said = await saidForRequest(), !isEnding else { return [] }
+            guard case let (said, marks)? = await saidForRequest(), !isEnding else { return [] }
             // Routing reads the model's request, not the user's words a
             // Watch call's request arrives with.
             let routed = VoiceRequestWords.modelWords(of: instructions)
             if supervisor.liveThread != nil, profile.isEmpty,
                !VoiceThreadRouting.wantsBackgroundJob(routed), !supervisor.namesOtherProfile(routed) {
-                return await sendToThread(call, request: instructions, said: said)
+                return await sendToThread(call, request: instructions, said: said, marks: marks)
             }
-            if let held = heldForOK(call, request: instructions, profile: profile, toChat: false, said: said) { return held }
-            return await startBackgroundJob(call, instructions: instructions, profile: profile, said: said)
+            if let held = heldForOK(call, request: instructions, profile: profile, toChat: false, said: said, marks: marks) { return held }
+            return await startBackgroundJob(call, instructions: instructions, profile: profile, said: said, marks: marks)
         case .askThread:
             let request = call.arguments["request"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !request.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "request is required"], scheduling: .whenIdle)]
             }
-            guard let said = await saidForRequest(), !isEnding else { return [] }
-            return await sendToThread(call, request: request, said: said)
+            guard case let (said, marks)? = await saidForRequest(), !isEnding else { return [] }
+            return await sendToThread(call, request: request, said: said, marks: marks)
         case .sendRequest:
             guard !isEnding else { return [] }
             // Not UI copy, so not localized.
@@ -805,8 +822,9 @@ final class GeminiLiveToolBridge {
             case .no(nil):
                 draft = nil
                 // Their no was about this request: it doesn't go with the
-                // next one as their words.
-                noteWordsSent()
+                // next one as their words. Other words said while it waited
+                // ("also pin the best one") still do (issue 3271).
+                noteLastLineSent()
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "dropped", "message": "Not sent: the user said no, so it won't go to Hermes. Tell them in a few words."], scheduling: .whenIdle)]
             case .no(let change?), .notYet(let change?):
                 draft = nil
@@ -822,8 +840,12 @@ final class GeminiLiveToolBridge {
             // yes that says more, "yes, make it for four", included; a bare
             // yes is no words of the request's), and none of it goes with
             // the next one.
-            let saidWaiting = unsentWords().filter { VoiceThreadRouting.heldRequestAnswer($0) != .yes(addition: nil) }
-            noteWordsSent()
+            // A bare no or "not yet" the model let pass before the yes is
+            // no words of it either (issue 3271).
+            let saidWaiting = unsentWords().filter { !Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0)) }
+            // A refusal gives back the draft's words and these, never a bare
+            // answer, which was about this request.
+            let marks = waiting.marks.merging(noteWordsSent(keepingBare: true)) { held, _ in held }
             let approved = GeminiLiveProtocol.FunctionCall(
                 id: call.id,
                 name: call.name,
@@ -834,9 +856,9 @@ final class GeminiLiveToolBridge {
             // heard: its addition still goes with the request.
             if case .yes(let addition?) = answer, !saidWaiting.contains(where: { $0.contains(addition) }) { said.append(addition) }
             if waiting.toChat {
-                return await sendToThread(approved, request: request, said: said, confirmed: true)
+                return await sendToThread(approved, request: request, said: said, marks: marks, confirmed: true)
             }
-            return await startBackgroundJob(approved, instructions: request, profile: waiting.profile, said: said)
+            return await startBackgroundJob(approved, instructions: request, profile: waiting.profile, said: said, marks: marks)
         case .setAskFirst:
             let mode = call.arguments["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
             guard mode == "on" || mode == "off" else {
@@ -938,9 +960,13 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "message is required"], scheduling: .whenIdle)]
             }
             // With what they said themselves, as a new request has (issue 3236).
-            guard let said = await saidForRequest(), !isEnding else { return [] }
+            guard case let (said, marks)? = await saidForRequest(), !isEnding else { return [] }
             let outcome = await supervisor.followUp(jobID: id, words: VoiceRequestWords.adding(said, to: words), kind: call.arguments["kind"])
             guard !isEnding else { return [] }
+            switch outcome {
+            case .failed, .finished: requestNotTaken(marks)
+            default: break
+            }
             return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
         case .webSearch:
             var result = await searchResult(call.arguments["query"])
@@ -1127,24 +1153,23 @@ final class GeminiLiveToolBridge {
     /// moment after the model heard them, so they are given
     /// `requestWordsWait` to arrive and to stop growing.
     /// Nil when the conversation ended meanwhile: its request goes nowhere.
-    private func saidForRequest() async -> [String]? {
+    private func saidForRequest() async -> (words: [String], marks: WordMarks)? {
         let conversation = conversationEpoch
         let deadline = ContinuousClock.now + requestWordsWait
         var earlier: [String]?
         // The model may let a held request go on the user's no without
-        // send_request: a bare no was about that one, not this.
+        // send_request, or make a new request on their yes: a bare answer
+        // was about that one, not this (issue 3271).
         let answered = draft != nil
         while true {
-            let fresh = unsentWords().filter { !(answered && VoiceThreadRouting.heldRequestAnswer($0) == .no(change: nil)) }
+            let fresh = unsentWords().filter { !(answered && Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0))) }
             if ContinuousClock.now >= deadline || (!fresh.isEmpty && fresh == earlier) {
-                noteWordsSent()
-                return fresh
+                return (fresh, noteWordsSent(keepingBare: answered))
             }
             earlier = fresh
             do { try await Task.sleep(for: .milliseconds(250)) } catch {
                 guard conversation == conversationEpoch else { return nil }
-                noteWordsSent()
-                return fresh
+                return (fresh, noteWordsSent(keepingBare: answered))
             }
             // A stop clears `isEnding` for the next conversation, so the
             // wait checks the conversation itself.
@@ -1159,8 +1184,38 @@ final class GeminiLiveToolBridge {
         }
     }
 
-    private func noteWordsSent() {
-        for line in userLines() { wordsSent[line.id] = line.text.count }
+    /// Marks every line sent; what it moved, with each line's count before.
+    /// `keepingBare` leaves a bare answer's line out of what it returns: it
+    /// was about a held request, so a refusal doesn't give it back.
+    private func noteWordsSent(keepingBare: Bool = false) -> WordMarks {
+        var moved: WordMarks = [:]
+        for line in userLines() where wordsSent[line.id] != line.text.count {
+            if !(keepingBare && Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer(line.text))) {
+                moved[line.id] = WordMark(before: wordsSent[line.id], after: line.text.count)
+            }
+            wordsSent[line.id] = line.text.count
+        }
+        return moved
+    }
+
+    /// Marks only the user's last line sent: their answer, not what they
+    /// said before it.
+    private func noteLastLineSent() {
+        guard let last = userLines().last else { return }
+        wordsSent[last.id] = last.text.count
+    }
+
+    /// The request `marks` went with wasn't taken (the supervisor refused
+    /// it, or the work had finished): its words go with the next. Each
+    /// request gives back only its own lines, so one refused while another
+    /// went meanwhile leaves the other's sent.
+    private func requestNotTaken(_ marks: WordMarks) {
+        for (id, mark) in marks where wordsSent[id] == mark.after { wordsSent[id] = mark.before }
+    }
+
+    /// A yes, no or "not yet" that says nothing more.
+    static func isBareAnswer(_ answer: VoiceThreadRouting.HeldRequestAnswer) -> Bool {
+        answer == .yes(addition: nil) || answer == .no(change: nil) || answer == .notYet(change: nil)
     }
 
     /// The user said to send it to Hermes: the next new request goes at
@@ -1174,14 +1229,16 @@ final class GeminiLiveToolBridge {
     /// Holds a new request as the call's draft while asking first is on,
     /// answered at once so the model asks the user. Nil sends it now: asking
     /// first is off, or the user just said to send it to Hermes.
-    private func heldForOK(_ call: GeminiLiveProtocol.FunctionCall, request: String, profile: String, toChat: Bool, said: [String]) -> [Outgoing]? {
+    private func heldForOK(_ call: GeminiLiveProtocol.FunctionCall, request: String, profile: String, toChat: Bool, said: [String], marks: WordMarks) -> [Outgoing]? {
         let saidSend = sendNowAt.map { now().timeIntervalSince($0) < Self.sendNowWindow } ?? false
         sendNowAt = nil
         guard supervisor.asksBeforeSending, !saidSend else {
             draft = nil
             return nil
         }
-        draft = Draft(request: request, profile: profile, toChat: toChat, kind: call.arguments["kind"], heardUntil: lastUserSpeechAt(), said: said)
+        // The draft keeps its words and their marks: they go with its yes,
+        // and back to the transcript if that send is refused.
+        draft = Draft(request: request, profile: profile, toChat: toChat, kind: call.arguments["kind"], heardUntil: lastUserSpeechAt(), said: said, marks: marks)
         // Not UI copy, so not localized.
         return [.toolResponse(id: call.id, name: call.name, result: [
             "status": "waiting_for_ok",

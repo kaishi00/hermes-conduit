@@ -508,8 +508,10 @@ struct PulseSettingsPage: View {
 
     /// While Pulse reads every profile, the other profiles it leaves out
     /// (issue 3241): a menu with a checkmark per profile, drawn as the
-    /// Profiles choice above it. Each pick sends the whole list, so it waits
-    /// until Pulse answered.
+    /// Profiles choice above it. Each pick sends the one profile it changes,
+    /// so a list changed on another device since the page was read keeps
+    /// that change (issue 3269); an older plugin takes the whole list. Each
+    /// waits until Pulse answered.
     private func leaveOutMenu(_ state: PulseState) -> some View {
         let choices = state.leaveOutChoices
         let leftOut = choices.filter { $0.leftOut }.map { appState.profileDisplayName($0.name) }
@@ -520,13 +522,19 @@ struct PulseSettingsPage: View {
                     get: { choice.leftOut },
                     set: { on in
                         Haptics.selection()
-                        var next = state
-                        next.leaveOut(choice.name, on)
-                        change(["excluded_profiles": next.excludedProfiles ?? []]) { $0.leaveOut(choice.name, on) }
+                        if appState.notifierPlugin.reports(PulseClient.exclusionToggleCapability) {
+                            change([on ? "exclude_profile" : "include_profile": choice.name]) { $0.leaveOut(choice.name, on) }
+                        } else {
+                            var next = state
+                            next.leaveOut(choice.name, on)
+                            change(["excluded_profiles": next.excludedProfiles ?? []]) { $0.leaveOut(choice.name, on) }
+                        }
                     }
                 )) {
                     Text(verbatim: appState.profileDisplayName(choice.name))
                 }
+                // Stays open while profiles are ticked, like the Chats filters (Eric, 2026-11-25, issue 3269).
+                .menuActionDismissBehavior(.disabled)
             }
         } label: {
             HStack {

@@ -161,6 +161,10 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     var continuesChat = false
     /// Made the chat a call's later requests go to (#1250).
     var opensCallChat = false
+    /// Hermes took this job's opening request: only then does the chat
+    /// hold its recent-conversation lines (issue 3271). A refused submit
+    /// leaves them for the call's next request.
+    var requestTaken = false
     /// In a Watch call's shared chat: its replies are matched against replays.
     var sharesCallChat: Bool { continuesChat || opensCallChat }
     /// The live call that started this job and where in its transcript,
@@ -1761,6 +1765,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 dropTurnSurface(error)
                 throw error
             }
+            if generation == self.generation { update(job.id) { $0.requestTaken = true } }
             // Events may legitimately move the job past .starting while
             // submit awaits; only a cancel or a reset retires it here. A
             // cancel that landed mid-submit reached Hermes before the turn
@@ -1789,6 +1794,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // turn (its events moved the job on) is not a failed start.
             switch self.job(job.id)?.status {
             case .running?, .needsInput?, .finished?:
+                update(job.id) { $0.requestTaken = true }
                 keep()  // Hermes took it after all
                 if joinsCall { adoptCallChat(job.id) }
                 armCallback(job.id)  // a "call me when it's done" still calls
@@ -1817,7 +1823,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         instructions: String,
         in chat: VoiceThreadTarget,
         onJobCreated: (@MainActor (UUID) -> Void)? = nil,
-        onRuntime: (@MainActor (String) -> Void)? = nil
+        onRuntime: (@MainActor (String) -> Void)? = nil,
+        afterHangUp: Bool = false
     ) async -> String {
         let activeCount = activeJobCount
         guard activeCount < Self.maximumActiveJobs else {
@@ -1836,12 +1843,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             startedAt: Date()
         )
         job.continuesChat = true
+        // A request that waited past its Watch call's end is kept for a
+        // busy chat as long as the call's other requests (issue 3271).
+        if afterHangUp { job.waitsSinceHangUp = now() }
         job.callAnchor = currentCallAnchor
         markNewCallbackJob(&job)
         lastJobNumber += 1
         job.number = lastJobNumber
         jobs.append(job)
         onJobCreated?(job.id)
+        if afterHangUp, hangUpSendHold == nil { hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest") }
         let generation = generation
         Task { [weak self] in await self?.sendContinuedJob(job.id, in: chat, generation: generation, onRuntime: onRuntime) }
         return startedReply(job)
@@ -1851,9 +1862,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func sendContinuedJob(
         _ jobID: UUID, in chat: VoiceThreadTarget, generation: UInt64, onRuntime: (@MainActor (String) -> Void)? = nil
     ) async {
-        // However it ends, the call's thread turns it held go in.
-        defer { pumpThreadTurns() }
+        // However it ends, the call's thread turns it held go in, and
+        // the time held for it after the hang-up is given back.
+        defer {
+            pumpThreadTurns()
+            releaseHangUpSendHoldIfDone()
+        }
         while generation == self.generation, job(jobID)?.status == .starting {
+            // Its Watch call ended long ago and the chat never came free:
+            // dropped, as a phone call's waiting turn is (issue 3271).
+            if let since = job(jobID)?.waitsSinceHangUp, !(job(jobID)?.requestSent ?? false),
+               now().timeIntervalSince(since) > Self.hangUpSendLimit {
+                update(jobID) { $0.status = .cancelled }
+                return
+            }
             // One request at a time in the chat: an earlier job of the call
             // still running there, a thread turn of the call sent there, or a
             // turn typed in it, goes first. A job
@@ -2471,6 +2493,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         pumpThreadTurns()
     }
 
+    /// A Watch call ended: its requests still waiting for a busy chat
+    /// get the same limit and background time as a phone call's turns
+    /// (issue 3271).
+    func continuedJobsCallEnded() {
+        var stamped = false
+        for index in jobs.indices where jobs[index].continuesChat && jobs[index].status == .starting
+            && !jobs[index].requestSent && jobs[index].waitsSinceHangUp == nil {
+            jobs[index].waitsSinceHangUp = now()
+            stamped = true
+        }
+        guard stamped, hangUpSendHold == nil else { return }
+        hangUpSendHold = holdBackgroundTime("conduit.voice.hangUpRequest")
+    }
+
     /// How long a request still waiting when its call ended is kept for a
     /// chat that stays busy. Past it the request is dropped.
     static let hangUpSendLimit: TimeInterval = 600
@@ -2493,6 +2529,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             $0.isThreadTurn && $0.isDetachedThreadTurn && $0.id == threadSubmitInFlight
                 || $0.isThreadTurn && $0.status == .starting
                 && ($0.threadTurnSubmitted ? $0.isDetachedThreadTurn : $0.waitsSinceHangUp != nil)
+                // A Watch call's continued request, until its send is done.
+                || $0.continuesChat && $0.waitsSinceHangUp != nil && ($0.status == .starting || $0.submitInFlight)
         }
             || callChatClaimWaits > 0
     }
@@ -2640,6 +2678,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         unansweredProbes[jobID] = nil
     }
 
+    /// How often the queue looked at waiting thread turns and held them
+    /// all: tests wait on it, not on a sleep, before saying none was sent.
+    private(set) var threadTurnsHeldPasses = 0
+
     private func pumpThreadTurns() {
         guard threadTask == nil else { return }
         let generation = generation
@@ -2703,6 +2745,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 break
             }
             guard let (next, thread) = chosen else {
+                threadTurnsHeldPasses += 1
                 // Chats held by a turn of the call's own pump this again
                 // when it settles; the others are looked at again.
                 guard looksAgain else { return }
@@ -3437,7 +3480,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func contextSent(to chat: VoiceThreadTarget) -> Set<String> {
         if let held = callChatContextChat, Self.sameChat(held, chat) { return callChatContextSent }
         var sent: Set<String> = []
-        for job in jobs where (job.isCallChat || job.opensCallChat) && job.requestSent
+        for job in jobs where (job.isCallChat || job.opensCallChat) && job.requestTaken
             && [job.runtimeSessionID, job.storedSessionID].compactMap({ $0 }).contains(where: { chat.owns(sessionID: $0) }) {
             sent.formUnion(Self.requestWithoutContextSent(job.instructions, sent: []).lines)
         }

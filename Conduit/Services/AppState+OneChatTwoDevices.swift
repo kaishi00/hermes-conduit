@@ -603,11 +603,11 @@ extension AppState {
                     archivedSessions.removeAll { isRemovedWith($0, updated) }
                     // A restored cron run goes back to the Cron list, not the chats.
                     if updated.source == .cron {
-                        cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+                        cronSessions = [updated] + cronSessions.filter { !isRemovedWith($0, updated) }
                         // A list read reusing the cached cron rows keeps it too (issue 2763).
-                        sessionCatalogCache.keepCronRow(updated, forKey: "\(profile):cron") { sessionMatches($0, updated) }
+                        sessionCatalogCache.keepCronRow(updated, forKey: "\(profile):cron") { isRemovedWith($0, updated) }
                     } else {
-                        sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                        sessions = [updated] + sessions.filter { !isRemovedWith($0, updated) }
                     }
                 }
             }
@@ -1007,12 +1007,6 @@ extension AppState {
         }
     }
 
-    private func sessionMatches(_ lhs: SessionSummary, _ rhs: SessionSummary) -> Bool {
-        let left = Set([lhs.id] + lhs.alternateIds)
-        let right = Set([rhs.id] + rhs.alternateIds)
-        return !left.isDisjoint(with: right)
-    }
-
     /// Whether a delete or archive of `removed` takes `row` off the lists:
     /// any id the two share, unless they are different chats (their durable
     /// keys differ) that share only aliases each carries, which leaves
@@ -1020,7 +1014,6 @@ extension AppState {
     /// 3256). The same chat listed under two runtime ids goes whole.
     func isRemovedWith(_ row: SessionSummary, _ removed: SessionSummary) -> Bool {
         guard row.durableKey != removed.durableKey else { return true }
-        guard sessionMatches(row, removed) else { return false }
         let own = { (session: SessionSummary) in Set([session.id, session.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }) }
         let rowOwn = own(row), removedOwn = own(removed)
         return !rowOwn.isDisjoint(with: removedOwn.union(removed.alternateIds))
@@ -1169,9 +1162,9 @@ extension AppState {
         // the published arrays and re-saves the union. A row left in the
         // cache therefore resurrects a deleted or archived conversation on
         // the next foreground or send, until a pull-to-refresh purges it.
-        sessionCatalogCache.removeSession(
-            withIDs: Set([session.id] + session.alternateIds)
-        )
+        // By the lists' own rule: a cached chat sharing only an alias stays,
+        // and one under the deleted chat's stored id goes.
+        sessionCatalogCache.removeSessions { isRemovedWith($0, session) }
         // A call archive kept for the catalog that lists it is dropped: a
         // call archived on Hermes already, deleted or archived here, leaves
         // no trace in the live total that would make it read again. Kept
