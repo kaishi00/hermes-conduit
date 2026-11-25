@@ -285,8 +285,14 @@ extension AppState {
         guard let dashboard, dashboard != dashboardIDOnScreen else {
             return await applyPulseApproval(changeID, kind: kind, sharing: sharing)
         }
-        guard let runtime = pulseApprovalRuntime(for: dashboard,
-                                                 sharingWith: phoneSync.preferences.destination?.dashboardID) else {
+        let destination = phoneSync.preferences.destination?.dashboardID
+        guard let runtime = pulseApprovalRuntime(for: dashboard, sharingWith: destination) else {
+            // Shared with that dashboard, whose kept connection went since
+            // the tap: the approval waits here for the pass that dashboard
+            // gets once it's on screen, as before.
+            if destination == dashboard {
+                return await applyPulseApproval(changeID, kind: kind, sharing: sharing)
+            }
             return .off
         }
         return await actAcrossAwaits(onRuntime: runtime) {
