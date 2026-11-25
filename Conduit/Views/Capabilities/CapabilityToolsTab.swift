@@ -211,6 +211,9 @@ struct CapabilityToolsetDetailPage: View {
     /// The image or video backend's models, for the toolsets that have one.
     @State private var models: ToolsetModels?
     @State private var modelsError: String?
+    /// Counts models reads, so only the newest lands: one sent before a
+    /// backend switch or a pick can't put the old list back.
+    @State private var modelsRead = 0
 
     /// Reads again for another dashboard or profile, and once the store
     /// has been pointed at it.
@@ -632,10 +635,12 @@ struct CapabilityToolsetDetailPage: View {
     }
 
     /// The active backend's models, read again after a backend change.
-    private func loadModels() async {
+    private func loadModels(while current: () -> Bool = { true }) async {
         guard ToolsetModels.toolsets.contains(name) else { return }
+        modelsRead += 1
+        let mine = modelsRead
         let fresh = try? await store.toolsetModels(name: name)
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, mine == modelsRead, current() else { return }
         if let fresh {
             models = fresh
             modelsError = nil
@@ -657,9 +662,7 @@ struct CapabilityToolsetDetailPage: View {
                 guard serves(owner) else { return }
                 // Shown as Hermes now holds it, as the kept answer is.
                 models?.current = model.id
-                let fresh = try? await store.toolsetModels(name: name)
-                guard serves(owner) else { return }
-                if let fresh { models = fresh }
+                await loadModels(while: { serves(owner) })
             } catch {
                 guard serves(owner) else { return }
                 notice = UserFacingError.message(for: error)
@@ -687,11 +690,11 @@ struct CapabilityToolsetDetailPage: View {
                 let fresh = try? await store.toolsetConfig(name: name)
                 guard serves(owner) else { return }
                 if let fresh { config = fresh }
-                // The models are the new backend's.
+                // The models are the new backend's; a read that fails says so.
                 if ToolsetModels.toolsets.contains(name) {
-                    let freshModels = try? await store.toolsetModels(name: name)
+                    models = nil
+                    await loadModels(while: { serves(owner) })
                     guard serves(owner) else { return }
-                    models = freshModels
                 }
                 await appState.loadCapabilities()
             } catch {
