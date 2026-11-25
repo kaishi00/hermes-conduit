@@ -806,6 +806,9 @@ final class GeminiLiveToolBridge {
                 request = GPTLiveDelegationBridge.adding(addition, to: waiting.request)
             case .no(nil):
                 draft = nil
+                // Their no was about this request: it doesn't go with the
+                // next one as their words.
+                noteWordsSent()
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "dropped", "message": "Not sent: the user said no, so it won't go to Hermes. Tell them in a few words."], scheduling: .whenIdle)]
             case .no(let change?), .notYet(let change?):
                 draft = nil
@@ -1081,9 +1084,25 @@ final class GeminiLiveToolBridge {
         let deadline = ContinuousClock.now + lateYesWait
         while true {
             let answer = VoiceThreadRouting.heldRequestAnswer(lastUserWords())
+            if case .yes = answer { return await wholeAnswer(answer) }
             guard !answer.isAnswer, ContinuousClock.now < deadline else { return answer }
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return answer }
         }
+    }
+
+    /// A yes whose line is still arriving ("Yes", then "make it for four"):
+    /// read once it stops growing, so the rest goes with this request and
+    /// not the next one.
+    private func wholeAnswer(_ first: VoiceThreadRouting.HeldRequestAnswer) async -> VoiceThreadRouting.HeldRequestAnswer {
+        var answer = first
+        let deadline = ContinuousClock.now + requestWordsWait
+        while ContinuousClock.now < deadline {
+            let words = lastUserWords()
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return answer }
+            guard lastUserWords() != words else { break }
+            answer = VoiceThreadRouting.heldRequestAnswer(lastUserWords())
+        }
+        return answer
     }
 
     /// What the user said since the last request, for the one being made
@@ -1094,8 +1113,11 @@ final class GeminiLiveToolBridge {
     private func saidForRequest() async -> [String] {
         let deadline = ContinuousClock.now + requestWordsWait
         var earlier: [String]?
+        // The model may let a held request go on the user's no without
+        // send_request: a bare no was about that one, not this.
+        let answered = draft != nil
         while true {
-            let fresh = unsentWords()
+            let fresh = unsentWords().filter { !(answered && VoiceThreadRouting.heldRequestAnswer($0) == .no(change: nil)) }
             if ContinuousClock.now >= deadline || (!fresh.isEmpty && fresh == earlier) {
                 noteWordsSent()
                 return fresh
