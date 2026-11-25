@@ -444,6 +444,25 @@ extension AppState {
         }
     }
 
+    /// Whether the words still streaming are the ones the transcript
+    /// already holds just before the tool at `toolIndex`: Hermes saves a
+    /// step's words with its tool calls, so a resync that read them can
+    /// replay their deltas after it (held while it ran), and the start of
+    /// a tool already shown leaves them unflushed. Words held from part
+    /// way through are the row's tail.
+    nonisolated static func streamedWordsAreSaved(
+        _ buffer: String,
+        beforeToolAt toolIndex: Int,
+        in messages: [ChatMessage]
+    ) -> Bool {
+        let words = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty, messages.indices.contains(toolIndex) else { return false }
+        // The step's other tools and its thinking sit between.
+        guard let row = messages[..<toolIndex].last(where: { $0.role != .tool && $0.role != .reasoning }),
+              row.role == .assistant || row.role == .partial else { return false }
+        return row.content.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(words)
+    }
+
     /// A tool's start: its running card, after the reasoning and words
     /// before it. On a chat left mid-reply too (all-live stage 2), without
     /// what the start asks of the screen.
@@ -464,7 +483,14 @@ extension AppState {
         // without a tool ID, avoid duplicating an active running card for
         // the same tool and input.
         if let stableToolID {
-            if messages.contains(where: { $0.tool?.id == stableToolID }) {
+            if let known = messages.firstIndex(where: { $0.tool?.id == stableToolID }) {
+                // The rows that brought this tool brought the words before
+                // it: the same words replayed after a resync aren't a live
+                // reply (issue 3216).
+                if Self.streamedWordsAreSaved(shownChat.streamingBuffer, beforeToolAt: known, in: messages) {
+                    shownChat.streamingBuffer = ""
+                    streamingText = ""
+                }
                 return
             }
         } else if let lastRunningTool = messages.last(where: { $0.role == .tool && $0.tool?.status == .running })?.tool,

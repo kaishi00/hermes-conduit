@@ -513,7 +513,8 @@ struct PulseSettingsPage: View {
                     value: state.reportProfiles,
                     choices: [
                         (id: "all", title: AppLocalization.string("Every profile", table: .pulse)),
-                        (id: "this", title: AppLocalization.string("This profile only", table: .pulse)),
+                        // Named: it is the profile Pulse runs in, whichever one Settings is on (issue 3241).
+                        (id: "this", title: AppLocalization.string("Only \(appState.profileDisplayName(state.profile ?? AppState.pulseDefaultProfile))", table: .pulse)),
                     ],
                     onSelect: { picked in
                         Haptics.selection()
