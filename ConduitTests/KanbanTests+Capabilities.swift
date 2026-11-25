@@ -1827,6 +1827,63 @@ extension KanbanTests {
         XCTAssertNotNil(next.keptToolsetConfig(name: "web"))
     }
 
+    /// The image backend's models come from the plugin, which names an env
+    /// var overriding the pick; a pick goes through it and is kept as
+    /// Hermes holds it. A plugin without the route falls back to Hermes'
+    /// own, for the read and the pick alike.
+    func testImageModelsReadAndPickThroughThePluginThenHermes() async throws {
+        let models: [[String: Any]] = [
+            ["id": "grok-imagine-image", "display": "Grok Imagine", "speed": "~5s", "price": "$0.02"],
+            ["id": "grok-imagine-image-pro", "display": "", "strengths": "Higher fidelity"],
+        ]
+        let hermes = CapabilityMockRequester(responses: [
+            "/api/plugins/conduit_push/media-models/image_gen": [
+                "has_models": true, "plugin": "xai", "models": models, "current": "grok-imagine-image",
+                "default": "grok-imagine-image", "override": ["env": "XAI_IMAGE_MODEL", "model": "grok-imagine-image"],
+            ],
+            "/api/tools/toolsets/image_gen/models": [
+                "has_models": true, "plugin": "xai", "models": models, "current": "grok-imagine-image",
+                "default": "grok-imagine-image",
+            ],
+            "/api/tools/toolsets/image_gen/model": ["ok": true],
+        ])
+        let kept = KeptCapabilityAnswers()
+        let store = CapabilitiesStore()
+        store.configure(requester: hermes, profile: "second", answers: kept.answers)
+
+        let shown = try await store.toolsetModels(name: "image_gen")
+        XCTAssertTrue(shown.hasModels)
+        XCTAssertEqual(shown.models.map(\.display), ["Grok Imagine", "grok-imagine-image-pro"], "No name, its id")
+        XCTAssertEqual(shown.models.first?.facts, "~5s · $0.02")
+        XCTAssertEqual(shown.override, ToolsetModels.Override(env: "XAI_IMAGE_MODEL", model: "grok-imagine-image"))
+        XCTAssertEqual(hermes.calls.last?.path, "/api/plugins/conduit_push/media-models/image_gen?profile=second")
+
+        hermes.responses["/api/plugins/conduit_push/media-models/image_gen"] = ["ok": true]
+        try await store.selectToolsetModel(toolset: "image_gen", model: "grok-imagine-image-pro")
+        XCTAssertEqual(hermes.calls.last?.method, "PUT")
+        XCTAssertEqual(hermes.calls.last?.body?["model"] as? String, "grok-imagine-image-pro")
+        XCTAssertEqual(store.keptToolsetModels(name: "image_gen")?.current, "grok-imagine-image-pro")
+
+        // An older plugin: Hermes' routes answer.
+        hermes.failures["/api/plugins/conduit_push/media-models/image_gen"] =
+            DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        let fallback = try await store.toolsetModels(name: "image_gen")
+        XCTAssertNil(fallback.override)
+        XCTAssertEqual(hermes.calls.last?.path, "/api/tools/toolsets/image_gen/models?profile=second")
+        try await store.selectToolsetModel(toolset: "image_gen", model: "grok-imagine-image")
+        XCTAssertEqual(hermes.calls.last?.path.hasPrefix("/api/tools/toolsets/image_gen/model"), true)
+        XCTAssertEqual(hermes.calls.last?.body?["model"] as? String, "grok-imagine-image")
+
+        // Any other failure is the answer's own.
+        hermes.failures["/api/plugins/conduit_push/media-models/image_gen"] =
+            DashboardTicketBridgeError.http(status: 400, detail: "xai has no model 'x'")
+        do {
+            try await store.selectToolsetModel(toolset: "image_gen", model: "x")
+            XCTFail("A refused pick throws")
+        } catch {}
+        XCTAssertEqual(store.keptToolsetModels(name: "image_gen")?.current, "grok-imagine-image")
+    }
+
     /// A backend, terminal or key change Hermes took changes the page's
     /// kept answer as Hermes now holds it, so the page shows the change
     /// next time and should the read after it fail. A change that fails,

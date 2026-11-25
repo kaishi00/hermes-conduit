@@ -83,6 +83,88 @@
         }
       }
     },
+    "%@ on your host picks %@, over this setting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ auf deinem Host wählt %2$@ und hat Vorrang vor dieser Einstellung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ en tu host elige %2$@, por encima de este ajuste."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ sur ton hôte choisit %2$@, au-dessus de ce réglage."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ di host kamu memilih %2$@, mengalahkan pengaturan ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ sul tuo host sceglie %2$@, sopra questa impostazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの %1$@ がこの設定より優先して %2$@ を選んでいます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트의 %1$@이(가) 이 설정보다 우선해 %2$@을(를) 선택합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ na Twoim hoście wybiera %2$@, zamiast tego ustawienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ no seu host escolhe %2$@, acima desta configuração."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ на вашем хосте выбирает %2$@ вместо этой настройки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana makinendeki %1$@, bu ayarın yerine %2$@ seçiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 %1$@ 选择了 %2$@，优先于此设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 %1$@ 選擇了 %2$@，優先於此設定。"
+          }
+        }
+      }
+    },
     "Answers when an MCP server asks Hermes’ model to write something. It doesn’t choose tools." : {
       "localizations" : {
         "de" : {
@@ -329,6 +411,88 @@
         }
       }
     },
+    "Couldn't read this backend's models." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modelle dieses Backends konnten nicht gelesen werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron leer los modelos de este backend."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lire les modèles de ce backend."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak bisa membaca model backend ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile leggere i modelli di questo backend."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このバックエンドのモデルを読み込めませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 백엔드의 모델을 읽을 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się odczytać modeli tego backendu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível ler os modelos deste backend."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать модели этого бэкенда."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu arka ucun modelleri okunamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取此后端的模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取此後端的模型。"
+          }
+        }
+      }
+    },
     "Face" : {
       "localizations" : {
         "de" : {
@@ -571,6 +735,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每隔幾輪回顧一次對話，決定哪些內容寫入記憶、改進哪些技能。推理設定只在單獨的模型上生效，該模型不帶對話的提示快取。"
+          }
+        }
+      }
+    },
+    "Image generation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildgenerierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generación de imágenes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Génération d’images"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pembuatan gambar"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generazione di immagini"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像生成"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이미지 생성"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generowanie obrazów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geração de imagens"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Генерация изображений"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Görüntü oluşturma"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图像生成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖像生成"
           }
         }
       }
@@ -981,6 +1227,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不回答，從清單中移除"
+          }
+        }
+      }
+    },
+    "The backend and model Hermes makes pictures with, as in Capabilities > Tools." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Backend und Modell, mit dem Hermes Bilder erstellt, wie unter Fähigkeiten > Tools."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El backend y el modelo con los que Hermes crea imágenes, como en Capacidades > Herramientas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le backend et le modèle avec lesquels Hermes crée des images, comme dans Capacités > Outils."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backend dan model yang dipakai Hermes untuk membuat gambar, seperti di Kemampuan > Alat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il backend e il modello con cui Hermes crea immagini, come in Funzionalità > Strumenti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes が画像を作るバックエンドとモデル（機能 > ツールと同じ）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 그림을 만드는 백엔드와 모델입니다. 기능 > 도구와 같습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backend i model, którymi Hermes tworzy obrazy, jak w Możliwości > Narzędzia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O backend e o modelo com que o Hermes cria imagens, como em Recursos > Ferramentas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бэкенд и модель, которыми Hermes создаёт изображения, как в «Возможности > Инструменты»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes’in resim yaptığı arka uç ve model, Yetenekler > Araçlar’daki gibi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 生成图片所用的后端和模型，与“能力 > 工具”中相同。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 產生圖片所用的後端和模型，與「功能 > 工具」中相同。"
           }
         }
       }

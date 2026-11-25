@@ -795,6 +795,7 @@ struct SettingsView: View {
                     )
                     HelperModelsSettingsSection(settings: helperModelSettings)
                         .id(snapshot.profile)
+                    ImageGenerationSettingsSection()
                 }),
                 loadSchema: { await appState.loadProfileConfigSchema() },
                 keptSchema: { appState.keptProfileConfigSchema() },

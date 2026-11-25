@@ -745,6 +745,57 @@ final class CapabilitiesStore {
         return response["needs_nous_auth"] as? Bool ?? false
     }
 
+    /// The image or video backend's models, kept for its page to open on
+    /// next time. The plugin's route (0.198.0) reads them the way the
+    /// backend does and names an env var overriding the pick; before it,
+    /// Hermes' own.
+    func toolsetModels(name: String) async throws -> ToolsetModels {
+        let route = KeptRoute.page(Self.toolsetModelsPath(name))
+        do {
+            return ToolsetModels(try await read(scoped(Self.pluginModelsPath(name)), keptAs: route, in: answers))
+        } catch where Self.pluginModelsMissing(error) {
+            return ToolsetModels(try await read(scoped(Self.toolsetModelsPath(name)), keptAs: route, in: answers))
+        }
+    }
+
+    func keptToolsetModels(name: String) -> ToolsetModels? {
+        answers?.kept(KeptRoute.page(Self.toolsetModelsPath(name))).map(ToolsetModels.init)
+    }
+
+    /// Makes `model` the image or video backend's model. The plugin saves
+    /// it where the backend reads it (xAI's and DeepInfra's image backends
+    /// read only a key of their own, which Hermes' route doesn't write).
+    func selectToolsetModel(toolset: String, model: String) async throws {
+        let answers = self.answers
+        do {
+            _ = try await request(scoped(Self.pluginModelsPath(toolset)), method: "PUT", body: ["model": model])
+        } catch where Self.pluginModelsMissing(error) {
+            _ = try await request(
+                scoped("/api/tools/toolsets/\(Self.component(toolset))/model"),
+                method: "PUT",
+                body: scopedBody(["model": model])
+            )
+        }
+        await keepChange(KeptRoute.page(Self.toolsetModelsPath(toolset)), in: answers) {
+            ToolsetModels.choosing(model, in: $0)
+        }
+    }
+
+    private static func toolsetModelsPath(_ name: String) -> String {
+        "/api/tools/toolsets/\(component(name))/models"
+    }
+
+    private static func pluginModelsPath(_ name: String) -> String {
+        "/api/plugins/conduit_push/media-models/\(component(name))"
+    }
+
+    /// A plugin without the route (before 0.198.0, or turned off), or a
+    /// Hermes it can't read the catalog on: Hermes' own route answers.
+    private static func pluginModelsMissing(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(let status, _) = error else { return false }
+        return [404, 405, 501].contains(status)
+    }
+
     func terminalBackends() async throws -> [TerminalBackendOption] {
         TerminalBackendOption.list(
             from: try await read(scoped(KeptRoute.terminalBackends), keptAs: KeptRoute.terminalBackends, in: answers)
