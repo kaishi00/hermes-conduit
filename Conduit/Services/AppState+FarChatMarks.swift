@@ -199,33 +199,63 @@ extension AppState {
         }
     }
 
+    /// A far row's read-flag changes still on their way: the number of the
+    /// last one made, and the flag Hermes took last (what the row showed
+    /// before the first of them, until one is answered).
+    struct FarReadFlagChange {
+        var generation: UInt64
+        var accepted: Bool?
+    }
+
+    private func farReadFlagKey(_ row: SessionSummary, profile: String, in far: UUID) -> String {
+        "\(far.uuidString)\u{1F}\(profile.lowercased())\u{1F}\(row.id)"
+    }
+
     /// Sets Hermes' read flag for another combined dashboard's chats, on
     /// that dashboard through its kept connection, one at a time and in
     /// the order they were made, so the last change made is the one kept.
-    /// Each row shows it at once and goes back if Hermes refuses.
+    /// Each row shows it at once. Only a row's last change settles what it
+    /// shows: an earlier one's answer leaves the later one showing, and a
+    /// refused last one puts back the flag Hermes took last.
     func setFarSessionsUnread(_ sessions: [SessionSummary], in far: UUID, unread: Bool) {
         guard let bridge = keptDashboardRuntimes[far]?.bridge else {
             showSessionMutationNotice(AppLocalization.string("Reconnect to Hermes to change this conversation."))
             return
         }
         let rows = sessions.map { farChatMarksRow($0, in: far) }
-        let before = rows.map { keepFarRowUnread($0.row, profile: $0.profile, in: far, unread: unread) }
+        let changes = rows.map { entry -> (key: String, generation: UInt64) in
+            let key = farReadFlagKey(entry.row, profile: entry.profile, in: far)
+            let shown = keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: unread)
+            var change = farReadFlagChanges[key] ?? FarReadFlagChange(generation: 0, accepted: shown)
+            change.generation += 1
+            farReadFlagChanges[key] = change
+            return (key, change.generation)
+        }
         let previous = farReadFlagWriteTail[far]
         let write = Task { @MainActor [weak self] in
             await previous?.value
             for (index, entry) in rows.enumerated() {
                 guard let self else { return }
+                let (key, generation) = changes[index]
                 do {
                     _ = try await self.sendSessionMutation(entry.row.id, body: ["unread": unread], profile: entry.profile,
                                                            bridge: bridge)
+                    self.farReadFlagChanges[key]?.accepted = unread
+                    // A later change to this row shows already: its own
+                    // answer settles the row.
+                    guard self.farReadFlagChanges[key]?.generation == generation else { continue }
+                    self.farReadFlagChanges[key] = nil
                     // Again, and stamped again, though it may show it
                     // already: a list read that started or landed while
                     // the write was out could put the old flag back.
                     self.keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: unread)
                 } catch {
                     sessionCatalogLog.notice("Read flag not saved: \(LogRedaction.describing(error), privacy: .public)")
-                    if let was = before[index] {
-                        self.keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: was)
+                    guard self.farReadFlagChanges[key]?.generation == generation else { continue }
+                    let accepted = self.farReadFlagChanges[key]?.accepted
+                    self.farReadFlagChanges[key] = nil
+                    if let accepted {
+                        self.keepFarRowUnread(entry.row, profile: entry.profile, in: far, unread: accepted)
                     }
                 }
             }

@@ -604,13 +604,32 @@ extension SidebarLayoutTests {
         try await farHeld.answer()
         try await untilChatDone({ appState.farReadFlagWriteTail[far] == nil }, "the write ends")
         XCTAssertFalse(appState.isSessionUnread(chat))
+
+        // Two changes before the first is answered: the row keeps showing
+        // the later one over the earlier one's answer, and when the later
+        // one is refused it goes back to the flag Hermes took last.
+        appState.markSessionUnread(chat)
+        appState.markSessionRead(chat)
+        XCTAssertFalse(appState.isSessionUnread(chat))
+        try await farHeld.waitForRequests(7)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(8)
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(9)
+        XCTAssertFalse(appState.isSessionUnread(chat), "the earlier answer doesn't put its flag back over the later change")
+        try await farHeld.answer()
+        try await farHeld.waitForRequests(10)
+        try await farHeld.answer(["detail": "no"], status: 500)
+        try await untilChatDone({ appState.isSessionUnread(chat) }, "back to the flag Hermes took last")
+        try await untilChatDone({ appState.farReadFlagWriteTail[far] == nil }, "the writes end")
+        XCTAssertTrue(appState.farReadFlagChanges.isEmpty)
         XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
 
         // Not connected: nothing changes.
         appState.keptDashboardRuntimes[far] = nil
-        appState.markSessionUnread(chat)
-        XCTAssertFalse(appState.isSessionUnread(chat))
-        XCTAssertEqual(farHeld.sent.count, 6)
+        appState.markSessionRead(chat)
+        XCTAssertTrue(appState.isSessionUnread(chat))
+        XCTAssertEqual(farHeld.sent.count, 10)
     }
 
     /// Issue 3032: a timed mute that ends takes its bell with it then, not

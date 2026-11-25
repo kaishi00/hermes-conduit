@@ -303,8 +303,15 @@ extension AppState {
             sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(deletedSessionIDs))
             revokeDeletedConversationIdentity(sessionIDs: deletedSessionIDs, profile: profile)
             removeFromAllProfilesCatalog(session)
-            setLocalPin(session, pinned: false, profile: profile)
-            setSessionStarred(session, starred: false, profile: profile)
+            if actingOnRuntimeOnScreen {
+                setLocalPin(session, pinned: false, profile: profile)
+                setSessionStarred(session, starred: false, profile: profile)
+            } else if let dashboardID {
+                // Another combined dashboard's chat, deleted on its own
+                // runtime: the pins and stars in use are the screen's own
+                // chats'. Its star goes from its own dashboard's.
+                dropFarSessionStar(session, profile: profile, in: dashboardID)
+            }
             updateChatReadState { $0.forget(session, profile: profile) }
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {

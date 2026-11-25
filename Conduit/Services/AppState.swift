@@ -721,6 +721,9 @@ final class AppState: ObservableObject {
     /// The last read-flag write under way for each other combined
     /// dashboard: the next one waits for it (`setFarSessionsUnread`).
     var farReadFlagWriteTail: [UUID: Task<Void, Never>] = [:]
+    /// Each far row's read-flag changes still on their way, by dashboard,
+    /// profile and chat (`setFarSessionsUnread`).
+    var farReadFlagChanges: [String: FarReadFlagChange] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
