@@ -50,16 +50,22 @@ enum VoiceRequestWords {
     /// Whether `request` already carries the user's `words` (`comparable`
     /// already): as whole words, or, for Chinese and Japanese, written
     /// without spaces, as their letters and numbers anywhere in it, with
-    /// punctuation on either side left out (desktop#529).
+    /// punctuation on either side left out (desktop#529). A short answer
+    /// ("不", "好的") sits inside too many longer words to be found that way,
+    /// so under `unspacedMinimum` letters it must stand as a run of its own.
     static func carries(_ request: String, words: String) -> Bool {
         if words.unicodeScalars.contains(where: isUnspaced) {
             let bare = { (text: String) in
                 String(String.UnicodeScalarView(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }))
             }
-            return bare(request).contains(bare(words))
+            let theirs = bare(words)
+            if theirs.unicodeScalars.count >= unspacedMinimum { return bare(request).contains(theirs) }
         }
         return (" " + WatchBridgeDelegation.comparable(request) + " ").contains(" " + words + " ")
     }
+
+    /// Letters an unspaced answer needs before it's looked for inside the request's words.
+    static let unspacedMinimum = 3
 
     /// A Han, Hiragana or Katakana letter: scripts written without spaces.
     private static func isUnspaced(_ scalar: Unicode.Scalar) -> Bool {
