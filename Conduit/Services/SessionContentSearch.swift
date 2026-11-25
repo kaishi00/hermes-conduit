@@ -431,11 +431,14 @@ final class SessionContentSearchModel: ObservableObject {
     /// clears its hits; the same query on the same connection and profile
     /// changes nothing. Nil context (not connected) or a short query clears.
     func update(query raw: String, context: Context?) {
+        // A Hermes on screen with no search route still lets the other
+        // combined dashboards' be searched.
         guard let context, let query = SessionContentSearch.searchableQuery(raw),
-              !support.isUnsupported(context.scope) else {
+              !support.isUnsupported(context.scope) || !context.farSearches.isEmpty else {
             reset()
             return
         }
+        let screenUnsupported = support.isUnsupported(context.scope)
         let key = Key(
             query: query,
             profile: context.profile,
@@ -452,7 +455,9 @@ final class SessionContentSearchModel: ObservableObject {
         generation += 1
         let generation = generation
         let path = SessionContentSearch.path(query: query, profile: context.profile)
-        let others = context.otherProfiles.map { (profile: $0, path: SessionContentSearch.path(query: query, profile: $0)) }
+        let others: [(profile: String, path: String)] = screenUnsupported ? [] : context.otherProfiles.map {
+            (profile: $0, path: SessionContentSearch.path(query: query, profile: $0))
+        }
         let far = context.farSearches.map { (search: $0, path: SessionContentSearch.path(query: query, profile: $0.profile)) }
         let scope = context.scope
         let request = context.request
@@ -464,7 +469,7 @@ final class SessionContentSearchModel: ObservableObject {
             // The other profiles are asked alongside this one, not one after
             // another behind it; one that fails is left out, as the list's
             // own matches still show (issue 1965).
-            let otherSearches = others.map { other in
+            let sameHost = others.map { other in
                 Task { @MainActor () -> [SessionContentSearchHit] in
                     guard let response = try? await request(other.path) else { return [] }
                     return (SessionContentSearch.hits(from: response, query: query) ?? []).map { hit in
@@ -473,7 +478,8 @@ final class SessionContentSearchModel: ObservableObject {
                         return hit
                     }
                 }
-            } + far.map { far in
+            }
+            let farSearches = far.map { far in
                 // Another combined dashboard's: one that fails, or whose
                 // Hermes has no search route, is left out.
                 Task { @MainActor () -> [SessionContentSearchHit] in
@@ -486,66 +492,77 @@ final class SessionContentSearchModel: ObservableObject {
                     }
                 }
             }
+            let all = sameHost + farSearches
+            let primary: (@MainActor () async throws -> [String: Any])? = screenUnsupported
+                ? nil : { try await request(path) }
             await withTaskCancellationHandler {
                 await self.collect(
-                    primary: { try await request(path) },
-                    others: otherSearches,
+                    primary: primary,
+                    others: sameHost,
+                    far: farSearches,
                     query: query,
                     scope: scope,
                     generation: generation
                 )
             } onCancel: {
-                otherSearches.forEach { $0.cancel() }
+                all.forEach { $0.cancel() }
             }
         }
     }
 
     /// Publishes this profile's hits as soon as they land, then each other
     /// profile's as it answers, in profile order so rows never reshuffle.
-    /// The search reads as running until the last profile answers.
+    /// The search reads as running until the last profile answers. The
+    /// other combined dashboards' (`far`) go on whatever the one on screen
+    /// answered, its search route missing included (nil `primary`).
     private func collect(
-        primary: @MainActor () async throws -> [String: Any],
+        primary: (@MainActor () async throws -> [String: Any])?,
         others: [Task<[SessionContentSearchHit], Never>],
+        far: [Task<[SessionContentSearchHit], Never>],
         query: String,
         scope: AnyObject,
         generation: Int
     ) async {
-        let outcome: Result<[String: Any], Error>
-        do { outcome = .success(try await primary()) } catch { outcome = .failure(error) }
-        // The bridge doesn't stop a request it already sent: an answer
-        // for a query the field has moved past is dropped here.
-        guard self.generation == generation else { return }
-        switch outcome {
-        case .success(let response):
-            guard let primaryHits = SessionContentSearch.hits(from: response, query: query) else {
+        var hits: [SessionContentSearchHit] = []
+        var gathered = far
+        if let primary {
+            let outcome: Result<[String: Any], Error>
+            do { outcome = .success(try await primary()) } catch { outcome = .failure(error) }
+            // The bridge doesn't stop a request it already sent: an answer
+            // for a query the field has moved past is dropped here.
+            guard self.generation == generation else { return }
+            switch outcome {
+            case .success(let response):
+                if let primaryHits = SessionContentSearch.hits(from: response, query: query) {
+                    hits = primaryHits
+                    gathered = others + far
+                    self.hits = hits
+                    resultsQuery = query
+                } else {
+                    others.forEach { $0.cancel() }
+                    support.markUnsupported(scope)
+                }
+            case .failure(let error):
                 others.forEach { $0.cancel() }
-                isSearching = false
-                support.markUnsupported(scope)
-                return
-            }
-            var hits = primaryHits
-            isSearching = !others.isEmpty
-            self.hits = hits
-            resultsQuery = query
-            for other in others {
-                let found = await other.value
-                guard self.generation == generation else { return }
-                guard !found.isEmpty else { continue }
-                hits += found
-                self.hits = hits
-            }
-            isSearching = false
-        case .failure(let error):
-            others.forEach { $0.cancel() }
-            isSearching = false
-            if SessionContentSearch.isUnsupported(error) {
-                support.markUnsupported(scope)
-            } else {
-                // A failed answer settles nothing: the same query,
-                // asked again, is sent again.
-                currentKey = nil
+                if SessionContentSearch.isUnsupported(error) {
+                    support.markUnsupported(scope)
+                } else {
+                    // A failed answer settles nothing: the same query,
+                    // asked again, is sent again.
+                    currentKey = nil
+                }
             }
         }
+        isSearching = !gathered.isEmpty
+        for other in gathered {
+            let found = await other.value
+            guard self.generation == generation else { return }
+            guard !found.isEmpty else { continue }
+            hits += found
+            self.hits = hits
+            resultsQuery = query
+        }
+        isSearching = false
     }
 
     /// Drops the hits and any search in flight.

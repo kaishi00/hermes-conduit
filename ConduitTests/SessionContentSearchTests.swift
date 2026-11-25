@@ -678,6 +678,23 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(SessionContentSearch.rows(
             hits: model.hits, listed: [macChat], known: [macChat], activeProfile: "default", owner: owner
         ).map(\.openID), ["own"])
+
+        // The Hermes on screen has no search route: Mac's matches still
+        // show, and the next query asks Mac alone.
+        stub.responses = [:]
+        stub.fallback = .failure(DashboardTicketBridgeError.http(status: 404, detail: "Not Found"))
+        farStub.responses[path("compost")] = .success(["results": [result("mac-compost")]])
+        farStub.responses[path("compost", profile: "atlas")] = .success(["results": []])
+        model.update(query: "compost", context: context)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(model.hits.map(\.sessionID), ["mac-compost"], "a far match outlives the screen's missing route")
+        XCTAssertFalse(model.isSearching)
+        let asked = stub.paths.count
+        farStub.responses[path("mulch")] = .success(["results": [result("mac-mulch")]])
+        model.update(query: "mulch", context: context)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(stub.paths.count, asked, "the screen's Hermes isn't asked again")
+        XCTAssertEqual(model.hits.map(\.sessionID), ["mac-mulch"])
     }
 
     /// The Chats search's own matching (titles, previews, project names), desktop issue 399.
