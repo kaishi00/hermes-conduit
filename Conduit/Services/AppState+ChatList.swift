@@ -877,6 +877,9 @@ extension AppState {
     /// its row says what its working line says; the registry snapshot can
     /// lag it by a poll.
     func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
+        // Another combined dashboard's row: its own registry and waits,
+        // read through its kept connection (AppState+FarLiveStatus).
+        if let far = farMarksDashboard(session) { return farSessionLiveStatus(session, in: far) }
         // A snapshot from before a disconnect may be long stale.
         let registry = isConnected && liveSessionStatusProfile == activeProfile
             ? liveSessionStatusIndex.status(for: session)
@@ -916,6 +919,8 @@ extension AppState {
     func refreshLiveSessionStatuses() async -> Bool {
         // Its own task: a slow plugin read must not hold up live status.
         Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
+        // The other combined dashboards' rows, through their kept connections.
+        if sceneIsInView { Task { [weak self] in await self?.refreshFarLiveSessionStatusesIfDue() } }
         guard sceneIsInView, let client, isConnected else { return false }
         guard client !== activeListUnsupportedClient else { return true }
         // The other profiles on screen are read at the same time, by name.

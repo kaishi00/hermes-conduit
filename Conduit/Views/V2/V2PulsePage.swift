@@ -216,6 +216,8 @@ struct V2PulsePage: View {
     @State private var undoCard: PulseCard?
     /// Another combined dashboard's task, open on its own board (`openFarTask`).
     @State private var farTask: FarPulseTaskSheet?
+    /// Counts far task taps, so only the last one's lookup opens a sheet.
+    @State private var farTaskRequest = 0
 
     private var client: PulseClient { appState.shownPulseClient }
 
@@ -1420,15 +1422,20 @@ struct V2PulsePage: View {
     /// board: shown only while the page still shows that dashboard's Pulse.
     private func openFarTask(_ taskID: String, on dashboard: UUID, in store: KanbanStore) {
         let visit = self.visit
+        // Only the last tap's task shows: an earlier, slower lookup drops.
+        farTaskRequest += 1
+        let request = farTaskRequest
         Task {
             do {
                 let task = try await appState.findFarPulseTask(taskID, in: store)
-                guard isOnScreen(in: visit), appState.pulseDashboardID == dashboard else { return }
+                guard request == farTaskRequest, isOnScreen(in: visit),
+                      appState.pulseDashboardID == dashboard else { return }
                 farTask = FarPulseTaskSheet(dashboardID: dashboard, store: store, task: task)
             } catch is CancellationError {
                 return
             } catch {
-                guard isOnScreen(in: visit), appState.pulseDashboardID == dashboard else { return }
+                guard request == farTaskRequest, isOnScreen(in: visit),
+                      appState.pulseDashboardID == dashboard else { return }
                 showError(UserFacingError.message(for: error))
             }
         }
@@ -1785,7 +1792,12 @@ struct V2PulsePage: View {
                     }
                 }
                 return
-            case .failed:
+            case .failed(let said):
+                // What went wrong there, when more than the page's own line says.
+                if let said {
+                    if appState.pulseDashboardID == dashboard { showError(said) }
+                    return
+                }
                 opened = nil
             case .notInPlace:
                 guard await appState.switchForFarPulseStep(for: dashboard) else { return }
