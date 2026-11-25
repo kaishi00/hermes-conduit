@@ -709,6 +709,21 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(farStub.paths.count, farAsked, "Mac's connection isn't asked again")
         XCTAssertEqual(stub.paths.count, asked)
         XCTAssertFalse(model.isSearching)
+        // A far answer that isn't a search response counts as no route too.
+        let otherFar = StubSearchRequester()
+        otherFar.fallback = .success(["error": "unknown route"])
+        let studio = UUID()
+        let studioScope = NSObject()
+        var withStudio = context
+        withStudio.farSearches = [SessionContentSearchModel.FarSearch(
+            dashboardID: studio, profile: "default", scope: studioScope
+        ) { path in try await otherFar.request(path) }]
+        model.update(query: "humus", context: withStudio)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(otherFar.paths.count, 1)
+        model.update(query: "straw", context: withStudio)
+        await model.waitForPendingSearch()
+        XCTAssertEqual(otherFar.paths.count, 1, "a non-search body is remembered for that connection")
     }
 
     /// The Chats search's own matching (titles, previews, project names), desktop issue 399.
