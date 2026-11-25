@@ -8,9 +8,9 @@
 # cost of an xcodebuild/CoreSimulator/test-host startup - as a function of how
 # many classes are packed into one `test-without-building` invocation.
 #
-# Why it exists: the planner's hosted policy caps a unit batch at 7 classes
-# (MAX_UNIT_CLASSES_PER_XCODEBUILD_BATCH), which came from stall diagnostics on
-# SHARED GitHub runners. The Mac gate runs on our own machine, where the same
+# Why it exists: the retired CI v2 planner capped a unit batch at 7 classes,
+# from stall diagnostics on SHARED GitHub runners; the nightly unit shards now
+# run batches of up to UNIT_BATCH_SIZE (45, nightly.yml). The Mac gate runs on our own machine, where the same
 # sweep measured ~4s of startup per invocation and no stall at any shape - so
 # the gate pays for far fewer invocations (see docs/CI.md).
 #
@@ -30,9 +30,9 @@
 #     --workflow batch-benchmark --fail-if-busy --exec -- \
 #     bash scripts/bench-unit-batches.sh ...
 #
-# --classes FILE is one class name per line, in the order the planner stored
-# them (the gate's lanes/unit/lane-result.json "classes" array, or
-# `plan-tests.py plan` output).
+# --classes FILE is one class name per line, for example one nightly unit
+# shard from `plan-tests.py hosted --out`, whose comma-separated entries need
+# splitting: jq -r '.unit_shards[0]' hosted.json | tr ',' '\n' > classes.txt
 
 set -uo pipefail
 

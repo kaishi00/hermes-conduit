@@ -130,9 +130,12 @@ extension AppState {
 
     /// Whether the shell keeps the conversation it's placing in Bots: a
     /// Bot Chat or a workstream's chat is open, or a list of bots marked
-    /// one as coming.
+    /// one as coming. Another combined dashboard's Bot Chat open in place
+    /// counts by its own dashboard's bots (`chatBotChatProfile`), so a far
+    /// portrait's chat stays in Bots and Back returns to Bots Home (build
+    /// 283: it was pushed in Sessions).
     var placesConversationAsBotChat: Bool {
-        activeBotChatProfile != nil || activeWorkstream != nil || botChatOpening != nil
+        chatBotChatProfile != nil || activeWorkstream != nil || botChatOpening != nil
     }
 
     /// Also asked while Settings is only queued behind a closing drawer.

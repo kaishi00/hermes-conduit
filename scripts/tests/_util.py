@@ -43,30 +43,6 @@ def make_repo(root, unit_classes=(), ui_classes=(), extra_files=None):
     return root
 
 
-def default_cfg(**overrides):
-    cfg = {
-        "default_estimate_s": 20.0,
-        "min_lanes": 1,
-        "max_lanes": 8,
-        "invocation_overhead_s": 240.0,
-        "lane_wall_tolerance_s": 120.0,
-        "unit_batch_max_classes": 7,
-        "unit_batch_timeout_min_s": 600,
-        "unit_batch_timeout_multiplier": 2.5,
-        "unit_batch_recovery_overhead_s": 600,
-        "unit_max_batches_per_job": 4,
-        "ui_min_lanes": 3,
-        "ui_max_lanes": 4,
-        "ui_class_timeout_min_s": 420,
-        "ui_class_timeout_multiplier": 3.0,
-        "ui_reset_overhead_s": 600,
-        "ui_extract_bound_s": 300,
-        "job_timeout_margin_s": 1200,
-    }
-    cfg.update(overrides)
-    return cfg
-
-
 def workflow_step_script(workflow, step_name):
     """Return the dedented `run:` block of the named workflow step."""
     with open(workflow, encoding="utf-8") as fh:
