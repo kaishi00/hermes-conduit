@@ -372,11 +372,9 @@ extension AppState {
     /// dashboard's, `farPulseTaskStore`), its board loaded, for its sheet.
     /// Throws what the read threw, or that no board there has it.
     func findFarPulseTask(_ taskID: String, in store: KanbanStore) async throws -> KanbanTask {
+        // A board that didn't load doesn't stop the lookup: findTask reads
+        // every board, and the one it's on is loaded below.
         await store.reload()
-        guard store.loadedBoardSlug != nil else {
-            throw KanbanServiceError.invalidResponse(store.errorMessage
-                ?? AppLocalization.string("Kanban is not connected.", table: .tasks))
-        }
         guard let found = try await store.findTask(id: taskID) else {
             throw KanbanServiceError.invalidResponse(
                 AppLocalization.string("Couldn't find Kanban task \(taskID) on your boards.", table: .tasks))
