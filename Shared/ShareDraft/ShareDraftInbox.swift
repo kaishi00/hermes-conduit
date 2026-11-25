@@ -188,13 +188,30 @@ struct ShareDraftInbox {
 
     /// `name` inside `folder`, refusing anything that would resolve outside
     /// it. Stored names are already checked; this holds even if they weren't.
+    ///
+    /// A file not written yet is checked by its folder, never by its own
+    /// resolved path: Foundation drops `/private` from a path only when
+    /// that path exists, and the App Group's container is under
+    /// `/private/var` on a device, so a new file's resolved path never
+    /// matched its folder's and every shared file was left out as
+    /// unreadable (issue 3307).
     static func file(named name: String, in folder: URL) -> URL? {
         guard ShareDraftNames.isSafeStoredName(name) else { return nil }
         let url = folder.appendingPathComponent(name, isDirectory: false)
-        let base = folder.standardizedFileURL.resolvingSymlinksInPath().path
-        let resolved = url.standardizedFileURL.resolvingSymlinksInPath().path
-        guard resolved.hasPrefix(base.hasSuffix("/") ? base : base + "/") else { return nil }
+        let base = resolvedPath(folder)
+        // A safe stored name is one path component, so its folder is this one.
+        guard resolvedPath(url.deletingLastPathComponent()) == base else { return nil }
+        // One already there (a link, say) must still resolve inside.
+        if (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil {
+            let resolved = resolvedPath(url)
+            guard resolved.hasPrefix(base.hasSuffix("/") ? base : base + "/") else { return nil }
+        }
         return url
+    }
+
+    private static func resolvedPath(_ url: URL) -> String {
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        return path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
     }
 
     static func isRegularFile(_ url: URL) -> Bool {
