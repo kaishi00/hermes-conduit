@@ -469,7 +469,7 @@ final class SessionContentSearchModel: ObservableObject {
             // The other profiles are asked alongside this one, not one after
             // another behind it; one that fails is left out, as the list's
             // own matches still show (issue 1965).
-            let sameHost = others.map { other in
+            let sameHost: [Task<[SessionContentSearchHit], Never>] = others.map { other in
                 Task { @MainActor () -> [SessionContentSearchHit] in
                     guard let response = try? await request(other.path) else { return [] }
                     return (SessionContentSearch.hits(from: response, query: query) ?? []).map { hit in
@@ -479,7 +479,7 @@ final class SessionContentSearchModel: ObservableObject {
                     }
                 }
             }
-            let farSearches = far.map { far in
+            let farSearches: [Task<[SessionContentSearchHit], Never>] = far.map { far in
                 // Another combined dashboard's: one that fails, or whose
                 // Hermes has no search route, is left out.
                 Task { @MainActor () -> [SessionContentSearchHit] in
@@ -492,12 +492,12 @@ final class SessionContentSearchModel: ObservableObject {
                     }
                 }
             }
-            let all = sameHost + farSearches
-            let primary: (@MainActor () async throws -> [String: Any])? = screenUnsupported
-                ? nil : { try await request(path) }
+            let all: [Task<[SessionContentSearchHit], Never>] = sameHost + farSearches
+            let primary: Requester? = screenUnsupported ? nil : request
             await withTaskCancellationHandler {
                 await self.collect(
                     primary: primary,
+                    path: path,
                     others: sameHost,
                     far: farSearches,
                     query: query,
@@ -516,7 +516,8 @@ final class SessionContentSearchModel: ObservableObject {
     /// other combined dashboards' (`far`) go on whatever the one on screen
     /// answered, its search route missing included (nil `primary`).
     private func collect(
-        primary: (@MainActor () async throws -> [String: Any])?,
+        primary: Requester?,
+        path: String,
         others: [Task<[SessionContentSearchHit], Never>],
         far: [Task<[SessionContentSearchHit], Never>],
         query: String,
@@ -527,7 +528,7 @@ final class SessionContentSearchModel: ObservableObject {
         var gathered = far
         if let primary {
             let outcome: Result<[String: Any], Error>
-            do { outcome = .success(try await primary()) } catch { outcome = .failure(error) }
+            do { outcome = .success(try await primary(path)) } catch { outcome = .failure(error) }
             // The bridge doesn't stop a request it already sent: an answer
             // for a query the field has moved past is dropped here.
             guard self.generation == generation else { return }
