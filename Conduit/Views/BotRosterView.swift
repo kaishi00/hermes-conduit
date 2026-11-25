@@ -1163,7 +1163,7 @@ struct BotRosterView: View {
                                 name: farBot.bot.name,
                                 label: farBot.bot.displayLabel,
                                 colorString: farBot.bot.shownColor,
-                                image: farBot.section.avatars[farBot.bot.name].flatMap { ProfileAvatarImageCache.image(at: $0) },
+                                image: AppState.avatar(in: farBot.section.avatars, for: farBot.bot.name).flatMap { ProfileAvatarImageCache.image(at: $0) },
                                 size: 30,
                                 face: farBot.bot.faceLook
                             )

@@ -426,13 +426,21 @@ struct V2ProfileStrip: View {
     /// buttons (which also reloaded both pictures).
     /// The pictures this phone saved for the other dashboards' profiles:
     /// the ones Bots Home's read of that dashboard already holds, so a
-    /// redraw lists no folder; the folder only before that read.
+    /// redraw lists no folder; the folder only when that read lacks a
+    /// profile's exact spelling (a picture saved since, or another case).
     private func otherAvatars(_ chips: [CombinedProfileChip]) -> [String: URL] {
         var urls: [String: URL] = [:]
         for id in Set(chips.filter(\.isOther).compactMap(\.dashboardID)) {
-            let saved = appState.combinedDashboardBots[id]?.avatars
-                ?? appState.profileAppearanceStore.loadAvatarURLs(dashboardID: id)
-            for chip in chips where chip.dashboardID == id { urls[chip.id] = saved[chip.profile] }
+            let roster = appState.combinedDashboardBots[id]?.avatars ?? [:]
+            var saved: [String: URL]?
+            for chip in chips where chip.dashboardID == id {
+                urls[chip.id] = AppState.avatar(in: roster, saved: {
+                    if let saved { return saved }
+                    let listed = appState.profileAppearanceStore.loadAvatarURLs(dashboardID: id)
+                    saved = listed
+                    return listed
+                }(), for: chip.profile)
+            }
         }
         return urls
     }

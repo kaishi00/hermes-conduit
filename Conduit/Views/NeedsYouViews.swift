@@ -244,8 +244,7 @@ struct NeedsYouRow: View {
             ProfileAvatarView(
                 profile: item.profile,
                 displayName: item.profile,
-                url: appState.combinedDashboardBots[dashboardID]?.avatars[item.profile]
-                    ?? appState.otherCombinedDashboardProfileAvatar(item.profile, in: dashboardID),
+                url: appState.farAvatarURL(for: item.profile, on: dashboardID),
                 size: size,
                 dashboardID: dashboardID
             )

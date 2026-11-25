@@ -79,7 +79,7 @@ struct CombinedDashboardBotPortrait: View {
     private var keptAt: TimeInterval {
         appState.keptDashboardRuntimes[section.dashboardID]?.keptAt.timeIntervalSinceReferenceDate ?? 0
     }
-    private var url: URL? { section.avatars[bot.name] }
+    private var url: URL? { AppState.avatar(in: section.avatars, for: bot.name) }
 
     /// Plays only while Bots Home is on screen, as this dashboard's
     /// portraits (BotPortraitCell.animates).

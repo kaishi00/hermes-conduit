@@ -425,7 +425,7 @@ extension AppState {
         for bot in bots where !order.contains(bot.name) { order.append(bot.name) }
         var palettes: [String: [ProfileGlowRGB]] = [:]
         for profile in order {
-            guard let url = avatars[profile] else { continue }
+            guard let url = Self.avatar(in: avatars, for: profile) else { continue }
             if let known = profileGlowPalettes.byURL[url] {
                 palettes[profile] = known
                 continue
