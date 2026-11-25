@@ -17,6 +17,8 @@ struct BotRosterView: View {
     /// the Bots tab stays selected (same contract as SessionList/CronList).
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var presentedDesktopGroup: DesktopGroupChat?
+    /// The group support probe a show started, waiting for the list to settle.
+    @State private var groupProbe: Task<Void, Never>?
     @State private var editorMode: BotEditorSheet.Mode?
     @State private var pendingDelete: BotProfile?
     /// Outcome of the last management action that needs explaining (a
@@ -143,12 +145,21 @@ struct BotRosterView: View {
         // rosterRefreshKey as it was and groups unprobed: shown again, it
         // probes them.
         .onChange(of: Self.isShown(in: shell)) { _, shown in
+            // One probe at a time, and none for a list covered again or
+            // gone while it waited (issue 3227).
+            groupProbe?.cancel()
+            groupProbe = nil
             if Self.probesGroupsOnShow(shown: shown, connected: appState.isConnected, phase: appState.groupChatPhase) {
-                Task {
+                groupProbe = Task {
                     await updates.settled()
+                    guard !Task.isCancelled else { return }
                     await appState.refreshGroupChatSupport()
                 }
             }
+        }
+        .onDisappear {
+            groupProbe?.cancel()
+            groupProbe = nil
         }
         .onChange(of: canStartRoomHere) { _, can in
             if !can, !creatingNewRoom { newRoom.clear() }

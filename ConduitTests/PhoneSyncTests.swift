@@ -482,6 +482,59 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(host.batches.count, 9)
     }
 
+    /// A frame hash cleared in memory whose write didn't land is written
+    /// before the upload goes (the frame gate's `saved == nil` arm, issue
+    /// 3147): the host starting over clears it, and the pass that did
+    /// couldn't write the state.
+    func testAClearedFrameHashThatDidntReachDiskHoldsTheUpload() async throws {
+        let source = FakePhoneCalendarSource()
+        source.events = [phoneEvent("e_1", "Dentist")]
+        let host = FakePhoneHost()
+        var now = Date(timeIntervalSince1970: 1_760_400_000)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phone-sync-\(UUID().uuidString)", isDirectory: true)
+        let engine = makePhoneEngine(source: source, folder: folder, now: { now })
+        engine.savePreferences(phonePreferences())
+        func waitUntil(_ what: String, _ condition: () -> Bool) async {
+            for _ in 0..<500 where !condition() { try? await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertTrue(condition(), what)
+        }
+
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 1)
+        XCTAssertNotNil(engine.state.frameHash)
+        let statePath = folder.appendingPathComponent("state.json")
+        let stateFile = PhoneSyncStateStore(url: statePath)
+        await waitUntil("The first pass's state is on disk") {
+            let onDisk = stateFile.loadIfReadable()
+            return onDisk?.frameHash == engine.state.frameHash && onDisk?.lastSync == engine.state.lastSync
+        }
+
+        // The state can't be written, the host started over, and its
+        // upload fails: what was sent is forgotten, the frame's hash too,
+        // and the pass's own write doesn't land.
+        try FileManager.default.removeItem(at: statePath)
+        try FileManager.default.createDirectory(at: statePath, withIntermediateDirectories: true)
+        host.generation = "g2"
+        host.ingestError = URLError(.timedOut)
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(engine.state.frameHash, "The host started over: the frame it has is unknown")
+        XCTAssertEqual(host.batches.count, 1)
+        await waitUntil("The pass's write didn't land") { engine.lastStateWriteFailed }
+
+        // The hash already reads cleared in memory, but not on disk:
+        // nothing goes until it is.
+        host.ingestError = nil
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 1, "Nothing goes while the cleared hash isn't on disk")
+        try FileManager.default.removeItem(at: statePath)
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 2, "Written now, it goes")
+        XCTAssertNotNil(engine.state.frameHash)
+    }
+
     func testPhoneChangesAskUnlessTheUserChoseAddWithoutAsking() async throws {
         let source = FakePhoneCalendarSource()
         let host = FakePhoneHost()
@@ -2274,6 +2327,8 @@ private final class FakePhoneHost {
     var changes: [[String: Any]] = []
     var ignoreResults = false
     var reportsPending = true
+    /// The store's generation: a new one says the host started over.
+    var generation = "g1"
     /// The serialized size of each upload's body.
     private(set) var ingestBodyBytes: [Int] = []
     /// Answers this upload (1-based, counted from when it's set) with a 503.
@@ -2306,7 +2361,7 @@ private final class FakePhoneHost {
         let base = PhoneSyncEngine.base
         if path.hasPrefix("\(base)/status") {
             statusRequests += 1
-            var answer: [String: Any] = ["generation": "g1"]
+            var answer: [String: Any] = ["generation": generation]
             if let keys {
                 // phone_store status: the changes still waiting, unless an
                 // older plugin's.
@@ -2334,7 +2389,7 @@ private final class FakePhoneHost {
             keys = PhoneSyncCrypto.SessionKey(kid: kid, ingest: derive(PhoneSyncCrypto.ingestInfo),
                                               request: derive(PhoneSyncCrypto.exchangeRequestInfo),
                                               answer: derive(PhoneSyncCrypto.exchangeAnswerInfo))
-            return ["host_public_key": NotificationE2E.base64URL(hostPublic), "kid": kid, "generation": "g1"]
+            return ["host_public_key": NotificationE2E.base64URL(hostPublic), "kid": kid, "generation": generation]
         }
         let body = try XCTUnwrap(body)
         guard let keys, body["kid"] as? String == keys.kid else {

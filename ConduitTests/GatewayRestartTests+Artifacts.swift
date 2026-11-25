@@ -114,6 +114,36 @@ extension GatewayRestartTests {
                       "a key without the setting lists everything, as the host does")
     }
 
+    /// A list held while hidden doesn't cancel an open when the dashboard
+    /// or profile changes behind it: the file read for the one before isn't
+    /// shown, and its downloaded copy is removed (issue 3147).
+    func testAHeldListsOpenShowsNothingOnceTheListMovedOn() throws {
+        let first = UUID()
+        let began = ArtifactsListKey(dashboard: first, profile: "default", filter: .all, query: "")
+        XCTAssertTrue(began.stillShows(openBegunOn: began))
+        XCTAssertTrue(ArtifactsListKey(dashboard: first, profile: "default", filter: .images, query: "map", showMissing: false)
+            .stillShows(openBegunOn: began), "another filter or search is the same list")
+        XCTAssertFalse(ArtifactsListKey(dashboard: UUID(), profile: "default", filter: .all, query: "")
+            .stillShows(openBegunOn: began), "another dashboard's default profile isn't")
+        XCTAssertFalse(ArtifactsListKey(dashboard: first, profile: "atlas", filter: .all, query: "")
+            .stillShows(openBegunOn: began), "nor another profile")
+
+        func download() throws -> DashboardDownloadedFile {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("held-open-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+            let file = directory.appendingPathComponent("report.pdf")
+            try Data("pdf".utf8).write(to: file)
+            return DashboardDownloadedFile(directory: directory, file: file, mimeType: "application/pdf")
+        }
+        let kept = try download()
+        XCTAssertEqual(HeldListOpen.downloadToShow(kept, stillOwned: true)?.file, kept.file)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: kept.file.path), "still the list's: the copy is shown")
+        let stale = try download()
+        XCTAssertNil(HeldListOpen.downloadToShow(stale, stillOwned: false), "the list moved on: nothing is shown")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.directory.path), "and the copy is removed")
+    }
+
     func testArtifactListsBelongToTheirDashboard() {
         let first = UUID()
         let second = UUID()

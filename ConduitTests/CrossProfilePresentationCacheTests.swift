@@ -1714,18 +1714,32 @@ extension CrossProfilePresentationCacheTests {
         }
         func capabilityAsks() -> Int { counts.reads.filter { $0 == NotifierPluginStatus.path }.count }
         let asksBefore = capabilityAsks()
+        let retry = AppState.combinedDashboardNameRetryInterval
+        let firstPass = Date()
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertEqual(capabilityAsks(), asksBefore + 1)
+        // Its wait runs from when the attempt was made.
+        let firstRetryAt = try XCTUnwrap(appState.combinedDashboardNameReads[mac.id]?.retryAt)
+        XCTAssertGreaterThanOrEqual(firstRetryAt, firstPass.addingTimeInterval(retry))
+        XCTAssertLessThanOrEqual(firstRetryAt, Date().addingTimeInterval(retry))
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertEqual(capabilityAsks(), asksBefore + 1, "not asked again on the next poll")
-        appState.keptDashboardJSONReader = named
-        let retry = AppState.combinedDashboardNameRetryInterval
-        await appState.readOtherCombinedDashboardsNeedsYou(now: Date().addingTimeInterval(retry + 1))
+        XCTAssertEqual(appState.combinedDashboardNameReads[mac.id]?.retryAt, firstRetryAt, "a poll that doesn't ask leaves the wait")
+        // A second attempt that fails too waits from its own time, not the first's.
+        let secondPass = Date().addingTimeInterval(retry + 1)
+        await appState.readOtherCombinedDashboardsNeedsYou(now: secondPass)
         XCTAssertEqual(capabilityAsks(), asksBefore + 2, "asked again once the wait passed")
+        let secondRetryAt = try XCTUnwrap(appState.combinedDashboardNameReads[mac.id]?.retryAt)
+        XCTAssertGreaterThanOrEqual(secondRetryAt, secondPass.addingTimeInterval(retry), "each attempt sets its own wait")
+        await appState.readOtherCombinedDashboardsNeedsYou(now: secondPass.addingTimeInterval(retry / 2))
+        XCTAssertEqual(capabilityAsks(), asksBefore + 2, "the second wait hasn't passed")
+        appState.keptDashboardJSONReader = named
+        await appState.readOtherCombinedDashboardsNeedsYou(now: secondPass.addingTimeInterval(retry + 60))
+        XCTAssertEqual(capabilityAsks(), asksBefore + 3, "asked again once the second wait passed")
         XCTAssertNotNil(appState.combinedDashboardNameReads[mac.id])
         XCTAssertNil(appState.combinedDashboardNameReads[mac.id]?.retryAt, "answered: asked no more on this connection")
-        await appState.readOtherCombinedDashboardsNeedsYou(now: Date().addingTimeInterval(3 * retry))
-        XCTAssertEqual(capabilityAsks(), asksBefore + 2)
+        await appState.readOtherCombinedDashboardsNeedsYou(now: secondPass.addingTimeInterval(4 * retry))
+        XCTAssertEqual(capabilityAsks(), asksBefore + 3)
         // Every few minutes they're read again: a profile deleted there
         // takes its rows with it.
         let read = try XCTUnwrap(appState.keptDashboardProfiles[mac.id])
@@ -4493,6 +4507,64 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(farHeld.sent.first?.method, "POST", "answered on its own dashboard")
         XCTAssertFalse(appState.needsYou.items.contains { $0.waitID == "asked-P7" }, "the screen's copy goes with it")
         XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "and its own")
+    }
+
+    /// Issue 3147: one Hermes saved twice lists the same chat on both
+    /// addresses, so a delete on the address the call isn't on lets go of
+    /// the call's chat too. Before the two are known as one Hermes, a
+    /// delete there is another chat's.
+    func testADeleteOnAHermesTwinsAddressLetsGoOfTheCallsChat() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let callChat = VoiceThreadTarget(runtimeSessionID: "shared-1", storedSessionID: nil, title: "Shared")
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(callChat)
+        XCTAssertEqual(appState.callChatsDashboardID, vps.id, "the call's chats are the dashboard on screen's")
+
+        XCTAssertTrue(appState.combinedHermesTwins(of: mac.id).isEmpty)
+        appState.noteCallChatDeleted(["shared-1"], dashboardID: mac.id)
+        XCTAssertFalse(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat), "another Hermes' chat under the same id")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, callChat)
+
+        // One Hermes saved twice: both list the same chat.
+        appState.runtimeOnScreen.sessions = [session("shared-1", profile: "default")]
+        var farRow = session("shared-1", profile: "default")
+        farRow.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [farRow], at: Date()
+        )
+        XCTAssertEqual(appState.combinedHermesTwins(of: mac.id), [vps.id])
+        // Noted from the far chat's own scope, as its delete does.
+        appState.act(onRuntime: kept.runtime) { appState.noteCallChatDeleted(["shared-1"], dashboardID: mac.id) }
+        XCTAssertTrue(appState.voiceBackgroundJobSupervisor.isDeletedChat(callChat), "the same chat, deleted on its other address")
+    }
+
+    /// Issue 3147: a far chat's resume still owed is asked again at its
+    /// dashboard's next chat read, once no call start holds its socket,
+    /// and another chat opened meanwhile is owed nothing.
+    func testAnOwedFarChatResumeIsAskedAgainAtItsDashboardsNextChatRead() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let farProfile = kept.runtime.activeProfile
+        appState.keptDashboardJSONReader = { _, path in
+            if path == "/api/profiles" { return ["profiles": [farProfile]] }
+            return ["sessions": [[String: Any]]()]
+        }
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: farProfile)
+        appState.farChatResumeOwedAfterCallStart = mac.id
+        appState.farCallStartsInFlight[mac.id] = 1
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id)
+        XCTAssertEqual(appState.farChatResumeOwedAfterCallStart, mac.id, "a start still holds the socket: not asked yet")
+        appState.farCallStartsInFlight[mac.id] = nil
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id)
+        XCTAssertNil(appState.farChatResumeOwedAfterCallStart, "asked again at its next chat read")
+
+        appState.farChatResumeOwedAfterCallStart = mac.id
+        appState.activeSessionId = "another-chat"
+        XCTAssertNil(appState.farChatResumeOwedAfterCallStart, "another chat opened: the resume was the one before's")
     }
 
     /// What another combined dashboard's scope reads of the group and of

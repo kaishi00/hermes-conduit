@@ -3042,3 +3042,74 @@ final class CompactResumeTranscriptTests: XCTestCase {
         ])
     }
 }
+
+/// Call cards as older pages load (issue 3233): a call from before the
+/// oldest loaded row waits for its page, and shows once there is no page
+/// left to wait for.
+extension CompactResumeTranscriptTests {
+    private func callLink(_ call: String, at time: String) throws -> VoiceCallChatLink {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: time))
+        return VoiceCallChatLink(
+            callID: call, callSessionID: "", chatRuntimeSessionID: "runtime-a", chatStoredSessionID: "stored-a",
+            chatTitle: "Build", profile: "default", startedAt: start, endedAt: start.addingTimeInterval(20), resumed: false
+        )
+    }
+
+    private func openedWithCalls(
+        loadEarlierTranscriptPage: @escaping @MainActor (String, String, Int) async -> PersistedTranscriptFetchOutcome
+    ) async throws -> AppState {
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                // Rows 1880 to 1999 run from 11:20 to 13:19.
+                self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1880..<2000), offset: 0)
+            },
+            loadEarlierTranscriptPage: loadEarlierTranscriptPage
+        )
+        // One call from before every stored row, one from between rows 1879 and 1880.
+        harness.appState.voiceCallChatLinks.add(try callLink("early", at: "2026-09-01T09:00:00Z"))
+        harness.appState.voiceCallChatLinks.add(try callLink("between", at: "2026-09-01T11:19:30Z"))
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertFalse(
+            harness.appState.messages.contains { $0.displayKind == VoiceCallChatLink.displayKind },
+            "calls from before the loaded rows wait for their pages"
+        )
+        return harness.appState
+    }
+
+    func testCallsFromBeforeTheLoadedRowsFindTheirPlaceWhenTheLastPageLoads() async throws {
+        let appState = try await openedWithCalls { _, _, offset in
+            // Rows 1843 to 1879 run from 10:43 to 11:19, and the page is short: the first row is in.
+            self.tailPagePayload(sessionId: "stored-a", rows: self.syntheticRows(1843..<1880), offset: offset)
+        }
+        let landed = await appState.loadEarlierMessages()
+        XCTAssertTrue(landed)
+        XCTAssertEqual(appState.persistedTranscriptWindow?.canLoadEarlier, false)
+        let ids = appState.messages.map(\.id)
+        XCTAssertEqual(ids.first, "voice-call-early", "the call from before the first row leads the chat")
+        let between = try XCTUnwrap(ids.firstIndex(of: "voice-call-between"))
+        XCTAssertEqual(appState.messages[between - 1].content, "Row 1879")
+        XCTAssertEqual(appState.messages[between + 1].content, "Row 1880")
+        XCTAssertEqual(appState.messages.count, 157 + 2)
+    }
+
+    func testCallsHeldBackShowWhenLoadEarlierIsRetiredWithPagesUnread() async throws {
+        let appState = try await openedWithCalls { _, _, _ in .unavailable }
+        let landed = await appState.loadEarlierMessages()
+        XCTAssertFalse(landed)
+        XCTAssertEqual(appState.persistedTranscriptWindow?.canLoadEarlier, false)
+        // No page will bring their rows: both show at the top of what is loaded.
+        XCTAssertEqual(appState.messages.prefix(2).map(\.id), ["voice-call-early", "voice-call-between"])
+        XCTAssertEqual(appState.messages.dropFirst(2).first?.content, "Row 1880")
+        XCTAssertEqual(appState.messages.count, 120 + 2)
+    }
+}

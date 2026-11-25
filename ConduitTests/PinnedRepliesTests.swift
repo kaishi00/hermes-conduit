@@ -447,7 +447,11 @@ final class PinnedRepliesTests: XCTestCase {
         appState.archivedSessions = [row("archived-1", alternates: ["runtime-1"])]
         appState.dropPinnedReplies(forDeleted: listed)
         XCTAssertEqual(appState.activePinnedReplies.count, 1)
-        appState.archivedSessions = []
+        // The same chat listed a second time, under its stored id, is no
+        // other chat: the runtime id is still the deleted chat's alone.
+        var listedAgain = row("row-1-again", alternates: ["runtime-1"])
+        listedAgain.storedSessionId = "row-1"
+        appState.archivedSessions = [listedAgain]
         appState.dropPinnedReplies(forDeleted: listed)
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
     }
