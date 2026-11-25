@@ -748,7 +748,7 @@ extension NotificationE2ETests {
                                                    writeStoredUnsent: { _ in true }, writeStoredConfig: { _ in true },
                                                    dropMarker: .memory())
         let hostPrivate = Curve25519.KeyAgreement.PrivateKey()
-        final class Script { var ingests = 0; var change: Task<Void, Never>? }
+        final class Script { var ingests = 0; var change: Task<Void, Never>?; var readerOffAtFirstAnswer: Bool? }
         let script = Script()
         let request: LocationSyncEngine.Request = { path, _, body in
             if path.hasSuffix("/key") {
@@ -770,6 +770,7 @@ extension NotificationE2ETests {
                     waits += 1
                     try? await Task.sleep(for: .milliseconds(5))
                 }
+                script.readerOffAtFirstAnswer = await MainActor.run(body: { !controller.allowsVoiceRead(.grokLive) })
                 return ["ok": true]
             }
             throw URLError(.notConnectedToInternet)
@@ -778,6 +779,7 @@ extension NotificationE2ETests {
 
         _ = await controller.flush(settingsOnly: true)
         await script.change?.value
+        XCTAssertEqual(script.readerOffAtFirstAnswer, true, "The change was in before the first answer came back")
         XCTAssertEqual(script.ingests, 2, "The change went again, and failed")
         XCTAssertFalse(controller.allowsVoiceRead(.grokLive))
         XCTAssertTrue(controller.config.settingsPending, "The host still has the old list")
