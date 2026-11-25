@@ -1765,9 +1765,9 @@ struct V2PulsePage: View {
             // the page back to the one on screen's.
             let tells = appState.canMarkPulseCardDone(card) && appState.pulsePlugin.reports(PulseClient.actedCapability)
             let opened: PulseDoItOpened?
-            // Another dashboard's Pulse: the card's chat, or the Bot Chat
-            // Do it goes to, opens in place there; a new chat still opens
-            // after a switch there.
+            // Another dashboard's Pulse: the card's chat, the Bot Chat Do
+            // it goes to, or a new chat made there, opens in place; only a
+            // dashboard whose connection was let go switches.
             switch await appState.doFarPulseCard(card, words: ask?.value, in: picked, for: dashboard) {
             case .opened(let far):
                 // Its chat is up over the page, which shows the one on
