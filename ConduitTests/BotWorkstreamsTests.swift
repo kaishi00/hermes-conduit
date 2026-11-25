@@ -352,6 +352,13 @@ extension BotModeTests {
         ))
         XCTAssertEqual(pasted.task, "Run `df -h /` and return the Avail value.")
         XCTAssertEqual(pasted.userWords, "Notes:\n\nTask:\ncheck disk")
+        // A brief quoting no words keeps a quote-shaped example in its task.
+        let example = "You're working on a task for Hermes, who coordinates the user's work in their Bot Chat."
+            + "\n\nTask:\nExplain this example:\n\nThe user's message that Hermes is answering:\n«hello»\n\nTask:\nexample"
+        let plain = try XCTUnwrap(WorkstreamBrief.parse(example))
+        XCTAssertTrue(plain.task.hasPrefix("Explain this example:"))
+        XCTAssertTrue(plain.task.hasSuffix("example"))
+        XCTAssertNil(plain.userWords)
         XCTAssertNil(WorkstreamBrief.parse("Run df -h / please.\n\nTask:\nNothing"))
         XCTAssertNil(WorkstreamBrief.parse("You're working on a task for Hermes, who coordinates it."))
     }

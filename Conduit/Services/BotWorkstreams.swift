@@ -1308,13 +1308,16 @@ struct WorkstreamBrief: Equatable {
     static let wordsMark = "\n\nThe user's message that "
 
     /// The task's mark. The user's words are quoted last, right before it,
-    /// so a "Task:" line of their own stays inside the quote.
+    /// so a "Task:" line of their own stays inside the quote. A quote is
+    /// read only ahead of the first ordinary mark: one in the task is the
+    /// task's own text.
     static func taskMarkRange(in text: String) -> Range<String.Index>? {
-        if let quoted = text.range(of: wordsMark),
+        guard let first = text.range(of: taskMark) else { return nil }
+        if let quoted = text.range(of: wordsMark), quoted.lowerBound < first.lowerBound,
            let mark = text.range(of: "»" + taskMark, range: quoted.upperBound..<text.endIndex) {
             return text.index(after: mark.lowerBound)..<mark.upperBound
         }
-        return text.range(of: taskMark)
+        return first
     }
 
     static func parse(_ text: String) -> WorkstreamBrief? {
