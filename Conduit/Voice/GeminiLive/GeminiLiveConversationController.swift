@@ -368,6 +368,10 @@ final class GeminiLiveConversationController: ObservableObject {
     /// promised, so the call keeps trying for as long as it stays paused
     /// (issue 3188: a call from Hermes answered, connected and silent).
     private var pausedByFailedStart = false
+    /// Failed starts of this pause: the call trace notes the first five and
+    /// then every fifteenth, so a long pause shows its tries without
+    /// filling the trace.
+    private var failedStarts = 0
     /// How long between those tries once the early ones ran out.
     var failedStartRetryInterval: Duration = .seconds(2)
     private var audioPauseObservers: [NSObjectProtocol] = []
@@ -1719,7 +1723,13 @@ final class GeminiLiveConversationController: ObservableObject {
                 pauseForAudioInterruption()
                 if beginsPause {
                     pausedByFailedStart = true
-                    HermesCallTrace.shared.note("Live voice microphone couldn't start, trying again")
+                    failedStarts = 0
+                }
+                if pausedByFailedStart {
+                    failedStarts += 1
+                    if failedStarts <= 5 || failedStarts % 15 == 0 {
+                        HermesCallTrace.shared.note("Live voice microphone couldn't start (try \(failedStarts)), trying again")
+                    }
                 }
                 if endRequestedAt == nil { phase = .paused }
                 if scheduleRetryOnFailure {
