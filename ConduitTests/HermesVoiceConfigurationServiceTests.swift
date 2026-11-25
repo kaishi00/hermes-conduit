@@ -558,7 +558,7 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
         XCTAssertEqual(writtenSection["provider"] as? String, "openai")
         XCTAssertNil(writtenSection["use_gateway"])
         // Hermes' PUT keeps a key left out of it: the plugin takes it out
-        // first (issue 3155).
+        // (issue 3155).
         XCTAssertEqual(requester.unsetKeys, [["stt.use_gateway"]])
         // After the save, so a save that fails leaves the old provider
         // with its routing.
@@ -993,6 +993,26 @@ final class HermesVoiceConfigurationServiceTests: XCTestCase {
             for part in path { value = (value as? [String: Any])?[part] }
             XCTAssertEqual(try XCTUnwrap(value as? String, key), "", key)
         }
+    }
+
+    /// The plugin has the route but the removal fails: the pick says so
+    /// rather than reporting it saved with the routing still there.
+    func testLegacyVendorFallbackFailsWhenTheRemovalFails() async {
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = [
+            "/api/config": ["stt": ["provider": "stepfun", "use_gateway": true], "tts": ["provider": "edge"]],
+            "/api/tools/toolsets/stt/config": ["providers": []],
+            "/api/tools/toolsets/tts/config": ["providers": []]
+        ]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        await service.reload()
+
+        // No answer mocked for the unset route: the request fails.
+        let saved = await service.saveProvider("groq", kind: .stt)
+
+        XCTAssertFalse(saved)
+        XCTAssertEqual(service.errorMessage?.hasPrefix("Saved, but the old gateway routing (stt.use_gateway) couldn't be removed"), true)
+        XCTAssertTrue(requester.recorded.contains { $0.method == "PUT" && $0.path == "/api/config" })
     }
 
     /// A provider save that fails leaves the stale routing where it was:

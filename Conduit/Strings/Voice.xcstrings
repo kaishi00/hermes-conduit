@@ -51050,6 +51050,88 @@
           }
         }
       }
+    },
+    "Saved, but the old gateway routing (%@.use_gateway) couldn't be removed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeichert, aber das alte Gateway-Routing (%1$@.use_gateway) konnte nicht entfernt werden: %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardado, pero no se pudo quitar el enrutamiento antiguo de la pasarela (%1$@.use_gateway): %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistré, mais l’ancien routage de la passerelle (%1$@.use_gateway) n’a pas pu être supprimé : %2$@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tersimpan, tetapi perutean gateway lama (%1$@.use_gateway) tidak dapat dihapus: %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvato, ma non è stato possibile rimuovere il vecchio instradamento del gateway (%1$@.use_gateway): %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存しましたが、古いゲートウェイのルーティング（%1$@.use_gateway）を削除できませんでした: %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장했지만 이전 게이트웨이 라우팅(%1$@.use_gateway)을 제거하지 못했습니다: %2$@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapisano, ale nie udało się usunąć starego routingu bramy (%1$@.use_gateway): %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvo, mas não foi possível remover o roteamento antigo do gateway (%1$@.use_gateway): %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено, но старую маршрутизацию шлюза (%1$@.use_gateway) удалить не удалось: %2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaydedildi, ancak eski ağ geçidi yönlendirmesi (%1$@.use_gateway) kaldırılamadı: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存，但无法移除旧的网关路由（%1$@.use_gateway）：%2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存，但無法移除舊的閘道路由（%1$@.use_gateway）：%2$@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
