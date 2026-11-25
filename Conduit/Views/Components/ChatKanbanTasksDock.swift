@@ -29,16 +29,18 @@ struct ChatKanbanTasksDock: View {
 
     private var anyOpen: Bool { tasks.contains(where: \.isOpen) }
     private var anyBlocked: Bool { tasks.contains(where: \.isBlocked) }
+    /// Only over the chat it belongs to: not over a saved copy of another.
+    private var shows: Bool { !tasks.isEmpty && !hidden && isShowing }
 
     var body: some View {
         Group {
-            if !tasks.isEmpty, !hidden {
+            if shows {
                 strip.transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .padding(.horizontal, 12)
-        .padding(.bottom, !tasks.isEmpty && !hidden ? 6 : 0)
+        .padding(.bottom, shows ? 6 : 0)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: tasks)
         .onChange(of: openChatID) {
             tasks = []
@@ -81,10 +83,11 @@ struct ChatKanbanTasksDock: View {
             } label: {
                 HStack(spacing: 8) {
                     if anyOpen, !anyBlocked {
-                        ProgressView().controlSize(.small)
+                        ProgressView().controlSize(.small).accessibilityHidden(true)
                     } else {
                         Image(systemName: anyBlocked ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                             .foregroundStyle(anyBlocked ? Color.red : Color.green)
+                            .accessibilityHidden(true)
                     }
                     Text(verbatim: ChatKanbanTasks.label(tasks))
                         .scaledFont(.subheadline.weight(.semibold))
@@ -94,6 +97,7 @@ struct ChatKanbanTasksDock: View {
                     Image(systemName: "chevron.up")
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
             }
@@ -106,7 +110,7 @@ struct ChatKanbanTasksDock: View {
                     Image(systemName: "xmark")
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 44, height: 40)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

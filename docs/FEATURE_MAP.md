@@ -10089,7 +10089,9 @@ workstreams) · the drawer's scheduled-jobs list and the V2 Scheduled tab (not
 on a timer: their reads key on the connection, so a reconnect makes them read
 again) · the chat's
 waiting line's 15 s read of Hermes' delegate roster (while the chat shows and
-waits; see Delegate agents a chat started) · not needed, already gated on what
+waits; see Delegate agents a chat started) · the chat's Kanban tasks line's
+15 s read while one of its tasks is open and the chat shows (see A chat's
+Kanban tasks) · not needed, already gated on what
 shows: the Chats list's live
 registry poll (Running and Needs approval in the chats list), All profiles'
 catalog poll, Tasks and the Kanban board, Pulse's page, Bots Home's portraits
@@ -10108,6 +10110,7 @@ Settings caption or doc gives the cadence)
 - Links and invites: `Conduit/Views/RoomLinkSheets.swift` (followNewLink, followLink), `Conduit/Views/PeopleSettingsViews.swift` (followWaitingLinks), `Conduit/Views/RoomInviteViews.swift` (RoomInviteSheet.follow)
 - Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh, its inChat: the Bot Overview's panel isn't in a chat)
 - The waiting line: `Conduit/Views/ChatView.swift` (the task beside openChatSyncTick's, with the same gate), `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine.refreshInterval)
+- The Kanban tasks line: `Conduit/Views/Components/ChatKanbanTasksDock.swift` (its read task, gated on isShowing from ChatView)
 - The drawer's scheduled-jobs list: `Conduit/Views/SidebarView.swift` (CronList's read task and its refreshable); the V2 Scheduled tab: `Conduit/Views/V2/V2TasksView.swift` (V2ScheduledList's read task)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
@@ -10122,7 +10125,7 @@ Settings caption or doc gives the cadence)
 **Open gaps**
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
-**Checked:** 2026-11-17, #2685 (the V2 Scheduled tab's read task, #2674 and #2678: it keys on the tab's own visibility too, so a tab return reads at once and only a Board → Scheduled slide waits pageSlideWait; recorded after #2678's reviews); 2026-11-14, #2400 (the Bot Overview's live status read named beside its talking-rooms read); 2026-11-12, #2312 (the V2 Scheduled tab named beside the drawer's list in Siblings and Code, review follow-up to #2306); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-12, #2306 (carries #1928: the drawer's scheduled-jobs list and the V2 Scheduled tab read again after a reconnect, not while disconnected, and a cancelled read isn't bannered, issue 1000 F1-41; Code, Rulings); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
+**Checked:** 2026-11-25, #3304 (added: the chat's Kanban tasks line's 15 s read, gated on the chat showing like the waiting line's); 2026-11-17, #2685 (the V2 Scheduled tab's read task, #2674 and #2678: it keys on the tab's own visibility too, so a tab return reads at once and only a Board → Scheduled slide waits pageSlideWait; recorded after #2678's reviews); 2026-11-14, #2400 (the Bot Overview's live status read named beside its talking-rooms read); 2026-11-12, #2312 (the V2 Scheduled tab named beside the drawer's list in Siblings and Code, review follow-up to #2306); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-12, #2306 (carries #1928: the drawer's scheduled-jobs list and the V2 Scheduled tab read again after a reconnect, not while disconnected, and a cancelled read isn't bannered, issue 1000 F1-41; Code, Rulings); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
 
 ## Allowing Conduit in Settings
 
