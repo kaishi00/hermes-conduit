@@ -6489,7 +6489,8 @@ Settings links to its page, see Who answers in a group chat)
 The agents Hermes starts for a chat with `delegate_task` (subagents), as the
 chat that started them shows them. Hermes runs them in the background and
 starts the chat's next turn with their results, so the turn that started
-them ends while they work. Their settings are Subagent settings.
+them ends while they work. Their settings are Subagent settings. Cards the chat
+hands to the Kanban board are A chat's Kanban tasks.
 
 **Siblings:** the chat's waiting line (done, #2201: "Waiting for 1 background
 agent", once the chat's own turn has ended and agents it started are queued
@@ -6550,6 +6551,49 @@ state, and the notifier's README says how a workstream waits (done)
 - The plugin's count of a workstream's agents is in memory: after a Hermes restart the workstream is recovered as any running one, without the wait on its card. What its last turn said before the wait is kept on disk (`held:<ref>`), so the Bot Chat's restart line carries it (notifier #717).
 
 **Checked:** 2026-11-13, #2364 (the sheet's Background processes and /agents; the waiting line, notice, Bots Home and the notifier unchanged; Watch, CarPlay and rooms have no sheet); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2265 with notifier #735 (issue 2206: the Bot Chat's own agents on Bots Home, "2 agents running", Coordinate Work off too; stopping a waiting workstream stops its agents; the title line needed nothing); 2026-11-12, #2274 (#2263's review leftovers: a multiline single goal stays whole, the report is read from the filtered text, an unreadable header keeps the plain notice, a late end's Hermes time is kept, a roster-found end shows no time); 2026-11-12, #2263 (issue 1553: each card's running time, and the finished notice opens to every agent's result, from Hermes' report, kept with the chat; the waiting line, the Watch, CarPlay, the voice modes and the notifier needed no change); 2026-11-11, #2220 with notifier #720 (a refused Steer or Stop trusts the roster it read only while the chat is still on that runtime, from #2218's last commit; the plugin clears a held reply a reload left on disk when the next turn starts, 0.164.3); 2026-11-11, #2218 (a refused Steer or Stop on a card kept across a resume knows it by the chat's resume-wide aliases or the card itself, so it reads the new runtime's roster before ending it); 2026-11-11, #2218 with notifier #717 (the plugin keeps a held reply on disk for a restart and queues no stale finished line; stopping a waiting workstream still leaves its agents running, in Open gaps); 2026-11-11, #2218 (issue 2206: cards move to the runtime the roster was read for, a refused control on a card from an earlier runtime asks that roster before ending it, a failed roster read at resume is tried once more; the waiting line, the Watch, CarPlay and the voice modes needed no change; the plugin's items are notifier's own PR); 2026-11-11, #2201 with notifier #711 (added: the waiting line, the cards from Hermes' roster after a reopen, and a workstream held as working while its agents run; issue 2142)
+
+## A chat's Kanban tasks
+
+The cards a chat handed to the Kanban board (`kanban_create`), as the chat
+that made them shows them, so the user can tell they're being worked on
+after the turn that made them ended (desktop issue 553). Hermes stamps each
+card with the session that made it, and a worker's own cards inherit it, so
+a squad's fan-out counts too. The chat's subagents are Delegate agents a
+chat started.
+
+**Siblings:** the phone's line above the composer and its sheet (done,
+#PRAPP: "2 Kanban tasks in progress", "· 1 blocked" in red, "Kanban tasks
+finished" with ×; the sheet's row per task opens it in Tasks) in chats,
+project chats, a Bot Chat and a workstream's own chat · the notifier's
+`GET /sessions/kanban-tasks` (done, notifier #1083, 0.197.0: every board,
+through the chat's compressions, `supported: false` from a Hermes that
+doesn't stamp cards) · Tasks › Board opening the task (done: the phone's
+`kanbanTaskOpenRequest`, the desktop's `focus`) · a far chat opened in
+place (done: read on its own runtime; its rows don't open in Tasks, which
+shows this dashboard's boards) · not needed: the Chats list's rows (Eric
+2026-11-25 picked the line above the composer; reading every listed chat's
+tasks on each refresh isn't worth it), Delegate agents a chat started
+(their own line), Watch, CarPlay and voice calls (no composer) · Text: the
+line's, sheet's and caption's words in every language (done); README and
+docs name no such line
+
+**Desktop app:** has it: the bar beside the agents bar, Open in Tasks from the main window (`desktop/src/renderer/src/components/ChatTasksDock.tsx`, desktop#559).
+
+**Code**
+- The route: `notifier/dashboard/api/chat_tasks.py` (chat_tasks, `_chain_ids` through session_usage's `_chain`, `_boards`, `_board_tasks`), `notifier/dashboard/api/capabilities.py` (`chat-kanban-tasks`); tests `notifier/tests/test_chat_tasks.py`
+- The phone: `Conduit/Models/ChatKanbanTasks.swift` (ChatKanbanTask, `shown`, `label`), `Conduit/Services/AppState+ChatKanbanTasks.swift` (loadOpenChatKanbanTasks, openChatKanbanTask), `Conduit/Views/Components/ChatKanbanTasksDock.swift`, `Conduit/Views/ChatView.swift` (bottomBar); tests `ConduitTests/ChatKanbanTasksTests.swift`
+
+**Rulings**
+- The line shows above the composer, on phone and desktop, for the open chat's own tasks only: not cron jobs or other chats' (Eric 2026-11-25, desktop issue 553).
+- A chat's tasks are those stamped with any of its sessions through its compressions, on every board but archived ones; archived tasks never show (desktop issue 553).
+- It is read as the chat opens, at each turn's end, and every 15 s while a task is still open and the chat shows (see Reads while a screen shows); a saved copy of another chat reads nothing.
+- Finished tasks show only once the chat has seen its tasks open while it showed, so a chat reopened after they all finished shows nothing; the board keeps them.
+- A plugin without the route, or a Hermes whose tasks carry no session, shows no line, never "no tasks".
+
+**Open gaps**
+- A task Hermes creates without a session (from the CLI or the dashboard) can't be told apart as the chat's, so it never shows.
+
+**Checked:** 2026-11-25, #PRAPP with notifier #1083 and desktop#559 (added: the line on phone and desktop, the plugin's route; desktop issue 553)
 
 ## Subagent settings
 
