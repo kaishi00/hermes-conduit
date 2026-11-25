@@ -363,6 +363,13 @@ final class GeminiLiveConversationController: ObservableObject {
     /// The system said the other sound let go during this pause. Sticky,
     /// so a later nudge (an unmute) can't replace that proof.
     private var audioReturnSeen = false
+    /// The pause began with a microphone that couldn't start, not with an
+    /// interruption that took a running one: no end of anything is
+    /// promised, so the call keeps trying for as long as it stays paused
+    /// (issue 3188: a call from Hermes answered, connected and silent).
+    private var pausedByFailedStart = false
+    /// How long between those tries once the early ones ran out.
+    var failedStartRetryInterval: Duration = .seconds(2)
     private var audioPauseObservers: [NSObjectProtocol] = []
     /// CallKit's audio going and coming, for the whole call (#1145).
     private var callAudioObservers: [NSObjectProtocol] = []
@@ -946,7 +953,21 @@ final class GeminiLiveConversationController: ObservableObject {
                 guard let self, !Task.isCancelled, self.audioPaused else { return }
                 if self.resumeAfterAudioInterruption(audioReturned: audioReturned) { return }
             }
+            // A microphone that never started waits on no cue: it is tried
+            // for as long as the call stays paused.
+            while true {
+                guard let every = self?.failedStartRetryIntervalWhilePaused else { return }
+                try? await Task.sleep(for: every)
+                guard let self, !Task.isCancelled, self.audioPaused, self.pausedByFailedStart else { return }
+                if self.resumeAfterAudioInterruption(audioReturned: self.audioReturnSeen) { return }
+            }
         }
+    }
+
+    /// The wait before the next try of a microphone that never started;
+    /// nil when the pause is an interruption's, which waits for its end.
+    private var failedStartRetryIntervalWhilePaused: Duration? {
+        audioPaused && pausedByFailedStart ? failedStartRetryInterval : nil
     }
 
     /// The pause is over: the call listens again and sends what waited.
@@ -989,6 +1010,7 @@ final class GeminiLiveConversationController: ObservableObject {
 
     private func clearAudioPause() {
         audioPaused = false
+        pausedByFailedStart = false
         audioResumeTask?.cancel()
         audioResumeTask = nil
         audioPauseObservers.forEach(notificationCenter.removeObserver)
@@ -1693,7 +1715,12 @@ final class GeminiLiveConversationController: ObservableObject {
         } catch {
             if pausingOnFailure {
                 geminiLiveLogger.notice("Live voice microphone couldn't start; pausing: \(LogRedaction.describing(error), privacy: .public)")
+                let beginsPause = !audioPaused
                 pauseForAudioInterruption()
+                if beginsPause {
+                    pausedByFailedStart = true
+                    HermesCallTrace.shared.note("Live voice microphone couldn't start, trying again")
+                }
                 if endRequestedAt == nil { phase = .paused }
                 if scheduleRetryOnFailure {
                     scheduleAudioResume(delays: Self.earlyResumeDelays, audioReturned: false)

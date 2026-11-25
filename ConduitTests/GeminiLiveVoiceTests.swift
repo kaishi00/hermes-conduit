@@ -2358,6 +2358,33 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// Issue 3188: a call from Hermes was answered, its socket came up and
+    /// the microphone couldn't start. Nothing had interrupted it, so no
+    /// end of an interruption ever came, and after the early tries the
+    /// call stayed paused and silent for good. It is tried for as long as
+    /// the call stays paused.
+    func testGeminiLiveMicrophoneThatNeverStartedIsTriedForAsLongAsTheCallIsPaused() async {
+        struct NotYet: Error {}
+        let (controller, session, input, _, _) = makeGeminiController(notificationCenter: NotificationCenter(), clock: Date.init)
+        controller.failedStartRetryInterval = .milliseconds(50)
+        input.startError = NotYet()
+        await controller.start()
+        session.becomeReady()
+        XCTAssertEqual(controller.phase, .paused)
+        XCTAssertTrue(controller.isAudioPausedForTesting)
+        // Past the early tries (0.5 s, 1 s and 2 s), with no cue from the system.
+        try? await Task.sleep(for: .milliseconds(3_700))
+        XCTAssertEqual(controller.phase, .paused, "still paused, never failed")
+        XCTAssertTrue(controller.isActive)
+
+        input.startError = nil
+        for _ in 0..<150 where controller.phase == .paused { try? await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(controller.phase, .listening, "the microphone starts on a later try with no cue")
+        XCTAssertTrue(input.running)
+        XCTAssertFalse(controller.isAudioPausedForTesting)
+        controller.stop()
+    }
+
     func testGeminiLiveMutedPausedCallWaitsForTheSystemBeforeListeningAgain() async {
         struct AlarmRinging: Error {}
         let center = NotificationCenter()

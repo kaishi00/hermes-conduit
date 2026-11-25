@@ -29,16 +29,17 @@ enum ComposerLayout {
     }
 
     /// Whether the field keeps focus after a send, so the next message can
-    /// be typed straight away as in a desktop client: on a Mac, or on an
-    /// iPad with a hardware keyboard. An iPhone always lets it go, keyboard
-    /// or not, so the reply has the screen.
+    /// be typed straight away as in a desktop client: on a Mac, or with a
+    /// hardware keyboard on an iPad or an iPhone (issue 3191: with one
+    /// connected no on-screen keyboard takes the reply's height, and the
+    /// tap before each message was the one step left on the screen).
+    /// With only the on-screen keyboard it lets go, so the reply has the
+    /// screen.
     static func keepsFocusAfterSend(
-        idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom,
         onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac,
         hardwareKeyboard: Bool = GCKeyboard.coalesced != nil
     ) -> Bool {
-        if onMac { return true }
-        return idiom != .phone && hardwareKeyboard
+        onMac || hardwareKeyboard
     }
 
     /// Whether a chat or room opens with its composer focused, ready to
