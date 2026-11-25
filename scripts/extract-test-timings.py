@@ -19,9 +19,9 @@ lane-result  Merge bash-computed lane facts with extraction output into the
 aggregate    Render a human-readable report (GitHub Step Summary) from
              plan.json + lane-result.json files + build-result.json. NOT wired
              into any workflow since CI v3 (the hosted lane matrix and its
-             Report job are gone); kept as a local inspection tool, with its
-             tests, until something needs it again or it is deliberately
-             deleted.
+             Report job are gone), and nothing writes its plan.json input
+             since the lane planner was removed (#3296); kept, with its
+             tests, until it is deliberately deleted.
 
 Design rules (see docs/CI.md):
   * Timing extraction is NEVER allowed to fail a CI lane. Any structural

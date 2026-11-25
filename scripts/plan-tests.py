@@ -491,8 +491,8 @@ def unit_classes_for_changes(repo_root: str, changed: list, unit_entries: list) 
 
 def _resolve_in_repo(repo_root: str, path: str) -> str:
     """A relative path is read against --repo-root when it exists there, as
-    `_load_history_or_baseline` does, so smoke behaves the same from any
-    working directory."""
+    validate's --baseline is, so smoke behaves the same from any working
+    directory."""
     if path and not os.path.isabs(path):
         joined = os.path.join(repo_root, path)
         if os.path.exists(joined):
