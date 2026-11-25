@@ -1109,7 +1109,7 @@ final class GeminiLiveToolBridge {
     }
 
     private func unsentWords() -> [String] {
-        userLines().compactMap { line in
+        userLines().compactMap { line -> String? in
             let rest = String(line.text.dropFirst(wordsSent[line.id] ?? 0)).trimmingCharacters(in: .whitespacesAndNewlines)
             return rest.isEmpty ? nil : rest
         }
