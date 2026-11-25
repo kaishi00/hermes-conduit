@@ -506,6 +506,46 @@ struct PulseSettingsPage: View {
         }
     }
 
+    /// While Pulse reads every profile, the other profiles it leaves out
+    /// (issue 3241): a menu with a checkmark per profile, drawn as the
+    /// Profiles choice above it. Each pick sends the whole list, so it waits
+    /// until Pulse answered.
+    private func leaveOutMenu(_ state: PulseState) -> some View {
+        let choices = state.leaveOutChoices
+        let leftOut = choices.filter { $0.leftOut }.map { appState.profileDisplayName($0.name) }
+        let value = leftOut.isEmpty ? AppLocalization.string("None") : Self.list(leftOut)
+        return Menu {
+            ForEach(choices) { choice in
+                Toggle(isOn: Binding(
+                    get: { choice.leftOut },
+                    set: { on in
+                        Haptics.selection()
+                        var next = state
+                        next.leaveOut(choice.name, on)
+                        change(["excluded_profiles": next.excludedProfiles ?? []]) { $0.leaveOut(choice.name, on) }
+                    }
+                )) {
+                    Text(verbatim: appState.profileDisplayName(choice.name))
+                }
+            }
+        } label: {
+            HStack {
+                Text(verbatim: AppLocalization.string("Leave out", table: .pulse)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 8)
+                Text(verbatim: value).lineLimit(1).accessibilityHidden(true)
+                Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+            .scaledFont(.subheadline.weight(.medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6).frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityValue(Text(verbatim: value))
+        .conduitGlassControl(cornerRadius: 14)
+        .disabled(waiting)
+        .accessibilityIdentifier("settings.pulse.leave-out")
+    }
+
     private func readsSection(_ state: PulseState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("What Pulse reads", table: .pulse), symbol: "brain.head.profile", tint: .conduitAccent) {
             if state.offersProfileChoice {
@@ -524,6 +564,12 @@ struct PulseSettingsPage: View {
                     Text("Profiles").foregroundStyle(.secondary)
                 }
                 .accessibilityIdentifier("settings.pulse.profiles")
+                if !state.leaveOutChoices.isEmpty {
+                    leaveOutMenu(state)
+                    Text(verbatim: AppLocalization.string("Pulse doesn't read the chats, memories or scheduled jobs of a profile you leave out. What it already remembers from one stays until you remove it.", table: .pulse))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Toggle("Memory", isOn: Binding(
                 get: { state.memory },
