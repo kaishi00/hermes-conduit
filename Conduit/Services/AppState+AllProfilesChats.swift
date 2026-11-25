@@ -268,7 +268,8 @@ extension AppState {
         do {
             try await sendSessionMutation(session.id, body: ["archived": true], profile: profile, bridge: owner.bridge)
             guard ownsDashboardRuntime(owner) else { return false }
-            sessionYoloStore.clearOverride(for: profile, sessionIDs: [session.id] + session.alternateIds)
+            sessionYoloStore.clearOverride(
+                for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(Set(session.nestingIDs))))
             // The pins are the dashboard on screen's: another dashboard's
             // chat, archived on its own runtime, leaves them alone.
             if actingOnRuntimeOnScreen { setLocalPin(session, pinned: false, profile: profile) }
@@ -289,6 +290,9 @@ extension AppState {
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
         let deletedSessionIDs = Set(session.nestingIDs)
+        // What a call hears of it: another profile's rows aren't on hand
+        // to say its alternate ids are its own.
+        let callChatIDs = idsOnlyTheDeletedChatAnswersTo(session, dashboard: Self.dashboardPreferenceBucket(dashboardID), profile: profile)
         do {
             try await sendSessionMutation(session.id, body: nil, profile: profile, bridge: owner.bridge)
             // Hermes deleted it: its saved copy and pinned replies go too,
@@ -298,21 +302,22 @@ extension AppState {
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // A call in it (a Bot Chat call's, say) goes on in a new chat (issue 1797).
-            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
+            noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             guard ownsDashboardRuntime(owner) else { return false }
-            sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(deletedSessionIDs))
+            sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(idsKeptOnlyForTheDeletedChat(deletedSessionIDs)))
             revokeDeletedConversationIdentity(sessionIDs: deletedSessionIDs, profile: profile)
             removeFromAllProfilesCatalog(session)
+            // The pins, the stars and the read ledger are the dashboard on
+            // screen's (issue 3147).
             if actingOnRuntimeOnScreen {
                 setLocalPin(session, pinned: false, profile: profile)
                 setSessionStarred(session, starred: false, profile: profile)
+                updateChatReadState { $0.forget(session, profile: profile) }
             } else if let dashboardID {
                 // Another combined dashboard's chat, deleted on its own
-                // runtime: the pins and stars in use are the screen's own
-                // chats'. Its star goes from its own dashboard's.
+                // runtime: its star goes from its own dashboard's.
                 dropFarSessionStar(session, profile: profile, in: dashboardID)
             }
-            updateChatReadState { $0.forget(session, profile: profile) }
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {
             if let dashboardID {
@@ -320,7 +325,7 @@ extension AppState {
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // And a call in it goes on in a new chat, as above (issue 1797).
-            voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
+            noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             return false
         } catch {
             guard ownsDashboardRuntime(owner) else { return false }
