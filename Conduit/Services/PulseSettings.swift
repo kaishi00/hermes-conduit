@@ -809,7 +809,7 @@ struct PulseClient {
         return try Self.state(from: response)
     }
 
-    /// Any of enabled, memory, daily_report, report_profiles, report_times,
+    /// Any of enabled, memory, daily_report, report_profiles, excluded_profiles, report_times,
     /// brief_time, time_zone, model, nudge, memory_daily_tokens,
     /// followup_daily_tokens, note, quiet_days, quiet_until, night,
     /// inbox_deadlines, look_first, where, spots and private_pushes; answers with
