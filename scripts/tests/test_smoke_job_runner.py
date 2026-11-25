@@ -707,5 +707,85 @@ class SmokeJobRunnerTests(unittest.TestCase):
             self.assertRegex(test, r"^[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]*$")
 
 
+# A build stub for scripts/ci-build-for-testing.sh: each build invocation is
+# numbered; STUB_HANG_RUNS lists the ones that hang past the budget, and
+# STUB_HANG_ERROR makes a hanging one print a source error first.
+BUILD_STUB = """#!/usr/bin/env bash
+if [ "${1:-}" = "-help" ]; then echo "usage: xcodebuild -skipPackageUpdates"; exit 0; fi
+printf 'BUILD|%s\\n' "$*" >> "$STUB_LOG"
+count=$(grep -c '^BUILD|' "$STUB_LOG")
+case ",$STUB_HANG_RUNS," in
+  *",$count,"*)
+    if [ -n "${STUB_HANG_ERROR:-}" ]; then echo "$PWD/Conduit/App.swift:3:7: error: broken"; fi
+    echo "SwiftCompile normal arm64 Compiling App.swift"
+    sleep 60
+    exit 0 ;;
+esac
+mkdir -p "$DERIVED_DATA_PATH/Build/Products"
+touch "$DERIVED_DATA_PATH/Build/Products/Conduit.xctestrun"
+echo "** TEST BUILD SUCCEEDED **"
+"""
+
+
+class BuildResumeTests(unittest.TestCase):
+    """A build its budget stopped with no source error goes on once from what
+    it compiled (TestFlight 283, 2026-11-25: a slow runner spent the 1500 s
+    budget on a healthy build)."""
+
+    def _run(self, hang_runs, hang_error=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = os.path.join(tmp, "bin")
+            os.makedirs(bin_dir)
+            stub = os.path.join(bin_dir, "xcodebuild")
+            with open(stub, "w") as fh:
+                fh.write(BUILD_STUB)
+            os.chmod(stub, 0o755)
+            work = os.path.join(tmp, "work")
+            os.makedirs(work)
+            env = dict(os.environ)
+            env.update({
+                "PATH": bin_dir + os.pathsep + env.get("PATH", ""),
+                "STUB_LOG": os.path.join(tmp, "stub.log"),
+                "STUB_HANG_RUNS": hang_runs,
+                "STUB_HANG_ERROR": "1" if hang_error else "",
+                "DERIVED_DATA_PATH": os.path.join(work, "dd"),
+                "BUILD_DESTINATION": "generic/platform=iOS Simulator",
+                "BUILD_TIMEOUT_SECS": "2",
+                "BUILD_RESUME_TIMEOUT_SECS": "3",
+                # Never the hosted-only steps (mtime stamping, Xcode defaults,
+                # killing build services) on the machine running this suite.
+                "GITHUB_ACTIONS": "",
+            })
+            env.pop("BUILD_AFTER", None)
+            proc = subprocess.run(
+                ["bash", os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh")],
+                cwd=work, env=env, capture_output=True, text=True, timeout=120)
+            with open(env["STUB_LOG"]) as fh:
+                builds = [line for line in fh if line.startswith("BUILD|")]
+            stopped = os.path.exists(os.path.join(work, "ci-lane", "build", "build-stopped.log"))
+            return proc, builds, stopped
+
+    def test_a_stopped_build_goes_on_once_and_passes(self):
+        proc, builds, stopped = self._run("1")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(builds), 2)
+        self.assertTrue(stopped, "the stopped attempt's log is kept beside the new one")
+        self.assertIn("Build ran out of its 2s budget", proc.stdout)
+        self.assertIn("with 3s more", proc.stdout)
+        self.assertIn("(clean, resumed)", proc.stdout)
+
+    def test_a_build_stopped_twice_fails(self):
+        proc, builds, _ = self._run("1,2")
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(len(builds), 2, "only one more run")
+
+    def test_a_stopped_build_with_a_source_error_is_not_resumed(self):
+        proc, builds, stopped = self._run("1", hang_error=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(len(builds), 1)
+        self.assertFalse(stopped)
+        self.assertIn("error file=Conduit/App.swift,line=3,col=7::broken", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

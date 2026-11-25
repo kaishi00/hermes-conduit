@@ -120,7 +120,13 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   generated project) a timestamp derived from its content
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
-  no error in a source file is retried once from scratch. The build's notice
+  no error in a source file is retried once from scratch. A build its budget
+  stopped with no error in a source file goes on once from what it compiled,
+  with 900 s more (`BUILD_RESUME_TIMEOUT_SECS`) and a warning naming the
+  budget: on 2026-11-25 a slow runner started the Conduit module 574 s into
+  the build (27-349 s on the 31 runs before) and spent the 1500 s budget on a
+  healthy compile (run 45615420344, TestFlight 283). A second stop fails the
+  build. The build's notice
   and log line name how many Swift files each target compiled, so a slow
   incremental build shows what it rebuilt. A new Xcode build
   misses the cache and builds clean, and a build that restored no cache gets 1800 s instead of 1500 s: the first
