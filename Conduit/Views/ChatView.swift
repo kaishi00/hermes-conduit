@@ -5874,12 +5874,15 @@ final class ChatTurnScanCache {
     }
     private var key: Key?
     private var value: (tool: ToolActivity?, startedAt: Date?) = (nil, nil)
+    /// How many times the transcript was looked through, for tests.
+    private(set) var lookups = 0
 
     func scan(_ appState: AppState) -> (tool: ToolActivity?, startedAt: Date?) {
         let now = Key(chat: ObjectIdentifier(appState.shownChat), revision: appState.chatTranscriptRevision,
                       isBusy: appState.isBusy)
         if now == key { return value }
         key = now
+        if now.isBusy { lookups += 1 }
         value = now.isBusy
             ? (ChatView.runningTool(in: appState.messages), ChatView.turnStart(in: appState.messages))
             : (nil, nil)

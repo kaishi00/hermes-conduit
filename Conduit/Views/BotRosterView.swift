@@ -447,7 +447,7 @@ struct BotRosterView: View {
     /// Bots Home on screen: its tab, nothing pushed over it (what its
     /// held updates follow, V2BotsView).
     static func isShown(in shell: V2ShellContext) -> Bool {
-        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit).isShown
+        V2ListVisibility(shell: shell).isShown
     }
 
     /// Shown again, connected, with group support unread (a sign-in while

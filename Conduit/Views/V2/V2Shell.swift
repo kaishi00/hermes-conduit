@@ -263,6 +263,18 @@ struct V2ListVisibility: Equatable {
     var split: Bool
     var isShown: Bool { tabActive && !covered }
 
+    init(tabActive: Bool, covered: Bool, split: Bool) {
+        self.tabActive = tabActive
+        self.covered = covered
+        self.split = split
+    }
+
+    /// A tab's root list or page as the shell's context has it: covered
+    /// while a chat or a page is pushed over the root.
+    init(shell: V2ShellContext) {
+        self.init(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+    }
+
     /// Uncovered by a pop on the shown tab: the chat slides off it. A tab
     /// switch (a pop landing on another tab included), or the window
     /// widening or the list's toggle putting it beside the chat, shows it
@@ -324,6 +336,8 @@ final class V2ShownUpdates: ObservableObject {
             }
         }
     }
+    /// Whether a publish is waiting for the list to show.
+    var heldAnUpdate: Bool { missedUpdate || drawScheduled }
     /// How long a list shown again waits at most to draw what it missed:
     /// the list sets `popSlide` when a pop shows it, zero (at once)
     /// otherwise. A pop's wait ends sooner, as the screen popped off it
@@ -635,7 +649,10 @@ struct V2HeldPage<Page: View>: View {
             .onAppear {
                 mounted = true
                 guard !root else { return }
-                updates.revealDelay = Self.revealDelay(uncoveredByPop: wasCovered)
+                // Restored under a chat at launch, it has never gone, but
+                // it held what was published since it was made: that
+                // chat's pop slides too.
+                updates.revealDelay = Self.revealDelay(uncoveredByPop: wasCovered || updates.heldAnUpdate)
                 updates.isShown = Self.isShown(mounted: true, in: shell)
             }
             .onDisappear {
@@ -664,7 +681,7 @@ struct V2HeldPage<Page: View>: View {
     }
 
     static func visibility(in shell: V2ShellContext) -> V2ListVisibility {
-        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+        V2ListVisibility(shell: shell)
     }
 
     /// A pushed route on screen: mounted and not under a chat pushed over
