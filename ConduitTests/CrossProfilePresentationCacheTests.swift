@@ -5090,6 +5090,36 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.activeSessionId, "unlisted-link-1")
         XCTAssertEqual(appState.activeDashboardID, vps.id)
 
+        // A far room's Ask Your Agent chat opens the same way, in place:
+        // one its Hermes refused reads gone with the error from before it
+        // left as it was, for the opener to replace the chat.
+        script.error = RpcError(code: 4007, message: "Session not found")
+        appState.errorMessage = "before"
+        let goneRoomChat = await appState.openFarRoomChat("room-chat-0", profile: "atlas", in: mac.id)
+        XCTAssertEqual(goneRoomChat, .gone)
+        XCTAssertEqual(appState.errorMessage, "before")
+        script.error = nil
+        appState.errorMessage = nil
+        // From its room's Group Info: the room's chats are read from its
+        // own dashboard's plugin, and the chat opens there with no switch.
+        kept.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [RoomChatsClient.capability])
+        let roomAgain = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+        XCTAssertEqual(roomAgain, .opened)
+        XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
+        let roomChatTask = Task { @MainActor in
+            await appState.openRoomChat(with: RoomChatAgent(profile: "atlas", name: "Atlas"), wrapUp: false)
+        }
+        try await held.answer(
+            ["ok": true, "chats": [["room_id": "trip", "chat_id": "room-chat-1", "notes_seq": 0]]],
+            toPathEnding: "/rooms/chats"
+        )
+        let roomChatFailure = await roomChatTask.value
+        XCTAssertNil(roomChatFailure)
+        XCTAssertEqual(appState.activeSessionId, "room-chat-1")
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for a far room's chat")
+        XCTAssertNil(appState.activeRoomSurface, "the chat took the room's place")
+
         // 5. Call pushes keep switching by ruling (even when targeting a room or listed chat).
         let callPush = ConduitNotificationTarget(
             profile: "atlas",

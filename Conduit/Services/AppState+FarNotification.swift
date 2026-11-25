@@ -234,6 +234,37 @@ extension AppState {
         }
     }
 
+    /// Opens a room's chat (RoomChats.swift) of another combined
+    /// dashboard's room in place, as a chat link of that dashboard for a
+    /// chat its list doesn't hold opens: on its kept connection, in
+    /// `profile` there, with no switch. Gone when its Hermes refused the
+    /// chat, with the error the refusal left put back (the opener replaces
+    /// the chat); failed when it can't open in place or didn't open.
+    func openFarRoomChat(_ chatID: String, profile: String, in dashboardID: UUID) async -> RoomChatOpenOutcome {
+        let shownError = errorMessage
+        let target = ConduitNotificationTarget(
+            profile: profile, sessionId: chatID, dashboardID: dashboardID, type: nil, isChatLink: true
+        )
+        let attempt = FarNotificationOpenAttempt()
+        guard let outcome = await openFarUnlistedChatNotification(target, in: dashboardID, attempt: attempt) else {
+            return .failed
+        }
+        switch outcome {
+        case .opened: return .opened
+        case .failed:
+            guard attempt.refused == true else { return .superseded }
+            errorMessage = shownError
+            return .gone
+        case .retry:
+            // One attempt, never retried: a failure held back for a retry
+            // is this open's last word; none held is another open's turn.
+            guard attempt.refused != nil else { return .superseded }
+            publishNotificationRouteFailure(for: target)
+            return .failed
+        case .unverified, .afterCall: return .failed
+        }
+    }
+
     private func finishFarNotificationChatOpen(
         open: Task<Bool, Never>,
         attempt: FarNotificationOpenAttempt,
