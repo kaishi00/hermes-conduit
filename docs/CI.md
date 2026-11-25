@@ -565,13 +565,14 @@ suites.
   the August seed had drifted until half the unit classes had no entry and
   app-code PRs ran 4-6 minutes of changed classes against the 120 s budget
   (refreshed 2026-11-17). Unseen classes get a conservative default (20 s)
-  in lane planning so a batch of new tests cannot all pile into one lane.
+  when the nightly shards are split, so new classes don't all pile into one
+  shard.
 * **Timing history** - there is none any more. The `timing-history-v1-*`
-  Actions cache and the main-only job that wrote it were removed in CI v3: they
-  existed to rebalance the hosted lane matrix, which no longer exists.
-  Nothing produces `plan-tests.py`'s `--history` input now; estimates come
-  from the checked-in baseline (or the planner default) and planning
-  correctness never depended on either.
+  Actions cache and the main-only job that wrote it were removed in CI v3, and
+  the CI v2 lane planner they fed (`plan-tests.py plan`: 8 unit lanes of 4
+  batches of 7 classes) was removed on 2026-11-25, after no workflow had run
+  its lanes since CI v5 and its batch policy still capped the unit suite at
+  224 classes.
 
 ## Destination readiness gate
 
@@ -679,7 +680,8 @@ python3 scripts/plan-tests.py smoke
 python3 -m unittest discover -s scripts/tests
 ```
 
-`validate` checks inventory completeness; `smoke` is the command that actually
+`validate` checks inventory completeness (every class discovered, none
+duplicated or malformed, no cap on how many); `smoke` is the command that actually
 reads `scripts/smoke-suite.json`, so it is the one that catches a pinned test
 whose class or method was renamed, deleted or moved between targets, or a list
 over its cap — the same check the hosted
