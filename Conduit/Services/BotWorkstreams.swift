@@ -1305,8 +1305,23 @@ struct WorkstreamBrief: Equatable {
     /// quotes it.
     let userWords: String?
 
+    static let wordsMark = "\n\nThe user's message that "
+
+    /// The task's mark. The user's words are quoted last, right before it,
+    /// so a "Task:" line of their own stays inside the quote. A quote is
+    /// read only ahead of the first ordinary mark: one in the task is the
+    /// task's own text.
+    static func taskMarkRange(in text: String) -> Range<String.Index>? {
+        guard let first = text.range(of: taskMark) else { return nil }
+        if let quoted = text.range(of: wordsMark), quoted.lowerBound < first.lowerBound,
+           let mark = text.range(of: "»" + taskMark, range: quoted.upperBound..<text.endIndex) {
+            return text.index(after: mark.lowerBound)..<mark.upperBound
+        }
+        return first
+    }
+
     static func parse(_ text: String) -> WorkstreamBrief? {
-        guard text.hasPrefix(opening), let mark = text.range(of: taskMark) else { return nil }
+        guard text.hasPrefix(opening), let mark = taskMarkRange(in: text) else { return nil }
         let head = text[text.index(text.startIndex, offsetBy: opening.count)..<mark.lowerBound]
         guard let comma = head.range(of: ", who coordinates") else { return nil }
         let bot = String(head[..<comma.lowerBound]).trimmingCharacters(in: .whitespaces)
@@ -1317,7 +1332,7 @@ struct WorkstreamBrief: Equatable {
         let trimmed = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !bot.isEmpty, !trimmed.isEmpty else { return nil }
         var words: String?
-        if let quoted = head.range(of: "\n\nThe user's message that "),
+        if let quoted = head.range(of: wordsMark),
            let open = head[quoted.upperBound...].range(of: "«"),
            let close = head[open.upperBound...].range(of: "»", options: .backwards) {
             let said = head[open.upperBound..<close.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
