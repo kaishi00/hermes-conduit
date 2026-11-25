@@ -688,8 +688,8 @@ struct GroupRoomComposer: View {
         let files = attachments
         dictation.stop()
         Haptics.light()
-        // As in a chat: the field lets go after a send unless a Mac or an
-        // iPad keyboard is typing on (ComposerLayout.keepsFocusAfterSend);
+        // As in a chat: the field lets go after a send unless a Mac or a
+        // hardware keyboard is typing on (ComposerLayout.keepsFocusAfterSend);
         // from the full editor it takes focus once the sheet has gone.
         if !ComposerLayout.keepsFocusAfterSend() {
             isFocused = false
