@@ -57,9 +57,15 @@ extension AppState {
     }
 
     func rememberDisplayPreferences() {
-        guard let data = try? JSONEncoder().encode(displayPreferences) else { return }
+        rememberDisplayPreferences(displayPreferences, dashboardID: activeDashboardID, profile: activeProfile)
+    }
+
+    /// Keeps `preferences` as `dashboardID`'s profile's (a far chat's read
+    /// keeps its own dashboard's this way).
+    func rememberDisplayPreferences(_ preferences: ProfileDisplayPreferences, dashboardID: UUID?, profile: String) {
+        guard let data = try? JSONEncoder().encode(preferences) else { return }
         var stored = defaults.dictionary(forKey: Self.displayPreferencesByProfileKey) as? [String: Data] ?? [:]
-        stored[Self.displayPreferencesKey(dashboardID: activeDashboardID, profile: activeProfile)] = data
+        stored[Self.displayPreferencesKey(dashboardID: dashboardID, profile: profile)] = data
         defaults.set(stored, forKey: Self.displayPreferencesByProfileKey)
     }
 

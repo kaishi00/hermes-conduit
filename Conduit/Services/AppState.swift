@@ -63,6 +63,8 @@ final class AppState: ObservableObject {
             if let farChat, farChat.dashboardID != oldValue?.dashboardID {
                 restorePendingSendsLeftBehind(dashboardID: farChat.dashboardID)
             }
+            // It draws and sends by its own dashboard's settings.
+            noteFarChatSettings()
         }
     }
     /// Other dashboards' runtimes a surface shows (a far group chat), whose
@@ -1195,6 +1197,10 @@ final class AppState: ObservableObject {
         set { shownChat.transcriptFreshnessIsStale = newValue }
     }
     @Published var busyInputMode: BusyInputMode = .steer
+    /// The far chat's own display settings and busy mode, read on its
+    /// dashboard (AppState+FarChatSettings.swift); nil with no far chat.
+    @Published var farChatSettings: FarChatSettings?
+    var farChatSettingsTask: Task<Void, Never>?
     @Published var displayPreferences = ProfileDisplayPreferences() {
         // Kept on the device too, so the saved chats draw as Settings says
         // before the host answers (offline from launch).

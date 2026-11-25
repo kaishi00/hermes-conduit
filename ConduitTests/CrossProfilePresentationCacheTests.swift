@@ -2618,6 +2618,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.errorMessage)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertTrue(appState.placesConversationAsBotChat, "pushed in Bots, so Back returns to Bots Home")
         // Its row is the one marked open on the Chats list; a row of this
         // dashboard's under the same id isn't.
         XCTAssertTrue(appState.isOpenChatRow(row), "its row is marked open")
@@ -2681,6 +2682,29 @@ extension CrossProfilePresentationCacheTests {
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its dashboard's bots name its open id")
         XCTAssertTrue(appState.placesConversationAsBotChat, "a far Bot Chat is pushed in Bots, so Back returns to Bots Home")
+        // Its reply rows and composer wear its bot, though its kept runtime
+        // never read a roster and its registry hasn't heard of the id
+        // (build 283: they showed the screen's main bot).
+        XCTAssertEqual(appState.conversationAgentIdentity.name, "Atlas")
+        XCTAssertEqual(appState.conversationAgentIdentity.botFace?.name, "atlas")
+        // Its main bot's Hermes picture, mirrored in its scope, is kept for
+        // its own dashboard, never as this dashboard's main bot's (build 283).
+        let screensMain = appState.profileAvatarURLs["default"]
+        let picture = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }.pngData())
+        appState.act(onRuntime: kept.runtime) {
+            appState.mirrorHermesPicture(picture, for: "default", dashboardID: mac.id)
+        }
+        XCTAssertEqual(appState.profileAvatarURLs["default"], screensMain, "this dashboard's main picture stays its own")
+        XCTAssertNotNil(appState.profileAppearanceStore.loadAvatarURLs(dashboardID: mac.id)["default"], "kept for the Mac")
+        // Acting for it, its pictures and its main bot's name are its own.
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.profileAvatarURL(for: "default") },
+                       appState.profileAppearanceStore.loadAvatarURLs(dashboardID: mac.id)["default"])
+        _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
+        XCTAssertEqual(appState.act(onRuntime: kept.runtime) { appState.profileDisplayName("default") }, "Mac main")
+        XCTAssertNotEqual(appState.profileDisplayName("default"), "Mac main", "this dashboard's main name stays its own")
         kept.runtime.botChatSessionProfiles["atlas-chat"] = "atlas"
         XCTAssertEqual(appState.farBotChatProfile(in: mac.id), "atlas", "its registry names it")
         appState.activeSessionId = "plain-far-chat"
@@ -2706,6 +2730,77 @@ extension CrossProfilePresentationCacheTests {
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         XCTAssertNil(appState.farBotChatProfile(in: mac.id), "an id the screen holds never names it")
         appState.farChat = nil
+    }
+
+    /// A far chat wears its own dashboard's pictures and names (a bot whose
+    /// profile name this dashboard also has included), and draws and sends
+    /// by its own dashboard's display settings and busy mode, while this
+    /// dashboard's stay as Settings shows them.
+    func testAFarChatWearsAndDrawsByItsOwnDashboard() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        func picture(_ side: CGFloat, _ color: UIColor) throws -> URL {
+            let data = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { context in
+                color.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            }.pngData())
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("far-face-\(UUID().uuidString).png")
+            try data.write(to: url)
+            addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+            return url
+        }
+        let macAtlas = try picture(3, .systemRed)
+        let macMain = try picture(5, .systemGreen)
+        // This dashboard has its own picture under the same profile name.
+        appState.profileAvatarURLs["atlas"] = try picture(2, .systemBlue)
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: ["atlas": macAtlas, "default": macMain], at: Date()
+        )
+        _ = appState.profileAppearanceStore.saveDefaultName("Mac main", dashboardID: mac.id)
+
+        // Its Bot Chat's face is its own dashboard's picture.
+        appState.activeSessionId = "atlas-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        let face = try XCTUnwrap(appState.conversationAgentIdentity.botFace?.image)
+        XCTAssertTrue(face === ProfileAvatarImageCache.image(at: macAtlas), "the Mac's picture, not this dashboard's")
+
+        // Its ordinary chat is its own dashboard's main bot, by its name
+        // and picture.
+        appState.activeSessionId = "plain-far-chat"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: kept.runtime.activeProfile)
+        XCTAssertEqual(appState.conversationAgentIdentity.name, "Mac main")
+        XCTAssertEqual(appState.conversationAgentIdentity.photoURL, macMain)
+
+        // Its display settings and busy mode are its own dashboard's kept
+        // ones; this dashboard's stay its own.
+        appState.farChat = nil
+        appState.displayPreferences = ProfileDisplayPreferences()
+        appState.busyInputMode = .steer
+        let owner = FarChatOwner(dashboardID: mac.id, profile: "default")
+        var macDisplay = ProfileDisplayPreferences()
+        macDisplay.showReasoning = false
+        macDisplay.thinkingOnRequest = false
+        macDisplay.showToolProgress = false
+        appState.rememberDisplayPreferences(macDisplay, dashboardID: mac.id, profile: "default")
+        appState.defaults.set(BusyInputMode.queue.rawValue, forKey: AppState.farBusyInputModeKey(owner))
+        XCTAssertEqual(appState.chatDisplayPreferences, ProfileDisplayPreferences(), "no far chat: this dashboard's")
+        XCTAssertEqual(appState.chatBusyInputMode, .steer)
+        appState.farChat = owner
+        XCTAssertEqual(appState.chatDisplayPreferences, macDisplay, "the Mac's")
+        XCTAssertEqual(appState.chatBusyInputMode, .queue, "the Mac's")
+        XCTAssertEqual(appState.displayPreferences, ProfileDisplayPreferences(), "this dashboard's stays its own")
+        XCTAssertEqual(appState.busyInputMode, .steer, "this dashboard's stays its own")
+        XCTAssertEqual(appState.storedDisplayPreferences(dashboardID: vps.id, profile: "default") ?? ProfileDisplayPreferences(),
+                       ProfileDisplayPreferences(), "nothing of the Mac's kept as this dashboard's")
+        appState.farChat = nil
+        XCTAssertNil(appState.farChatSettings)
+        XCTAssertEqual(appState.chatBusyInputMode, .steer)
     }
 
     /// A Bot Chat's push, chat link or widget tap of a kept dashboard opens

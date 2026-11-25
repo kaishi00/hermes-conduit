@@ -40,6 +40,13 @@ extension AppState {
     /// one on screen's.
     var farChatDashboardID: UUID? { farChat?.dashboardID }
 
+    /// The far chat's dashboard while acting in its scope (its runtime is
+    /// the one AppState reads); nil on the dashboard on screen's.
+    var farChatDashboardIDInScope: UUID? {
+        guard let id = farChat?.dashboardID, id == activeDashboardID, id != dashboardIDOnScreen else { return nil }
+        return id
+    }
+
     /// Whether a Bot's Screen for `dashboardID`'s bot is another combined
     /// dashboard's than the one on screen's.
     func botScreenIsFar(_ dashboardID: UUID?) -> Bool {
@@ -621,6 +628,10 @@ extension AppState {
         act(onRuntime: runtime) {
             Task { @MainActor [weak self] in await self?.refreshActiveSession() }
         }
+        // Its settings may have changed while it was away, as the screen's
+        // are read again on a reconnect.
+        farChatSettingsTask?.cancel()
+        farChatSettingsTask = Task { [weak self] in await self?.loadFarChatSettings(for: farChat) }
     }
 
     /// A chat sync where the chat on screen and the dashboard acted on

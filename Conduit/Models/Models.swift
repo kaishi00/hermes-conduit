@@ -1712,6 +1712,21 @@ struct ProfileDisplayPreferences: Equatable, Codable {
     var offersShowThinking: Bool { reasoningMode == .onRequest }
 }
 
+extension ProfileDisplayPreferences {
+    /// A profile's `display` config as Hermes keeps it (an extension, so
+    /// the memberwise initializer stays).
+    init(display: [String: Any]) {
+        let reasoning = ReasoningDisplayMode(display: display)
+        self.init(
+            showReasoning: reasoning == .show,
+            thinkingOnRequest: reasoning != .off,
+            showToolProgress: display["tool_progress"] as? String != "off",
+            expandToolsByDefault: display["expand_tools"] as? Bool ?? false,
+            showReviews: Self.showsReviews(display["memory_notifications"])
+        )
+    }
+}
+
 /// The Thinking choice in Settings > Chat. Hermes' own `display.show_reasoning`
 /// stays a switch other clients read too, so Show is that switch on, and
 /// Conduit's `display.conduit_thinking_on_request` tells On request from Off

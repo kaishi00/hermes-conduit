@@ -477,7 +477,7 @@ extension AppState {
         return turnState.composerAction(
             hasText: hasText,
             hasAttachments: hasAttachments,
-            busyInputMode: busyInputMode
+            busyInputMode: chatBusyInputMode
         )
     }
 
@@ -518,14 +518,14 @@ extension AppState {
         }
         switch turnState {
         case .running:
-            if busyInputMode == .queue {
+            if chatBusyInputMode == .queue {
                 return namingAgent
                     ? AppLocalization.string("Queue a message for \(conversationAgentIdentity.name)…")
                     : AppLocalization.string("Queue a message…")
             }
             return namingAgent
-                ? AppLocalization.string("\(busyInputMode.title) \(conversationAgentIdentity.name)…")
-                : AppLocalization.string("\(busyInputMode.title)…")
+                ? AppLocalization.string("\(chatBusyInputMode.title) \(conversationAgentIdentity.name)…")
+                : AppLocalization.string("\(chatBusyInputMode.title)…")
         case .synchronizing, .reconnecting:
             return AppLocalization.string("Checking agent activity…")
         case .unsupportedGateway:
@@ -717,9 +717,14 @@ extension AppState {
     /// The bot's picture: the one fetched from its profile, else the copy
     /// of Hermes' picture the profile pictures keep on the phone, so a row
     /// shows it before the fetch, or offline (#1533).
+    /// Acting for another combined dashboard (its chat open in place, its
+    /// group chat's tile), its picture as its own dashboard keeps it, never
+    /// a same-named profile's here (build 283: a far bot's chat showed a
+    /// starter face).
     func botAvatarImage(for bot: BotProfile) -> UIImage? {
         guard bot.hasAvatar else { return nil }
-        return botAvatarImages[bot.name] ?? profileAvatarURLs[bot.name].flatMap { ProfileAvatarImageCache.image(at: $0) }
+        if let image = botAvatarImages[bot.name] { return image }
+        return profileAvatarURL(for: bot.name).flatMap { ProfileAvatarImageCache.image(at: $0) }
     }
 
     /// The bot's picture to play where its face is the focus, when it moves
@@ -731,7 +736,7 @@ extension AppState {
     }
 
     func profileAvatarPlayback(for profile: String) -> AnimatedAvatarPlayback? {
-        guard let url = profileAvatarURLs[profile], ProfileAvatarImageCache.isAnimated(at: url) else { return nil }
+        guard let url = profileAvatarURL(for: profile), ProfileAvatarImageCache.isAnimated(at: url) else { return nil }
         return .file(url, revision: ProfileAvatarImageCache.revision(of: url))
     }
 
@@ -882,7 +887,7 @@ extension AppState {
         guard let dashboardID = activeDashboardID,
               let fetchedAt = botPictureFetchedAt[Self.botPictureKey(name, dashboardID: dashboardID)],
               Self.botPictureIsFresh(fetchedAt: fetchedAt, reloadedAt: botPicturesPulledAt[dashboardID], now: now),
-              profileAvatarURLs[name] != nil,
+              profileAvatarURL(for: name) != nil,
               profileAppearanceStore.isMirrored(name, dashboardID: dashboardID) else { return false }
         return true
     }

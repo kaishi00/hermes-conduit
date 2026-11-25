@@ -23,7 +23,7 @@ extension AppState {
         let id = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = id.isEmpty ? "default" : id
         let given = profileBotTitles[key] ?? profileHermesNames[key]
-        return HermesCallerName.name(profile: key, mainName: defaultProfileName, profileName: given)
+        return HermesCallerName.name(profile: key, mainName: mainProfileNameInScope, profileName: given)
     }
 
     /// Whether the host holds calls back while the user is in a live call

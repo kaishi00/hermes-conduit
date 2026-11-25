@@ -278,11 +278,22 @@ extension AppState {
     /// its Conduit name, and by those only while it has none (#1257). A name
     /// given on the device (a gateway without bot looks) comes first until
     /// the roster says the gateway keeps bot looks.
+    /// The main profile's Conduit name for the dashboard in scope: the one
+    /// on screen's as kept, another combined dashboard's from its own store.
+    var mainProfileNameInScope: String {
+        guard !actingOnRuntimeOnScreen, let dashboardID = dashboardID(of: shownRuntime) else { return defaultProfileName }
+        return profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
+    }
+
     func profileDisplayName(_ profile: String) -> String {
         var normalized = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         let isMain = normalized.isEmpty || normalized.lowercased() == "default"
         if isMain {
-            guard defaultProfileName == ProfileAppearanceStore.defaultName else { return defaultProfileName }
+            // Acting for another combined dashboard: its own main bot's
+            // name, never the one on screen's (build 283: a far main bot's
+            // chat read as "Hermes", this dashboard's).
+            let mainName = mainProfileNameInScope
+            guard mainName == ProfileAppearanceStore.defaultName else { return mainName }
             normalized = "default"
         }
         // Until the roster says the gateway keeps bot looks, launch and
@@ -290,7 +301,7 @@ extension AppState {
         if !isMain, botModePhase != .available, let name = profileDeviceNames[normalized] { return name }
         if let title = profileBotTitles[normalized] { return title }
         if let name = profileHermesNames[normalized] { return name }
-        if isMain { return defaultProfileName }
+        if isMain { return mainProfileNameInScope }
         return String(normalized.prefix(1)).uppercased() + String(normalized.dropFirst())
     }
 
@@ -336,8 +347,15 @@ extension AppState {
         profileAppearanceStore.saveHermesNames(names, dashboardID: activeDashboardID)
     }
 
+    /// The profile's picture on the phone. Acting for another combined
+    /// dashboard (in its runtime's scope), that dashboard's own copy: the
+    /// pictures on hand are the dashboard on screen's, and a same-named
+    /// profile there (both main bots are `default`) is another bot.
     func profileAvatarURL(for profile: String) -> URL? {
-        profileAvatarURLs[profile]
+        if !actingOnRuntimeOnScreen, let dashboardID = dashboardID(of: shownRuntime) {
+            return farAvatarURL(for: profile, on: dashboardID)
+        }
+        return profileAvatarURLs[profile]
     }
 
     /// Each profile's backdrop glow color from its pick or its photo
@@ -355,7 +373,7 @@ extension AppState {
         var palettes: [String: [ProfileGlowRGB]] = [:]
         var unreadable = false
         for profile in order {
-            guard let url = profileAvatarURLs[profile] else { continue }
+            guard let url = profileAvatarURL(for: profile) else { continue }
             if let known = profileGlowPalettes.byURL[url] {
                 palettes[profile] = known
                 continue
@@ -505,11 +523,16 @@ extension AppState {
     /// A photo kept on this device only: the gateway has no profile asset
     /// store (older Hermes).
     func saveProfileAvatarOnDevice(_ data: Data, for profile: String) throws {
-        profileAvatarURLs[profile] = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
+        let url = try profileAppearanceStore.saveAvatar(data, for: profile, dashboardID: activeDashboardID)
+        // The pictures on hand are the dashboard on screen's alone.
+        if actingOnRuntimeOnScreen { profileAvatarURLs[profile] = url }
     }
 
     func removeProfileAvatarFile(for profile: String) {
         profileAppearanceStore.removeAvatar(for: profile, dashboardID: activeDashboardID)
+        // Another combined dashboard's removal (in its scope) leaves a
+        // same-named profile's picture here alone.
+        guard actingOnRuntimeOnScreen else { return }
         profileAvatarURLs.removeValue(forKey: profile)
     }
 

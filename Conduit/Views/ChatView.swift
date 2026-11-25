@@ -187,7 +187,7 @@ struct ChatView: View {
         return TranscriptModel.Input(
             targetsRevision: scroller.targetCache.renderingRevision,
             conversation: appState.activeChatScrollSessionIdentity,
-            displayPreferences: appState.displayPreferences,
+            displayPreferences: appState.chatDisplayPreferences,
             isBusy: appState.chatOnScreenIsBusy,
             disclosureRevision: stepToggleRevision,
             live: Self.liveTurn(in: appState, working: workingLine),
@@ -477,7 +477,7 @@ struct ChatView: View {
         // that lands, or a setting that hides more, looks again. The read
         // runs in a task of its own, as the button's does: arming its
         // progress line redraws the chat, which would cancel it here.
-        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)|\(appState.displayPreferences.thinkingOnRequest)|\(stepToggleRevision)|\(appState.displayPreferences.showReviews)") {
+        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.chatDisplayPreferences.showToolProgress)|\(appState.chatDisplayPreferences.showReasoning)|\(appState.chatDisplayPreferences.thinkingOnRequest)|\(stepToggleRevision)|\(appState.chatDisplayPreferences.showReviews)") {
             guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading,
                   !transcriptInput.rowsOnTheirWay else { return }
             let conversation = Self.drawnConversation(in: appState)

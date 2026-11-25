@@ -494,7 +494,7 @@ extension AppState {
             attachments: attachments,
             submissionContext: submissionContext,
             onBusy: onBusy,
-            busyMode: busyMode ?? busyInputMode,
+            busyMode: busyMode ?? chatBusyInputMode,
             runsSlashCommands: runsSlashCommands
         )
         // Only something Hermes took moves the registry's count; a refused

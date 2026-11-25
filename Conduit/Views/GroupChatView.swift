@@ -1594,6 +1594,21 @@ extension EnvironmentValues {
     }
 }
 
+private struct RoomTileDashboardKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
+
+extension EnvironmentValues {
+    /// The combined dashboard whose group chat a Bots Home tile is, when it
+    /// isn't the one on screen: its members' faces are that dashboard's bots
+    /// and pictures, read on its kept runtime (build 283: a far room's
+    /// faces drew from this dashboard's, at random).
+    var roomTileDashboardID: UUID? {
+        get { self[RoomTileDashboardKey.self] }
+        set { self[RoomTileDashboardKey.self] = newValue }
+    }
+}
+
 /// A room member's picture: the bot's own (its profile's avatar), else its
 /// starter face. Another person's member wears the look their Conduit sent.
 struct GroupMemberAvatar: View {
@@ -1625,11 +1640,12 @@ private struct GroupMemberHeldAvatar: View {
     @ObservedObject var updates: V2ShownUpdates
     @Environment(\.groupRoomLooks) private var roomLooks
     @Environment(\.readsOpenRoomRuntime) private var readsOpenRoom
+    @Environment(\.roomTileDashboardID) private var tileDashboardID
 
     var body: some View {
         groupMemberAvatarFace(
             appState: updates.appState, member: member, name: name, size: size, look: look,
-            roomLooks: roomLooks, readsOpenRoom: readsOpenRoom
+            roomLooks: roomLooks, readsOpenRoom: readsOpenRoom, tileDashboardID: tileDashboardID
         )
     }
 }
@@ -1645,11 +1661,12 @@ private struct GroupMemberLiveAvatar: View {
     /// Off outside the room's screen (Bots Home's tiles): a far room open
     /// in place doesn't lend them its bots.
     @Environment(\.readsOpenRoomRuntime) private var readsOpenRoom
+    @Environment(\.roomTileDashboardID) private var tileDashboardID
 
     var body: some View {
         groupMemberAvatarFace(
             appState: appState, member: member, name: name, size: size, look: look,
-            roomLooks: roomLooks, readsOpenRoom: readsOpenRoom
+            roomLooks: roomLooks, readsOpenRoom: readsOpenRoom, tileDashboardID: tileDashboardID
         )
     }
 }
@@ -1661,11 +1678,34 @@ private struct GroupMemberLiveAvatar: View {
 @MainActor
 private func groupMemberAvatarFace(
     appState: AppState, member: GroupMember?, name: String, size: CGFloat, look: RoomLook?,
-    roomLooks: RoomLooks, readsOpenRoom: Bool
+    roomLooks: RoomLooks, readsOpenRoom: Bool, tileDashboardID: UUID? = nil
 ) -> some View {
-    /// The open room's dashboard's, where this avatar is the room's.
+    /// The open room's dashboard's, where this avatar is the room's; a far
+    /// room's tile's, its own dashboard's.
     func reading<T>(_ body: () -> T) -> T {
-        readsOpenRoom ? appState.readingRoomRuntime(body) : body()
+        if let tileDashboardID, let runtime = appState.keptDashboardRuntimes[tileDashboardID]?.runtime {
+            return appState.act(onRuntime: runtime, body)
+        }
+        return readsOpenRoom ? appState.readingRoomRuntime(body) : body()
+    }
+    // A far room's tile whose dashboard isn't kept connected: its members
+    // are its own dashboard's bots as Bots Home last read them, faced by
+    // that dashboard's pictures kept here, never this dashboard's bots by
+    // name. Nothing is fetched until it's back.
+    if let tileDashboardID, appState.keptDashboardRuntimes[tileDashboardID] == nil {
+        let bot: BotProfile? = member == nil && look != nil ? nil : GroupRoomTurns.rosterBot(
+            for: member, name: name, in: appState.combinedDashboardBots[tileDashboardID]?.bots ?? []
+        )
+        let image = bot.flatMap { bot in
+            bot.hasAvatar
+                ? appState.farAvatarURL(for: bot.name, on: tileDashboardID).flatMap { ProfileAvatarImageCache.image(at: $0) }
+                : nil
+        }
+        return groupMemberAvatarFace(
+            appState: appState, bot: bot, image: image, fetchID: bot.map { "\($0.name)|\($0.hasAvatar)|far" } ?? "",
+            name: name, size: size, look: look ?? roomLooks.member(member), readsOpenRoom: readsOpenRoom,
+            tileDashboardID: tileDashboardID
+        )
     }
     // The roster bot this member is. A person's bubble, which comes with
     // their look, is never matched to one of your bots by name.
@@ -1673,7 +1713,8 @@ private func groupMemberAvatarFace(
     return groupMemberAvatarFace(
         appState: appState, bot: bot, image: bot.flatMap { bot in reading { appState.botAvatarImage(for: bot) } },
         fetchID: bot.map { "\($0.name)|\($0.hasAvatar)|\(reading { appState.botAvatarGeneration })|\(reading { appState.isConnected })" } ?? "",
-        name: name, size: size, look: look ?? roomLooks.member(member), readsOpenRoom: readsOpenRoom
+        name: name, size: size, look: look ?? roomLooks.member(member), readsOpenRoom: readsOpenRoom,
+        tileDashboardID: tileDashboardID
     )
 }
 
@@ -1682,7 +1723,7 @@ private func groupMemberAvatarFace(
 @MainActor @ViewBuilder
 private func groupMemberAvatarFace(
     appState: AppState, bot: BotProfile?, image: UIImage?, fetchID: String, name: String, size: CGFloat,
-    look: RoomLook?, readsOpenRoom: Bool
+    look: RoomLook?, readsOpenRoom: Bool, tileDashboardID: UUID?
 ) -> some View {
     if let bot {
         BotAvatarView(
@@ -1696,7 +1737,12 @@ private func groupMemberAvatarFace(
         // Connecting fetches again: a kept bot's fetch fails offline. A
         // far room's bots are fetched from their own dashboard.
         .task(id: fetchID) {
-            if readsOpenRoom {
+            if let tileDashboardID {
+                // A far room's tile: fetched into its own dashboard's store,
+                // and only through its own kept connection.
+                guard let runtime = appState.keptDashboardRuntimes[tileDashboardID]?.runtime else { return }
+                await appState.actAcrossAwaits(onRuntime: runtime) { await appState.loadBotAvatarRetrying(bot) }
+            } else if readsOpenRoom {
                 await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }
             } else {
                 await appState.loadBotAvatarRetrying(bot)

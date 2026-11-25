@@ -67,14 +67,7 @@ extension AppState {
                 profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             }
             guard revision == displayPreferencesWriteRevision else { return }
-            let reasoning = ReasoningDisplayMode(display: display)
-            let preferences = ProfileDisplayPreferences(
-                showReasoning: reasoning == .show,
-                thinkingOnRequest: reasoning != .off,
-                showToolProgress: display["tool_progress"] as? String != "off",
-                expandToolsByDefault: display["expand_tools"] as? Bool ?? false,
-                showReviews: ProfileDisplayPreferences.showsReviews(display["memory_notifications"])
-            )
+            let preferences = ProfileDisplayPreferences(display: display)
             // Mostly what this profile last said: unchanged isn't written.
             if displayPreferences != preferences { displayPreferences = preferences }
         } catch {
