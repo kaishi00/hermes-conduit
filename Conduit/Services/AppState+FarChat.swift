@@ -628,6 +628,10 @@ extension AppState {
         act(onRuntime: runtime) {
             Task { @MainActor [weak self] in await self?.refreshActiveSession() }
         }
+        // Its settings may have changed while it was away, as the screen's
+        // are read again on a reconnect.
+        farChatSettingsTask?.cancel()
+        farChatSettingsTask = Task { [weak self] in await self?.loadFarChatSettings(for: farChat) }
     }
 
     /// A chat sync where the chat on screen and the dashboard acted on

@@ -294,7 +294,9 @@ extension ChatRowState {
         state.isBusy = isBusy
         state.isOffline = true
         state.readAloudUnavailable = true
-        state.displayPreferences = appState.chatDisplayPreferences
+        // A chat kept beside isn't the far chat on screen: it keeps this
+        // dashboard's settings, as before.
+        state.displayPreferences = appState.displayPreferences
         state.botLabels = appState.shownBotRoster.map { "\($0.name)=\($0.displayLabel)" }
         state.toolCatalog = appState.toolCatalog
         return state
