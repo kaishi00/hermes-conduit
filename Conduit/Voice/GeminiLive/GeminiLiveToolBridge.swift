@@ -1138,6 +1138,7 @@ final class GeminiLiveToolBridge {
             }
             earlier = fresh
             do { try await Task.sleep(for: .milliseconds(250)) } catch {
+                guard conversation == conversationEpoch else { return nil }
                 noteWordsSent()
                 return fresh
             }
