@@ -71,6 +71,7 @@ struct TranscriptCellEnvironment: Equatable {
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
     var readsOpenRoomRuntime: Bool
+    var roomTileDashboardID: UUID?
     var groupRoomLooks: RoomLooks
     /// A tab's held updates (Bots Home's), for a bot's face; nil under a
     /// chat, whose faces follow AppState. No row's size hangs on it.
@@ -120,6 +121,7 @@ struct TranscriptCellEnvironment: Equatable {
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
         readsOpenRoomRuntime = values.readsOpenRoomRuntime
+        roomTileDashboardID = values.roomTileDashboardID
         groupRoomLooks = values.groupRoomLooks
         v2ShownUpdates = values.v2ShownUpdates
         conduitAccent = values.conduitAccent
@@ -160,6 +162,7 @@ struct TranscriptCellEnvironment: Equatable {
         same.settingsGlowTint = settingsGlowTint
         same.groupMemberTints = groupMemberTints
         same.readsOpenRoomRuntime = readsOpenRoomRuntime
+        same.roomTileDashboardID = roomTileDashboardID
         same.v2ShownUpdates = v2ShownUpdates
         return self == same
     }
@@ -279,6 +282,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
             .environment(\.readsOpenRoomRuntime, values.readsOpenRoomRuntime)
+            .environment(\.roomTileDashboardID, values.roomTileDashboardID)
             .environment(\.groupRoomLooks, values.groupRoomLooks)
             .environment(\.v2ShownUpdates, values.v2ShownUpdates)
             .environment(\.conduitAccent, values.conduitAccent)
