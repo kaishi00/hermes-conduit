@@ -15,6 +15,9 @@ import Foundation
 struct FarLiveStatus: Equatable {
     var statuses = OtherProfilesLiveStatus()
     var readAt: Date?
+    /// The connection the last read went through, whether or not it got
+    /// anything: a read that failed waits its interval too.
+    var readBy: ObjectIdentifier?
 }
 
 extension AppState {
@@ -40,15 +43,20 @@ extension AppState {
             guard id != dashboardIDOnScreen, let kept = keptDashboardRuntimes[id], kept.runtime.isConnected,
                   kept.client.isConnected else { continue }
             if let at = farLiveStatus[id]?.readAt, now.timeIntervalSince(at) < Self.farLiveStatusInterval,
-               farLiveStatus[id]?.statuses.client == ObjectIdentifier(kept.client) { continue }
+               farLiveStatus[id]?.readBy == ObjectIdentifier(kept.client) { continue }
             let client = kept.client
             var seen = Set<String>()
             let profiles = (combinedDashboardChats[id]?.sessions ?? []).map { $0.profile ?? "default" }
                 .filter { seen.insert(OtherProfilesLiveStatus.key($0)).inserted }
             var next = farLiveStatus[id] ?? FarLiveStatus()
             for profile in profiles {
-                guard let rows = try? await (probe.map { try await $0(client, profile) }
-                                             ?? client.activeSessions(inProfile: profile)) else { continue }
+                let read: [LiveSessionStatus]?
+                if let probe {
+                    read = try? await probe(client, profile)
+                } else {
+                    read = try? await client.activeSessions(inProfile: profile)
+                }
+                guard let rows = read else { continue }
                 // Let go or replaced while the read was out: not this one's.
                 guard keptDashboardRuntimes[id]?.client === client else { break }
                 next.statuses.set(SessionLiveStatusIndex(rows: rows), for: profile, client: ObjectIdentifier(client))
@@ -56,6 +64,7 @@ extension AppState {
             guard keptDashboardRuntimes[id]?.client === client else { continue }
             next.statuses.keep(profiles)
             next.readAt = now
+            next.readBy = ObjectIdentifier(client)
             var all = farLiveStatus
             all[id] = next
             // Assigned only on a change: every publish redraws the lists.

@@ -1466,8 +1466,10 @@ struct V2ChatsView: View {
         // Pulse's chat stays behind the Pulse screen, message matches too.
         guard appState.showsPulseScreen, let home = appState.pulseHomeChat else { return shown }
         return shown.filter { row in
-            row.session.map { !appState.isPulseHomeChat($0) }
-                ?? (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home)
+            // Another dashboard's match isn't this one's Pulse chat, whatever its id.
+            row.session.map { $0.combinedDashboardID != nil || !appState.isPulseHomeChat($0) }
+                ?? (row.hit.dashboardID != nil
+                    || (row.hit.sessionID != home && appState.canonicalSessionID(for: row.hit.sessionID) != home))
         }
     }
 
