@@ -240,6 +240,36 @@ final class ShareDraftTests: XCTestCase {
         XCTAssertNil(inbox.file(for: file, in: pending))
     }
 
+    /// On a device the App Group's container is under `/private/var`, and
+    /// Foundation drops `/private` only from a path that exists: a file
+    /// not written yet must still be taken (issue 3307, where every shared
+    /// screenshot was left out as unreadable). `/private/tmp` behaves the
+    /// same way, `/tmp` being its link.
+    func testAFileIsStagedAndPickedUpUnderAPrivatePath() async throws {
+        let privateRoot = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+            .appendingPathComponent("ShareDraftTests-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: privateRoot, withIntermediateDirectories: true)
+        } catch {
+            throw XCTSkip("No /private/tmp here: \(error.localizedDescription)")
+        }
+        defer { try? FileManager.default.removeItem(at: privateRoot) }
+        let inbox = ShareDraftInbox(directory: privateRoot)
+        let staging = try inbox.beginStaging()
+        XCTAssertNotNil(ShareDraftInbox.file(named: "1.png", in: staging.url), "a file not written yet is inside its folder")
+
+        let collector = ShareDraftCollector(staging: staging, fileByteLimit: 1024)
+        let result = await collector.collect(providers: [try fileProvider(named: "Kagi Search.png", bytes: 50, type: .png)])
+        XCTAssertEqual(result.problems, [])
+        let attachment = try XCTUnwrap(result.attachments.first)
+        XCTAssertEqual(attachment.displayName, "Kagi Search.png")
+
+        let draft = envelope(attachments: [attachment])
+        try inbox.commit(draft, from: staging)
+        let pending = try XCTUnwrap(inbox.pending(id: draft.id))
+        XCTAssertNotNil(inbox.file(for: attachment, in: pending))
+    }
+
     func testRemoveAllTakesOnlyTheDraftsAsked() throws {
         let inbox = ShareDraftInbox(directory: root)
         let other = WidgetWorkspaceID(dashboardID: UUID(), profile: "default")
