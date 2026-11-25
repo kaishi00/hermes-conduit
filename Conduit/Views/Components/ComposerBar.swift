@@ -2411,7 +2411,7 @@ struct ComposerBar: View {
     /// Waiting for the gateway RPC leaves the side controls aligned to the old
     /// multiline field while the keyboard's safe area is already animating.
     /// `keepingFocus`: the user was typing (in the field or the full
-    /// editor), which on a Mac or an iPad's keyboard carries on.
+    /// editor), which on a Mac or a hardware keyboard carries on.
     private func collapseSubmittedDraft(clearingReply: Bool, keepingFocus: Bool, fromFullEditor: Bool) {
         endInput(keepingFocus: keepingFocus, fromFullEditor: fromFullEditor)
         let updates = {
@@ -2673,7 +2673,7 @@ struct ComposerBar: View {
         isShowingSlashSuggestions = false
     }
 
-    /// A send or Stop: on a Mac or an iPad's keyboard the field keeps
+    /// A send or Stop: on a Mac or with a hardware keyboard the field keeps
     /// focus for the next message, as a desktop client's does, when the
     /// user was typing; otherwise the keyboard goes (`dismissComposer`).
     private func endInput(keepingFocus wasTyping: Bool, fromFullEditor: Bool = false) {

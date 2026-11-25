@@ -117,7 +117,7 @@ bot's list, the chat's own `todo` plan shows again.
 - **Keyboard up** (someone typing): the plan keeps to its one line; an
   open card comes back when the keyboard goes. A tap on the line puts the
   keyboard away and opens the card. A Mac has no on-screen keyboard, and
-  a hardware keyboard puts it away (a Mac and an iPad keep the composer's
+  a hardware keyboard puts it away (a Mac, and an iPad or iPhone with one, keep the composer's
   focus between messages), so there the line opens whatever the focus
   (issue 1510, #1527, #1556). The
   classic shell doesn't report the composer's focus, so there the line

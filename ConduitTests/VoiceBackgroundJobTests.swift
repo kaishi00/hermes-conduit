@@ -2214,6 +2214,65 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.threadSubmissions.map(\.1), ["(voice) request 1", "(voice) request 2"])
     }
 
+    /// Issue 3236: each GPT-Live request into the call's chat carried the
+    /// last lines of the call again, though the chat already held them
+    /// from the request before, or as that request and its own turn.
+    func testALaterRequestLeavesOutTheRecentLinesTheCallsChatAlreadyHas() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        let marker = WatchBridgeDelegation.contextMarker
+        let heard = "Assistant: Sure, I can look at the deploy for you."
+        _ = supervisor.startThreadTurn(request: "check why the deploy failed last night" + marker + "User: hey there\n" + heard + "\nUser: check why the deploy failed last night\n")
+        guard await waitFor({ fake.threadSubmissions.count == 1 }) else { return }
+        XCTAssertEqual(
+            fake.threadSubmissions.first?.1,
+            "(voice) check why the deploy failed last night" + marker + "User: hey there\n" + heard + "\nUser: check why the deploy failed last night",
+            "the first request carries its lines whole"
+        )
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "It ran out of disk.", reasoning: nil))
+
+        let news = "Assistant: Hermes says it ran out of disk."
+        _ = supervisor.startThreadTurn(request: "then clear the old builds" + marker + heard + "\nUser (handled separately): check why the deploy failed last night\n" + news + "\nUser: then clear the old builds\n")
+        guard await waitFor({ fake.threadSubmissions.count == 2 }) else { return }
+        XCTAssertEqual(
+            fake.threadSubmissions.last?.1,
+            "(voice) then clear the old builds" + marker + news + "\nUser: then clear the old builds",
+            "what the chat got before is left out, the earlier request included"
+        )
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Cleared.", reasoning: nil))
+
+        // Nothing new to add: no block at all.
+        _ = supervisor.startThreadTurn(request: "and tell me how much space is free" + marker + news + "\nUser (handled separately): then clear the old builds\n")
+        guard await waitFor({ fake.threadSubmissions.count == 3 }) else { return }
+        XCTAssertEqual(fake.threadSubmissions.last?.1, "(voice) and tell me how much space is free")
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "40 GB.", reasoning: nil))
+
+        // A Watch call's later request, run as a job in the same chat.
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        _ = await supervisor.continueJob(instructions: "now restart the server" + marker + news + "\nUser: now restart the server\n", in: chat)
+        guard await waitFor({ !fake.submissions.isEmpty }) else { return }
+        XCTAssertEqual(
+            fake.submissions.last?.1,
+            VoiceBackgroundJobSupervisor.jobPrompt(for: "now restart the server" + marker + "User: now restart the server")
+        )
+    }
+
+    func testContextLinesLeftOutAreWholeSpeakerLinesAndNeverAFollowUpsWords() {
+        let marker = WatchBridgeDelegation.contextMarker
+        let long = "Assistant: Here is the first part of a longer answer"
+        let sent: Set<String> = [long + "\nand its second line.", "User: Yes.", "make it the blue one instead please"]
+        let request = "do it" + marker + long + "\nand its second line.\nUser: Yes.\nUser: something new that was not sent before\n\nmake it the blue one instead please"
+        let trimmed = VoiceBackgroundJobSupervisor.requestWithoutContextSent(request, sent: sent)
+        XCTAssertEqual(
+            trimmed.text,
+            "do it" + marker + "User: Yes.\nUser: something new that was not sent before\n\nmake it the blue one instead please",
+            "a short line and a follow-up's words stay; a line's continuation goes with it"
+        )
+        XCTAssertTrue(trimmed.lines.contains("User: do it"))
+        XCTAssertTrue(trimmed.lines.contains("User: something new that was not sent before"))
+        // The other live modes' requests carry no block.
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.requestWithoutContextSent("The user wants the build checked.", sent: sent).text, "The user wants the build checked.")
+    }
+
     func testEndingTheCallDropsTurnsStillWaiting() async {
         let (supervisor, fake) = makeThreadSupervisor()
         fake.threadBusy = true

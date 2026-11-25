@@ -2776,6 +2776,14 @@ final class AppStateChatResumeTests: XCTestCase {
             .toolStart(sessionId: active.id, toolName: "terminal", toolInput: "tail log", toolID: "call-1")
         )
         XCTAssertEqual(harness.appState.shownChat.streamingBuffer, "The disk is full.")
+
+        // A start with no id that names the running tool is a replay too.
+        harness.appState.shownChat.streamingBuffer = "Checking the logs."
+        harness.appState.handleStreamEvent(
+            .toolStart(sessionId: active.id, toolName: "terminal", toolInput: "tail log", toolID: nil)
+        )
+        XCTAssertEqual(harness.appState.shownChat.streamingBuffer, "")
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .tool }.count, 1)
     }
 
     func testStreamedWordsAreSavedOnlyAsTheTailOfTheRowBeforeTheTool() {
