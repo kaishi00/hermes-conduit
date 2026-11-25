@@ -13,7 +13,8 @@ enum VoiceRequestWords {
     /// (desktop/src/renderer/src/state/requestWords.ts).
     static let marker = "\n\n[The user's own words on the call since their last request, as transcribed. The request above is the voice model's wording of them: where it adds steps, details or a go-ahead the user didn't say, go by the user's words.]\n"
 
-    /// The most of what the user said that goes with one request: the
+    /// About the most of what the user said that goes with one request
+    /// (the line breaks between them aren't counted): the
     /// newest things they said, whole, that fit in it (an older one that
     /// doesn't fit is left out, and the newest alone is cut to its end).
     static let maxCharacters = 1_000
@@ -67,6 +68,19 @@ enum VoiceRequestWords {
         var carried = arguments
         carried[key] = adding([said], to: request, maxBytes: watchMaxBytes)
         return carried
+    }
+
+    /// Whether `watchArguments` gets `said` to Hermes with this call:
+    /// under the marker, or in the model's own request already.
+    static func watchCarries(name: String, arguments: [String: String], said: String) -> Bool {
+        let key: String
+        switch name {
+        case WatchJobAnswer.startJob: key = "instructions"
+        case WatchJobAnswer.interruptJob: key = "message"
+        default: return false
+        }
+        guard let request = arguments[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !request.isEmpty else { return false }
+        return adding([said], to: request, maxBytes: watchMaxBytes) != request || adding([said], to: request) == request
     }
 
     /// The request as the model wrote it, without the user's words:

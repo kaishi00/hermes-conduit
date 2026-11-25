@@ -1755,7 +1755,12 @@ final class WatchDirectCallModel: ObservableObject {
                 if let sent = requestWordsSent, sent.turn == turn {
                     said = transcript[line].text.count > sent.length ? String(transcript[line].text.dropFirst(sent.length)) : nil
                 }
-                requestWordsSent = (turn, transcript[line].text.count)
+                // Counted as sent only when this request carries them: one
+                // with no text, or too long to take them, leaves them for
+                // the next.
+                if let said, VoiceRequestWords.watchCarries(name: call.name, arguments: call.arguments, said: said) {
+                    requestWordsSent = (turn, transcript[line].text.count)
+                }
             }
             wire.arguments = VoiceRequestWords.watchArguments(name: call.name, arguments: call.arguments, said: said)
             // Counted from the call's first line, so trimming the

@@ -3650,6 +3650,20 @@ extension VoiceConversationControllerTests {
         let prompt = try XCTUnwrap(fake.submissions.first?.1)
         XCTAssertTrue(prompt.contains("Archive the newsletters." + VoiceRequestWords.marker + "Only the newsletters this time"), prompt)
         XCTAssertFalse(prompt.contains(VoiceRequestWords.marker + "No"), prompt)
+
+        // Said while a request waited for their OK: it goes with the yes.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_6", name: "start_job", arguments: ["instructions": "Archive the receipts."]))
+        say("Also the invoices")
+        say("Yes")
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_7", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 2)
+        let later = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(later.contains("Archive the receipts." + VoiceRequestWords.marker + "Also the invoices"), later)
+        XCTAssertFalse(later.contains("Yes"), later)
+        // A Watch request with no text takes none of the words.
+        XCTAssertFalse(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": " "], said: "Brand only."))
+        XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Post it."], said: "Brand only."))
+        XCTAssertTrue(VoiceRequestWords.watchCarries(name: WatchJobAnswer.startJob, arguments: ["instructions": "Brand only."], said: "Brand only."))
     }
 
     func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {
