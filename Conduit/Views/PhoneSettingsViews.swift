@@ -823,7 +823,8 @@ struct PhonePersonRow: View {
                   systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
-            if #available(iOS 18.0, *) {
+            // The iPad app on a Mac has no limited access picker to open.
+            if #available(iOS 18.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
                 Button("Let Conduit see them", action: allowAccess)
                     .scaledFont(.caption.weight(.semibold))
                     .buttonStyle(.borderless)

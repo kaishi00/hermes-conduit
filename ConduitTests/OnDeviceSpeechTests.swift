@@ -237,6 +237,47 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(asked, ["en-US"], "iOS is asked once for the language's own voice, which is also the fallback")
     }
 
+    @MainActor
+    func testASentencesVoiceIsFoundOnceUntilTheListIsForgotten() async {
+        let saved = IPhoneVoices.readInstalled
+        let savedSystem = IPhoneVoices.systemVoice
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.systemVoice = savedSystem
+            IPhoneVoices.forgetInstalled()
+        }
+        var asked: [String] = []
+        IPhoneVoices.systemVoice = { language in
+            asked.append(language)
+            return nil
+        }
+        IPhoneVoices.readInstalled = { [] }
+        IPhoneVoices.forgetInstalled()
+        _ = await IPhoneVoices.voice(for: "en-US")
+        _ = await IPhoneVoices.voice(for: "en-US")
+        XCTAssertEqual(asked, ["en-US"], "A reply's later sentences reuse the voice found for the first")
+        _ = await IPhoneVoices.voice(for: "fr-FR")
+        XCTAssertEqual(asked, ["en-US", "fr-FR"], "Another language is found on its own")
+        IPhoneVoices.forgetInstalled()
+        _ = await IPhoneVoices.voice(for: "en-US")
+        XCTAssertEqual(asked, ["en-US", "fr-FR", "en-US"], "A forgotten list finds the voice again")
+    }
+
+    @MainActor
+    func testASentencesAudioReachesTheStreamUntilItEnds() {
+        let voice = SystemSpeechSynthesizer()
+        let id = voice.utterance
+        var heard: [(Int, Double)] = []
+        let onAudio: @MainActor (Data, Double) -> Void = { data, rate in heard.append((data.count, rate)) }
+        voice.received(Data(count: 4), rate: 22_050, isEnd: false, id: id, number: 1, onAudio: onAudio)
+        voice.received(Data(), rate: 22_050, isEnd: false, id: id, number: 1, onAudio: onAudio)
+        XCTAssertEqual(heard.map(\.0), [4], "Audio goes to the stream; an empty buffer doesn't")
+        XCTAssertEqual(heard.map(\.1), [22_050], "With its sample rate")
+        voice.stop()
+        voice.received(Data(count: 4), rate: 22_050, isEnd: false, id: id, number: 1, onAudio: onAudio)
+        XCTAssertEqual(heard.count, 1, "Audio for a sentence already stopped is dropped")
+    }
+
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
         let eloquence = iPhoneVoice("com.apple.eloquence.en-US.Flo", "Flo", "en-US", quality: 2)
         let basic = iPhoneVoice("samantha", "Samantha", "en-US")

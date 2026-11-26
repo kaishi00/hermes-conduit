@@ -159,6 +159,11 @@ enum IPhoneVoices {
     @MainActor private static var cachedInstalled: [IPhoneVoiceOption]?
     @MainActor private static var reading: Task<[IPhoneVoiceOption], Never>?
     @MainActor private static var voicesChanged: NSObjectProtocol?
+    /// The voice found for a language and its pick, so a reply's sentences
+    /// don't each ask iOS's speech service again. Forgotten with the list.
+    @MainActor private static var foundVoices: [String: FoundVoice] = [:]
+    /// Counts forgets, so a voice found from a forgotten list isn't kept.
+    @MainActor private static var generation = 0
 
     /// Every voice installed on this iPhone that can speak a reply. Kept
     /// until iOS says the list changed (a voice downloaded or deleted while
@@ -201,6 +206,8 @@ enum IPhoneVoices {
     @MainActor static func forgetInstalled() {
         cachedInstalled = nil
         reading = nil
+        foundVoices = [:]
+        generation += 1
     }
 
     /// What installed() reads, off the main thread; tests swap it.
@@ -236,8 +243,11 @@ enum IPhoneVoices {
     /// one, or else iOS's own. Every call into iOS's speech service here runs
     /// off the main thread, the voice's own init included.
     @MainActor static func voice(for language: String) async -> AVSpeechSynthesisVoice? {
-        let installed = await installed()
         let chosen = chosenVoice(for: language)
+        let key = "\(language)|\(chosen ?? "")"
+        if let found = foundVoices[key] { return found.voice }
+        let started = generation
+        let installed = await installed()
         let region = Locale.current.region?.identifier
         nonisolated(unsafe) let ask = systemVoice
         let found = await Task.detached(priority: .userInitiated) { () -> FoundVoice in
@@ -246,6 +256,7 @@ enum IPhoneVoices {
             if let option, let voice = AVSpeechSynthesisVoice(identifier: option.id) { return FoundVoice(voice: voice) }
             return FoundVoice(voice: system)
         }.value
+        if generation == started { foundVoices[key] = found }
         return found.voice
     }
 

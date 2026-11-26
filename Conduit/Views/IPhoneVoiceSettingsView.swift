@@ -96,12 +96,15 @@ struct IPhoneVoiceSettingsView: View {
         }
         let reading = language
         let installed = await IPhoneVoices.installed()
-        let system = await IPhoneVoices.systemDefault(for: reading)
         guard !Task.isCancelled, reading == language else { return }
+        // The list shows as soon as it's read; iOS's own default, another
+        // call into its speech service, fills in Automatic's name after.
         voices = installed
-        systemDefault = system
         chosen = IPhoneVoices.chosenVoice(for: language)
         loaded = true
+        let system = await IPhoneVoices.systemDefault(for: reading)
+        guard !Task.isCancelled, reading == language else { return }
+        systemDefault = system
     }
 
     private func pick(_ id: String) {
