@@ -1121,7 +1121,7 @@ extension VoiceConversationControllerTests {
         // refused one's words are what's left, not nothing.
         XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 12..<21)).words, "Book a table")
         // Gaps on both sides of a held middle go as one line.
-        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 5..<12)).words, "Book a for four")
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 7..<12)).words, "Book a for four")
         // All held, or a line that shrank under what was held: nothing.
         XCTAssertNil(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 0..<40)).words)
         XCTAssertNil(VoiceRequestWords.unclaimed(of: "  ", claimed: []).words)

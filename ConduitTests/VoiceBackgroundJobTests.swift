@@ -3680,9 +3680,23 @@ extension VoiceConversationControllerTests {
         let lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Book a table for four at eight")]
         bridge.userLines = { lines }
         fake.submitError = URLError(.networkConnectionLost)
-        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Book a table."]))
+        let answered = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Book a table."]))
         guard case .failed? = supervisor.jobs.first?.status else { return XCTFail("the submit failed") }
         XCTAssertEqual(supervisor.jobs.first?.requestOutcomeUnknown, true)
+        // Its answer says so, and a Watch reading it keeps its words sent
+        // (#3337's review).
+        if case .toolResponse("call_1", _, let result, _)? = answered.first {
+            XCTAssertEqual(result["delivery"], "unknown")
+            XCTAssertTrue(VoiceRequestWords.watchRequestTaken(result))
+        }
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(["status": "failed", "error": "Hermes refused it"]))
+        // A workstream send with no answer back may have landed; one the
+        // plugin refused, or that never went, didn't.
+        XCTAssertTrue(AppState.workstreamActMayHaveLanded(URLError(.timedOut)))
+        XCTAssertTrue(AppState.workstreamActMayHaveLanded(DashboardTicketBridgeError.http(status: 504, detail: "")))
+        XCTAssertFalse(AppState.workstreamActMayHaveLanded(DashboardTicketBridgeError.http(status: 409, detail: "busy")))
+        XCTAssertFalse(AppState.workstreamActMayHaveLanded(DashboardTicketBridgeError.notReady))
+        XCTAssertFalse(AppState.workstreamActMayHaveLanded(URLError(.cannotConnectToHost)))
 
         fake.submitError = nil
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "Book a table."]))

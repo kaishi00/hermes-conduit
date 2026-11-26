@@ -733,10 +733,12 @@ final class GeminiLiveToolBridge {
             requestNotTaken(marks)
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
         }
-        // Made but its submit refused (a busy session, say): Hermes didn't
-        // take it, so its words go with the retry too. A submit whose
-        // outcome is unknown (a lost acknowledgement) keeps them sent.
-        if let job = supervisor.jobs.first(where: { $0.id == jobID }), case .failed = job.status, !job.requestWordsSpent {
+        // Made but its submit refused (a busy session, say), or cancelled
+        // before it went: Hermes didn't take it, so its words go with the
+        // retry too. A submit whose outcome is unknown (a lost
+        // acknowledgement) keeps them sent.
+        if let job = supervisor.jobs.first(where: { $0.id == jobID }), !job.status.isActive, job.status != .finished,
+           !job.requestWordsSpent {
             requestNotTaken(marks)
         }
         if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
@@ -1384,6 +1386,9 @@ final class GeminiLiveToolBridge {
                 }
             case .failed(let message):
                 result["error"] = message
+                // Hermes may have its request all the same (a lost
+                // acknowledgement): the Watch keeps its words as sent.
+                if job.requestOutcomeUnknown { result["delivery"] = "unknown" }
             default:
                 break
             }

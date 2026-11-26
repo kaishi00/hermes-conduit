@@ -128,6 +128,9 @@ enum VoiceRequestWords {
     /// wrist is back): only then did the user's words go with it, and a
     /// retry after a refusal carries them again (issue 3271).
     static func watchRequestTaken(_ result: [String: String]) -> Bool {
+        // A submit whose outcome is unknown may have reached Hermes: its
+        // words count as sent, so a retry can't send them twice.
+        if result["delivery"] == "unknown" { return true }
         guard result["error"] == nil else { return false }
         switch result["status"] {
         case "not_sent", "not_started", "unknown_job", "error": return false
