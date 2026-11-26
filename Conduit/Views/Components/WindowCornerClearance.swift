@@ -55,23 +55,25 @@ extension View {
     /// does (an iPhone, a full-screen iPad, before iOS 26), it is
     /// `.padding(.horizontal, base)`.
     ///
+    /// The reach is read on the bar where it is laid out, so a bar inside
+    /// a container's padding (the drawer's column) gets only what the
+    /// corner reaches past that padding: `base` 0 there adds nothing
+    /// unless a corner does.
+    ///
     /// - Parameters:
-    ///   - outer: padding a container already gives the bar at both sides
-    ///     (the drawer's column), counted toward the clearance: the bar
-    ///     adds only what the corner needs past it.
     ///   - symmetric: both sides take the larger side's padding, so a
     ///     centered title stays centered (a sheet's header).
-    func cornerClearingHorizontalPadding(_ base: CGFloat, outer: CGFloat = 0, symmetric: Bool = false) -> some View {
-        modifier(CornerClearingHorizontalPadding(base: base, outer: outer, symmetric: symmetric))
+    func cornerClearingHorizontalPadding(_ base: CGFloat, symmetric: Bool = false) -> some View {
+        modifier(CornerClearingHorizontalPadding(base: base, symmetric: symmetric))
     }
 }
 
 extension WindowCornerReach {
     /// The leading and trailing padding a bar takes (see
     /// `cornerClearingHorizontalPadding`).
-    func paddings(base: CGFloat, outer: CGFloat = 0, symmetric: Bool = false) -> (leading: CGFloat, trailing: CGFloat) {
-        let leading = Self.padding(base + outer, reach: self.leading) - outer
-        let trailing = Self.padding(base + outer, reach: self.trailing) - outer
+    func paddings(base: CGFloat, symmetric: Bool = false) -> (leading: CGFloat, trailing: CGFloat) {
+        let leading = Self.padding(base, reach: self.leading)
+        let trailing = Self.padding(base, reach: self.trailing)
         if symmetric {
             let both = max(leading, trailing)
             return (both, both)
@@ -82,12 +84,11 @@ extension WindowCornerReach {
 
 private struct CornerClearingHorizontalPadding: ViewModifier {
     let base: CGFloat
-    let outer: CGFloat
     let symmetric: Bool
     @State private var reach = WindowCornerReach.zero
 
     func body(content: Content) -> some View {
-        let paddings = reach.paddings(base: base, outer: outer, symmetric: symmetric)
+        let paddings = reach.paddings(base: base, symmetric: symmetric)
         content
             .padding(.leading, paddings.leading)
             .padding(.trailing, paddings.trailing)
