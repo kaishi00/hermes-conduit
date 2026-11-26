@@ -381,7 +381,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
 @MainActor
 final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpeechSynthesizerDelegate {
     private let synthesizer = AVSpeechSynthesizer()
-    private var utterance = 0
+    /// The sentence speaking; a buffer for another one is dropped.
+    private(set) var utterance = 0
     private var onDone: (@MainActor () -> Void)?
     private var request: AVSpeechUtterance?
     private var watchdog: Task<Void, Never>?
@@ -445,25 +446,38 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
             let isEnd = pcm.frameLength == 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self else { return }
-                    guard self.utterance == id else {
-                        // Audio for a sentence already ended is dropped:
-                        // the trace says so once (issue 1641).
-                        if !data.isEmpty, !self.lateAudioNoted.contains(number) {
-                            self.lateAudioNoted.insert(number)
-                            LiveCallTrace.readAloud.note("Sentence \(number): audio after its end, dropped", run: self.traceRun)
-                        }
-                        return
-                    }
-                    if isEnd {
-                        self.finish(id, how: "end of speech")
-                    } else {
-                        self.lastAudio = .now
-                        if rate > 0 { self.sentenceAudio += Double(data.count / 2) / rate }
-                        if !data.isEmpty { onAudio(data, rate) }
-                    }
+                    self?.received(data, rate: rate, isEnd: isEnd, id: id, number: number, onAudio: onAudio)
                 }
             }
+        }
+    }
+
+    /// One buffer of a sentence, on the main thread: its audio goes to
+    /// onAudio while the sentence is current, the empty one ends it, and a
+    /// buffer for a sentence already ended is dropped.
+    func received(
+        _ data: Data,
+        rate: Double,
+        isEnd: Bool,
+        id: Int,
+        number: Int,
+        onAudio: @MainActor (Data, Double) -> Void
+    ) {
+        guard utterance == id else {
+            // Audio for a sentence already ended is dropped: the trace says
+            // so once (issue 1641).
+            if !data.isEmpty, !lateAudioNoted.contains(number) {
+                lateAudioNoted.insert(number)
+                LiveCallTrace.readAloud.note("Sentence \(number): audio after its end, dropped", run: traceRun)
+            }
+            return
+        }
+        if isEnd {
+            finish(id, how: "end of speech")
+        } else {
+            lastAudio = .now
+            if rate > 0 { sentenceAudio += Double(data.count / 2) / rate }
+            if !data.isEmpty { onAudio(data, rate) }
         }
     }
 
