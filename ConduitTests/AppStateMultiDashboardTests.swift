@@ -1996,6 +1996,46 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.pinSyncNotice, "nothing about the Mac's chat is said over the VPS")
     }
 
+    /// #3287's review (issue 3324): archiving and restoring take the same
+    /// chat's rows from the Archived list, never another chat there that
+    /// only shares one of its aliases (`isRemovedWith`).
+    func testArchiveAndRestoreLeaveAnArchivedChatThatSharesOnlyAnAlias() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        var chat = macSession("mac-1")
+        chat.alternateIds = ["run-shared"]
+        var sibling = macSession("mac-2")
+        sibling.alternateIds = ["run-shared"]
+        sibling.isArchived = true
+        var sameChatEarlier = macSession("run-old")
+        sameChatEarlier.storedSessionId = chat.durableKey
+        sameChatEarlier.isArchived = true
+        appState.sessions = [chat]
+        appState.archivedSessions = [sibling, sameChatEarlier]
+
+        let archive = Task { await appState.archiveSession(chat) }
+        try await held.answer()             // the mutation snapshot read
+        try await held.waitForRequests(2)   // the archive itself
+        try await held.answer()
+        let archived = await archive.value
+        XCTAssertTrue(archived)
+        XCTAssertEqual(appState.archivedSessions.map(\.id), ["mac-1", "mac-2"],
+                       "the same chat's older row goes, the alias-only sibling stays")
+        XCTAssertTrue(appState.sessions.isEmpty)
+
+        var restoring = chat
+        restoring.isArchived = true
+        let restore = Task { await appState.restoreArchivedSession(restoring) }
+        try await held.waitForRequests(3)   // the mutation snapshot read
+        try await held.answer()
+        try await held.waitForRequests(4)   // the restore itself
+        try await held.answer()
+        let restored = await restore.value
+        XCTAssertTrue(restored)
+        XCTAssertEqual(appState.archivedSessions.map(\.id), ["mac-2"], "the sibling stays archived")
+        XCTAssertEqual(appState.sessions.map(\.id), ["mac-1"], "only the restored chat comes back")
+        XCTAssertEqual(appState.sessions.first?.isArchived, false)
+    }
+
     func testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let mac = try XCTUnwrap(appState.activeDashboardID)

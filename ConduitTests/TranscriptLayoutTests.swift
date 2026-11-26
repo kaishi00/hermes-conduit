@@ -490,6 +490,16 @@ final class TranscriptLayoutTests: XCTestCase {
         var followedUp = placed
         followedUp.chatRowState.followUpBoardRowID = "t1"
         XCTAssertEqual(followedUp.measurementChange(from: placed).rowIDs(in: rows), ["old"])
+        // The placed board itself changing (its row's answer read again, a
+        // live card brought up to date), with the same ids and rows, still
+        // measures that reply again, and only it (issue 3266).
+        var redrawn = placed
+        redrawn.chatRowState.shownBoards = ["cb-0000000000d1": RichBoard(cards: [], tabs: false, followUps: ["More"], markdown: "Book early")]
+        XCTAssertEqual(redrawn.measurementChange(from: placed).rowIDs(in: rows), ["old"])
+        var unplacedBoard = idle
+        unplacedBoard.chatRowState.shownBoards = ["cb-0000000000d1": RichBoard(cards: [], tabs: false, followUps: [], markdown: nil)]
+        XCTAssertEqual(unplacedBoard.measurementChange(from: idle).rowIDs(in: rows), [],
+                       "a board no reply places measures no row again")
         var pinned = idle
         pinned.chatRowState.pinnedMessageIDs = ["old"]
         XCTAssertNil(pinned.measurementChange(from: idle).rowIDs(in: rows), "a change naming no rows forgets them all")

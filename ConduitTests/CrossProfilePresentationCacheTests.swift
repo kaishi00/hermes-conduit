@@ -1660,6 +1660,43 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(waitReads, 12, "a failed read is asked again on the next pass")
         await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(140))
         XCTAssertEqual(waitReads, 12, "a read that landed holds the gate again")
+        // A forced ask (a push) while a pass runs reads in full on the pass
+        // after it: the flag the running pass already took is set again and
+        // kept for the follow-up (#3322's review, issue 3324).
+        final class Gate { var hold = false; var held: CheckedContinuation<Void, Never>? }
+        let gate = Gate()
+        appState.keptDashboardJSONReader = { _, path in
+            if path == "/api/profiles" { return ["profiles": [["name": "default"], ["name": "atlas"]]] }
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [String]()] }
+            if path.hasPrefix(NeedsYouStore.path) {
+                waitReads += 1
+                if gate.hold {
+                    gate.hold = false
+                    await withCheckedContinuation { gate.held = $0 }
+                }
+            }
+            return ["waiting": []]
+        }
+        await appState.refreshOtherCombinedDashboards()
+        let unforced = waitReads
+        XCTAssertEqual(unforced, 12, "an unforced pass inside the minute reads no waits")
+        gate.hold = true
+        appState.combinedDashboardWaitsForced = true
+        let pass = Task { @MainActor in await appState.refreshOtherCombinedDashboards() }
+        await waitUntil { gate.held != nil }
+        XCTAssertFalse(appState.combinedDashboardWaitsForced, "the running pass took the flag")
+        let push = Task { @MainActor in await appState.refreshNeedsYou(force: true) }
+        await waitUntil { appState.combinedDashboardWaitsForced }
+        // Its pass of the other dashboards joins the running one.
+        for _ in 0..<20 { await Task.yield() }
+        gate.held?.resume()
+        await pass.value
+        await push.value
+        XCTAssertEqual(waitReads, unforced + 4, "the pass running read both profiles, and the follow-up both again")
+        XCTAssertFalse(appState.combinedDashboardWaitsForced, "the follow-up took it")
+        await appState.refreshOtherCombinedDashboards()
+        XCTAssertEqual(waitReads, unforced + 4, "a pass after that is the poll's again")
+
         // Taken up, its stamps go, so kept again it reads at once.
         XCTAssertFalse(appState.combinedDashboardWaitsReadAt.keys.filter { $0.hasPrefix("\(mac.id.uuidString)|") }.isEmpty)
         _ = appState.takeKeptDashboardRuntime(mac.id, profile: "default")

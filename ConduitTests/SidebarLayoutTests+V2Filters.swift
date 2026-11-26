@@ -497,6 +497,24 @@ extension SidebarLayoutTests {
         appState.refreshFarChatMarks(far, profiles: ["default"], force: true)
         try await farHeld.waitForRequests(5)
         XCTAssertEqual(farHeld.sent.suffix(2).map(\.method), ["GET", "GET"])
+        try await farHeld.answer(["done": [["ids": ["chat-1"], "at": 1, "by": "user"]]], toPathEnding: "/chats/done")
+        try await farHeld.answer(["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]],
+                                 toPathEnding: "/muted-chats")
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty && appState.chatMutesReads.isEmpty }, "both read")
+        // The poll's pass inside their interval reads neither; past it, both
+        // again (#3322's review, issue 3324).
+        let readAt = Date()
+        appState.refreshFarChatMarks(far, profiles: ["default"], now: readAt.addingTimeInterval(20))
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(farHeld.sent.count, 5, "a pass inside the interval reads nothing")
+        appState.refreshFarChatMarks(far, profiles: ["default"],
+                                     now: readAt.addingTimeInterval(AppState.farChatMarksReadInterval + 1))
+        try await farHeld.waitForRequests(7)
+        XCTAssertEqual(farHeld.sent.suffix(2).map(\.method), ["GET", "GET"], "past it, both are read again")
+        try await farHeld.answer(["done": [["ids": ["chat-1"], "at": 1, "by": "user"]]], toPathEnding: "/chats/done")
+        try await farHeld.answer(["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]],
+                                 toPathEnding: "/muted-chats")
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty && appState.chatMutesReads.isEmpty }, "read again")
 
         // The filters follow the list's rows: this dashboard's plugin, or a
         // combined one's whose rows it shows.
