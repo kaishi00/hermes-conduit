@@ -1108,8 +1108,9 @@ enum BotPortraitStatus: Equatable {
     case waitingOn(String)
     /// A chat of its replying, its Bot Chat's own turn included: not a
     /// workstream, so it never says "working" (Eric, 2026-11-16: the
-    /// coordinator talking read as a workstream running).
-    case replying
+    /// coordinator talking read as a workstream running). It says the step
+    /// one is on when the plugin notes steps (BotLiveStep, Eric 2026-11-26).
+    case replying(BotLiveStep? = nil)
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
@@ -1138,7 +1139,7 @@ enum BotPortraitStatus: Equatable {
         let agents = snapshot?.botChatAgentCount ?? 0
         if agents > 0 { return .agents(agents) }
         if !rooms.isEmpty { return quiet }
-        if chats.working > 0 { return .replying }
+        if chats.working > 0 { return .replying(chats.step) }
         guard let snapshot = work else { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
@@ -1172,7 +1173,7 @@ enum BotPortraitStatus: Equatable {
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
         case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms", table: .bots)
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)", table: .bots)
-        case .replying: return AppLocalization.string("Replying", table: .bots)
+        case .replying(let step): return step?.title ?? AppLocalization.string("Replying", table: .bots)
         // Idle says nothing: the portrait's still ring says it.
         case .idle: return ""
         }
@@ -2032,7 +2033,7 @@ struct BotOverviewSheet: View {
                    chats.waiting + chats.working > 0 {
                     let parts = [
                         chats.waiting > 0 ? BotPortraitStatus.needsYou(chats.waiting).title : nil,
-                        chats.working > 0 ? BotPortraitStatus.replying.title : nil,
+                        chats.working > 0 ? BotPortraitStatus.replying(chats.step).title : nil,
                     ].compactMap { $0 }
                     Label {
                         Text(verbatim: parts.joined(separator: " · "))

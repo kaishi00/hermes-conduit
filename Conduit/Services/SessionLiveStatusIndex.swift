@@ -55,6 +55,12 @@ struct SessionLiveStatusIndex: Equatable {
     /// How many live chats run and how many wait on the user, leaving out
     /// the chats `leavingOut` names (a bot's workstreams, which its own
     /// list counts). Nil when the rows can't be told to be one profile's.
+    /// The ids of the running chats, each by every id it goes by, leaving
+    /// out the chats `leavingOut` names: whose steps a portrait shows.
+    func workingChats(leavingOut: Set<String> = []) -> [Set<String>] {
+        busyRows.filter { $0.status == .working && $0.ids.isDisjoint(with: leavingOut) }.map(\.ids)
+    }
+
     func counts(leavingOut: Set<String> = []) -> BotLiveChats? {
         guard isProfileScoped else { return nil }
         var counts = BotLiveChats()
@@ -89,6 +95,9 @@ struct BotLiveChats: Equatable {
     var working = 0
     /// Chats waiting on the user (an approval or a question).
     var waiting = 0
+    /// What its running chats are doing now, the newest step, when the
+    /// plugin notes steps (BotLiveStep).
+    var step: BotLiveStep?
 }
 
 /// The live registries of the profiles other than the one in use that
