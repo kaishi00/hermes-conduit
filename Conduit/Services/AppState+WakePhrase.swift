@@ -10,7 +10,6 @@
 
 import AVFAudio
 import Combine
-import Observation
 import Foundation
 import SwiftUI
 import CryptoKit
@@ -159,28 +158,8 @@ extension AppState {
         }
     }
 
-    /// The snapshot, read so that the first change to an AppState property
-    /// it reads refreshes wake (issue 828: AppState's properties are
-    /// observed one by one, no longer published). Its other inputs come
-    /// through `wakeObservations`. A watch already set still stands.
-    private func watchedWakeLifecycleSnapshot() -> WakeLifecycleSnapshot {
-        guard !isWakeSnapshotWatched else { return wakeLifecycleSnapshot }
-        isWakeSnapshotWatched = true
-        return withObservationTracking {
-            wakeLifecycleSnapshot
-        } onChange: { [weak self] in
-            DispatchQueue.main.async { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.isWakeSnapshotWatched = false
-                    self.scheduleWakeRefresh()
-                }
-            }
-        }
-    }
-
     func refreshWakeListening() {
-        var snapshot = watchedWakeLifecycleSnapshot()
+        var snapshot = wakeLifecycleSnapshot
         // Route changes while suspended are never delivered, and other apps'
         // audio is only polled, so confirm both right before arming (rare:
         // only when wake would start). Arming under a playing podcast would

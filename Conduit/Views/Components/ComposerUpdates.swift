@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import Observation
 
 /// Everything ComposerBar's body reads from AppState. The composer redraws
 /// when one of these changes, not on every AppState publish: rebuilding it
@@ -123,12 +122,9 @@ struct ComposerInputs: Equatable {
     }
 }
 
-/// ComposerBar observes this instead of AppState. AppState's properties are
-/// observed one by one (issue 828): a change to one the inputs read comes
-/// through Observation, and what AppState still publishes (the stores it
-/// republishes) through its publisher. Either comes before the change
-/// lands, so the check waits for the main queue's next turn (still before
-/// the frame draws), once for any number of changes.
+/// ComposerBar observes this instead of AppState. An AppState publish comes
+/// before the change lands, so the check waits for the main queue's next
+/// turn (still before the frame draws), once for any number of publishes.
 @MainActor
 final class ComposerUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
@@ -140,9 +136,6 @@ final class ComposerUpdates: ObservableObject {
     private(set) var inputs: ComposerInputs
     private var checkPending = false
     private var subscription: AnyCancellable?
-    /// Observation watches what the last watched read read. It calls once,
-    /// so each call is followed by a watched read.
-    private var isWatching = false
 
     init(_ appState: AppState) {
         self.appState = appState
@@ -158,29 +151,6 @@ final class ComposerUpdates: ObservableObject {
                 }
             }
         }
-        inputs = watchedInputs()
-    }
-
-    /// The inputs, read so that the first change to any AppState property
-    /// they read schedules a check.
-    private func watchedInputs() -> ComposerInputs {
-        isWatching = true
-        return withObservationTracking {
-            ComposerInputs(appState)
-        } onChange: { [weak self] in
-            if Thread.isMainThread {
-                MainActor.assumeIsolated { self?.watchedChange() }
-            } else {
-                DispatchQueue.main.async { [weak self] in
-                    MainActor.assumeIsolated { self?.watchedChange() }
-                }
-            }
-        }
-    }
-
-    private func watchedChange() {
-        isWatching = false
-        scheduleCheck()
     }
 
     private func scheduleCheck() {
@@ -193,13 +163,8 @@ final class ComposerUpdates: ObservableObject {
 
     private func check() {
         checkPending = false
-        // A watch already set still stands; another read of its own would
-        // only add a second.
-        let wasWatching = isWatching
-        var next = wasWatching ? ComposerInputs(appState) : watchedInputs()
+        let next = ComposerInputs(appState)
         guard next != inputs else { return }
-        // What it shows changed, and with it maybe what it reads.
-        if wasWatching { next = watchedInputs() }
         objectWillChange.send()
         inputs = next
     }

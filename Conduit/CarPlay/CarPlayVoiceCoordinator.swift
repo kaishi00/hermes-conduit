@@ -403,7 +403,7 @@ final class CarPlayVoiceCoordinator {
         // The phone opening or renaming a chat while the car rests at Ready
         // updates the title there.
         chatTitleObservation = Publishers.Merge(
-            appState.activeSessionIdValues.map { _ in () }.dropFirst(),
+            appState.$activeSessionId.map { _ in () }.dropFirst(),
             appState.sessionsValues.map { _ in () }.dropFirst()
         )
         .sink { [weak self] _ in self?.scheduleChatTitleRefresh() }
@@ -1217,17 +1217,17 @@ final class CarPlayVoiceCoordinator {
         // open chat moves the marker on the chat Listen talks in.
         chatsObservation = Publishers.MergeMany(
             appState.sessionsValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.pinnedSessionIDsValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.pinnedChatOrderValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$pinnedSessionIDs.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$pinnedChatOrder.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.isConnectedValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.activeSessionIdValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
             appState.activeProfileValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.botRosterValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chat is Pulse's, left out (the feed names it).
             appState.pulseHomeChatIDValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Another combined dashboard's agent's chats, from its kept read.
-            appState.combinedDashboardChatsValues.map { _ in () }.dropFirst().eraseToAnyPublisher()
+            appState.$combinedDashboardChats.map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)
@@ -1788,7 +1788,7 @@ final class CarPlayVoiceCoordinator {
         queuedAgent.tap(profile, dashboardID: appState.activeDashboardID)
         guard queuedAgentObservation == nil else { return }
         let generation = connectionGeneration
-        queuedAgentObservation = appState.isProfileSwitchingValues
+        queuedAgentObservation = appState.$isProfileSwitching
             .dropFirst()
             .filter { !$0 }
             .first()
