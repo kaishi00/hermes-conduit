@@ -130,7 +130,12 @@ enum VoiceRequestWords {
     static func watchRequestTaken(_ result: [String: String]) -> Bool {
         // A submit whose outcome is unknown may have reached Hermes: its
         // words count as sent, so a retry can't send them twice.
-        if result["delivery"] == "unknown" { return true }
+        // One cancelled before its submit went never reached Hermes.
+        switch result["delivery"] {
+        case "unknown": return true
+        case "not_sent": return false
+        default: break
+        }
         guard result["error"] == nil else { return false }
         switch result["status"] {
         case "not_sent", "not_started", "unknown_job", "error": return false

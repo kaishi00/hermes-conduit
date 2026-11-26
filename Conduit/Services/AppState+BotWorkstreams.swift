@@ -615,6 +615,11 @@ extension AppState {
             guard botWork.mark(profile).epoch == mark.epoch else { return outcome }
             if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty {
                 botWork.setRefusal(detail, profile: profile, ref: item.ref)
+            } else if outcome == .unknown {
+                // It may have gone in: the row doesn't urge the retry the
+                // call is told to hold back (#3337's review).
+                botWork.setRefusal(AppLocalization.string("No answer from this bot's work. Its chat shows whether it went in."),
+                                   profile: profile, ref: item.ref)
             } else {
                 botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
                                    profile: profile, ref: item.ref)

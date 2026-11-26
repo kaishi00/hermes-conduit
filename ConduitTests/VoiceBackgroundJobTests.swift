@@ -616,6 +616,37 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.submissions.isEmpty)
     }
 
+    /// #3337's review: a background job GPT-Live asks for in a workstream's
+    /// call goes to that workstream's session too. One it didn't pass on
+    /// counts as untaken (no "call me" for it); one it did, as taken.
+    func testAWorkstreamCallsBackgroundJobGoesToItsSessionInGPTLive() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        fake.workstreamReply = VoiceWorkstreamSend(message: "W3 is busy with another action. Try again in a moment.", passedOn: false)
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let notSet = "[Call request: \(GPTLiveDelegationBridge.callRequestNotSet)]"
+        func notes(_ outgoing: [GPTLiveDelegationBridge.Outgoing]) -> [String] {
+            outgoing.compactMap { sent -> String? in
+                if case .sessionContext(let text, _, _, _) = sent { return text }
+                return nil
+            }
+        }
+
+        let refused = await gpt.handleDelegation(id: "del_1", request: "Call me: in the background, check the backups")
+        guard case .delegationReply("del_1", let text, .speakable)? = refused.first else { return XCTFail("\(refused)") }
+        XCTAssertTrue(text.contains("W3 is busy with another action."), text)
+        XCTAssertEqual(notes(refused), [notSet])
+
+        fake.workstreamReply = VoiceWorkstreamSend(message: AppState.workstreamCallSent, passedOn: true)
+        let sent = await gpt.handleDelegation(id: "del_2", request: "Call me: in the background, check the backups")
+        XCTAssertFalse(notes(sent).contains(notSet), "\(sent)")
+        XCTAssertEqual(fake.workstreamSends.count, 2)
+        XCTAssertTrue(fake.workstreamSends.allSatisfy { $0.1.contains("check the backups") }, "\(fake.workstreamSends)")
+        XCTAssertTrue(supervisor.jobs.isEmpty, "no job of its own beside the workstream")
+        XCTAssertTrue(fake.submissions.isEmpty)
+    }
+
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {
         let (supervisor, _) = makeSupervisor()
         var lines: [VoiceConversationTranscriptEntry]? = nil
@@ -3685,10 +3716,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.requestOutcomeUnknown, true)
         // Its answer says so, and a Watch reading it keeps its words sent
         // (#3337's review).
-        if case .toolResponse("call_1", _, let result, _)? = answered.first {
-            XCTAssertEqual(result["delivery"], "unknown")
-            XCTAssertTrue(VoiceRequestWords.watchRequestTaken(result))
-        }
+        guard case .toolResponse("call_1", _, let result, _)? = answered.first else { return XCTFail("\(answered)") }
+        XCTAssertEqual(result["delivery"], "unknown")
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(result))
         XCTAssertFalse(VoiceRequestWords.watchRequestTaken(["status": "failed", "error": "Hermes refused it"]))
         // A workstream send with no answer back may have landed; one the
         // plugin refused, or that never went, didn't.
@@ -3703,6 +3733,32 @@ extension VoiceConversationControllerTests {
         let retry = try XCTUnwrap(fake.submissions.last?.1)
         XCTAssertEqual(fake.submissions.count, 2)
         XCTAssertFalse(retry.contains(VoiceRequestWords.marker), retry)
+    }
+
+    /// #3337's review: a job cancelled before its submit went never reached
+    /// Hermes, so its answer says not_sent and a Watch gives its words back;
+    /// one cancelled after it went keeps them sent.
+    func testAJobCancelledBeforeItsSubmitGivesTheWatchItsWordsBack() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Book a table for four at eight")]
+        bridge.userLines = { lines }
+        fake.parksCreate = true
+        let start = Task {
+            await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "In the background, book a table."]))
+        }
+        await fake.createParked.waitUntil(1)
+        _ = await supervisor.cancelAll()
+        fake.releaseCreate()
+        let answered = await start.value
+
+        XCTAssertTrue(fake.submissions.isEmpty)
+        XCTAssertEqual(supervisor.jobs.first?.requestWordsSpent, false)
+        guard case .toolResponse("call_1", _, let result, _)? = answered.first else { return XCTFail("\(answered)") }
+        XCTAssertEqual(result["status"], "cancelled")
+        XCTAssertEqual(result["delivery"], "not_sent")
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(result))
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(["status": "cancelled"]))
     }
 
     /// #3293's reviews: a workstream that didn't pass the request on (busy
