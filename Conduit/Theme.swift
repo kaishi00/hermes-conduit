@@ -416,6 +416,14 @@ enum ConduitBackdropMotionPolicy {
     /// never does, so every tap waited about two minutes (#1994).
     static let isHeldStillForUITests = ProcessInfo.processInfo.environment["CONDUIT_STILL_BACKDROP"] == "1"
 
+    /// Settings > Appearance > Moving background. Off holds the glows still
+    /// everywhere they would drift. It starts off when the iPad app runs on
+    /// a Mac: a Mac window is several times a phone's, and redrawing a
+    /// whole-window glow ten times a second made it lag (Eric, 2026-11-25).
+    static let preferenceKey = "conduit.backdropDrift"
+    static var preferenceDefault: Bool { defaultEnabled(onMac: ProcessInfo.processInfo.isiOSAppOnMac) }
+    static func defaultEnabled(onMac: Bool) -> Bool { !onMac }
+
     /// One smooth out-and-back drift over 26 seconds, matching the previous
     /// 13-second ease-in/ease-out animation with autoreverse.
     static func progress(at activeTime: TimeInterval) -> CGFloat {
@@ -476,6 +484,7 @@ struct ConduitBackdrop: View {
     /// Publishes only when Conduit goes idle or wakes, never per touch.
     @ObservedObject private var interactionIdle = InteractionIdleState.shared
     @State private var motionClock = ConduitBackdropMotionClock()
+    @AppStorage(ConduitBackdropMotionPolicy.preferenceKey) private var driftAllowed = ConduitBackdropMotionPolicy.preferenceDefault
     private let drifts: Bool
     /// The warm glow's color. V2 tints it with the active profile's color;
     /// nil keeps the gold accent.
@@ -491,7 +500,7 @@ struct ConduitBackdrop: View {
 
     private var shouldAnimate: Bool {
         ConduitBackdropMotionPolicy.shouldAnimate(
-            drifts: drifts && !ConduitBackdropMotionPolicy.isHeldStillForUITests,
+            drifts: drifts && driftAllowed && !ConduitBackdropMotionPolicy.isHeldStillForUITests,
             sceneIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
             lowPowerMode: devicePower.isLowPowerModeEnabled,

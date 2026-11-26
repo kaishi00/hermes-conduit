@@ -576,6 +576,12 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    func testMovingBackgroundStartsOffOnlyOnAMac() {
+        XCTAssertTrue(ConduitBackdropMotionPolicy.defaultEnabled(onMac: false))
+        XCTAssertFalse(ConduitBackdropMotionPolicy.defaultEnabled(onMac: true), "A Mac window redraws a whole-window glow, so it starts still")
+        XCTAssertEqual(ConduitBackdropMotionPolicy.preferenceKey, "conduit.backdropDrift")
+    }
+
     func testBackdropDriftIsBoundedAndRepeatsAfterOneOutAndBackCycle() {
         XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 0), 0, accuracy: 0.000_001)
         XCTAssertEqual(ConduitBackdropMotionPolicy.progress(at: 13), 1, accuracy: 0.000_001)
