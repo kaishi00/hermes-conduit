@@ -209,5 +209,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(WatchCallAnswer.delegatedArguments("Approve: run it", userWords: "yes", approves: true)?["choice"] as? String, "once")
         XCTAssertNil(WatchCallAnswer.delegatedArguments("Deny: not now", userWords: "no", approves: false), "Nor denies them")
         XCTAssertNil(WatchCallAnswer.delegatedArguments("Check the weather", userWords: "", approves: false))
+        // An unmarked delegation's words go as the answer first; the host
+        // taking none (an approval, every question answered) leaves it work.
+        XCTAssertTrue(WatchCallAnswer.tookAnswer(body: ["ok": true, "status": "answered", "question": 1, "answer": "Google TV"]))
+        XCTAssertFalse(WatchCallAnswer.tookAnswer(body: ["ok": true, "status": "answered", "message": "Every question is answered already."]))
+        XCTAssertFalse(WatchCallAnswer.tookAnswer(body: ["ok": true, "status": "not_waiting"]))
+        XCTAssertFalse(WatchCallAnswer.tookAnswer(body: ["ok": false, "status": 400, "detail": "choice must be once or deny"]))
     }
 }

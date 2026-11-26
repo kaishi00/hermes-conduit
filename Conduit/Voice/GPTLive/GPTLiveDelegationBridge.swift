@@ -188,15 +188,7 @@ final class GPTLiveDelegationBridge {
                     }
                 case .deny: outcome = await supervisor.answerApproval(choice: "deny")
                 case .answer(let words):
-                    // The user's own words, as said since the last request;
-                    // the model's only when there are none.
-                    let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let answer = spoken.isEmpty ? words : spoken
-                    if answer.isEmpty {
-                        outcome = .userHasNotSpoken
-                    } else {
-                        outcome = await supervisor.answerQuestion(answer)
-                    }
+                    outcome = await questionAnswer(delegated: words, userWords: userWords)
                 }
             }
             guard callGeneration == call, !isEnding else { return [] }
@@ -281,6 +273,13 @@ final class GPTLiveDelegationBridge {
             instructions = rest
             startsNewJob = true
         }
+        // GPT-Live often leaves a delegation's text, and so its "Answer:",
+        // empty: in a call from Hermes about a question, a delegation that
+        // marks nothing else is the user's answer to it, never a new request
+        // Hermes would refuse while it's paused on the question.
+        if instructions.isEmpty, supervisor.callWaitsOn == .question {
+            return await answeredCallQuestion(id: id, delegated: "", userWords: spoken, call: call)
+        }
         guard !instructions.isEmpty else {
             // GPT-Live delegated on the user's answer before their words
             // reached the transcript: it is answered once they do. With
@@ -362,6 +361,11 @@ final class GPTLiveDelegationBridge {
             let read = await readBack(id: id, call: call)
             // The call ended meanwhile: nothing is answered.
             return read.isEmpty ? [] : dropped + read
+        }
+        // Marked nothing Conduit answers itself: in a call from Hermes about
+        // a question, the user's answer (above).
+        if supervisor.callWaitsOn == .question {
+            return await answeredCallQuestion(id: id, delegated: ownWords, userWords: spoken, call: call)
         }
         // The model's own words for the request. Without any, the request
         // is the user's words.
@@ -1394,6 +1398,25 @@ final class GPTLiveDelegationBridge {
     static func newJobMarker(in request: String) -> String? {
         guard let range = request.range(of: #"^\s*new\s+job\s*[:,.\-–—]"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         return request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What answering the call's question with the user's words did: their
+    /// own words since the last request, the model's only when there are
+    /// none, and nothing before the user has said anything.
+    private func questionAnswer(delegated: String, userWords: String) async -> VoiceCallDecisionOutcome {
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        let answer = spoken.isEmpty ? delegated.trimmingCharacters(in: .whitespacesAndNewlines) : spoken
+        guard (spokenWords?.wordsMark() ?? 0) > 0, !answer.isEmpty else { return .userHasNotSpoken }
+        return await supervisor.answerQuestion(answer)
+    }
+
+    /// A delegation with no marker in a call from Hermes about a question,
+    /// answered as "Answer:" would be.
+    private func answeredCallQuestion(id: String, delegated: String, userWords: String, call: UInt64) async -> [Outgoing] {
+        let outcome = await questionAnswer(delegated: delegated, userWords: userWords)
+        guard callGeneration == call, !isEnding else { return [] }
+        spokenWords?.settleWords(.delegation(id))
+        return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
     }
 
     // MARK: Job updates
