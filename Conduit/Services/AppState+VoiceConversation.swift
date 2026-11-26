@@ -1275,25 +1275,52 @@ extension AppState {
     /// way (a cold launch's too) is waited for the same way. Without one
     /// nothing waits, and the result is what it was before: the current
     /// client, or `notConnected` without one.
-    func clientForVoiceRequest() async throws -> HermesClient {
+    ///
+    /// Only a request about the chat on screen waits for that chat's resume.
+    /// One about another chat (an off-screen chat's turn, a job's, a new
+    /// chat) goes as soon as the socket is back: the reconnect resumes only
+    /// the chat on screen, and the call resumes its own chat itself. Before,
+    /// every request waited on the chat on screen, up to 20 s, and could
+    /// then fail with Hermes ready (issue 2855).
+    func clientForVoiceRequest(about chat: VoiceRequestChat = .shown) async throws -> HermesClient {
         // A call off its dashboard goes on through that dashboard's own
         // connection, never the screen's (no-switch stage 2).
         if let client = try clientOfCallOffScreen() { return client }
-        if await waitForTransportIfDropped(), !isConnected || isResumingAfterDrop {
+        var waitsForResume = voiceRequestIsAboutShownChat(chat)
+        var waited = await waitForTransportIfDropped(resumingShownChat: waitsForResume)
+        // The chat came on screen while the request waited for the socket:
+        // it now goes through the chat on screen, so waits for its resume.
+        if !waitsForResume, voiceRequestIsAboutShownChat(chat) {
+            waitsForResume = true
+            if await waitForTransportIfDropped(resumingShownChat: true) { waited = true }
+        }
+        if waited, !isConnected || (waitsForResume && isResumingAfterDrop) {
             throw HermesError.notConnected
         }
         guard let client else { throw HermesError.notConnected }
         return client
     }
 
+    /// Whether a call's request is about the chat on screen, so waits for
+    /// its resume after a drop.
+    func voiceRequestIsAboutShownChat(_ chat: VoiceRequestChat) -> Bool {
+        switch chat {
+        case .shown: return true
+        case .thread(let thread): return isOpenChat(thread)
+        case .session(let sessionID): return callDashboardOffScreen == nil && eventBelongsToActiveSession(sessionID)
+        case .noChat: return false
+        }
+    }
+
     /// `clientForVoiceRequest`'s wait on its own, for Classic voice's turns
     /// and steers, which go through the composer. True when it waited.
+    /// `resumingShownChat` false waits for the socket alone.
     @discardableResult
-    func waitForTransportIfDropped() async -> Bool {
+    func waitForTransportIfDropped(resumingShownChat: Bool = true) async -> Bool {
         await checkQuietTransportOffScreen()
-        guard voiceRequestWaitsForTransport else { return false }
+        guard voiceRequestWaitsForTransport(resumingShownChat: resumingShownChat) else { return false }
         reconnectNowForWaitingVoice("Voice request waiting")
-        await awaitTransportForVoiceRequest(timeout: voiceRequestConnectionWait)
+        await awaitTransportForVoiceRequest(timeout: voiceRequestConnectionWait, resumingShownChat: resumingShownChat)
         return true
     }
 
@@ -1345,10 +1372,11 @@ extension AppState {
     /// A drop is under way that a reconnect from here can repair: the socket
     /// is down and coming back, or it is back and the reconnect is still
     /// resuming the chat.
-    private var voiceRequestWaitsForTransport: Bool {
+    /// `resumingShownChat` false: only the socket's part counts.
+    private func voiceRequestWaitsForTransport(resumingShownChat: Bool) -> Bool {
         guard connection != nil, canRunTransportRecovery, !signInRequiredForReconnect else { return false }
         if !isConnected { return isConnecting || turnState == .reconnecting }
-        return isResumingAfterDrop
+        return resumingShownChat && isResumingAfterDrop
     }
 
     /// The socket is back and the reconnect is still resuming the chat. An
@@ -1358,12 +1386,12 @@ extension AppState {
         turnState == .reconnecting || (turnState == .synchronizing && turnStateIsStale)
     }
 
-    private func awaitTransportForVoiceRequest(timeout: Duration) async {
+    private func awaitTransportForVoiceRequest(timeout: Duration, resumingShownChat: Bool) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
                 let states = self.isConnectedValues.combineLatest(self.isConnectingValues, self.shownChat.$turnState).values
                 for await (connected, connecting, turn) in states {
-                    if connected, turn != .reconnecting, turn != .synchronizing { return }
+                    if connected, !resumingShownChat || (turn != .reconnecting && turn != .synchronizing) { return }
                     // Signed out, or sign-in needed: no reconnect is coming.
                     if self.connection == nil || self.signInRequiredForReconnect { return }
                     // A cycle that ended without arming the next one hands

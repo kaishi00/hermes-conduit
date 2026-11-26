@@ -1386,7 +1386,7 @@ extension AppState {
 
     func liveVoiceThreadIsBusy(_ thread: VoiceThreadTarget) async -> Bool {
         if isOpenChat(thread) { return isBusy }
-        guard let client = try? await clientForVoiceRequest(),
+        guard let client = try? await clientForVoiceRequest(about: .thread(thread)),
               let rows = try? await client.activeSessions(inProfile: callThreadProfile(thread)) else { return false }
         return rows.contains { row in
             (thread.owns(sessionID: row.runtimeSessionId) || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
@@ -1396,14 +1396,14 @@ extension AppState {
     /// The runtime id the chat's next turn runs on: the open chat's own, or
     /// the chat's live runtime off screen, resuming it when it isn't live.
     func liveVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
-        let client = try await clientForVoiceRequest()
+        let client = try await clientForVoiceRequest(about: .thread(thread))
         if isOpenChat(thread), let sessionID = activeSessionId { return sessionID }
         let rows = (try? await client.activeSessions(inProfile: callThreadProfile(thread))) ?? []
         if let live = rows.first(where: { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }) {
             return live.runtimeSessionId
         }
         // The client as of now: a reconnect during the read replaced it.
-        let opener = try await clientForVoiceRequest()
+        let opener = try await clientForVoiceRequest(about: .thread(thread))
         return try await opener.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: callThreadProfile(thread)).sessionId
     }
 
@@ -1520,7 +1520,7 @@ extension AppState {
         let stillWanted: () -> Bool = { [weak self] in
             self?.voiceBackgroundJobSupervisor.ledgerGeneration == ledger
         }
-        let client = try await clientForVoiceRequest()
+        let client = try await clientForVoiceRequest(about: .thread(thread))
         guard stillWanted() else { throw CancellationError() }
         if isOpenChat(thread), let sessionID = activeSessionId {
             // A turn found running, here or by the composer's own stale-idle
@@ -1570,7 +1570,7 @@ extension AppState {
             await surfaceReport?.value
             // The client as of now: a profile switch during the read or the
             // report handed the socket to a new one, and the call goes on there.
-            sender = try await clientForVoiceRequest()
+            sender = try await clientForVoiceRequest(about: .thread(thread))
             outcome = try await sendCallPromptTakingOver(
                 runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
                 profile: callThreadProfile(thread),
@@ -1578,7 +1578,7 @@ extension AppState {
             ) {
                 // The client as of each send: the resend after a takeover
                 // wait can come after a reconnect replaced the first one.
-                sender = try await clientForVoiceRequest()
+                sender = try await clientForVoiceRequest(about: .thread(thread))
                 // The wait for the client can outlast the call.
                 guard stillWanted() else { throw CancellationError() }
                 return try await sender.sendPrompt(target, text: text)
@@ -1614,7 +1614,7 @@ extension AppState {
     func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         // Taken before waiting for a client: a send that fails meanwhile keeps its line.
         let failureBefore = sendFailureMark
-        let client = try await clientForVoiceRequest()
+        let client = try await clientForVoiceRequest(about: .session(sessionID))
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         do {
             let outcome: SessionRedirectOutcome
@@ -1665,7 +1665,7 @@ extension AppState {
     func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         // Taken before waiting for a client: a send that fails meanwhile keeps its line.
         let failureBefore = sendFailureMark
-        let client = try await clientForVoiceRequest()
+        let client = try await clientForVoiceRequest(about: .session(sessionID))
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         let persistedTwinsBefore = persistedSteerIDs(matching: text)
         do {
