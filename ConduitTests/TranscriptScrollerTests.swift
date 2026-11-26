@@ -1548,6 +1548,7 @@ final class TranscriptScrollerTests: XCTestCase {
         runScheduled()
         XCTAssertNil(scroller.restoration)
         XCTAssertEqual(events.last, .abandonRestoration(generation: 9))
+        XCTAssertTrue(events.contains(.persistSnapshot(keyA)), "the place left is saved")
         XCTAssertTrue(scroller.isFollowingLatest)
         XCTAssertEqual(surface.contentOffsetY, 3200, "at the end, not mid-history")
 

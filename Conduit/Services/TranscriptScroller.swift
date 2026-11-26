@@ -1058,7 +1058,12 @@ final class TranscriptScroller: ObservableObject {
     private func landAtLatestAfterAbandonedRestoration() {
         guard mode == .restoring else { return }
         setMode(.following)
-        if let surface, !isPaused { pin(surface) } else { pinOwed = true }
+        // No surface yet (the deadline never runs while paused): the next
+        // layout pins.
+        if let surface { pin(surface) } else { pinOwed = true }
+        // The saved place goes too, so a relaunch opens where the reader
+        // was left, as the latest destination's landing does.
+        emit(.persistSnapshot(renderedSessionKey))
         refreshJumpButton()
     }
 
