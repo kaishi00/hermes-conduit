@@ -1752,7 +1752,7 @@ struct V2Shell: View {
         selectTab(.chats)
         // The filter draws the cron-session rows, and the list's routine poll
         // reuses a cached cron read for up to five minutes
-        // (SessionCatalogCache.fullHistoryRefreshInterval), so a run that
+        // (SessionCatalogCache.cronRefreshInterval), so a run that
         // finished since Chats last read would be missing from the list this
         // tap asks for. Read the newest page and the cron rows on the tap,
         // forcing both: older pages wait for the history's own interval, so a
