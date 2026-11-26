@@ -497,6 +497,36 @@ extension DashboardTicketBridgeTests {
 
 @MainActor
 extension DashboardTicketBridgeTests {
+    /// Issue 3262: a request without the page reads the native sign-in jar
+    /// after WebKit's store answers, so a silent re-sign-in that lands while
+    /// WebKit's store is asked goes with this request, and the cookie that
+    /// expires last wins over WebKit's older copy.
+    func testARequestWithoutThePageTakesASignInThatLandsWhileWebKitIsAsked() async throws {
+        let dashboardID = UUID()
+        let bridge = DashboardTicketBridge(baseURL: "https://snapshot.example.com", dashboardID: dashboardID)
+        defer { bridge.invalidate() }
+        func cookie(_ value: String, expires: TimeInterval) throws -> HTTPCookie {
+            try XCTUnwrap(HTTPCookie(properties: [
+                .name: "session", .value: value, .domain: "snapshot.example.com", .path: "/",
+                .expires: Date(timeIntervalSinceNow: expires),
+            ]))
+        }
+        let older = try cookie("webkit", expires: 600)
+        let renewed = try cookie("renewed", expires: 7_200)
+        var asked = 0
+        bridge.webKitCookiesForTesting = { _ in
+            asked += 1
+            // The re-sign-in lands in the native jar while WebKit answers.
+            DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).setCookie(renewed)
+            return [older]
+        }
+        let cookies = await bridge.cookiesForRequestsWithoutPage()
+        DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).deleteCookie(renewed)
+        XCTAssertEqual(asked, 1)
+        XCTAssertEqual(cookies.filter { $0.name == "session" }.map(\.value), ["renewed"],
+                       "the sign-in that landed meanwhile goes, not WebKit's older copy")
+    }
+
     func testBackgroundRequestsSendTheCookieThatExpiresLast() throws {
         func cookie(_ value: String, expires: TimeInterval?) throws -> HTTPCookie {
             var properties: [HTTPCookiePropertyKey: Any] = [
