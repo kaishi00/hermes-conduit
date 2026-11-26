@@ -189,4 +189,26 @@ extension SessionNestingModelTests {
         XCTAssertFalse(HiddenChatProjects.hides(projectID: nil, pinned: false, listedWait: true, hidden: hidden))
         XCTAssertTrue(HiddenChatProjects.hides(projectID: "work", pinned: false, listedWait: false, hidden: hidden))
     }
+
+    /// Issue 1583: a section's rows slide only on a list at rest, for a
+    /// short section, once the last toggle's slide is over.
+    func testASectionToggleSlidesOnlyAtRestForAShortSectionAfterTheLastSlide() {
+        let calm = ChatListSectionToggle.settleInterval
+        XCTAssertTrue(ChatListSectionToggle.animates(listMoving: false, rows: 12, sinceLastToggle: calm))
+        XCTAssertTrue(ChatListSectionToggle.animates(listMoving: false, rows: 0, sinceLastToggle: .infinity))
+        XCTAssertFalse(ChatListSectionToggle.animates(listMoving: true, rows: 12, sinceLastToggle: calm))
+        XCTAssertFalse(ChatListSectionToggle.animates(listMoving: false, rows: 257, sinceLastToggle: calm))
+        XCTAssertTrue(ChatListSectionToggle.animates(listMoving: false, rows: ChatListSectionToggle.animatedRowLimit, sinceLastToggle: calm))
+        XCTAssertFalse(ChatListSectionToggle.animates(listMoving: false, rows: 12, sinceLastToggle: calm / 2))
+    }
+
+    /// Issue 1583: only a list showing none of its content counts as
+    /// resting past its end; one at its last row or bouncing doesn't.
+    func testAListRestsPastItsEndOnlyWhenNoneOfItsContentShows() {
+        XCTAssertTrue(ChatListSectionToggle.restsPastEnd(visibleMinY: 4_000, contentHeight: 900))
+        XCTAssertTrue(ChatListSectionToggle.restsPastEnd(visibleMinY: 900, contentHeight: 900))
+        XCTAssertFalse(ChatListSectionToggle.restsPastEnd(visibleMinY: 899, contentHeight: 900))
+        XCTAssertFalse(ChatListSectionToggle.restsPastEnd(visibleMinY: -60, contentHeight: 900))
+        XCTAssertFalse(ChatListSectionToggle.restsPastEnd(visibleMinY: 0, contentHeight: 0))
+    }
 }
