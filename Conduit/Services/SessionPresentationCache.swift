@@ -895,7 +895,8 @@ final class SessionPresentationCache {
     /// The request ids of the kept question cards the session authority
     /// speaks for, waiting on an answer with none on its way: no question of
     /// theirs is being sent or answered (a form between its sends, or a
-    /// relay answer, keeps waiting, as ruled). Relay cards aren't its.
+    /// gateway card answered through the relay, keeps waiting, as ruled).
+    /// Relay cards (`conduit-push-…`) aren't the authority's to list.
     func storedUnansweredClarifyRequestIDs(
         profile: String,
         sessionIDs: [String]

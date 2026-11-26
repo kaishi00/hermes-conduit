@@ -2476,9 +2476,11 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
         let profile = appState.activeProfile
         let card = { (id: String, status: ClarifyQuestion.Status) -> ChatMessage in
+            // Each its own question: a relay card asking what a gateway card
+            // asks is superseded by it, which isn't what this tests.
             let clarify = ClarifyActivity(
                 requestId: id,
-                question: "Which color?",
+                question: "Which color for \(id)?",
                 choices: [ClarifyChoice(label: "Red", value: "red")],
                 status: status
             )
@@ -2506,7 +2508,7 @@ final class SessionPresentationCacheTests: XCTestCase {
             snapshot: SessionRuntimeSnapshot(object: [
                 "running": .bool(false),
                 "prompts": .array([
-                    .object(["kind": .string("clarify"), "prompt_id": .string("req-open"), "question": .string("Which color?"), "choices": .array([.string("Red")])])
+                    .object(["kind": .string("clarify"), "prompt_id": .string("req-open"), "question": .string("Which color for req-open?"), "choices": .array([.string("Red")])])
                 ])
             ])
         ))
