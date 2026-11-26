@@ -1316,6 +1316,17 @@ final class WatchBridgeCallModel: ObservableObject {
             startNewWork(for: id, request: request, ownWords: marker.rest, relay: relay)
             return
         }
+        // "New job: check the weather": separate work, never the answer to
+        // the question the call waits on, as on the phone.
+        if let rest = WatchBridgeDelegation.newJobMarker(in: ownWords) {
+            let request = rest.isEmpty ? "" : WatchBridgeDelegation.request(itemText: rest, lines: lines)
+            guard !request.isEmpty else {
+                answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
+                return
+            }
+            startNewWork(for: id, request: request, ownWords: rest, relay: relay)
+            return
+        }
         // GPT-Live often leaves a delegation's text, and so its "Answer:",
         // empty: on a call that answers Hermes, a delegation that marks
         // nothing else is the user's answer to the question it waits on, as

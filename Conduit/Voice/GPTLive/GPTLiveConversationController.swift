@@ -96,7 +96,7 @@ final class GPTLiveConversationController: ObservableObject {
 
     static let jobFollowUps = "When the user corrects, changes, pauses or calls off a background job that is still running (\"wait, make it Alex\", \"hold that\", \"never mind\"), delegate their words right away, starting with \"Job\" and its number, like \"Job 2: make it Alex\": Conduit puts them into that job at once, Hermes decides what they mean, and the job's result still arrives on its earlier delegation. When the user only adds to the running job without changing it, start the delegation \"Add to job 2:\" with its number instead, like \"Add to job 2: also ask for a quiet table\": Conduit steers the addition into the job."
 
-    static let watchFollowUps = jobFollowUps + " A delegation without that start is new work."
+    static let watchFollowUps = jobFollowUps + " A delegation without that start is new work, except in a call from Hermes about a question: there Conduit gives it to Hermes as the user's answer, so start separate new work with \"New job:\". Markers like \"Job 2:\" and \"New job:\" are for Conduit only: never say them aloud."
 
     /// The only running job takes an unnumbered delegation, and asking
     /// first holds a request (#451): only the phone's delegation bridge
