@@ -107,6 +107,12 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.foldsApart(other), other)
         let code = ["<details> makes a section.", "", "```", "</details>", "```"]
         XCTAssertEqual(ReplyHTML.foldsApart(code), code)
+        let span = ["<details> makes a section.", "", "Wrap it with `</details>` to close."]
+        XCTAssertEqual(ReplyHTML.foldsApart(span), span)
+    }
+
+    func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body so far"]), ["<details><summary>S</summary>", "Body so far"])
     }
 
     func testACompactFoldWithAnArrowInItsBodyFolds() {
@@ -231,7 +237,9 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(String(text.characters), "Build is failing, ok.")
         XCTAssertNotNil(run(text, "failing")?[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self])
         XCTAssertNotNil(run(text, "ok")?[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self])
-        XCTAssertNil(ReplyHTML.marking(#"<span style="color:url(x)">x</span>"#), "a span with no color it may use is no tag the chat draws")
+        let unsafe = ReplyHTML.marking(#"<span style="color:url(x)">x</span>"#)
+        XCTAssertEqual(unsafe?.text, "x", "a span with no color it may use draws its words plain")
+        XCTAssertEqual(unsafe?.styles.isEmpty, true)
         XCTAssertEqual(ReplyHTML.safeColor(" Red "), "red")
         XCTAssertEqual(ReplyHTML.safeColor("#E5484D"), "#e5484d")
         XCTAssertEqual(ReplyHTML.safeColor("rgb(10, 20, 30)"), "rgb(10, 20, 30)")
@@ -260,7 +268,7 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertNil(ReplyHTML.marking("Use a <video> tag"))
         XCTAssertNil(ReplyHTML.marking("An <b>unclosed tag"))
         XCTAssertNil(ReplyHTML.marking("Vec<String> and 1 < 2"))
-        XCTAssertNil(ReplyHTML.marking("</b> closes nothing <span class=\"x\">here</span>"))
+        XCTAssertEqual(ReplyHTML.marking("</b> closes nothing <span class=\"x\">here</span>")?.text, "</b> closes nothing here", "a stray closing tag stays")
     }
 
     func testATagInACodeSpanIsWhatItShows() {

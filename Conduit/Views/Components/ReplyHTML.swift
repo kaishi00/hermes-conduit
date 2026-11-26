@@ -223,15 +223,16 @@ enum ReplyHTML {
         var depth = 0
         // Whether a `</details>` comes after line `index`: a tag starting a line of prose opens a fold only then.
         var closedAfter = [Bool](repeating: false, count: lines.count)
-        // A `</details>` in code closes nothing.
+        // A `</details>` in code (a fence, a code span) or a comment closes nothing.
         var codeFence = CodeFence()
         let inCode = lines.map { codeFence.isCode($0) }
         // More `</details>` after it than folds opened after it: one is left over for this line's.
+        // The last line counts as closed later: while a reply streams, its `</details>` hasn't come yet.
         var closes = 0
         for index in lines.indices.reversed() {
             closedAfter[index] = closes > 0
             guard !inCode[index] else { continue }
-            let line = lines[index]
+            let line = replacing(notCounted, in: lines[index], with: "")
             closes += foldClosingTag.numberOfMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length))
             if matches(foldOpeningStart, line) { closes = max(0, closes - 1) }
         }
@@ -243,7 +244,7 @@ enum ReplyHTML {
             var rest = line
             let ns = line as NSString
             if let opening = foldOpeningStart.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)),
-               opensFoldHere(after: ns.substring(with: opening.range(at: 2)), closedLater: closedAfter[index]) {
+               opensFoldHere(after: ns.substring(with: opening.range(at: 2)), closedLater: closedAfter[index] || index == lines.count - 1) {
                 let after = ns.substring(with: opening.range(at: 2))
                 guard !after.trimmingCharacters(in: .whitespaces).isEmpty else {
                     out.append(line)
@@ -273,6 +274,8 @@ enum ReplyHTML {
 
     private static let foldClosingTag = compiled(#"</details\s*>"#, [.caseInsensitive])
     private static let tagStart = compiled(#"<[a-zA-Z/!]"#)
+    /// A code span or a comment: a `</details>` in one closes nothing.
+    private static let notCounted = compiled(#"`[^`]*`|<!--.*?-->"#)
 
     /// Whether a `<details>` starting a line, followed by `after`, is a
     /// fold's opening: nothing after it, a body ending the fold on the line,
