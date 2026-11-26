@@ -6198,7 +6198,7 @@ message · the group room composer · the Settings caption for the limit
 **Desktop app:** has it: Settings › App › Attachments picks the limit, 8 to 256 MB (16 by default), kept on this computer, with the phone's caption and its warning above 16 MB (`desktop/src/renderer/src/components/AttachmentLimitSetting.tsx`, desktop#640). A file over it, picked, dropped or pasted, is refused naming the file and the limit and saying Settings › Attachments can raise it, left off at 256 MB; a voice message over it says the same (`desktop/src/renderer/src/state/attachments.ts` tooLargeMessage and voiceTooLargeMessage, desktop#12, desktop#640); a group chat names its own caps (roomUploadProblem).
 
 **Code**
-- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
+- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage, voiceTooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
 - Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path; a picture whose file fails, through stageImageObject, which holds its PNG to the limit before writing it, #1821)
