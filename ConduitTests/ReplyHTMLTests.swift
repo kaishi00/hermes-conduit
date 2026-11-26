@@ -109,10 +109,22 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.foldsApart(code), code)
         let span = ["<details> makes a section.", "", "Wrap it with `</details>` to close."]
         XCTAssertEqual(ReplyHTML.foldsApart(span), span)
+        let double = ["<details> makes a section.", "", "Wrap it in ``</details>`` to close."]
+        XCTAssertEqual(ReplyHTML.foldsApart(double), double)
+        let prose = ["<details> is the opener tag.", "Close it with </details> later."]
+        XCTAssertEqual(ReplyHTML.foldsApart(prose), prose)
+    }
+
+    func testABodyWithTagsAfterItsSummaryFoldsWhenTheCloseComesLater() {
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Click <b>here</b>", "more", "</details>"]),
+                       ["<details><summary>S</summary>", "Click <b>here</b>", "more", "</details>"])
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body", "more"]), ["<details><summary>S</summary>", "Body", "more"])
     }
 
     func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body so far"]), ["<details><summary>S</summary>", "Body so far"])
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Click <b>here</b>"]), ["<details><summary>S</summary>", "Click <b>here</b>"])
+        XCTAssertEqual(ReplyHTML.foldsApart(["After.", "", "<details> is the tag."]), ["After.", "", "<details> is the tag."], "prose ending a reply stays prose")
     }
 
     func testACompactFoldWithAnArrowInItsBodyFolds() {
