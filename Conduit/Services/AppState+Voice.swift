@@ -1373,14 +1373,15 @@ extension AppState {
         return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle, profile: bot)
     }
 
-    /// Whether `thread` is the chat on screen now.
-    func isOpenChat(_ thread: VoiceThreadTarget) -> Bool {
+    /// Whether `thread` is the chat on screen now, by any of the shown
+    /// chat's ids but `excluding`.
+    func isOpenChat(_ thread: VoiceThreadTarget, excluding: Set<String> = []) -> Bool {
         // A call's chat on another dashboard is never the one on screen,
         // whatever its id (two Hermes can name chats alike).
         guard callDashboardOffScreen == nil, let sessionID = activeSessionId else { return false }
         // Reopened, the chat runs under a new runtime id; its durable id
         // still names it.
-        let ids = knownSessionIDs(for: sessionID).union(chatOwnSessionIDs(for: sessionID))
+        let ids = knownSessionIDs(for: sessionID).union(chatOwnSessionIDs(for: sessionID)).subtracting(excluding)
         return ids.contains { thread.owns(sessionID: $0) }
     }
 

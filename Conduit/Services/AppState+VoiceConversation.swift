@@ -1305,7 +1305,10 @@ extension AppState {
     func voiceRequestIsAboutShownChat(_ chat: VoiceRequestChat) -> Bool {
         switch chat {
         case .shown: return true
-        case .thread(let thread): return isOpenChat(thread)
+        case .thread(let thread):
+            // Not by an id the identity index rebound to another chat, as
+            // a session below.
+            return isOpenChat(thread, excluding: reconciliation?.movedOnSessionIDs ?? [])
         case .session(let sessionID):
             guard callDashboardOffScreen == nil else { return false }
             if eventBelongsToActiveSession(sessionID) { return true }
