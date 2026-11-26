@@ -71,6 +71,9 @@ enum ReplyHTML {
             if let emptied {
                 let lineEnd = ns.range(of: "\n", range: NSRange(location: emptied, length: ns.length - emptied)).location
                 guard let match, lineEnd == NSNotFound || match.range.location <= lineEnd else { return emptied }
+                // Only another page element carries the page on; prose with a tag in it stays prose.
+                guard match.range(at: 2).location != NSNotFound,
+                      pageTags.contains(ns.substring(with: match.range(at: 2)).lowercased()) else { return emptied }
             }
             guard let match else { return nil }
             let found = ns.substring(with: match.range)
@@ -198,7 +201,8 @@ enum ReplyHTML {
         let end: Int
     }
 
-    private static let foldOpening = compiled(#"^ {0,3}<details(\s+open(?:=(?:"[^"]*"|'[^']*'|\S+))?)?\s*>\s*(?:<summary>(.*?)</summary>)?\s*$"#, [.caseInsensitive])
+    private static let foldOpening = compiled(#"^ {0,3}<details((?:\s+[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*>\s*(?:<summary>(.*?)</summary>)?\s*$"#, [.caseInsensitive])
+    private static let openAttribute = compiled(#"(?:^|\s)open(?=[\s=]|$)"#, [.caseInsensitive])
     private static let foldSummary = compiled(#"^ {0,3}<summary>(.*?)</summary>\s*$"#, [.caseInsensitive])
     private static let foldClosing = compiled(#"^ {0,3}</details\s*>\s*$"#, [.caseInsensitive])
 
@@ -211,7 +215,7 @@ enum ReplyHTML {
     static func fold(in lines: [String], at start: Int) -> Fold? {
         let opening = lines[start] as NSString
         guard let match = foldOpening.firstMatch(in: lines[start], range: NSRange(location: 0, length: opening.length)) else { return nil }
-        let isOpen = match.range(at: 1).location != NSNotFound
+        let isOpen = match.range(at: 1).length > 0 && matches(openAttribute, opening.substring(with: match.range(at: 1)))
         var summary = match.range(at: 2).location != NSNotFound ? untagged(opening.substring(with: match.range(at: 2))) : nil
         var index = start + 1
         if summary == nil {

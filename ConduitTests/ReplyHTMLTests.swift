@@ -67,6 +67,17 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(MarkdownRichContentPolicy.richUnits(.fold(summary: "Chart", body: "<div>A</div>", isOpen: false)), 0)
     }
 
+    func testAPageEndsAtProseAfterItsClosingTagEvenProseWithATag() {
+        let lines = ["<div>x</div> as <code>y</code>", "<p>z</p>", "After"]
+        XCTAssertEqual(ReplyHTML.page(in: ["<div>x</div> as <code>y", "z</code>", "After"], at: 0), .init(start: 0, end: 1, isComplete: true))
+        XCTAssertEqual(ReplyHTML.page(in: lines, at: 0).end, 2)
+    }
+
+    func testAFoldTakesAttributesAndOpensOnlyWhenMarkedOpen() {
+        XCTAssertEqual(ReplyHTML.fold(in: ["<details class=\"x\" open>", "<summary>Why</summary>", "Because.", "</details>"], at: 0)?.isOpen, true)
+        XCTAssertEqual(ReplyHTML.fold(in: ["<details class=\"opener\">", "<summary>Why</summary>", "</details>"], at: 0)?.isOpen, false)
+    }
+
     func testATableRowThatStartsWithATagIsTheTables() {
         let table = "Tag | Meaning\n--- | ---\n<div> | container\n\nNext steps"
         XCTAssertEqual(ReplyHTML.pagesSaid(table, as: "Page"), table)
