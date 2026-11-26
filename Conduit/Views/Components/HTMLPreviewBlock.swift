@@ -31,6 +31,9 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     /// False while the streaming reply may still be writing this line; the
     /// file is often still being written too.
     var isComplete = true
+    /// HTML the reply wrote itself (ReplyHTML), drawn in place of a file;
+    /// `path` is unused then.
+    var written: String? = nil
     /// The file card shown when the page can't be drawn.
     @ViewBuilder let fallback: () -> Fallback
 
@@ -89,10 +92,23 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     /// connected Hermes, so another server's same-named file never lends
     /// its height.
     private var heightKey: String {
-        "preview|" + (gatewayMediaFiles?.imageCacheKey(forMediaPath: path) ?? path)
+        if let written { return "page|" + Self.digest(written) }
+        return "preview|" + (gatewayMediaFiles?.imageCacheKey(forMediaPath: path) ?? path)
     }
     private var name: String {
-        path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+        if written != nil { return AppLocalization.string("Page", table: .chat) }
+        return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+    }
+
+    /// A page's own name for its kept height, the same on every launch
+    /// (FNV-1a over its bytes, and its length).
+    static func digest(_ html: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in html.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return String(hash, radix: 16) + "-" + String(html.utf8.count)
     }
 
     var body: some View {
@@ -101,13 +117,13 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             // while it streams) shows the file card rather than waiting, and
             // so does a surface with no way to read the file, from its first
             // frame.
-            if state == .unavailable || (isComplete && !drawsInPlace) || (draws && gatewayMediaDataURL == nil) {
+            if state == .unavailable || (isComplete && !drawsInPlace) || (draws && gatewayMediaDataURL == nil && written == nil) {
                 fallback()
             } else {
                 card
             }
         }
-        .task(id: LoadKey(path: path, draws: draws)) {
+        .task(id: LoadKey(path: written.map { _ in heightKey } ?? path, draws: draws)) {
             await loadDocument()
         }
         // On the block, not the card: a page that falls back to the file
@@ -133,9 +149,16 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                 } else {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Loading preview…")
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                        // A page the reply is still writing draws once it's done.
+                        if written != nil, !isComplete {
+                            Text("Drawing the page when it's finished…")
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Loading preview…")
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -238,6 +261,16 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             state = .loading
             return
         }
+        // Written in the reply: nothing to read.
+        if let written {
+            // Past what a file page may be, it shows as its source, as a file that large shows its card.
+            guard written.utf8.count <= HTMLPreviewPage.maximumDocumentBytes else {
+                state = .unavailable
+                return
+            }
+            if state != .loaded(written) { show(written) }
+            return
+        }
         guard let gatewayMediaDataURL else {
             state = .unavailable
             return
@@ -323,6 +356,32 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     private struct LoadKey: Hashable {
         let path: String
         let draws: Bool
+    }
+}
+
+extension HTMLPreviewBlock where Fallback == ReplyPageSource {
+    /// HTML the reply wrote (ReplyHTML), drawn as a `::preview` page is;
+    /// its source when it can't be drawn.
+    init(html: String, isComplete: Bool) {
+        self.init(path: "", gatewayMediaDataURL: nil, isComplete: isComplete, written: html) {
+            ReplyPageSource(html: html)
+        }
+    }
+}
+
+/// A written page that can't be drawn, as the HTML it is.
+struct ReplyPageSource: View {
+    let html: String
+
+    var body: some View {
+        Text(verbatim: html)
+            .scaledFont(.caption.monospaced())
+            .foregroundStyle(.secondary)
+            .lineLimit(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .textSelection(.enabled)
     }
 }
 

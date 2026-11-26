@@ -160,6 +160,8 @@ targets:
       # Hermes Desktop's directives, which the same names read as a file
       # or a card for Hermes Desktop.
       - path: Conduit/Views/Components/TranscriptDirectives.swift
+      # HTML a reply writes, which the same names read as a page.
+      - path: Conduit/Views/Components/ReplyHTML.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.milim.relay.watchkitapp

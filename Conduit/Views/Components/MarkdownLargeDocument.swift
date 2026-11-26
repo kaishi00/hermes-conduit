@@ -632,6 +632,8 @@ extension MarkdownBlock {
         case .callout(_, let text): return text.utf8.count + 16
         case .columns(let columns): return columns.reduce(0) { $0 + $1.utf8.count + 4 }
         case .image, .math, .divider, .htmlPreview, .desktopCard: return 64
+        case .htmlPage(let html, _): return html.utf8.count + 16
+        case .fold(let summary, let body, _): return summary.utf8.count + body.utf8.count + 16
         }
     }
 }

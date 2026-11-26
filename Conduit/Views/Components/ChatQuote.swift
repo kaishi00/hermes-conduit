@@ -64,7 +64,8 @@ enum ChatQuote {
         let markdown = TranscriptDirectives.rewriting(
             markdown,
             preview: { TranscriptDirectives.fileName($0) },
-            card: { _ in DesktopCardDirective.previewNote }
+            card: { _ in DesktopCardDirective.previewNote },
+            page: ReplyHTML.previewNote
         )
         for rawLine in markdown.components(separatedBy: .newlines) {
             // Enough for the preview; the rest of a long reply isn't excerpted.

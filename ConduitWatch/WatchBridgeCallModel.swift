@@ -1316,10 +1316,39 @@ final class WatchBridgeCallModel: ObservableObject {
             startNewWork(for: id, request: request, ownWords: marker.rest, relay: relay)
             return
         }
+        // "New job: check the weather": separate work, never the answer to
+        // the question the call waits on, as on the phone.
+        if let rest = WatchBridgeDelegation.newJobMarker(in: ownWords) {
+            let request = rest.isEmpty ? "" : WatchBridgeDelegation.request(itemText: rest, lines: lines)
+            guard !request.isEmpty else {
+                answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
+                return
+            }
+            startNewWork(for: id, request: request, ownWords: rest, relay: relay)
+            return
+        }
+        // GPT-Live often leaves a delegation's text, and so its "Answer:",
+        // empty: on a call that answers Hermes, a delegation that marks
+        // nothing else is the user's answer to the question it waits on, as
+        // on the phone. Only once nothing takes a spoken answer (an
+        // approval, which the user taps, or every question answered) is it
+        // new work.
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        if relay.tools.contains(WatchCallAnswer.tool), !spoken.isEmpty, relay.canRun(WatchCallAnswer.tool) {
+            answerCall(for: id, arguments: ["answer": spoken], relay: relay) { [weak self] in
+                // A goodbye or End while the host answered: no new work, as above.
+                guard let self, self.endRequestedAt == nil, self.goodbyeHeardAt == nil else { return }
+                // The probe spent a grant call the job's budget never counted.
+                self.startNewWork(for: id, request: request, ownWords: ownWords, relay: relay, spentOnProbe: 1)
+            }
+            return
+        }
         startNewWork(for: id, request: request, ownWords: ownWords, relay: relay)
     }
 
-    private func startNewWork(for id: String, request: String, ownWords: String, relay: WatchToolRelayClient) {
+    /// `spentOnProbe`: grant calls an `answer_call` probe the host took no
+    /// answer from spent first, left out of the new job's budget.
+    private func startNewWork(for id: String, request: String, ownWords: String, relay: WatchToolRelayClient, spentOnProbe: Int = 0) {
         let tool = relay.hasJobs ? WatchJobAnswer.startJob : WatchToolAnswer.webSearch
         guard relay.tools.contains(tool) else {
             answer(id, WatchBridgeDelegation.notStarted("jobs from the Watch are off in Conduit's Watch settings."), channel: .speakable)
@@ -1333,7 +1362,7 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         if relay.hasJobs {
             // Too few calls left to follow a new job's news to its result.
-            guard relay.callsLeft >= Self.callsForNewJob else {
+            guard relay.callsLeft + spentOnProbe >= Self.callsForNewJob else {
                 answer(id, WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantNearlyOut), channel: .speakable)
                 return
             }
@@ -1478,7 +1507,10 @@ final class WatchBridgeCallModel: ObservableObject {
     /// The user's answer to what the call from Hermes waits on, through the
     /// grant to the host; its reply (and a batch's next question) goes
     /// back on the delegation. The log carries the outcome, never the answer.
-    private func answerCall(for delegationID: String, arguments: [String: Any], relay: WatchToolRelayClient) {
+    /// `otherwise`: a delegation that marked no answer goes on as work
+    /// when the host took no answer from it.
+    private func answerCall(for delegationID: String, arguments: [String: Any], relay: WatchToolRelayClient,
+                            otherwise: (() -> Void)? = nil) {
         guard relay.canRun(WatchCallAnswer.tool) else {
             let ranOut: String = WatchBridgeDelegation.grantRanOut
             answer(delegationID, "The answer didn't reach Hermes: " + ranOut + " Tell the user to answer in Conduit on their iPhone.", channel: .commentary)
@@ -1492,6 +1524,11 @@ final class WatchBridgeCallModel: ObservableObject {
             let text: String
             switch outcome {
             case .answered(let body):
+                if let otherwise, !WatchCallAnswer.tookAnswer(body: body) {
+                    self.note("bridgeCallAnswer", ["outcome": "notAnswer", "ms": Int((self.now - sentAt) * 1000)])
+                    otherwise()
+                    return
+                }
                 text = WatchCallAnswer.delegatedReply(body: body)
             case .timedOut:
                 text = "Hermes didn't confirm the answer in time. Tell the user to check the chat in Conduit on their iPhone."

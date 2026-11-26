@@ -39,7 +39,8 @@ enum PreviewText {
         text = TranscriptDirectives.rewriting(
             text,
             preview: { TranscriptDirectives.fileName($0) },
-            card: { _ in DesktopCardDirective.previewNote }
+            card: { _ in DesktopCardDirective.previewNote },
+            page: ReplyHTML.previewNote
         )
         let lines = text
             .split(whereSeparator: \.isNewline)

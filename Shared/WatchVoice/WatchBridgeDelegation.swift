@@ -203,6 +203,14 @@ enum WatchBridgeDelegation {
         return (number, rest)
     }
 
+    /// GPTLiveDelegationBridge.newJobMarker: "New job: check the weather"
+    /// → "check the weather": separate work, never the answer to the
+    /// question a call from Hermes waits on.
+    static func newJobMarker(in request: String) -> String? {
+        guard let range = request.range(of: #"^\s*new\s+job\s*[:,.\-–—]"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        return request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// GPTLiveDelegationBridge.followUpWords: the user's own words since
     /// the last delegation, else the delegation's.
     static func followUpWords(userWords: String, delegated: String) -> String {

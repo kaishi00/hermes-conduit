@@ -1192,6 +1192,25 @@ extension VoiceConversationControllerTests {
         decisions.waitsOn = .question
         _ = await gpt.handleDelegation(id: "d6", request: "Answer: main", userWords: "um, main please")
         XCTAssertEqual(decisions.answers.last, "um, main please", "The user's own words go, not the model's")
+        let jobsBeforeUnmarked = supervisor.jobs.count
+        // GPT-Live often leaves out "Answer:": in a call about a question, a
+        // delegation marking nothing else is the user's answer, never a new
+        // request Hermes would refuse while it's paused on the question.
+        _ = await gpt.handleDelegation(id: "d7", request: "", userWords: "Fire TV, version 8.1")
+        XCTAssertEqual(decisions.answers.last, "Fire TV, version 8.1")
+        _ = await gpt.handleDelegation(id: "d8", request: "The user says it's a Fire TV", userWords: "it's a Fire TV")
+        XCTAssertEqual(decisions.answers.last, "it's a Fire TV", "The user's own words, not the model's summary")
+        XCTAssertEqual(supervisor.jobs.count, jobsBeforeUnmarked, "Unmarked answers never reach Hermes as work")
+        let answersBeforeMarked = decisions.answers.count
+        _ = await gpt.handleDelegation(id: "d8b", request: "Quick: check the weather", userWords: "quickly check the weather")
+        _ = await gpt.handleDelegation(id: "d8c", request: "Deny:", userWords: "no")
+        _ = await gpt.handleDelegation(id: "d8d", request: "New job: check the weather", userWords: "and check the weather")
+        _ = await gpt.handleDelegation(id: "d8e", request: "Send:", userWords: "send it")
+        XCTAssertEqual(decisions.answers.count, answersBeforeMarked, "A marker keeps its meaning: never taken as the answer")
+        decisions.waitsOn = .approval
+        let unmarked = await gpt.handleDelegation(id: "d9", request: "", userWords: "yes")
+        XCTAssertEqual(decisions.choices, ["once", "deny", "once"], "An approval is never given without its marker")
+        XCTAssertFalse(unmarked.isEmpty)
         XCTAssertTrue(VoiceCallDecisionOutcome.isYes("approve it"))
         XCTAssertTrue(VoiceCallDecisionOutcome.isYes("allow it"))
         XCTAssertTrue(VoiceCallDecisionOutcome.isYes("Sí"))
