@@ -66,7 +66,9 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
                 .frame(minWidth: 0, maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 16)
+        // Clear of what iOS stands in the window's top corners: a Duo's
+        // inner screen puts its clock there, over the trailing controls.
+        .cornerClearingHorizontalPadding(16)
         .padding(.top, 4)
         .padding(.bottom, 8)
         .frame(minHeight: 52)

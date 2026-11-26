@@ -128,6 +128,12 @@ struct SidebarView: View {
                         }
                     }
                     .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
+                    // As V2's top bars: the header row clear of what iOS
+                    // stands in the window's top corners (iPadOS's window
+                    // controls beside the persistent column, a Duo's
+                    // clock). Read inside the column's 14 pt, so only a
+                    // corner reaching past it pads the row.
+                    .cornerClearingHorizontalPadding(0)
 
                     ConduitGlassGroup(spacing: 8) {
                         // Every tab drops to its icon together once the

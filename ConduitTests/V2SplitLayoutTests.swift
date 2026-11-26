@@ -10,6 +10,7 @@
 
 import SwiftUI
 import XCTest
+import UIKit
 @testable import Conduit
 
 extension SidebarLayoutTests {
@@ -445,6 +446,41 @@ extension SidebarLayoutTests {
         // caps every screen, so a stack can't grow past it (build 258).
         let outer = WindowSideInsets(EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 84), width: 382)
         XCTAssertEqual(outer.width, 382)
+    }
+
+    func testTopBarsClearWhatAWindowCornerStandsOverThem() {
+        // Nothing in the corners (an iPhone, a full-screen iPad): the
+        // bar's own 16 pt.
+        XCTAssertEqual(WindowCornerReach.padding(16, reach: 0), 16)
+        // The Duo's outer screen's rounded corner reaches 2.33 pt into a
+        // bar: inside its padding, so nothing moves.
+        let outer = WindowCornerReach(
+            adapted: NSDirectionalEdgeInsets(top: 0, leading: 2.33, bottom: 0, trailing: 0),
+            plain: NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+        )
+        XCTAssertEqual(WindowCornerReach.padding(16, reach: outer.leading), 16)
+        XCTAssertEqual(WindowCornerReach.padding(16, reach: outer.trailing), 16)
+        // A Duo's inner screen in portrait: the clock's panel reaches past
+        // the padding, so the controls stand the gap clear of it (a
+        // tester's TestFlight report, 2026-11-26).
+        XCTAssertEqual(WindowCornerReach.padding(16, reach: 110), 110 + WindowCornerReach.gap)
+        // What the corners add to the safe area, never less than nothing.
+        let inner = WindowCornerReach(
+            adapted: NSDirectionalEdgeInsets(top: 24, leading: 0, bottom: 0, trailing: 120),
+            plain: NSDirectionalEdgeInsets(top: 24, leading: 4, bottom: 0, trailing: 10)
+        )
+        XCTAssertEqual(inner, WindowCornerReach(leading: 0, trailing: 110))
+        // The drawer's header, read inside its column's 14 pt: a corner
+        // reaching 96 pt past it pads the row the gap clear of it, and a
+        // side nothing reaches takes nothing.
+        let drawer = WindowCornerReach(leading: 96, trailing: 0).paddings(base: 0)
+        XCTAssertEqual(drawer.leading, 96 + WindowCornerReach.gap)
+        XCTAssertEqual(drawer.trailing, 0)
+        // A sheet's header pads both sides alike, so its title stays
+        // centered.
+        let sheet = inner.paddings(base: 16, symmetric: true)
+        XCTAssertEqual(sheet.leading, sheet.trailing)
+        XCTAssertEqual(sheet.trailing, 110 + WindowCornerReach.gap)
     }
 
     func testTheTabsStandInADuosStatusStripOnly() {
