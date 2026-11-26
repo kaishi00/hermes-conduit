@@ -57,6 +57,12 @@ enum AttachmentSizeLimit {
         return AppLocalization.string("These files are larger than the \(limit) MB attachment limit: \(list). You can raise the limit in Settings › Chat.", table: .chat)
     }
 
+    /// A recorded voice message over the limit: its size and where to raise it.
+    static func voiceTooLargeMessage(megabytes: Int) -> String {
+        let limit = String(clampedMegabytes(megabytes))
+        return AppLocalization.string("This voice message is larger than the \(limit) MB attachment limit. You can raise the limit in Settings › Chat.", table: .chat)
+    }
+
     static func fileSize(at url: URL) -> Int64? {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         if let size = values?.fileSize { return Int64(size) }

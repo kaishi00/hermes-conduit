@@ -32583,6 +32583,88 @@
         }
       }
     },
+    "This voice message is larger than the %@ MB attachment limit. You can raise the limit in Settings › Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Sprachnachricht überschreitet das Anhanglimit von %@ MB. Du kannst das Limit unter „Einstellungen › Chat“ erhöhen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este mensaje de voz supera el límite de %@ MB para archivos adjuntos. Puedes subir el límite en Ajustes › Chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce message vocal dépasse la limite de %@ Mo par pièce jointe. Vous pouvez augmenter la limite dans Réglages › Discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan suara ini melebihi batas lampiran %@ MB. Anda dapat menaikkan batas di Pengaturan › Obrolan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo messaggio vocale supera il limite di %@ MB per gli allegati. Puoi aumentare il limite in Impostazioni › Chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このボイスメッセージは添付ファイルの上限（%@MB）を超えています。上限は「設定」>「チャット」で引き上げられます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 음성 메시지가 첨부 한도인 %@MB보다 커요. ‘설정’ › ‘채팅’에서 한도를 높일 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta wiadomość głosowa przekracza limit załączników %@ MB. Możesz zwiększyć limit w sekcji Ustawienia › Czat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta mensagem de voz excede o limite de %@ MB para anexos. Você pode aumentar o limite em Ajustes › Chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это голосовое сообщение превышает лимит вложений (%@ МБ). Увеличить лимит можно в разделе «Настройки › Чат»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sesli mesaj %@ MB ek sınırından büyük. Sınırı Ayarlar › Sohbet bölümünden yükseltebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此语音消息超过了 %@ MB 的附件大小上限。你可以在“设置 › 聊天”中提高上限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此語音訊息超過 %@ MB 的附件大小上限。你可以在「設定」>「聊天」中提高上限。"
+          }
+        }
+      }
+    },
     "Timer done" : {
       "localizations" : {
         "de" : {
