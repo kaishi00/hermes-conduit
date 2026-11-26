@@ -2425,6 +2425,58 @@ extension BotModeTests {
         XCTAssertEqual(BotPortraitStatus.idle.title, "")
     }
 
+    /// A running chat's step, as the plugin notes it (GET /live-steps),
+    /// says what the bot is doing in place of "Replying" (Eric 2026-11-26),
+    /// in the Lock Screen's words: the newest step among the chats the
+    /// registry says run, never a step of a chat it doesn't.
+    func testThePortraitSaysTheStepARunningChatIsOn() throws {
+        let listed: [String: Any] = ["ok": true, "steps": [
+            "rt-1": ["phase": "tool", "tool": "terminal", "since": 10.0],
+            "st-2": ["phase": "thinking", "tool": NSNull(), "since": 12.0],
+            "rt-3": ["phase": "tool", "tool": "something_new", "since": 50.0],
+            "bad": ["phase": "shouting"],
+        ]]
+        let steps = try XCTUnwrap(BotLiveStep.steps(listed: listed))
+        XCTAssertEqual(steps.count, 3)
+        XCTAssertEqual(steps["rt-1"], BotLiveStep(phase: .tool, tool: .terminal, since: 10))
+        XCTAssertEqual(steps["rt-3"]?.tool, .tool, "A category this app doesn't know is just a tool")
+        XCTAssertNil(steps["st-2"]?.tool)
+        XCTAssertNil(BotLiveStep.steps(listed: ["detail": "Not Found"]))
+
+        XCTAssertEqual(BotLiveStep.newest(in: steps, chats: [["rt-1"], ["st-2", "rt-2"]]), steps["st-2"])
+        XCTAssertEqual(BotLiveStep.newest(in: steps, chats: [["rt-1"]]), steps["rt-1"])
+        XCTAssertNil(BotLiveStep.newest(in: steps, chats: [["gone"]]))
+
+        XCTAssertEqual(steps["rt-1"]?.titleKey, "Running a command")
+        XCTAssertEqual(steps["st-2"]?.titleKey, "Thinking")
+        XCTAssertEqual(BotLiveStep(phase: .approval, tool: nil, since: 0).titleKey, "Waiting for your approval")
+        XCTAssertEqual(BotLiveStep(phase: .input, tool: nil, since: 0).titleKey, "Waiting for your answer")
+
+        let step = steps["rt-1"]
+        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 1, waiting: 0, step: step)), .replying(step))
+        XCTAssertEqual(BotPortraitStatus.replying(step).title, step?.title)
+        XCTAssertEqual(BotPortraitStatus.replying(nil).title, AppLocalization.string("Replying", table: .bots))
+
+        var index = SessionLiveStatusIndex()
+        XCTAssertEqual(index.workingChats(), [])
+        index = SessionLiveStatusIndex(rows: [
+            LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "working"),
+            LiveSessionStatus(runtimeSessionId: "rt-9", storedSessionId: "", status: "waiting"),
+        ])
+        XCTAssertEqual(index.workingChats(), [["rt-1", "st-1"]])
+        XCTAssertEqual(index.workingChats(leavingOut: ["st-1"]), [])
+
+        // A Bot Overview reads its one bot: the others keep their steps, a
+        // failed read keeps the bot's last ones, and an idle bot's go.
+        let ada = ["rt-1": BotLiveStep(phase: .tool, tool: .terminal, since: 1)]
+        let bea = ["rt-5": BotLiveStep(phase: .thinking, tool: nil, since: 2)]
+        let newer = ["rt-1": BotLiveStep(phase: .thinking, tool: nil, since: 3)]
+        let current = ["ada": ada, "bea": bea]
+        XCTAssertEqual(AppState.mergedLiveSteps(current, read: ["ada": newer], idle: []), ["ada": newer, "bea": bea])
+        XCTAssertEqual(AppState.mergedLiveSteps(current, read: [:], idle: []), current)
+        XCTAssertEqual(AppState.mergedLiveSteps(current, read: [:], idle: ["bea"]), ["ada": ada])
+    }
+
     /// Live status for every bot: what the bot's chats do (its profile's
     /// registry and the plugin's waits) shows on its portrait, without the
     /// plugin's workstreams too. A chat waiting on the user needs them,
@@ -2432,7 +2484,7 @@ extension BotModeTests {
     /// only, Eric 2026-11-16), and a room it talks in comes first
     /// when nothing else works, since a room's turns run in its chats.
     func testThePortraitSaysWhatTheBotsChatsDo() throws {
-        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 0)), .replying)
+        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 0)), .replying(nil))
         XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 1)), .needsYou(1))
         XCTAssertEqual(BotPortraitStatus.of(nil, talkingIn: ["Trip"], chats: BotLiveChats(working: 1, waiting: 0)),
                        .inRooms(["Trip"]))
@@ -2448,7 +2500,7 @@ extension BotModeTests {
         var quiet = workResponse()
         quiet["counts"] = ["working": 0, "needs_you": 0, "ready": 1]
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina"),
-                                            chats: BotLiveChats(working: 1, waiting: 0)), .replying,
+                                            chats: BotLiveChats(working: 1, waiting: 0)), .replying(nil),
                        "A running chat says more than an unanswered ask")
         var off = workResponse()
         off["policy"] = "off"

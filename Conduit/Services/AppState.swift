@@ -801,6 +801,9 @@ final class AppState: ObservableObject {
     /// a project's page, Bots Home), read by name beside the profile in
     /// use's.
     @Published var otherProfilesLiveStatus = OtherProfilesLiveStatus()
+    /// Each bot's running chats' steps by session id, as the plugin notes
+    /// them (BotLiveStep), read with Bots Home's registry reads.
+    @Published var botLiveSteps: [String: [String: BotLiveStep]] = [:]
     /// Each other combined dashboard's registries, read by profile through
     /// its kept connection for its rows' status (AppState+FarLiveStatus).
     @Published var farLiveStatus: [UUID: FarLiveStatus] = [:]
