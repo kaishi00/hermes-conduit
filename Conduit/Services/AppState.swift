@@ -1278,8 +1278,11 @@ final class AppState: ObservableObject {
     var chatReplyStartLandingRequest = 0
     var chatReplyStartLandingTaken = 0
 
-    /// Bumped on every write to `sessions`.
-    var sessionsRevision = 0
+    /// Bumped on every write to `sessions`. Not observed while the runtime
+    /// on screen still publishes as AppState: what reads the catalog redraws
+    /// on that publish, and a held list (the Chats list under a pushed chat)
+    /// keeps holding catalog changes. Observed once the runtime is (#828).
+    @ObservationIgnored var sessionsRevision = 0
     /// Each profile's archived calls as last read, which a catalog read
     /// within their lifetime takes again (issue 2357).
     var archivedCallsReads: [String: ArchivedCallsRead] = [:]
@@ -3002,12 +3005,18 @@ final class AppState: ObservableObject {
     // MARK: - Wake phrase (#174) (AppState+WakePhrase.swift)
 
     /// Device-local wake phrase bindings, keyed by dashboard and profile.
-    @ObservationIgnored lazy var wakeConfiguration = WakeConfigurationStore(defaults: defaults)
+    /// Reading it reads `wakeSettingsRevision`, so a view or the wake
+    /// lifecycle that reads a wake setting redraws or rechecks when one
+    /// changes.
+    var wakeConfiguration: WakeConfigurationStore {
+        _ = wakeSettingsRevision
+        return wakeConfigurationStore
+    }
+    @ObservationIgnored lazy var wakeConfigurationStore = WakeConfigurationStore(defaults: defaults)
     @ObservationIgnored lazy var wakeWordService = AppleSpeechWakeWordService()
     @ObservationIgnored lazy var wakeLifecycle = WakeLifecycleCoordinator(service: wakeWordService)
-    /// The store is not observable: this publish is what re-renders Voice
-    /// settings and wakes the lifecycle (via objectWillChange) after a
-    /// wake setting changes.
+    /// The store is not observable: each wake setting change bumps this,
+    /// and `wakeConfiguration` reads it, so what read a setting is told.
     var wakeSettingsRevision: UInt64 = 0
     /// Why foreground wake listening last stopped or could not start.
     var wakeListeningFailure: String?

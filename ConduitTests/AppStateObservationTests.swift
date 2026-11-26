@@ -90,4 +90,23 @@ final class AppStateObservationTests: XCTestCase {
             "a body's read filling a cache redraws nothing else that read it"
         )
     }
+
+    func testAWakeSettingReachesWhatReadsIt() {
+        let appState = makeAppState()
+        let enabled = appState.wakeListensOnCarPlay
+        XCTAssertTrue(
+            changes({ _ = appState.wakeListensOnCarPlay }, by: { appState.setWakeListensOnCarPlay(!enabled) }),
+            "the store isn't observed, so its setters bump what reading it reads"
+        )
+    }
+
+    func testAHeldListKeepsHoldingCatalogChanges() {
+        let appState = makeAppState()
+        appState.sessions = [session("a")]
+        _ = appState.listedSessions
+        XCTAssertFalse(
+            changes({ _ = appState.listedSessions }, by: { appState.sessions = [session("a"), session("b")] }),
+            "catalog changes reach the list through AppState's publish, which a held list holds"
+        )
+    }
 }
