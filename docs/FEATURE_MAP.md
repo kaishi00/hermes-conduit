@@ -5570,9 +5570,9 @@ relay · the plugin's reporter (phases, tool categories, context, ends) · the
 relay's route, which turns reports into Live Activity pushes · the widget's
 Lock Screen and Dynamic Island views · Settings > Notifications > Progress on
 the Lock Screen · a tap on the card, which opens the chat · the plugin's
-CHANGELOG · Conduit on a Mac, which has none of it · a message from a kept
-chat's box (A chat beside the open one), its card kept current from that
-chat's events
+CHANGELOG · the notifier README's Lock Screen progress section · Conduit on
+a Mac, which has none of it · a message from a kept chat's box (A chat beside
+the open one), its card kept current from that chat's events
 
 **Desktop app:** not applicable: Live Activities are iOS-only.
 
@@ -8303,7 +8303,7 @@ allowlist sections
 - Text: `notifier/README.md` (Pinning the relays a host uses)
 
 **Rulings**
-- A credential only goes over HTTPS, or plain HTTP to this machine; a claim may also use plain HTTP to a private address, and the relay's HTTPS PUBLIC_URL is what gets saved then. No URL with credentials, a query or a fragment is used, and errors never echo the URL.
+- A credential only goes over HTTPS, or plain HTTP to this machine; a claim may also use plain HTTP to a private address, and the relay's HTTPS PUBLIC_URL is what gets saved then. No URL with credentials, a query or a fragment is used, and errors never echo the URL (written down 2026-11-26 with notifier #1098; the rules are older).
 - `CONDUIT_RELAY_ALLOWLIST` is the operator's opt-in: set, both pairing paths and every credentialed request go only to its origins (scheme, host, port), a relay answer off it isn't saved, and a value with no valid origin allows none. Unset, any relay works, so the self-hosted LAN-then-HTTPS pairing keeps working by default (2026-11-26, notifier issue 156, notifier #1098).
 
 **Open gaps**
