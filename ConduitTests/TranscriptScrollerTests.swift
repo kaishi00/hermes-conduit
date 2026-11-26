@@ -1468,7 +1468,7 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(scheduled.map(\.delay), [TranscriptScroller.restorationDeadline - 0.5])
         runScheduled()
         XCTAssertNil(scroller.restoration)
-        XCTAssertEqual(events.last, .abandonRestoration(generation: 9))
+        XCTAssertEqual(events.suffix(2), [.abandonRestoration(generation: 9), .persistSnapshot(keyA)])
     }
 
     func testAMissingMessageRequestDoesNotCancelRestoration() {
@@ -1528,7 +1528,7 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(scheduled.map(\.delay), [TranscriptScroller.restorationDeadline])
         runScheduled()
         XCTAssertNil(scroller.restoration)
-        XCTAssertEqual(events.last, .abandonRestoration(generation: 9))
+        XCTAssertEqual(events.suffix(2), [.abandonRestoration(generation: 9), .persistSnapshot(keyA)])
         XCTAssertTrue(scroller.isFollowingLatest, "left at the end, following")
     }
 
@@ -1564,7 +1564,7 @@ final class TranscriptScrollerTests: XCTestCase {
         scheduled.removeFirst().body()
         XCTAssertEqual(scroller.restoration?.request.generation, 10, "the first request's deadline is stale")
         runScheduled()
-        XCTAssertEqual(events.last, .abandonRestoration(generation: 10))
+        XCTAssertEqual(events.suffix(2), [.abandonRestoration(generation: 10), .persistSnapshot(keyA)])
     }
 
     func testADragCancelsRestoration() {
