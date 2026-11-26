@@ -2455,6 +2455,68 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
+    /// Issue 3276: a kept question card the session authority no longer
+    /// lists as open was answered or withdrawn: it isn't shown again at the
+    /// end of the chat, and the cache lets it go. One it lists stays.
+    func testApplyChatResumeLetsGoOfAKeptQuestionTheAuthorityNoLongerLists() {
+        let suiteName = "conduit.tests.session-presentation-closed-clarify-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-closed-clarify-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let card = { (id: String, status: ClarifyQuestion.Status) -> ChatMessage in
+            let clarify = ClarifyActivity(
+                requestId: id,
+                question: "Which color?",
+                choices: [ClarifyChoice(label: "Red", value: "red")],
+                status: status
+            )
+            return ChatMessage(id: "clarify-\(id)", role: .clarify, content: clarify.displayQuestion, timestamp: "2024-01-01", clarify: clarify)
+        }
+        cache.save([card("req-answered", .pending), card("req-open", .pending), card("req-sending", .submitting)], profile: profile, sessionIDs: [sessionId])
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "2024-01-01")],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "prompts": .array([
+                    .object(["kind": .string("clarify"), "prompt_id": .string("req-open"), "question": .string("Which color?"), "choices": .array([.string("Red")])])
+                ])
+            ])
+        ))
+
+        XCTAssertEqual(Set(appState.messages.compactMap(\.clarify?.requestId)), ["req-open", "req-sending"],
+                       "an answer on its way keeps its card, as only its completion settles it")
+        XCTAssertEqual(
+            cache.storedPendingDecisionKeys(profile: profile, sessionIDs: [sessionId]),
+            ["clarify:req-open", "clarify:req-sending"]
+        )
+
+        // A resume that doesn't list them (no session authority) keeps the
+        // kept cards, as before.
+        cache.save([card("req-kept", .pending)], profile: profile, sessionIDs: [sessionId])
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+        XCTAssertTrue(appState.messages.contains { $0.clarify?.requestId == "req-kept" })
+    }
+
     func testApplyChatResumeRestoresPendingApprovalWhenRunningIsNil() {
         let suiteName = "conduit.tests.session-presentation-approval-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {

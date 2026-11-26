@@ -2989,11 +2989,21 @@ extension AppState {
         let restorePendingDecisionCards = true
         let sessionIDs = [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
         let gatewayDecisionKeys = Set(result.messages.compactMap(SessionPresentationCache.decisionKey(for:)))
+        // The session authority lists every question still open (`prompts`):
+        // a kept card it doesn't list was answered or withdrawn, here or
+        // elsewhere, and is let go instead of shown again at the end of the
+        // chat (issue 3276).
+        let openClarifies = result.snapshot.openClarifyRequestIDs
+        if let openClarifies {
+            letGoClosedClarifyCards(open: openClarifies, sessionID: result.sessionId, alongWith: sessionIDs)
+        }
         let retainedMessages = retainedRestoredMessages.filter { message in
             guard let key = SessionPresentationCache.decisionKey(for: message),
                   !gatewayDecisionKeys.contains(key) else {
                 return false
             }
+            if let openClarifies, let clarify = message.clarify,
+               !clarify.hasAnswerOnItsWay, !openClarifies.contains(clarify.requestId) { return false }
             return restorePendingDecisionCards
         }
         let restored = sessionPresentationCache.merge(
@@ -4025,6 +4035,21 @@ extension AppState {
             return []
         }
         return restorationGuard.messages
+    }
+
+    /// Lets go of the resumed chat's kept question cards that the session
+    /// authority's open questions (`open`, request ids) leave out. Only for
+    /// a resume that lists them: an older gateway can leave an open question
+    /// out of its resume, so its kept cards stay. A card with an answer on
+    /// its way stays too: only its answer's completion settles it.
+    func letGoClosedClarifyCards(open: Set<String>, sessionID: String, alongWith sessionIDs: [String]) {
+        let profile = presentationProfile(for: sessionID)
+        let cacheIDs = Array(Set(presentationCacheSessionIDs(for: sessionID) + sessionIDs))
+        let closed = sessionPresentationCache.storedUnansweredClarifyRequestIDs(profile: profile, sessionIDs: cacheIDs)
+            .subtracting(open)
+        for requestID in closed {
+            sessionPresentationCache.removePendingDecision(key: "clarify:\(requestID)", profile: profile, sessionIDs: cacheIDs)
+        }
     }
 
     func clearPendingDecisionRestorationGuard() {

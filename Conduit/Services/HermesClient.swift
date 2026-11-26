@@ -544,6 +544,11 @@ struct SessionRuntimeSnapshot {
     /// Further unanswered clarify server requests from `open_requests`
     /// (after the oldest, which rides `pendingClarify`).
     let additionalPendingClarifies: [ClarifyActivity]
+    /// Every clarify question the session authority says is still open, by
+    /// request id: its resume's `prompts`, with the open ones above. Nil
+    /// when the resume carried no `prompts` (no session authority, or a
+    /// `session.info`), which can leave an open question out.
+    let openClarifyRequestIDs: Set<String>?
     /// Raw authoritative approval still blocking the session. AppState adds
     /// the enclosing runtime session id when normalizing the card.
     let pendingApprovalPayload: [String: AnyCodable]?
@@ -623,6 +628,13 @@ struct SessionRuntimeSnapshot {
             .flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
         additionalPendingClarifies = (object["open_clarifies"]?.arrayValue ?? []).compactMap {
             $0.objectValue.flatMap { MessageNormalizer.pendingClarifyActivity(from: $0) }
+        }
+        let openClarifies = [pendingClarify?.requestId].compactMap { $0 } + additionalPendingClarifies.map(\.requestId)
+        openClarifyRequestIDs = object["prompts"]?.arrayValue.map { prompts in
+            Set(openClarifies + prompts.compactMap { prompt -> String? in
+                guard let payload = prompt.objectValue, payload["kind"]?.stringValue == "clarify" else { return nil }
+                return MessageNormalizer.clarifyActivity(from: payload)?.requestId
+            })
         }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
@@ -3469,7 +3481,7 @@ final class HermesClient: ObservableObject {
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.
-        for key in ["pending_clarify", "pending_approval", "pending_connection", "todo_state", "pending"] {
+        for key in ["pending_clarify", "pending_approval", "pending_connection", "todo_state", "pending", "prompts"] {
             if let value = object[key] {
                 snapshotObject[key] = value
             }
@@ -6032,7 +6044,14 @@ enum MessageNormalizer {
 
             // Collect alternate IDs
             let altKeys = ["session_id", "id", "stored_session_id", "runtime_session_id", "session_key"]
-            let altIds = Set(altKeys.compactMap { obj[$0]?.stringValue }.filter { $0 != id && !$0.isEmpty })
+            // A compressed chat is listed under its newest segment, and
+            // `_lineage_ids` names every segment of it. The gateway's resume
+            // answers for the chat's owner, which can be any of them (a
+            // middle one too), so each is this chat's id (issue 3276).
+            let lineageIds = (obj["_lineage_ids"]?.arrayValue ?? []).compactMap {
+                $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let altIds = Set((altKeys.compactMap { obj[$0]?.stringValue } + lineageIds).filter { $0 != id && !$0.isEmpty })
 
             let explicitProfile = [
                 "profile", "profile_name", "profileName", "profile_id", "profileId"
