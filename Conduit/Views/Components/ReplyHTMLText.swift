@@ -39,6 +39,8 @@ extension ReplyHTML {
     /// when it has none.
     static func marking(_ source: String) -> (text: String, styles: [TextTag])? {
         guard source.contains("<") else { return nil }
+        // Text already holding a mark's character would be read as one: drawn as written instead.
+        guard !source.unicodeScalars.contains(where: { (openBase..<(closeBase + UInt32(maximumStyles))).contains($0.value) || $0 == lineBreakMark.unicodeScalars.first! }) else { return nil }
         let ns = source as NSString
         let code = codeSpans(in: source)
         struct Found { let range: NSRange; let name: String; let closing: Bool; let tag: TextTag? }
@@ -56,8 +58,9 @@ extension ReplyHTML {
             if let known = textTagNames[name] { tag = known }
             else if name == "span" || name == "font" { tag = colors(tag: name, attributes) }
             else { tag = nil }
-            let draws = closing ? textTagNames[name] != nil || name == "span" || name == "font" : tag != nil
-            if draws, match.range(at: 4).length == 0 {
+            // A span with no color still pairs with its closing tag, so that one can't close an outer colored span.
+            let pairs = textTagNames[name] != nil || name == "span" || name == "font"
+            if pairs, match.range(at: 4).length == 0 {
                 tags.append(Found(range: match.range, name: name, closing: closing, tag: tag))
             }
         }

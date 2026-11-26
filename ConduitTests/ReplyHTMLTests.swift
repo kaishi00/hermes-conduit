@@ -53,6 +53,18 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(MarkdownParser.parse("<div><p>One<p>Two</div>\nAfter").first, .htmlPage(html: "<div><p>One<p>Two</div>", isComplete: true))
     }
 
+    func testAPageKeepsGoingWhenTheLineThatClosesOneElementOpensAnother() {
+        XCTAssertEqual(MarkdownParser.parse("<div>A</div><div>\nB\n</div>\nAfter"), [
+            .htmlPage(html: "<div>A</div><div>\nB\n</div>", isComplete: true),
+            .paragraph("After")
+        ])
+    }
+
+    func testATableRowThatStartsWithATagIsTheTables() {
+        let table = "Tag | Meaning\n--- | ---\n<div> | container\n\nNext steps"
+        XCTAssertEqual(ReplyHTML.pagesSaid(table, as: "Page"), table)
+    }
+
     func testAVoidElementIsAOneLinePage() {
         XCTAssertEqual(MarkdownParser.parse("<img src=\"https://example.com/a.png\">\nA picture.").first,
                        .htmlPage(html: "<img src=\"https://example.com/a.png\">", isComplete: true))
@@ -148,6 +160,17 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertNil(ReplyHTML.safeColor("expression(alert(1))"))
         XCTAssertNil(ReplyHTML.safeColor("var(--x)"))
         XCTAssertNil(ReplyHTML.safeColor("hsl(10, 20%, 30%)"))
+    }
+
+    func testASpanWithNoColorStillPairsWithItsOwnClosingTag() {
+        let text = drawn(#"<span style="color:red">a <span class="note">b</span> c</span>"#)
+        XCTAssertEqual(String(text.characters), "a b c")
+        XCTAssertNotNil(run(text, " c")?[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self], "the outer span's color reaches past the inner one")
+    }
+
+    func testTextHoldingAMarksCharacterIsDrawnAsWritten() {
+        XCTAssertNil(ReplyHTML.marking("\u{F8FF} <b>x</b>"))
+        XCTAssertNil(ReplyHTML.marking("\u{E000} <b>x</b>"))
     }
 
     func testABreakIsANewLine() {

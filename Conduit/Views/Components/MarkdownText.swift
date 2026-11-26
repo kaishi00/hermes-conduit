@@ -1071,6 +1071,7 @@ struct MarkdownBlockView: View {
                 summary: summary,
                 markdown: body,
                 isOpen: isOpen,
+                isStreaming: isStreamingTail,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 gatewayMediaDataURL: gatewayMediaDataURL
@@ -1451,6 +1452,13 @@ enum InlineMarkdownContent {
             if attributes[.strikethroughStyle] != nil {
                 run[SwiftUIKeys.StrikethroughStyleAttribute.self] = .single
             }
+            // A reply's <mark> and <sub>/<sup>, as the bridge set them.
+            if let background = attributes[.backgroundColor] as? UIColor {
+                run[SwiftUIKeys.BackgroundColorAttribute.self] = Color(uiColor: background)
+            }
+            if let offset = attributes[.baselineOffset] as? CGFloat, offset != 0 {
+                run[SwiftUIKeys.BaselineOffsetAttribute.self] = offset
+            }
             result.append(run)
         }
         plainTextCache.setObject(PlainTextBox(result), forKey: bridged, cost: bridged.length * 2)
@@ -1681,6 +1689,8 @@ struct ReplyFoldBlock: View {
     let summary: String
     let markdown: String
     let isOpen: Bool
+    /// The fold is the reply's last block while it streams: an unfinished page in it waits, as one outside does.
+    var isStreaming = false
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let gatewayMediaDataURL: ((String) async -> String?)?
@@ -1714,7 +1724,8 @@ struct ReplyFoldBlock: View {
                     source: markdown,
                     foregroundStyle: foregroundStyle,
                     usesAccentSurface: usesAccentSurface,
-                    gatewayMediaDataURL: gatewayMediaDataURL
+                    gatewayMediaDataURL: gatewayMediaDataURL,
+                    isStreaming: isStreaming
                 )
             }
         }

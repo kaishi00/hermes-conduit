@@ -55,16 +55,24 @@ enum ReplyHTML {
     }
 
     /// The UTF-16 offset just past the tag that leaves no element open in
-    /// `text`, or nil while one is still open (or a tag, comment or script
-    /// is still being written). A closing tag closes its element and any
-    /// left open inside it, as a browser does; one with nothing to close is
-    /// passed over.
-    private static func closingOffset(in text: String) -> Int? {
-        let ns = text as NSString
+    /// `text`, reading from `start`, or nil while one is still open (or a
+    /// tag, comment or script is still being written). A closing tag closes
+    /// its element and any left open inside it, as a browser does; one with
+    /// nothing to close is passed over. Tags after it on its line are read
+    /// too, so an element opened there keeps the page going.
+    private static func closingOffset(in ns: NSString, from start: Int = 0) -> Int? {
+        // Bridged once, so each read from `start` costs only the text it reads.
+        let text = ns as String
         var open: [String] = []
-        var at = 0
+        var at = start
+        var emptied: Int?
         while true {
-            guard let match = token.firstMatch(in: text, range: NSRange(location: at, length: ns.length - at)) else { return nil }
+            let match = token.firstMatch(in: text, range: NSRange(location: at, length: ns.length - at))
+            if let emptied {
+                let lineEnd = ns.range(of: "\n", range: NSRange(location: emptied, length: ns.length - emptied)).location
+                guard let match, lineEnd == NSNotFound || match.range.location <= lineEnd else { return emptied }
+            }
+            guard let match else { return nil }
             let found = ns.substring(with: match.range)
             at = match.range.location + match.range.length
             if found.hasPrefix("<!--") {
@@ -88,7 +96,8 @@ enum ReplyHTML {
                     }
                 }
             }
-            if open.isEmpty, !found.hasPrefix("<!") { return at }
+            if found.hasPrefix("<!") { continue }
+            emptied = open.isEmpty ? at : nil
         }
     }
 
@@ -101,22 +110,34 @@ enum ReplyHTML {
         let isComplete: Bool
     }
 
+    /// Whether line `index` starts a page: a table row that starts with a tag is the table's.
+    static func startsPage(in lines: [String], at index: Int) -> Bool {
+        let line = lines[index]
+        return startsPage(line) && !(index > 0 && line.contains("|") && lines[index - 1].contains("|"))
+    }
+
     /// The page starting at line `start` (which `startsPage`).
     static func page(in lines: [String], at start: Int) -> PageSpan {
+        // Joined once; `from` is where the part being read starts in it.
+        let text = lines[start...].joined(separator: "\n")
+        let ns = text as NSString
         var line = start
+        var from = 0
         while true {
-            let text = lines[line...].joined(separator: "\n")
-            guard let offset = closingOffset(in: text) else {
+            guard let offset = closingOffset(in: ns, from: from) else {
                 return PageSpan(start: start, end: lines.count, isComplete: false)
             }
             // The line holding the closing tag ends this part.
-            let through = (text as NSString).substring(to: offset)
+            let through = ns.substring(with: NSRange(location: from, length: offset - from))
             let end = line + through.components(separatedBy: "\n").count
             var next = end
             while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
             // Another page tag after blank lines continues the same page.
             if next < lines.count, startsPage(lines[next]) {
-                line = next
+                while line < next {
+                    from += (lines[line] as NSString).length + 1
+                    line += 1
+                }
                 continue
             }
             if next >= lines.count { return PageSpan(start: start, end: end, isComplete: false) }
@@ -148,7 +169,7 @@ enum ReplyHTML {
                 index += 1
                 continue
             }
-            if startsPage(line) {
+            if startsPage(in: lines, at: index) {
                 index = page(in: lines, at: index).end
                 if let said { out.append(said) }
                 changed = true
