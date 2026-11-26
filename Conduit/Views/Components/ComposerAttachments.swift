@@ -413,6 +413,13 @@ struct ComposerAttachmentChip: View {
 
     private var isPastedText: Bool { PastedText.isPastedText(attachment) }
 
+    /// The staged copy a tap previews; nil when the attachment isn't a file
+    /// on this device.
+    private var stagedFileURL: URL? {
+        guard let url = URL(string: attachment.uri), url.isFileURL else { return nil }
+        return url
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             if isPastedText {
@@ -427,6 +434,21 @@ struct ComposerAttachmentChip: View {
                 .accessibilityValue(Text(pastedPreview ?? ""))
                 .accessibilityHint(Text(AppLocalization.string("Shows the pasted text", table: .chat)))
                 .accessibilityIdentifier("composer.pastedText.chip")
+            } else if let stagedFileURL {
+                // A tap previews the staged file to check it before it's
+                // sent, in Quick Look as a sent file opens (desktop#611):
+                // pictures, PDFs, audio and video play there. Closing it
+                // keeps the attachment; × removes it.
+                summary
+                    .accessibilityElement(children: .combine)
+                    .opensMediaPreview {
+                        Haptics.selection()
+                        _ = MediaPreviewPresenter.shared.present(
+                            fileURL: stagedFileURL,
+                            title: AttachmentTypePolicy.displayName(for: attachment)
+                        )
+                    }
+                    .accessibilityIdentifier("composer.attachment.preview")
             } else {
                 summary
             }
