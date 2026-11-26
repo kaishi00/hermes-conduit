@@ -479,7 +479,7 @@ struct V2ChatsView: View {
     /// (issue 1583).
     @State private var listMoving = false
     /// The last section toggle, so one right after it lands at once.
-    @State private var lastSectionToggle = Date.distantPast
+    @State private var toggleClock = ChatListSectionToggleClock()
     /// Bumped to build the list again when it rests past its end, showing
     /// nothing (issue 1583).
     @State private var listGeneration = 0
@@ -759,10 +759,7 @@ struct V2ChatsView: View {
         // last read is old (a chat started elsewhere meanwhile).
         .onChange(of: scenePhase) { _, phase in
             // Off screen, a scroll may never report coming to rest.
-            if phase != .active {
-                updates.endScrolling()
-                listMoving = false
-            }
+            if phase != .active { updates.endScrolling() }
             if phase == .active, isShown, listInView {
                 appState.chatListBecameActive()
                 // All's poll skips its reads while the app is away: back on
@@ -1693,20 +1690,8 @@ struct V2ChatsView: View {
     /// land at once, which kept a Mac's list from going blank when sections
     /// were toggled quickly while it scrolled (issue 1583).
     private func withSectionToggleAnimation(rows: Int, _ change: () -> Void) {
-        let now = Date()
-        let animates = ChatListSectionToggle.animates(
-            listMoving: listMoving,
-            rows: rows,
-            sinceLastToggle: now.timeIntervalSince(lastSectionToggle)
-        )
-        lastSectionToggle = now
-        if animates {
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion), change)
-        } else {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction, change)
-        }
+        let animates = toggleClock.animates(listMoving: listMoving, rows: rows)
+        withListToggle(animates: animates, reduceMotion: reduceMotion, change)
     }
 
     /// A list section whose header opens and closes it (#696).
@@ -1892,7 +1877,7 @@ struct V2ChatsView: View {
         let showsAll = profilesShowingAll.contains(profile)
         return Button {
             Haptics.selection()
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            withSectionToggleAnimation(rows: hiddenCount) {
                 if showsAll { profilesShowingAll.remove(profile) } else { profilesShowingAll.insert(profile) }
             }
         } label: {
@@ -2300,6 +2285,19 @@ struct V2ChatsView: View {
                   let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
             appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
         } : nil
+        // A nest's expander slides by the section toggle rule, counting
+        // the rows it opens or closes: every descendant (issue 1583).
+        var nestRows: [String: Int] = [:]
+        for item in items {
+            if case .nest(let node, let key, _) = item.kind {
+                nestRows[key] = node.sessionsInNest.count - 1
+            }
+        }
+        let toggleNest: (String, Bool) -> Void = { key, expanded in
+            withSectionToggleAnimation(rows: nestRows[key] ?? .max) {
+                setExpanded(key, expanded)
+            }
+        }
         return ForEach(items) { item in
             V2ChatsRow(
                 item: item,
@@ -2308,7 +2306,7 @@ struct V2ChatsView: View {
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
                 onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile($0)) },
-                setExpanded: setExpanded
+                setExpanded: toggleNest
             )
             .moveDisabled(!movableIDs.contains(item.id))
         }
@@ -2356,7 +2354,8 @@ struct V2ChatsView: View {
             rowIsListed: nest.rowIsListed,
             hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+        // A reveal isn't a tap on the expander: it lands at once (issue 1583).
+        withSectionToggleAnimation(rows: .max) {
             for key in toExpand { setExpanded(key, true) }
         }
     }
@@ -2797,9 +2796,7 @@ struct V2ChatsRowContent: View, Equatable {
         )
         return Button {
             Haptics.light()
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                setExpanded(key, !isExpanded)
-            }
+            setExpanded(key, !isExpanded)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
@@ -3379,10 +3376,12 @@ struct V2ConnectionRepairCard: View {
 /// once while it does, and builds the list again when it rests past its
 /// end showing nothing, as a relaunch did (issue 1583). iOS 18; earlier
 /// systems toggle without knowing and never rebuild.
-private struct V2SectionListRecovery: ViewModifier {
+struct V2SectionListRecovery: ViewModifier {
     @Binding var moving: Bool
     @Binding var generation: Int
     @State private var pastEnd = false
+    /// Off screen, a scroll may never report coming to rest.
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
@@ -3408,8 +3407,24 @@ private struct V2SectionListRecovery: ViewModifier {
                     generation += 1
                 }
                 .onDisappear { moving = false }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase != .active { moving = false }
+                }
         } else {
             content
         }
+    }
+}
+
+/// A toggle's change, slid on the open/close spring or landed at once
+/// (issue 1583).
+@MainActor
+func withListToggle(animates: Bool, reduceMotion: Bool, _ change: () -> Void) {
+    if animates {
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion), change)
+    } else {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, change)
     }
 }

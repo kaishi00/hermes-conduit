@@ -211,4 +211,17 @@ extension SessionNestingModelTests {
         XCTAssertFalse(ChatListSectionToggle.restsPastEnd(visibleMinY: -60, contentHeight: 900))
         XCTAssertFalse(ChatListSectionToggle.restsPastEnd(visibleMinY: 0, contentHeight: 0))
     }
+
+    /// Issue 1583: each list's clock counts every toggle, slid or not, so
+    /// a quick burst never slides mid-burst.
+    func testAToggleClockHoldsSlidesUntilTheLastToggleSettles() {
+        var clock = ChatListSectionToggleClock()
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(clock.animates(listMoving: false, rows: 5, now: start))
+        XCTAssertFalse(clock.animates(listMoving: false, rows: 5, now: start.addingTimeInterval(0.2)))
+        XCTAssertFalse(clock.animates(listMoving: false, rows: 5, now: start.addingTimeInterval(0.4)))
+        XCTAssertTrue(clock.animates(listMoving: false, rows: 5, now: start.addingTimeInterval(0.4 + ChatListSectionToggle.settleInterval)))
+        XCTAssertFalse(clock.animates(listMoving: true, rows: 5, now: start.addingTimeInterval(10)))
+        XCTAssertEqual(clock.last, start.addingTimeInterval(10))
+    }
 }

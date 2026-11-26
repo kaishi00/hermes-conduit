@@ -220,6 +220,11 @@ struct SessionList: View {
     /// are kept for the profile's lifetime, so a row that returns keeps
     /// its expansion.
     @State private var expandedNestIDs: Set<String> = []
+    /// The list scrolling, the last nest toggle and the list's rebuilds,
+    /// as V2's Chats list keeps them (issue 1583).
+    @State private var listMoving = false
+    @State private var toggleClock = ChatListSectionToggleClock()
+    @State private var listGeneration = 0
     /// The last activation the reveal served and the ancestor path it
     /// revealed (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
@@ -467,6 +472,8 @@ struct SessionList: View {
             .searchable(text: $searchText, prompt: showingProjects ? AppLocalization.string("Search projects and pinned chats", table: .chat) : AppLocalization.string("Search sessions", table: .chat))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
+            .modifier(V2SectionListRecovery(moving: $listMoving, generation: $listGeneration))
+            .id(listGeneration)
             .refreshable {
                 await appState.refreshSessionCatalog()
             }
@@ -1078,9 +1085,22 @@ struct SessionList: View {
             rowIsListed: nest.rowIsListed,
             hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
-        // The reveal moves rows the same way the expander does.
-        withAnimation(ConduitMotion.response) {
+        // A reveal isn't a tap on the expander: it lands at once (issue 1583).
+        withNestToggle(rows: .max) {
             expandedNestIDs.formUnion(toExpand)
+        }
+    }
+
+    /// A nest's rows slide only on a list at rest, for a short nest, once
+    /// the last slide is over; otherwise they land at once, as V2's Chats
+    /// list sections do (issue 1583).
+    private func withNestToggle(rows: Int, _ change: () -> Void) {
+        if toggleClock.animates(listMoving: listMoving, rows: rows) {
+            withAnimation(ConduitMotion.response, change)
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, change)
         }
     }
 
@@ -1104,7 +1124,8 @@ struct SessionList: View {
     private func nestExpander(node: SessionNesting.Node, isExpanded: Bool) -> some View {
         Button {
             Haptics.light()
-            withAnimation(ConduitMotion.response) {
+            // At most every descendant opens or closes.
+            withNestToggle(rows: node.sessionsInNest.count - 1) {
                 if isExpanded {
                     expandedNestIDs.remove(nestKey(node.session))
                 } else {
