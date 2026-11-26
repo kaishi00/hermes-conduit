@@ -470,6 +470,17 @@ extension SidebarLayoutTests {
             plain: NSDirectionalEdgeInsets(top: 24, leading: 4, bottom: 0, trailing: 10)
         )
         XCTAssertEqual(inner, WindowCornerReach(leading: 0, trailing: 110))
+        // The drawer's header inside its column's 14 pt adds only what the
+        // corner needs past it, and nothing for a rounded corner.
+        let drawer = inner.paddings(base: 0, outer: 14)
+        XCTAssertEqual(drawer.leading, 0)
+        XCTAssertEqual(drawer.trailing, 110 + WindowCornerReach.gap - 14)
+        XCTAssertEqual(outer.paddings(base: 0, outer: 14).leading, 0)
+        // A sheet's header pads both sides alike, so its title stays
+        // centered.
+        let sheet = inner.paddings(base: 16, symmetric: true)
+        XCTAssertEqual(sheet.leading, sheet.trailing)
+        XCTAssertEqual(sheet.trailing, 110 + WindowCornerReach.gap)
     }
 
     func testTheTabsStandInADuosStatusStripOnly() {

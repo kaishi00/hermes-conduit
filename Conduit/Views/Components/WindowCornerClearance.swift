@@ -54,19 +54,43 @@ extension View {
     /// window corner reaches into it (`WindowCornerReach`). Where nothing
     /// does (an iPhone, a full-screen iPad, before iOS 26), it is
     /// `.padding(.horizontal, base)`.
-    func cornerClearingHorizontalPadding(_ base: CGFloat) -> some View {
-        modifier(CornerClearingHorizontalPadding(base: base))
+    ///
+    /// - Parameters:
+    ///   - outer: padding a container already gives the bar at both sides
+    ///     (the drawer's column), counted toward the clearance: the bar
+    ///     adds only what the corner needs past it.
+    ///   - symmetric: both sides take the larger side's padding, so a
+    ///     centered title stays centered (a sheet's header).
+    func cornerClearingHorizontalPadding(_ base: CGFloat, outer: CGFloat = 0, symmetric: Bool = false) -> some View {
+        modifier(CornerClearingHorizontalPadding(base: base, outer: outer, symmetric: symmetric))
+    }
+}
+
+extension WindowCornerReach {
+    /// The leading and trailing padding a bar takes (see
+    /// `cornerClearingHorizontalPadding`).
+    func paddings(base: CGFloat, outer: CGFloat = 0, symmetric: Bool = false) -> (leading: CGFloat, trailing: CGFloat) {
+        let leading = Self.padding(base + outer, reach: self.leading) - outer
+        let trailing = Self.padding(base + outer, reach: self.trailing) - outer
+        if symmetric {
+            let both = max(leading, trailing)
+            return (both, both)
+        }
+        return (leading, trailing)
     }
 }
 
 private struct CornerClearingHorizontalPadding: ViewModifier {
     let base: CGFloat
+    let outer: CGFloat
+    let symmetric: Bool
     @State private var reach = WindowCornerReach.zero
 
     func body(content: Content) -> some View {
+        let paddings = reach.paddings(base: base, outer: outer, symmetric: symmetric)
         content
-            .padding(.leading, WindowCornerReach.padding(base, reach: reach.leading))
-            .padding(.trailing, WindowCornerReach.padding(base, reach: reach.trailing))
+            .padding(.leading, paddings.leading)
+            .padding(.trailing, paddings.trailing)
             // The reader spans the whole bar, padding included: the
             // padding never changes its frame, so it can't feed back.
             .background {
