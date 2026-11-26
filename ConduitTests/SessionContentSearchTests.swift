@@ -40,6 +40,26 @@ private final class StubSearchRequester {
     }
 }
 
+/// A debounce that lets the first search through and holds later ones
+/// until opened.
+private actor DebounceGate {
+    private var calls = 0
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func pass() async {
+        calls += 1
+        guard calls > 1, !opened else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        opened = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+    }
+}
+
 @MainActor
 final class SessionContentSearchTests: XCTestCase {
     private let scope = NSObject()
@@ -723,7 +743,45 @@ final class SessionContentSearchTests: XCTestCase {
         XCTAssertEqual(otherFar.paths.count, 1)
         model.update(query: "straw", context: withStudio)
         await model.waitForPendingSearch()
-        XCTAssertEqual(otherFar.paths.count, 1, "a non-search body is remembered for that connection")
+        XCTAssertEqual(otherFar.paths.count, 1, "a remembered connection isn't asked again")
+    }
+
+    /// A far connection found to have no search route after a query's
+    /// filter ran, while it waited for its debounce, isn't asked: the
+    /// search's own recheck (issue 3291).
+    func testAFarConnectionMarkedAfterTheFilterIsNotAsked() async {
+        let stub = StubSearchRequester()
+        let farStub = StubSearchRequester()
+        farStub.fallback = .failure(DashboardTicketBridgeError.http(status: 404, detail: "Not Found"))
+        farStub.held = [path("alpha")]
+        stub.responses[path("beta")] = .success(["results": [result("own")]])
+        let support = SessionContentSearchSupport()
+        let gate = DebounceGate()
+        let model = SessionContentSearchModel(support: support, debounce: .zero, sleep: { _ in await gate.pass() })
+        let farScope = NSObject()
+        var context = SessionContentSearchModel.Context(scope: scope, profile: "default") { path in
+            try await stub.request(path)
+        }
+        context.farSearches = [SessionContentSearchModel.FarSearch(dashboardID: UUID(), profile: "default", scope: farScope) { path in
+            try await farStub.request(path)
+        }]
+
+        model.update(query: "alpha", context: context)
+        var deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, !farStub.isWaiting(path("alpha")) { try? await Task.sleep(nanoseconds: 1_000_000) }
+        XCTAssertTrue(farStub.isWaiting(path("alpha")))
+        // The next query passes the filter while the far route is still
+        // thought to be there, then waits for its debounce.
+        model.update(query: "beta", context: context)
+        farStub.release(path("alpha"))
+        deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, !support.isUnsupported(farScope) { try? await Task.sleep(nanoseconds: 1_000_000) }
+        XCTAssertTrue(support.isUnsupported(farScope), "the older query's 404 marks the far connection")
+        await gate.open()
+        await model.waitForPendingSearch()
+        XCTAssertFalse(farStub.paths.contains(path("beta")), "the far connection isn't asked for the newer query")
+        XCTAssertEqual(model.hits.map(\.sessionID), ["own"])
+        XCTAssertFalse(model.isSearching)
     }
 
     /// The Chats search's own matching (titles, previews, project names), desktop issue 399.

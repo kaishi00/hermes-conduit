@@ -213,7 +213,8 @@ def load_estimates(path, purpose: str) -> tuple:
     estimates, warns = {}, []
     for name, secs in doc["classes"].items():
         # math.isfinite: nan survives the <= 0 check and would poison every
-        # downstream ceil()/comparison in the planner.
+        # downstream sum and comparison (smoke's changed-class budget and
+        # the hosted shards' split).
         if (isinstance(secs, bool) or not isinstance(secs, (int, float))
                 or not math.isfinite(secs) or secs <= 0):
             warns.append(f"{purpose}: ignoring non-positive timing for {name!r}")
@@ -850,8 +851,9 @@ def cmd_hosted(args) -> int:
 
 def cmd_validate(args) -> int:
     """Inventory check: every XCTestCase class discovered, none duplicated or
-    malformed, and the timing baseline readable. No cap on the class count:
-    the nightly shards (`hosted`) take any number of classes."""
+    malformed; a missing or unreadable timing baseline only warns. No cap on
+    the class count: the nightly shards (`hosted`) take any number of
+    classes."""
     if not os.path.isdir(args.repo_root):
         print(f"::error::repo root not found: {args.repo_root}")
         return 2
