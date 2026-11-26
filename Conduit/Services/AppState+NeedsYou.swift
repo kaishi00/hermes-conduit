@@ -45,12 +45,11 @@ extension AppState {
     /// dashboard's reads.
     func refreshOtherCombinedDashboards() async {
         await otherCombinedReads.coalescing { [weak self] in
-            guard let self else { return }
             // Taken as each pass starts, so a forced ask that waited for
             // the pass before reads in full.
-            let force = self.combinedDashboardWaitsForced
-            self.combinedDashboardWaitsForced = false
-            await self.readOtherCombinedDashboardsNeedsYou(force: force)
+            let force = self?.combinedDashboardWaitsForced ?? false
+            self?.combinedDashboardWaitsForced = false
+            await self?.readOtherCombinedDashboardsNeedsYou(force: force)
             await self?.readOtherCombinedDashboardsChats()
             await self?.readOtherCombinedDashboardsBots()
             await self?.readOtherCombinedDashboardsRooms()
