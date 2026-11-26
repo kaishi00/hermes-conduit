@@ -568,11 +568,11 @@ extension AppState {
                 self?.retainNeedsYouRelayGateway(for: item, on: dashboardID)
             }, onFailure: { [weak self] sessionWasNotFound in
                 guard let self else { return }
-                self.errorMessage = Self.linkedSessionFailureMessage(
+                self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                     current: self.errorMessage,
                     sessionWasNotFound: sessionWasNotFound,
                     unavailable: unavailable
-                )
+                ))
             }) else { return false }
             ensureKeptPluginReport(for: dashboardID)
             errorMessage = nil
@@ -592,11 +592,11 @@ extension AppState {
                 retainNeedsYouRelayGateway(for: item, on: dashboardID)
                 return requestOpenSession(primaryID, onFailure: { [weak self] sessionWasNotFound in
                     guard let self else { return }
-                    self.errorMessage = Self.linkedSessionFailureMessage(
+                    self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                         current: self.errorMessage,
                         sessionWasNotFound: sessionWasNotFound,
                         unavailable: unavailable
-                    )
+                    ))
                 })
             }
             awaitFarNeedsYouChatOpen(open, reveal: reveal)
@@ -638,7 +638,7 @@ extension AppState {
                 self.closeFarRoomIfLetGo(runtime, dashboardID)
                 guard outcome == .retry, self.chatViewportTransitionGeneration == viewport,
                       self.groupRoomEpoch == roomEpoch else { return }
-                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                self.showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
             }
             return
         }
@@ -682,7 +682,7 @@ extension AppState {
                 // Offline, or Hermes' rooms not read yet: say so, as a chat's
                 // open does, unless something opened meanwhile.
                 guard await self.openNotificationRoom(roomID) == .retry, owned() else { return }
-                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                self.showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
             }
             return
         }

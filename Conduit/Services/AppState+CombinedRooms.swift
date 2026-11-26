@@ -387,7 +387,7 @@ extension AppState {
                   chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return }
             // Its kept connection went meanwhile: say so, rather than nothing.
             guard keptRuntimeOpeningRoomsInPlace(tile.dashboardID) === runtime else {
-                errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
                 return
             }
             await actAcrossAwaits(onRuntime: runtime) { await openCombinedRoomTile(tile) }
@@ -425,7 +425,7 @@ extension AppState {
         guard keptRuntimeOpeningRoomsInPlace(id) !== runtime, activeRoomSurface?.dashboardID == id,
               id != dashboardIDOnScreen else { return }
         closeRoomSurface(clearingRoomError: false)
-        errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+        showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
     }
 
     /// Reads what a kept dashboard's rooms need on its own runtime, once
@@ -461,7 +461,7 @@ extension AppState {
         switch tile.kind {
         case .hosted(let room):
             if await openNotificationRoom(room.roomID) == .retry, activeDashboardID == tile.dashboardID {
-                errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
             }
         case .copy(let copy):
             // A chat or room opened while its copies are read owns the
@@ -500,9 +500,9 @@ extension AppState {
             let found = unread ? listed : read?.first { $0.id == copy.id }
             guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             guard let found else {
-                errorMessage = unread
+                showChatOpenFailure(unread
                     ? AppLocalization.string("Couldn't open that chat. Try again.")
-                    : AppLocalization.string("That chat is no longer available.")
+                    : AppLocalization.string("That chat is no longer available."))
                 return
             }
             await openRoomCopy(found)

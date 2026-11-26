@@ -459,9 +459,9 @@ extension AppState {
            // the error already showing (a retry that failed the same way);
            // an error from before it doesn't.
            errorMessage == nil || errorMessageWrites == writes {
-            errorMessage = AppLocalization.string(
+            showChatOpenFailure(AppLocalization.string(
                 "Could not open \(bot.displayLabel)'s Bot Chat."
-            )
+            ))
         }
         return outcome == .opened
     }
@@ -1079,6 +1079,7 @@ extension AppState {
             cancelExplicitSessionOpen()
             widgetLaunchCoordinator.supersede()
             noteActiveChatSeen()
+            clearChatOpenFailure()
             return Task { true }
         }
         cancelExplicitSessionOpen()
@@ -1370,7 +1371,26 @@ extension AppState {
         // copy of it.
         if let leftReply { releaseFollowedChat(answering: leftReply.sessionIDs) }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
+        clearChatOpenFailure()
         return (.opened, false, false)
+    }
+
+    /// Says an open failed: the chat couldn't be opened, or isn't there any
+    /// more. It's the open's word, not the chat's, so it stays across chat
+    /// switches until a chat opens fine (issue 3317: it stayed red over
+    /// every chat opened after, for as long as Conduit ran).
+    func showChatOpenFailure(_ message: String) {
+        errorMessage = message
+        chatOpenFailureShown = message
+    }
+
+    /// A chat opened fine (any chat, or the same one tried again): an open's
+    /// failure still on the line is old news. Anything written over it since
+    /// (a sign-in, a setting, the chat's own error) stays.
+    func clearChatOpenFailure() {
+        guard let shown = chatOpenFailureShown else { return }
+        chatOpenFailureShown = nil
+        if errorMessage == shown { errorMessage = nil }
     }
 
     /// Whether saved rows end in a turn with no reply yet: the user's latest
@@ -2221,6 +2241,7 @@ extension AppState {
         guard chatViewportTransitionIsCurrent(generation: failure.transition),
               groupRoomEpoch == failure.roomEpoch else { return }
         chatSyncErrorMessage = failure.message
+        if activeRoomSurface == nil { chatOpenFailureShown = failure.message }
     }
 
     /// The route ended somewhere that explained itself (`unverified`'s own

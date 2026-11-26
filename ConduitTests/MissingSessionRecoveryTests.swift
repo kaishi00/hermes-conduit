@@ -547,6 +547,40 @@ final class MissingSessionRecoveryTests: XCTestCase {
         XCTAssertNil(f.appState.offlineChatPresentation)
     }
 
+    /// Issue 3317: an open's own failure stayed red over every chat opened
+    /// after it. A chat opening fine takes it down; an error written over it
+    /// since stays.
+    func testAnOpensFailureGoesOnceAChatOpensFine() async {
+        let requests = Requests()
+        let f = makeFixture(
+            saved: "other",
+            catalog: [session("gone"), session("other"), session("third")],
+            open: { id in
+                if id == "gone" { throw self.notFound }
+                return self.resumed(id)
+            },
+            requests: requests
+        )
+        f.appState.isConnected = true
+        f.appState.sessions = [session("gone"), session("other"), session("third")]
+        let failure = AppLocalization.string("Couldn't open that chat. Try again.")
+
+        // What a failed open's caller says (a link, a notification, a tile).
+        f.appState.showChatOpenFailure(failure)
+        XCTAssertEqual(f.appState.errorMessage, failure)
+
+        let opened = await f.appState.requestOpenSession("other").value
+        XCTAssertTrue(opened)
+        XCTAssertNil(f.appState.errorMessage, "a chat that opened fine takes the open's failure down")
+        XCTAssertNil(f.appState.chatOpenFailureShown)
+
+        f.appState.showChatOpenFailure(failure)
+        f.appState.errorMessage = "Update Hermes to use Bot Mode."
+        let openedAgain = await f.appState.requestOpenSession("third").value
+        XCTAssertTrue(openedAgain)
+        XCTAssertEqual(f.appState.errorMessage, "Update Hermes to use Bot Mode.", "an error that isn't an open's stays")
+    }
+
     // MARK: - New Chat while the saved copy is up
 
     /// The saved copy does not lock New Chat out once the gateway is live:

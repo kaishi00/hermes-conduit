@@ -300,7 +300,7 @@ extension AppState {
         if refused {
             // The same open would hear the same answer.
             discardNotificationRouteFailure(for: target)
-            errorMessage = message
+            showChatOpenFailure(message)
             return .failed
         }
         // Said when the retries run out with no chat opened, as the
@@ -469,9 +469,9 @@ extension AppState {
         let unavailable = AppLocalization.string("WidgetLaunch.ConversationUnavailable")
         let open = startFarChatOpen(session, in: workspace.dashboardID, onFailure: { [weak self] sessionWasNotFound in
             guard let self else { return }
-            self.errorMessage = Self.linkedSessionFailureMessage(
+            self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                 current: self.errorMessage, sessionWasNotFound: sessionWasNotFound, unavailable: unavailable
-            )
+            ))
         })
         if open != nil { errorMessage = nil }
         return open != nil

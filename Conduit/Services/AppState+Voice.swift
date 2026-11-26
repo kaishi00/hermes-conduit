@@ -1044,7 +1044,7 @@ extension AppState {
             return
         }
         guard let chatID = link?.chatSessionID else {
-            errorMessage = AppLocalization.string("That chat is no longer available.")
+            showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
             return
         }
         openLinkedSession(chatID, unavailable: AppLocalization.string("That chat is no longer available."))
