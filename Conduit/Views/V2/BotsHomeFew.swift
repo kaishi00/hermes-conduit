@@ -104,11 +104,21 @@ struct BotLastReply: View {
     /// changes as it shows again.
     private var readKey: String {
         let chat = bot.canonicalSession
-        let openTail = shell.isTabActive && !shell.isRootCovered && appState.activeBotChatProfile == bot.name
-            ? Self.replyKey(appState.messages) : ""
+        let openTail = Self.openTail(
+            isShown: shell.isTabActive && !shell.isRootCovered,
+            isOpen: appState.activeBotChatProfile == bot.name,
+            messages: appState.messages
+        )
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
                 String(appState.isConnected), String(shell.isTabActive),
                 String(shell.isRootCovered)].joined(separator: "\u{1F}")
+    }
+
+    /// The open chat's part of the key: its newest reply, read only while
+    /// Bots Home shows (its tab picked, nothing pushed over it), so the
+    /// transcript, observed past the tab's hold, isn't read behind it.
+    static func openTail(isShown: Bool, isOpen: Bool, messages: @autoclosure () -> [ChatMessage]) -> String {
+        isShown && isOpen ? replyKey(messages()) : ""
     }
 
     /// The open chat's newest reply as the re-read follows it: the row
