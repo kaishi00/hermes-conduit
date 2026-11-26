@@ -1506,11 +1506,12 @@ it starts GPT-Live without one · the notifier README's Watch audio section
 - The plugin never installs into Hermes' own Python: it makes its own environment, with venv and pip from the Python Hermes runs, else uv. A Hermes Python that already has both aiortc and av is used as it is, with Hermes' import path.
 - The environment is made without Hermes' PYTHONPATH and pip runs isolated, so it gets its own copy of every package aiortc needs, even ones Hermes already has. The helper runs isolated in that environment and can't see Hermes' packages (2026-10-25, #1254, notifier #370).
 - The environment counts as ready only once its marker names the plugin's aiortc pin; a failed prepare writes none, so the next Set up makes it again.
+- A host's admin can turn prepare off with `CONDUIT_WATCH_AUDIO_PREPARE=off`: it then runs neither pip nor uv and answers failed with a reason saying so, which Set up and the Watch show as they show any failed prepare; a Python that already has aiortc and av is still used. Unset, nothing changes (2026-11-26, notifier issue 156, notifier #1098).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-26, #1247 (the Watch broker's bridge start keeps Conduit running through BackgroundTaskHold); 2026-10-25, at #1254.
+**Checked:** 2026-11-26, #3338 with notifier #1098 (CONDUIT_WATCH_AUDIO_PREPARE=off; the app shows the route's reason as it is, so no app change); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-26, #1247 (the Watch broker's bridge start keeps Conduit running through BackgroundTaskHold); 2026-10-25, at #1254.
 
 ## A Watch call with no network
 
@@ -5577,9 +5578,9 @@ relay · the plugin's reporter (phases, tool categories, context, ends) · the
 relay's route, which turns reports into Live Activity pushes · the widget's
 Lock Screen and Dynamic Island views · Settings > Notifications > Progress on
 the Lock Screen · a tap on the card, which opens the chat · the plugin's
-CHANGELOG · Conduit on a Mac, which has none of it · a message from a kept
-chat's box (A chat beside the open one), its card kept current from that
-chat's events
+CHANGELOG · the notifier README's Lock Screen progress section · Conduit on
+a Mac, which has none of it · a message from a kept chat's box (A chat beside
+the open one), its card kept current from that chat's events
 
 **Desktop app:** not applicable: Live Activities are iOS-only.
 
@@ -5600,6 +5601,7 @@ chat's events
 - On a Mac there is no card: `LiveTurnActivities.shared` is nil there, so nothing starts, adopts or ends one and Settings shows no Lock Screen section. ActivityKit is weak-linked (in the widget extension too), because macOS 14 has none for iPhone and iPad apps and every build that linked it strongly stopped at launch on Sonoma; nothing may touch it on a Mac (2026-11-06, #1891, issue 1877).
 - A tap whose open fails says the chat is gone only when Hermes refused this open's own reconcile with the resume's not found (4007); a Kanban worker keeps its own words, any other failure its own error, and one with none says "Couldn't open that chat. Try again." (2026-11-07, #1918 carrying #1917).
 - A chat that closes while its turn runs (Hermes Desktop letting it go, `/new`, Hermes exiting) ends that turn stopped, which ends its card, frees the bot's screen and settles its held reply and room asks. Hermes says so with `on_session_end` and no turn named, and skips that call when another chat's close is still in it, so the plugin also takes the close from `on_session_finalize`; a close after the turn's own end does nothing (2026-11-15, notifier issue 820, NousResearch/hermes-agent#104865).
+- The first gateway to report on a card owns it: another gateway paired with the same phone is answered `tracked: false` and never updates or ends that card, nor replaces an end kept for one not yet registered; a kept end binds the card registered after it to its gateway (2026-11-26, notifier issue 156, notifier #1098).
 
 **Open gaps**
 - The relay keeps registrations and unwatched ends in memory: a relay restart during a turn leaves its card to Conduit's next time on screen, or to iOS's 8 hours.
@@ -5607,7 +5609,7 @@ chat's events
 - The widget bundle still lists the Live Activity on a Mac: `WidgetBundleBuilder` takes no runtime `if` (#1891's try didn't compile), so whether the launcher widgets load on macOS 14 is untried.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-11-15, #2590 (all-live stage 2 merged into main with main's changes); 2026-11-15, #2579 (a message from the pane's or a chat window's box starts a card, kept current from that chat's events); 2026-11-15, #2531 with notifier #826 (a chat closed mid-turn ends it stopped through on_session_finalize when Hermes skips its on_session_end, issue 820); 2026-11-13, #2392 (a card in another profile on screen, a Bot Chat's on Bots Home, settles from that profile's registry read by name); 2026-11-12, #2304 (paths the AppState split missed, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (map paths for code moved out of AppState.swift, issue 828); 2026-11-10, #2111 with notifier #666 (a script's, a one-shot's or a Kanban worker's turn starts and ends no card; see Notifications); 2026-11-07, #1918, carrying #1917 (a failed tap calls the chat gone only on Hermes' not found; app links and call cards' transcript links share the open, bot links already said it only from a read roster); 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
+**Checked:** 2026-11-26, #3338 with notifier #1098 (a card belongs to the first gateway that reports on it, issue 156; the app's registration is unchanged); 2026-11-15, #2590 (all-live stage 2 merged into main with main's changes); 2026-11-15, #2579 (a message from the pane's or a chat window's box starts a card, kept current from that chat's events); 2026-11-15, #2531 with notifier #826 (a chat closed mid-turn ends it stopped through on_session_finalize when Hermes skips its on_session_end, issue 820); 2026-11-13, #2392 (a card in another profile on screen, a Bot Chat's on Bots Home, settles from that profile's registry read by name); 2026-11-12, #2304 (paths the AppState split missed, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (map paths for code moved out of AppState.swift, issue 828); 2026-11-10, #2111 with notifier #666 (a script's, a one-shot's or a Kanban worker's turn starts and ends no card; see Notifications); 2026-11-07, #1918, carrying #1917 (a failed tap calls the chat gone only on Hermes' not found; app links and call cards' transcript links share the open, bot links already said it only from a read roster); 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
 
 ## Large code blocks in messages
 
@@ -8285,6 +8287,37 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 - None known.
 
 **Checked:** 2026-11-20, #2924 (issue 2913: the check's 90 s and the update's 30 s are picked by HermesUpdater.timeoutMilliseconds and tested; behavior unchanged); 2026-11-20, #2918 (Update Hermes runs `hermes update` in its own systemd scope, notifier #955; the phone needed no change, as the fix is on the host; the desktop's banner follows the update, desktop#196); 2026-11-20, #2910 (Check for Updates waits up to 90 s, as Hermes' check took 40 s on a real host; desktop#191 does the same); 2026-11-18, #2716 (the page gained the Pair a Computer section; see Pairing a computer); 2026-11-14, #2450 (the Extra headers editor says when an Authorization header is left off and README covers proxies that need it, issue 2442; its code and tests listed); 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+
+## Pairing a host with the push relay
+
+Which relay a Hermes profile pairs with and then sends its notifications,
+Lock Screen progress and Watch requests to: Conduit's one-tap pairing and
+`hermes conduit-push pair` claim a one-time code at a relay and save the URL
+it names.
+
+**Siblings:** Conduit's one-tap pairing (the plugin's pair route) · the CLI's
+`pair` · every request that carries the relay credential (events, unpair,
+Live Activity reports, Watch tools, maps tokens) · the error text Conduit
+shows when a pairing is refused · the notifier README's pairing, proxy and
+allowlist sections
+
+**Desktop app:** not applicable: the desktop doesn't pair a host with the push relay; its notifications come over the dashboard.
+
+**Code**
+- Rules: `notifier/relay_urls.py` (check_claim_base, check_request_url, paired_relay_url, allowed_origins), tests in `notifier/tests/test_relay_urls.py`
+- Route: `notifier/dashboard/api/pairing.py` (pair_profile, _pair_relay_url), tests in `notifier/tests/test_pairing.py`
+- CLI: `notifier/client.py` (claim_pairing, request_json)
+- App: `Conduit/Services/PushNotificationService.swift` (pairProfile, which sends the relay's URL)
+- Text: `notifier/README.md` (Pinning the relays a host uses)
+
+**Rulings**
+- A credential only goes over HTTPS, or plain HTTP to this machine; a claim may also use plain HTTP to a private address, and the relay's HTTPS PUBLIC_URL is what gets saved then. No URL with credentials, a query or a fragment is used, and errors never echo the URL (written down 2026-11-26 with notifier #1098; the rules are older).
+- `CONDUIT_RELAY_ALLOWLIST` is the operator's opt-in: set, both pairing paths and every credentialed request go only to its origins (scheme, host, port), a relay answer off it isn't saved, and a value with no valid origin allows none. Unset, any relay works, so the self-hosted LAN-then-HTTPS pairing keeps working by default (2026-11-26, notifier issue 156, notifier #1098).
+
+**Open gaps**
+- None.
+
+**Checked:** 2026-11-26, #3338 (added with notifier #1098: the relay allowlist, issue 156)
 
 ## Pairing a computer
 
