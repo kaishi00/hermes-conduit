@@ -2896,7 +2896,7 @@ README and docs don't describe the workbench
 **Open gaps**
 - Browser tabs with the host dev-server proxy (desktop issue 451) and the timeline scrubber with the bot's read-only command terminal (desktop issue 453): next PRs.
 
-**Checked:** 2026-11-26, #NNNN (the desktop workbench with Changes, Files and terminals, desktop#622 and notifier #1105)
+**Checked:** 2026-11-26, #3344 (the desktop workbench with Changes, Files and terminals, desktop#622 and notifier #1105)
 
 ## Bots Home
 
