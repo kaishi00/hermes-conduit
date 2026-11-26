@@ -119,9 +119,10 @@ extension HermesVoiceGatewayTimeoutTests {
             IPhoneVoices.forgetInstalled()
         }
         let reads = LockedCount()
+        let listed = [iPhoneVoice("samantha", "Samantha", "en-US")]
         IPhoneVoices.readInstalled = {
             reads.add(onMain: Thread.isMainThread)
-            return [iPhoneVoice("samantha", "Samantha", "en-US")]
+            return listed
         }
         IPhoneVoices.forgetInstalled()
         async let one = IPhoneVoices.installed()
