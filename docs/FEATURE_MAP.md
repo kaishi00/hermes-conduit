@@ -2872,7 +2872,9 @@ bench draws the same tab strip) · the notifier's `workspace-git` and
 `terminals` capabilities and routes (done, notifier #1105) · Settings >
 Workspace & safety (done: the host's Allow terminals switch) · the phone
 (not needed: Eric, 2026-11-25, the phone stays as it is; it has no
-workbench) · the Watch, CarPlay and group rooms (not needed: no folder
+workbench) · Bot Chats and project chats (gap: the bench opens beside a
+chat with a folder in Chats; a Bot Chat open in Bots doesn't offer it yet) ·
+the Watch, CarPlay and group rooms (not needed: no folder
 workspace) · Text: the desktop's captions and shortcut list (done);
 README and docs don't describe the workbench
 
@@ -2888,12 +2890,13 @@ README and docs don't describe the workbench
 **Rulings**
 - One workspace, not features bolted on (Eric, 2026-11-26, B): the bench opens beside a chat that has a folder, with Ctrl+B or ⌘B or the header's button, takes the side panel's place and tucks the chat list to its faces; its views and its terminals draw the chat tabs' strip.
 - Everything lives on the Hermes host: Git runs and shells start there, in the chat's folder, under the Folder's root rules. Pages will render locally, with a host dev server reached through the dashboard (451).
-- Terminals keep running while the drawer folds or Conduit closes, and come back with what they wrote meanwhile (256 KB kept per terminal); closing a tab ends its shell. A host runs at most 8 per profile and 32 in all, and one nobody has watched for a week ends.
+- Terminals keep running while the drawer folds or Conduit closes, and come back with what they wrote meanwhile (256 KB kept per terminal); closing a tab ends its shell. A host runs at most 8 per profile and 32 in all, and one nobody has watched for a week ends (notifier #1105).
 - Settings has a switch that turns terminals off for the whole host, ending every one running; hosted installs, SSH profiles and Windows hosts offer none.
 - Git shows a file that holds keys or passwords in the lists but never its contents, as the Folder does; push and pull never ask for a password (batch mode), and a repository's commands wait for each other.
 - GitHub pull requests are out of v1. The phone is unchanged (Eric, 2026-11-25).
 
 **Open gaps**
+- A Bot Chat open in Bots doesn't offer the bench yet.
 - Browser tabs with the host dev-server proxy (desktop issue 451) and the timeline scrubber with the bot's read-only command terminal (desktop issue 453): next PRs.
 
 **Checked:** 2026-11-26, #3344 (the desktop workbench with Changes, Files and terminals, desktop#622 and notifier #1105)
