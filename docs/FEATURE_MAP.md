@@ -7028,11 +7028,15 @@ The Chats list's sections that open and close from their header (#696):
 Pinned and the date sections (Today, Yesterday, Last 7 days, Older), All's
 profile sections when grouped by profile, and the Projects page's Pinned
 section; each closed one counts its chats and is remembered across launches.
+The same toggle rule covers the other rows that open and close in a list: a
+nest's expander, a profile section's Show more, and a project page's folders.
 
 **Siblings:** the date sections and Pinned (V2: iPhone, iPad's split column
 and the Mac, one view) · All's profile sections (toggleProfileSection) · the
-Projects page's Pinned section · a chat opened from elsewhere opening its
-section (revealActiveSection) · a search or status filter, which keeps every
+Projects page's Pinned section · a nest's expander and a chat opened from
+elsewhere opening its parents (revealActiveNestAncestors) · a profile
+section's Show more and Show fewer · a project page's folders (lanes) · a
+chat opened from elsewhere opening its section (revealActiveSection) · a search or status filter, which keeps every
 section open · VoiceOver (Collapsed/Expanded and the hint) · not needed: the
 drawer sidebar (V1; only nests fold, no sections), Watch, CarPlay and the
 widget (no sections), the notifier (serves no part of it) · text: the
@@ -7045,20 +7049,22 @@ toggle, so the browser keeps the scroll inside the content and issue 1583's
 blank list can't happen there.
 
 **Code**
-- Sections and their saved state: `Conduit/Models/ChatListSections.swift` (ChatListSection; ChatListSectionToggle: when a toggle slides, restsPastEnd)
-- The list: `Conduit/Views/V2/V2ChatsView.swift` (toggleSection, toggleProfileSection, withSectionToggleAnimation, collapsibleHeader, profileSectionHeader, revealActiveSection, V2SectionListRecovery on sessionsList and projectsList)
+- Sections and their saved state: `Conduit/Models/ChatListSections.swift` (ChatListSection; ChatListSectionToggle: when a toggle slides, restsPastEnd; ChatListSectionToggleClock, each list's last toggle)
+- The list: `Conduit/Views/V2/V2ChatsView.swift` (toggleSection, toggleProfileSection, withSectionToggleAnimation, collapsibleHeader, profileSectionHeader, profileShowMoreRow, nestDisclosure, revealActiveSection, revealActiveNestAncestors, withListToggle, V2SectionListRecovery on sessionsList and projectsList)
+- A project page: `Conduit/Views/V2/V2ProjectPage.swift` (laneRows, V2SectionListRecovery on its list)
 - Tests: `ConduitTests/ChatListSectionsTests.swift`
 
 **Rulings**
 - A toggle slides its rows only on a list at rest, for a section that draws 60 rows or fewer open (an open nest's children counted), and 0.5 s or more after the last toggle; otherwise the rows land at once. On a Mac, closing and opening sections quickly while the list still scrolled blanked the whole list until a relaunch (issue 1583, 2026-11-26, #3333).
-- Opening a section for a chat opened elsewhere lands at once, never slides (2026-11-26, #3333, CodeRabbit).
+- Opening a section for a chat opened elsewhere lands at once, never slides (2026-11-26, #3333, CodeRabbit); so does opening its parents' nests (2026-11-26, #3345).
+- A nest's expander counts the rows it opens or closes, its open children's included; Show more counts the chats it adds; a project page's folder counts its chats. Each list keeps its own last toggle, and a list leaving the foreground stops counting as scrolling (2026-11-26, #3345, DeepSeek on #3333).
 - A list that rests showing none of its content (scrolled past its shortened end) for 0.6 s is built again, at its top, as a relaunch did (iOS 18; issue 1583, 2026-11-26, #3333).
 
 **Open gaps**
 - Issue 1583 was never reproduced on a device: the fix follows the reporter's steps and the code, and waits on their check on the next build.
 - iOS 17 can't tell a scrolling list, so there a toggle slides whenever the section is short and the last slide is over, and a list past its end isn't rebuilt.
 
-**Checked:** 2026-11-26, #3333 (added, issue 1583).
+**Checked:** 2026-11-26, #3345 (nests, Show more and a project page's folders follow the rule; recovery on a project page's list); 2026-11-26, #3333 (added, issue 1583).
 
 ## Project chats in Chats
 
@@ -7141,7 +7147,7 @@ folder (Whose project page) · VoiceOver · README.md
 **Open gaps**
 - Scheduled runs follow the profile in use only, as built in #1128. (Live status follows each row's own profile since #2392, see Running and Needs approval in the chats list.)
 
-**Checked:** 2026-11-25, #3280 (the other combined dashboards' rows show Running and approval status, and In messages searches their profiles through their kept connections, `farContentSearches`; tested in `SessionContentSearchTests` and `CrossProfilePresentationCacheTests`); 2026-11-25, #3253 (issue 3147: archiving or deleting a row, another profile's included, leaves the YOLO override, cached presentation, resume state and runtime-id mapping under an alternate id another row of that profile on hand lists too (`idsNoOtherChatHereLists`), and a delete on the dashboard on screen leaves the ids another combined dashboard's chat open in place answers to; the chat's own and stored ids always go; tested); 2026-11-24, #3240 (issue 3147: archiving or deleting another profile's row takes the YOLO override, cached presentation and resume state only for ids the dashboard on screen doesn't list when it runs on another combined dashboard, and a call or pinned reply only under the chat's own ids since another profile's rows can't vouch for its alternates; behavior on the screen's dashboard unchanged); 2026-11-16, #2637 (other combined dashboards' chats from every one of their profiles, a failed profile keeping its rows, grouped per dashboard and profile; tested); 2026-11-16, #2634 (other combined dashboards' chats only in All, and grouped by profile under a section per dashboard); 2026-11-16, #2614 (other combined dashboards' chats join the ungrouped list, not Group by profile); 2026-11-13, #2392 (another profile's rows show Running and waits from their own profile's registry, read by name while All is on; the live status gap closed); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2020 (Current only draws the All chip only while All chats is on, and the two profile sheets carry the way between All and one profile); 2026-11-07, #1972 (All's content search asks the profiles at once, issue 1965); 2026-11-05, #1773 (which other profiles' rows show is otherProfileRowsShown, shared with a project page gathering profiles; All is unchanged); 2026-11-04, #1734 (All's poll reads nothing off screen, issue 1728); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-01, #1619 (All profiles leaves bot workstreams out, see Bot workstreams); 2026-10-31, #1571.
+**Checked:** 2026-11-26, #3345 (issue 1583: profileSection's header and Show more and revealActiveSection follow Opening and closing Chats list sections' toggle rule; nothing else in All changed); 2026-11-25, #3280 (the other combined dashboards' rows show Running and approval status, and In messages searches their profiles through their kept connections, `farContentSearches`; tested in `SessionContentSearchTests` and `CrossProfilePresentationCacheTests`); 2026-11-25, #3253 (issue 3147: archiving or deleting a row, another profile's included, leaves the YOLO override, cached presentation, resume state and runtime-id mapping under an alternate id another row of that profile on hand lists too (`idsNoOtherChatHereLists`), and a delete on the dashboard on screen leaves the ids another combined dashboard's chat open in place answers to; the chat's own and stored ids always go; tested); 2026-11-24, #3240 (issue 3147: archiving or deleting another profile's row takes the YOLO override, cached presentation and resume state only for ids the dashboard on screen doesn't list when it runs on another combined dashboard, and a call or pinned reply only under the chat's own ids since another profile's rows can't vouch for its alternates; behavior on the screen's dashboard unchanged); 2026-11-16, #2637 (other combined dashboards' chats from every one of their profiles, a failed profile keeping its rows, grouped per dashboard and profile; tested); 2026-11-16, #2634 (other combined dashboards' chats only in All, and grouped by profile under a section per dashboard); 2026-11-16, #2614 (other combined dashboards' chats join the ungrouped list, not Group by profile); 2026-11-13, #2392 (another profile's rows show Running and waits from their own profile's registry, read by name while All is on; the live status gap closed); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2020 (Current only draws the All chip only while All chats is on, and the two profile sheets carry the way between All and one profile); 2026-11-07, #1972 (All's content search asks the profiles at once, issue 1965); 2026-11-05, #1773 (which other profiles' rows show is otherProfileRowsShown, shared with a project page gathering profiles; All is unchanged); 2026-11-04, #1734 (All's poll reads nothing off screen, issue 1728); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-01, #1619 (All profiles leaves bot workstreams out, see Bot workstreams); 2026-10-31, #1571.
 
 ## Unread dot on projects
 
