@@ -427,11 +427,16 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
             if voice == nil { onDeviceSpeechLog.notice("No iPhone voice for \(wanted, privacy: .public)") }
             request.voice = voice
             LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: voice))", run: self.traceRun)
-            self.write(request, id: id, number: number)
+            self.write(request, id: id, number: number, onAudio: onAudio)
         }
     }
 
-    private func write(_ request: AVSpeechUtterance, id: Int, number: Int) {
+    private func write(
+        _ request: AVSpeechUtterance,
+        id: Int,
+        number: Int,
+        onAudio: @escaping @MainActor (Data, Double) -> Void
+    ) {
         synthesizer.write(request) { [weak self] buffer in
             // Called off the main thread, in order; the main queue keeps it.
             guard let pcm = buffer as? AVAudioPCMBuffer else { return }
