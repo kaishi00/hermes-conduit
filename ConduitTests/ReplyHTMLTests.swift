@@ -119,6 +119,12 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Click <b>here</b>", "more", "</details>"]),
                        ["<details><summary>S</summary>", "Click <b>here</b>", "more", "</details>"])
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body", "more"]), ["<details><summary>S</summary>", "Body", "more"])
+        let after = ["<details><summary>Results</summary>42 passed</details> Ask me anything!", "Next."]
+        XCTAssertEqual(ReplyHTML.foldsApart(after), after, "words after the close keep the line as written")
+        let comment = ["<details> Tap for details.", "The details.", "</details> <!-- keep -->", "More prose."]
+        XCTAssertEqual(ReplyHTML.foldsApart(comment), comment, "a close with a comment after it doesn't end its line")
+        let attribute = ["<details title=\"</summary>\"> Click <b>here</b>", "</details>"]
+        XCTAssertEqual(ReplyHTML.foldsApart(attribute), attribute, "a summary inside an attribute isn't the fold's summary")
     }
 
     func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {
