@@ -259,7 +259,9 @@ extension AppState {
             // One attempt, never retried: a failure held back for a retry
             // is this open's last word; none held is another open's turn.
             guard attempt.refused != nil else { return .superseded }
-            publishNotificationRouteFailure(for: target)
+            // The room's sheet says it didn't open: the route's own words
+            // would say it a second time (issue 3252).
+            discardNotificationRouteFailure(for: target)
             return .failed
         case .unverified, .afterCall: return .failed
         }

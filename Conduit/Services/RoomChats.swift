@@ -270,7 +270,11 @@ extension AppState {
         // opened), its far chat doesn't open over what's there.
         // Its own first open closes the room, so that one step of the epoch
         // is taken after it for the open of the chat that replaces a gone one.
-        final class RoomEpoch { var value = 0 }
+        // With the room closed by that first open, the epoch no longer
+        // moves: the chat viewport's generation, taken at the re-take, then
+        // says whether a chat or the list was opened since, while the
+        // replacement was made, registered or titled (issue 3252).
+        final class RoomEpoch { var value = 0; var viewport: UInt64? }
         let roomEpoch = RoomEpoch()
         roomEpoch.value = groupRoomEpoch
         // Another profile's chat opens after a switch to it, which would end the call.
@@ -306,7 +310,8 @@ extension AppState {
             open: { [weak self] chatID, profile, title in
                 guard let self, self.activeDashboardID == dashboardID else { return .failed }
                 if let far {
-                    guard self.groupRoomEpoch == roomEpoch.value else { return .superseded }
+                    guard self.groupRoomEpoch == roomEpoch.value,
+                          roomEpoch.viewport.map({ $0 == self.chatViewportTransitionGeneration }) ?? true else { return .superseded }
                     // From the screen's own scope, as a chat link of that
                     // dashboard opens: the open enters its runtime itself.
                     let outcome = await self.actAcrossAwaits(onRuntime: self.runtimeOnScreen) {
@@ -316,6 +321,7 @@ extension AppState {
                     // opened meanwhile keeps the screen from the replacement.
                     if self.groupRoomEpoch == roomEpoch.value &+ 1, self.activeRoomSurface == nil {
                         roomEpoch.value = self.groupRoomEpoch
+                        roomEpoch.viewport = self.chatViewportTransitionGeneration
                     }
                     return outcome
                 }

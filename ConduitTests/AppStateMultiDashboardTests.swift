@@ -2192,6 +2192,39 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.idsKeptOnlyForTheDeletedChat(["chat-1"]), ["chat-1"], "deleted on screen, it is its own")
     }
 
+    /// Issue 3252: a far chat Hermes deleted takes its star from its own
+    /// dashboard's stars even when the delete's answer is no longer the
+    /// screen's (its kept connection let go while the delete was out), and
+    /// the screen's star under that id stays.
+    func testAFarChatsStarGoesWithItsDeleteWhenTheAnswerIsFenced() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let farHeld = HeldDashboardRequests(baseURL: vps.normalizedURL)
+        addTeardownBlock { @MainActor in farHeld.releaseAll() }
+        let connection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        appState.keptDashboardRuntimes[vps.id] = kept
+        let screenChat = macSession("chat-1")
+        appState.sessions = [screenChat]
+        kept.runtime.sessions = [macSession("chat-1")]
+        appState.setSessionStarred(screenChat, starred: true, profile: appState.activeProfile)
+        var farRow = macSession("chat-1")
+        farRow.combinedDashboardID = vps.id
+        appState.toggleFarSessionStarred(farRow, in: vps.id)
+        XCTAssertTrue(appState.isFarSessionStarred(farRow, in: vps.id))
+
+        let delete = Task { await appState.deleteSession(farRow) }
+        try await farHeld.answer()      // the mutation snapshot read
+        appState.keptDashboardRuntimes[vps.id] = nil   // let go while the delete is out
+        try await farHeld.answer()      // the VPS deleted it
+        _ = await delete.value
+
+        XCTAssertFalse(appState.isFarSessionStarred(farRow, in: vps.id), "Starred doesn't list a chat that's gone")
+        appState.farSessionStarsByDashboard = [:]
+        XCTAssertFalse(appState.isFarSessionStarred(farRow, in: vps.id), "nor do its saved stars")
+        XCTAssertTrue(appState.isSessionStarred(screenChat), "the screen's chat under that id keeps its star")
+    }
+
     /// Issue 3147: what is kept by profile and chat id alone (the YOLO
     /// override, the cached presentation, where the list was left) and a
     /// dashboard's runtime-id mapping stay with another chat that answers

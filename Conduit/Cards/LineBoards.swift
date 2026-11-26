@@ -103,6 +103,15 @@ enum LineBoards {
                 }
             case .assistant:
                 let found = Self.ids(in: row.content)
+                // The first assistant row with words after a queued prompt
+                // is taken as the reply. A progress note written before a
+                // tool call reads the same here (a stored row doesn't say
+                // which it is), so a note between the queued prompt and the
+                // reply ends the turn there, and the reply's line can't take
+                // a board drawn before the note; it falls under the row
+                // that drew it (issue 3294). Telling a note from a reply by
+                // the tool row after it would misplace the queued prompt's
+                // own turn when that starts with a tool call.
                 defer {
                     if queuedBeforeReply, !row.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         turn = [:]

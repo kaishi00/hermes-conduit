@@ -1628,10 +1628,14 @@ extension CrossProfilePresentationCacheTests {
         await appState.switchDashboard(to: vps.id)
         _ = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         var waitReads = 0
+        var waitsFail = false
         appState.keptDashboardJSONReader = { _, path in
             if path == "/api/profiles" { return ["profiles": [["name": "default"], ["name": "atlas"]]] }
             if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [String]()] }
-            if path.hasPrefix(NeedsYouStore.path) { waitReads += 1 }
+            if path.hasPrefix(NeedsYouStore.path) {
+                waitReads += 1
+                if waitsFail { throw URLError(.timedOut) }
+            }
             return ["waiting": []]
         }
         let start = Date()
@@ -1647,6 +1651,15 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardWaitsReadAt = appState.combinedDashboardWaitsReadAt.mapValues { (bridge: ObjectIdentifier(NSObject()), at: $0.at) }
         await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(90))
         XCTAssertEqual(waitReads, 8, "a read through another connection doesn't count")
+        // A read that fails doesn't hold the gate: the next pass asks again.
+        waitsFail = true
+        await appState.readOtherCombinedDashboardsNeedsYou(force: true, now: start.addingTimeInterval(100))
+        XCTAssertEqual(waitReads, 10)
+        waitsFail = false
+        await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(120))
+        XCTAssertEqual(waitReads, 12, "a failed read is asked again on the next pass")
+        await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(140))
+        XCTAssertEqual(waitReads, 12, "a read that landed holds the gate again")
         XCTAssertGreaterThan(AppState.farChatMarksReadInterval, NeedsYouStore.pollInterval,
                              "a far dashboard's marks skip a pass inside their interval")
     }

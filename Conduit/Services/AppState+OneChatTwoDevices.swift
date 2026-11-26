@@ -755,6 +755,8 @@ extension AppState {
             }
             // Its pinned replies go too, under the profile it was deleted in.
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+            // Its star, from its own dashboard's stars (issue 3252).
+            dropDeletedChatStar(session, profile: profile, in: dashboardID)
             // A call in it goes on in a new chat (issue 1797).
             noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
@@ -776,9 +778,6 @@ extension AppState {
                 removePinnedState(for: session)
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
-            } else if let dashboardID {
-                // Its star goes from its own dashboard's.
-                dropFarSessionStar(session, profile: profile, in: dashboardID)
             }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
@@ -790,6 +789,8 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+            // Its star, from its own dashboard's stars (issue 3252).
+            dropDeletedChatStar(session, profile: profile, in: dashboardID)
             // And a call in it goes on in a new chat, as above (issue 1797).
             noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             return false
