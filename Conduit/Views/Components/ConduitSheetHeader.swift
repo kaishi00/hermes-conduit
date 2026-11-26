@@ -25,7 +25,9 @@ struct ConduitSheetHeader: View {
             }
         }
         .frame(minHeight: 44)
-        .padding(.horizontal, 16)
+        // Full screen, its close button sits in the window's top trailing
+        // corner: clear of what iOS stands there (a Duo's clock).
+        .cornerClearingHorizontalPadding(16)
         .padding(.top, 8)
         .padding(.bottom, 10)
         .background(.bar)
