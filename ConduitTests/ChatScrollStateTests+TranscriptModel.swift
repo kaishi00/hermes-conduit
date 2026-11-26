@@ -184,6 +184,11 @@ extension ChatScrollStateTests {
         withCopy.savedCopyIsOpening = true
         XCTAssertEqual(rows(withCopy).map(\.kind), [.savedCopyStatus(isOpening: true)], "a picked copy keeps its own status")
 
+        var failed = opening
+        failed.chatOpenFailed = true
+        XCTAssertTrue(rows(failed).isEmpty, "an open that failed: no line beside its error, nor the welcome")
+        XCTAssertEqual(rows(failed, chat).map(\.id), ["u1"], "its rows still draw")
+
         opening.chatIsOpening = false
         XCTAssertEqual(rows(opening).map(\.kind), [.empty], "once Hermes has answered, an empty chat is welcomed")
 

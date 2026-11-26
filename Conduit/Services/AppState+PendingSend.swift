@@ -626,6 +626,15 @@ extension AppState {
         return isConnected || isRecoveringConnection
     }
 
+    /// The chat on screen's open failed (its restore's error is up) and
+    /// nothing is opening it again. Its rows don't say it's opening, and a
+    /// tap that opens it (a question in Needs you) opens it again rather
+    /// than counting it as the chat already open.
+    var openChatOpenFailed: Bool {
+        activeSessionId != nil && reconciliation == nil
+            && shownChat.chatErrorShown?.isRestoreFailure == true
+    }
+
     /// Every id the live chat on screen answers to.
     func liveChatSessionIDs() -> Set<String> {
         guard var ids = offlineChatIdentities() else { return [] }
