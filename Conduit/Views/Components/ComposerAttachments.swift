@@ -414,10 +414,33 @@ struct ComposerAttachmentChip: View {
     private var isPastedText: Bool { PastedText.isPastedText(attachment) }
 
     /// The staged copy a tap previews; nil when the attachment isn't a file
-    /// on this device.
+    /// on this device, or its copy is gone, so the chip isn't tappable.
     private var stagedFileURL: URL? {
-        guard let url = URL(string: attachment.uri), url.isFileURL else { return nil }
+        guard let url = URL(string: attachment.uri), url.isFileURL,
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
+    }
+
+    /// Opens the staged copy in Quick Look. A copy whose path doesn't carry
+    /// its type (a screenshot is staged without one) is shown from a copy
+    /// under its display name, since Quick Look picks its renderer by the
+    /// extension; the presenter removes that copy when the preview closes.
+    private func previewStagedFile(at url: URL) {
+        let title = AttachmentTypePolicy.displayName(for: attachment)
+        let filename = AttachmentPreviewFilename.make(name: attachment.name, uri: url.lastPathComponent)
+        if (filename as NSString).pathExtension.caseInsensitiveCompare(url.pathExtension) == .orderedSame {
+            if !MediaPreviewPresenter.shared.present(fileURL: url, title: title) { Haptics.error() }
+            return
+        }
+        Task {
+            let data = await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: url, options: .mappedIfSafe)
+            }.value
+            guard let data, await MediaPreviewPresenter.shared.present(data: data, filename: filename) else {
+                Haptics.error()
+                return
+            }
+        }
     }
 
     var body: some View {
@@ -443,10 +466,7 @@ struct ComposerAttachmentChip: View {
                     .accessibilityElement(children: .combine)
                     .opensMediaPreview {
                         Haptics.selection()
-                        _ = MediaPreviewPresenter.shared.present(
-                            fileURL: stagedFileURL,
-                            title: AttachmentTypePolicy.displayName(for: attachment)
-                        )
+                        previewStagedFile(at: stagedFileURL)
                     }
                     .accessibilityIdentifier("composer.attachment.preview")
             } else {
