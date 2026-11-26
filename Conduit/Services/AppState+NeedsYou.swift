@@ -675,7 +675,7 @@ extension AppState {
         // its kept runtime when live and its bots are read; only a dashboard
         // whose kept connection was let go or lacks those reads still switches.
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
-            if item.roomID == nil, isOpenChat(item) {
+            if item.roomID == nil, isOpenChat(item), !openChatOpenFailed {
                 pendingNeedsYouReveal = item.asked != nil ? nil : NeedsYouReveal(opening: activeSessionId)
                 dismissSidebarDrawer()
                 if activeRoomSurface != nil { closeGroupRoom() }
@@ -717,7 +717,10 @@ extension AppState {
             return
         }
         guard let sessionID = item.sessionIDs.first else { return }
-        let isOpen = isOpenChat(item)
+        // A chat whose open failed isn't open: the tap opens it again,
+        // rather than leaving it on its error until another chat is opened
+        // first.
+        let isOpen = isOpenChat(item) && !openChatOpenFailed
         // Another profile's chat doesn't open during a call (it says so),
         // so nothing waits to scroll.
         let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isCallEndingProfileSwitch
