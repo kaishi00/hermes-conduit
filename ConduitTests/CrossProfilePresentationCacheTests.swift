@@ -1665,6 +1665,8 @@ extension CrossProfilePresentationCacheTests {
         // kept for the follow-up (#3322's review, issue 3324).
         final class Gate { var hold = false; var held: CheckedContinuation<Void, Never>? }
         let gate = Gate()
+        appState.keptDashboardBotRosterReader = { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: true) }
+        appState.keptDashboardRoomsReader = { _ in [] }
         appState.keptDashboardJSONReader = { _, path in
             if path == "/api/profiles" { return ["profiles": [["name": "default"], ["name": "atlas"]]] }
             if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [String]()] }
