@@ -1376,6 +1376,10 @@ final class CarPlayVoiceCoordinator {
         // A far agent's list reads through its own kept connection, once
         // per open, whatever the screen's connection does.
         if !appState.isConnected, chatCatalogLoad == nil, farAgent?.dashboardID == nil { didRequestChatCatalog = false }
+        // A far read that landed meanwhile (the phone's poll, a
+        // sessions.changed) ends the backoff: a later failed car read
+        // starts over from the shortest wait (#3323's review).
+        if farChatsFailures != nil, let far = farAgent?.dashboardID, farChatsRead(far, in: appState) { farChatsFailures = nil }
         loadChatsIfMissing(appState)
         let chats = shownChatList(in: appState)
         let placeholder = chatsPlaceholder(for: chats, in: appState)

@@ -253,7 +253,9 @@ extension AppState {
         case .opened: return .opened
         case .failed:
             guard attempt.refused == true else { return .superseded }
-            errorMessage = shownError
+            // Only the refusal's own line is taken back: an error written
+            // over it while the open ran stays (#3323's review).
+            if errorMessage == chatOpenFailureShown { errorMessage = shownError }
             return .gone
         case .retry:
             // One attempt, never retried: a failure held back for a retry

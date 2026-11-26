@@ -776,6 +776,9 @@ extension AppState {
             if actingOnRuntimeOnScreen {
                 archivedSessions.removeAll { isRemovedWith($0, session) }
                 removePinnedState(for: session)
+                // dropDeletedChatStar above cleared it when the delete knew
+                // its dashboard; this covers one with no dashboard id (a
+                // registry without one), and is a no-op otherwise.
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
             }
