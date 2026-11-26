@@ -436,15 +436,26 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
 
     /// An approval named by its chat's stored id is about the chat on
     /// screen, as its card is (spokenApprovalsWaiting).
-    func testASessionNamedByTheShownChatsStoredIdIsTheShownChat() {
+    func testASessionNamedByTheShownChatsStoredIdIsTheShownChat() async throws {
         let recorder = ReconnectRecorder()
-        let (appState, _) = makeAppStateResumingTheShownChat(recorder: recorder)
-        let owned = appState.chatOwnSessionIDsForTesting("shown-chat")
-        for id in owned {
-            XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session(id)))
-        }
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.voiceSessionAliases.learn(runtimeID: "shown-chat", storedID: "shown-stored")
+        XCTAssertTrue(appState.chatOwnSessionIDsForTesting("shown-chat").contains("shown-stored"))
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("shown-stored")))
         XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.session("other-chat")))
         XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.noChat))
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .session("shown-stored"))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "a request named by the shown chat's stored id waits for its resume")
+
+        appState.turnState = .idle
+        let resolved = await request.value
+        XCTAssertTrue(resolved === client)
     }
 
     func testCallRequestWithoutCarPlayOffScreenFailsAtOnce() async throws {
