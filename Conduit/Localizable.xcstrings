@@ -200377,6 +200377,170 @@
           }
         }
       }
+    },
+    "Moving background" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewegter Hintergrund"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fondo en movimiento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrière-plan animé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latar bergerak"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sfondo in movimento"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動く背景"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "움직이는 배경"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruchome tło"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fundo em movimento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Движущийся фон"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hareketli arka plan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "动态背景"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動態背景"
+          }
+        }
+      }
+    },
+    "The soft glows behind your chats drift slowly. Turn this off to keep them still, which can help a Mac or an older device stay smooth. Reduce Motion and Low Power Mode keep them still too." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die sanften Lichter hinter deinen Chats bewegen sich langsam. Schalte das aus, damit sie stillstehen – das kann einem Mac oder einem älteren Gerät helfen, flüssig zu bleiben. „Bewegung reduzieren“ und der Stromsparmodus halten sie ebenfalls still."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los suaves destellos detrás de tus chats se desplazan lentamente. Desactívalo para mantenerlos quietos, lo que puede ayudar a que un Mac o un dispositivo más antiguo funcione con fluidez. Reducir movimiento y el modo de bajo consumo también los mantienen quietos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les lueurs douces derrière vos discussions se déplacent lentement. Désactivez cette option pour les figer, ce qui peut aider un Mac ou un appareil plus ancien à rester fluide. Réduire les animations et le mode économie d’énergie les figent aussi."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cahaya lembut di balik obrolan Anda bergerak perlahan. Matikan ini agar tetap diam, yang dapat membantu Mac atau perangkat lama tetap lancar. Kurangi Gerakan dan Mode Daya Rendah juga membuatnya diam."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I bagliori soffusi dietro le tue chat si spostano lentamente. Disattiva questa opzione per tenerli fermi: può aiutare un Mac o un dispositivo meno recente a restare fluido. Anche Riduci movimento e Risparmio energetico li tengono fermi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットの背後にある柔らかな光がゆっくり動きます。オフにすると止まり、Mac や古いデバイスの動作がなめらかになることがあります。「視差効果を減らす」や低電力モードでも止まります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "채팅 뒤의 은은한 빛이 천천히 움직입니다. 끄면 멈춰 있어 Mac이나 오래된 기기가 부드럽게 동작하는 데 도움이 될 수 있습니다. 동작 줄이기와 저전력 모드에서도 멈춥니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delikatne poświaty za czatami powoli się przesuwają. Wyłącz tę opcję, aby pozostały nieruchome – może to pomóc Macowi lub starszemu urządzeniu działać płynnie. Ograniczanie ruchu i tryb niskiego zużycia energii również je zatrzymują."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os brilhos suaves atrás das suas conversas se movem devagar. Desative para mantê-los parados, o que pode ajudar um Mac ou um aparelho mais antigo a continuar fluido. Reduzir Movimento e o Modo de Pouca Energia também os mantêm parados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мягкие отсветы за вашими чатами медленно движутся. Выключите, чтобы они замерли — это может помочь Mac или старому устройству работать плавно. «Уменьшение движения» и режим энергосбережения тоже их останавливают."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbetlerinizin arkasındaki yumuşak ışıklar yavaşça kayar. Sabit kalmaları için bunu kapatın; bu, bir Mac’in veya eski bir aygıtın akıcı kalmasına yardımcı olabilir. Hareketi Azalt ve Düşük Güç Modu da onları sabit tutar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天背后的柔和光晕会缓慢移动。关闭后它们将保持静止，可帮助 Mac 或较旧的设备保持流畅。“减弱动态效果”和低电量模式也会让它们静止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聊天背後的柔和光暈會緩慢移動。關閉後它們會保持靜止，可協助 Mac 或較舊的裝置保持流暢。「減少動態效果」和低耗電模式也會讓它們靜止。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

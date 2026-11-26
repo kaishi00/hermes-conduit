@@ -4057,6 +4057,7 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage(ChatVoiceButtonAction.key) private var chatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
     @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
+    @AppStorage(ConduitBackdropMotionPolicy.preferenceKey) private var backdropDrift = ConduitBackdropMotionPolicy.preferenceDefault
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false
     init(theme: ThemePreference, saveTheme: @escaping (ThemePreference) -> Void) { self.theme = theme; self.saveTheme = saveTheme; _selected = State(initialValue: theme) }
@@ -4078,6 +4079,13 @@ private struct AppearanceSettingsDetail: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 AccentColorPicker(selection: $accentChoice)
+            }
+            ConduitSettingsSection(title: AppLocalization.string("Moving background"), symbol: "wind", tint: .conduitAccent) {
+                Toggle("Moving background", isOn: $backdropDrift)
+                    .tint(.conduitAccent)
+                Text("The soft glows behind your chats drift slowly. Turn this off to keep them still, which can help a Mac or an older device stay smooth. Reduce Motion and Low Power Mode keep them still too.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
             }
             ConduitSettingsSection(title: AppLocalization.string("App language"), symbol: "globe", tint: .conduitAccent) {
                 Text("Choose the language Conduit’s interface uses. Speech, transcription, and provider language settings are unaffected.")
