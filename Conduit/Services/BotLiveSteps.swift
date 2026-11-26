@@ -1,7 +1,7 @@
 import Foundation
 
 /// What one of a bot's running chats is doing now, as the plugin notes it
-/// (GET /live-steps, plugin 0.199+): its phase and, for a tool, the tool's
+/// (GET /live-steps, plugin 0.200+): its phase and, for a tool, the tool's
 /// category, the same coarse one the Lock Screen shows. Bots Home says it
 /// on the portrait in place of "Replying" (Eric, 2026-11-26), for every
 /// chat, not only the ones this phone follows.
