@@ -1712,18 +1712,18 @@ struct V2ChatsView: View {
         nodes: [SessionNesting.Node],
         expanded: Set<String>
     ) -> some View {
-        Section {
+        // The rows it draws open, an open nest's children included, which
+        // decide whether a toggle slides (issue 1583).
+        let items = V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope)
+        return Section {
             if !isCollapsed(section) {
-                listRows(
-                    V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope),
-                    movesPinned: section == .pinned && dragsPinned
-                )
+                listRows(items, movesPinned: section == .pinned && dragsPinned)
             }
         } header: {
             if section == .pinned {
-                pinnedHeader(nodes.map(\.session))
+                pinnedHeader(nodes.map(\.session), rows: items.count)
             } else {
-                collapsibleHeader(section, count: nodes.count)
+                collapsibleHeader(section, count: nodes.count, rows: items.count)
             }
         }
     }
@@ -1847,24 +1847,22 @@ struct V2ChatsView: View {
         nodes: [SessionNesting.Node],
         expanded: Set<String>
     ) -> some View {
-        Section {
+        // Its pinned chats lead it, and move among themselves; then its
+        // newest few until "Show more", unless a search or a status filter
+        // is looking through all of them (a source filter is still a
+        // browse, so it keeps the cap).
+        let preview = AllProfilesChats.preview(
+            nodes,
+            showsAll: !sectionsCollapsible,
+            isPinned: { appState.isSessionPinned($0.session) },
+            isOpen: holdsOpenChat,
+            activity: ChatListSection.latestActivity(in:)
+        )
+        let showsAll = profilesShowingAll.contains(profile)
+        let items = V2ChatsListItem.items(showsAll ? nodes : preview.shown, expanded: expanded, scope: rowScope)
+        return Section {
             if !isProfileCollapsed(profile) {
-                // Its pinned chats lead it, and move among themselves; then
-                // its newest few until "Show more", unless a search or a
-                // status filter is looking through all of them (a source
-                // filter is still a browse, so it keeps the cap).
-                let preview = AllProfilesChats.preview(
-                    nodes,
-                    showsAll: !sectionsCollapsible,
-                    isPinned: { appState.isSessionPinned($0.session) },
-                    isOpen: holdsOpenChat,
-                    activity: ChatListSection.latestActivity(in:)
-                )
-                let showsAll = profilesShowingAll.contains(profile)
-                listRows(
-                    V2ChatsListItem.items(showsAll ? nodes : preview.shown, expanded: expanded, scope: rowScope),
-                    movesPinned: dragsPinned
-                )
+                listRows(items, movesPinned: dragsPinned)
                 // Only while the cap hides something: a profile that shrank
                 // to five gets no "Show fewer" that changes nothing.
                 if preview.hidden > 0 {
@@ -1872,7 +1870,7 @@ struct V2ChatsView: View {
                 }
             }
         } header: {
-            profileSectionHeader(profile, count: nodes.count)
+            profileSectionHeader(profile, count: nodes.count, rows: items.count)
                 .reorderPinnedChatsMenu(isOn: nodes.filter { appState.isSessionPinned($0.session) }.count > 1) {
                     pinnedOrderTarget = PinnedChatsOrderTarget(profile: profile)
                 }
@@ -1917,12 +1915,12 @@ struct V2ChatsView: View {
             : "Lists every chat of this profile."))
     }
 
-    private func profileSectionHeader(_ profile: String, count: Int) -> some View {
+    private func profileSectionHeader(_ profile: String, count: Int, rows: Int) -> some View {
         let name = appState.profileDisplayName(profile)
         let collapsible = sectionsCollapsible
         let collapsed = isProfileCollapsed(profile)
         return Button {
-            toggleProfileSection(profile, rows: count)
+            toggleProfileSection(profile, rows: rows)
         } label: {
             HStack(spacing: 8) {
                 ProfileAvatarView(
@@ -1970,11 +1968,11 @@ struct V2ChatsView: View {
     /// section counts the chats it hides. While a search or status filter
     /// keeps every section open it is a plain header.
     @ViewBuilder
-    private func collapsibleHeader(_ section: ChatListSection, count: Int) -> some View {
+    private func collapsibleHeader(_ section: ChatListSection, count: Int, rows: Int) -> some View {
         if sectionsCollapsible {
             let collapsed = isCollapsed(section)
             Button {
-                toggleSection(section, rows: count)
+                toggleSection(section, rows: rows)
             } label: {
                 HStack(spacing: 6) {
                     Text(section.title)
@@ -2017,9 +2015,9 @@ struct V2ChatsView: View {
     /// The Pinned header, whose touch-and-hold menu (and VoiceOver action)
     /// reorders the profile in use's pinned chats; in All's mixed section
     /// it offers that once the profile in use has two pins there.
-    private func pinnedHeader(_ pinned: [SessionSummary]) -> some View {
+    private func pinnedHeader(_ pinned: [SessionSummary], rows: Int) -> some View {
         let own = pinned.filter { !appState.isOtherProfileRow($0) }.count
-        return collapsibleHeader(.pinned, count: pinned.count)
+        return collapsibleHeader(.pinned, count: pinned.count, rows: rows)
             .reorderPinnedChatsMenu(isOn: own > 1) {
                 pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.activeProfile)
             }
@@ -2041,7 +2039,8 @@ struct V2ChatsView: View {
             pendingSectionReveal = nil
             if let profile = AllProfilesChats.profile(named: appState.activeProfile, in: appState.allProfilesIncluded),
                collapsedProfiles.contains(profile) {
-                toggleProfileSection(profile, rows: 0, haptic: false)
+                // A reveal isn't a tap on the header: it lands at once.
+                toggleProfileSection(profile, rows: .max, haptic: false)
             }
             return
         }
@@ -2053,7 +2052,8 @@ struct V2ChatsView: View {
         ) else { return }
         pendingSectionReveal = nil
         if collapsedSections.contains(section) {
-            toggleSection(section, rows: 0, haptic: false)
+            // A reveal isn't a tap on the header: it lands at once.
+            toggleSection(section, rows: .max, haptic: false)
         }
     }
 
@@ -2391,7 +2391,7 @@ struct V2ChatsView: View {
                         listRows(pinned.map(V2ChatsListItem.leaf), movesPinned: dragsPinned)
                     }
                 } header: {
-                    pinnedHeader(pinned)
+                    pinnedHeader(pinned, rows: pinned.count)
                 }
             }
 

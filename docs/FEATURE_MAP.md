@@ -7040,7 +7040,8 @@ blank list can't happen there.
 - Tests: `ConduitTests/ChatListSectionsTests.swift`
 
 **Rulings**
-- A toggle slides its rows only on a list at rest, for a section of 60 rows or fewer, and 0.5 s or more after the last toggle; otherwise the rows land at once. On a Mac, closing and opening sections quickly while the list still scrolled blanked the whole list until a relaunch (issue 1583, 2026-11-26, #3333).
+- A toggle slides its rows only on a list at rest, for a section that draws 60 rows or fewer open (an open nest's children counted), and 0.5 s or more after the last toggle; otherwise the rows land at once. On a Mac, closing and opening sections quickly while the list still scrolled blanked the whole list until a relaunch (issue 1583, 2026-11-26, #3333).
+- Opening a section for a chat opened elsewhere lands at once, never slides (2026-11-26, #3333, CodeRabbit).
 - A list that rests showing none of its content (scrolled past its shortened end) for 0.6 s is built again, at its top, as a relaunch did (iOS 18; issue 1583, 2026-11-26, #3333).
 
 **Open gaps**
