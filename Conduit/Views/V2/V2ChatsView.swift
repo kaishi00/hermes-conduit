@@ -3068,11 +3068,11 @@ private struct V2SessionLeadingSwipes: View {
         .tint(.yellow)
 
         if appState.canMarkSessionDone(session) {
-            DoneToggleButton(session: session)
+            DoneToggleButton(session: session, inSwipe: true)
                 .tint(.green)
         }
 
-        ReadStateToggleButton(session: session, nest: nest())
+        ReadStateToggleButton(session: session, nest: nest(), inSwipe: true)
             .tint(.blue)
     }
 }
