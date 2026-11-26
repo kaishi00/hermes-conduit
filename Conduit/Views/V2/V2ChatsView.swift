@@ -2285,6 +2285,19 @@ struct V2ChatsView: View {
                   let offsets = PinnedChatOrder.movableOffsets(fromOffsets: source, toOffset: destination, movable: pinned) else { return }
             appState.movePinnedChats(shown, fromOffsets: offsets.source, toOffset: offsets.destination)
         } : nil
+        // A nest's expander slides by the section toggle rule, counting
+        // the rows it opens or closes: every descendant (issue 1583).
+        var nestRows: [String: Int] = [:]
+        for item in items {
+            if case .nest(let node, let key, _) = item.kind {
+                nestRows[key] = node.sessionsInNest.count - 1
+            }
+        }
+        let toggleNest: (String, Bool) -> Void = { key, expanded in
+            withSectionToggleAnimation(rows: nestRows[key] ?? .max) {
+                setExpanded(key, expanded)
+            }
+        }
         return ForEach(items) { item in
             V2ChatsRow(
                 item: item,
@@ -2293,7 +2306,7 @@ struct V2ChatsView: View {
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
                 onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile($0)) },
-                setExpanded: setExpanded
+                setExpanded: toggleNest
             )
             .moveDisabled(!movableIDs.contains(item.id))
         }
@@ -2783,11 +2796,7 @@ struct V2ChatsRowContent: View, Equatable {
         )
         return Button {
             Haptics.light()
-            // The rows it opens or closes, its open children's included.
-            let rows = V2ChatsListItem.items([node], expanded: expandedNestIDs.union([key]), scope: rowScope).count - 1
-            withSectionToggleAnimation(rows: rows) {
-                setExpanded(key, !isExpanded)
-            }
+            setExpanded(key, !isExpanded)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.right")
