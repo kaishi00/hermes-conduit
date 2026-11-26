@@ -84,7 +84,7 @@ extension AppState {
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
             // Its chats' Done marks and mutes, at their own intervals: its
             // rows show them, and its chat's menu changes them, in place.
-            refreshFarChatMarks(id, profiles: profiles, now: now)
+            refreshFarChatMarks(id, profiles: profiles, force: force, now: now)
             // Its chat on screen's resume, refused when its connection came
             // back (the socket couldn't go to the chat's profile then), is
             // asked again.

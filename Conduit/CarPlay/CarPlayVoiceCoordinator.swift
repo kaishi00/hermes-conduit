@@ -1341,7 +1341,10 @@ final class CarPlayVoiceCoordinator {
                 let failures = self.farChatsFailures?.key == key ? (self.farChatsFailures?.count ?? 0) + 1 : 1
                 self.farChatsFailures = (key, failures)
                 try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: failures))
-                guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far else { return }
+                // The list that scheduled it: one closed and opened again
+                // meanwhile keeps its own schedule.
+                guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far,
+                      self.farChatsFailures?.key == key, self.farChatsFailures?.count == failures else { return }
                 self.didRequestChatCatalog = false
             } else {
                 self.farChatsFailures = nil
