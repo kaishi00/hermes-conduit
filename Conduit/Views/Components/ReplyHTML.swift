@@ -110,10 +110,16 @@ enum ReplyHTML {
         let isComplete: Bool
     }
 
-    /// Whether line `index` starts a page: a table row that starts with a tag is the table's.
+    private static let tableSeparator = compiled(#"^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$"#)
+
+    /// Whether line `index` starts a page: a table row or header that
+    /// starts with a tag is the table's.
     static func startsPage(in lines: [String], at index: Int) -> Bool {
         let line = lines[index]
-        return startsPage(line) && !(index > 0 && line.contains("|") && lines[index - 1].contains("|"))
+        guard startsPage(line) else { return false }
+        guard line.contains("|") else { return true }
+        if index > 0, lines[index - 1].contains("|") { return false }
+        return !(index + 1 < lines.count && matches(tableSeparator, lines[index + 1]))
     }
 
     /// The page starting at line `start` (which `startsPage`).
@@ -133,7 +139,7 @@ enum ReplyHTML {
             var next = end
             while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
             // Another page tag after blank lines continues the same page.
-            if next < lines.count, startsPage(lines[next]) {
+            if next < lines.count, startsPage(in: lines, at: next) {
                 while line < next {
                     from += (lines[line] as NSString).length + 1
                     line += 1

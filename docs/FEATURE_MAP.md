@@ -9011,13 +9011,15 @@ text and Recipes rule)
 **Rulings**
 - HTML only for what cards can't do: data, tables and charts a card can show stay on `conduit_show`, and HTML (a page or the text tags) is for a one-off visual no card covers. The briefing says so, and only to a Conduit that draws it (every connected Conduit sending `reply-html`) (Eric, 2026-11-26).
 - A page starts at a page tag at a line's start (up to three spaces in), never at a text tag, a tag-like word (`<Conversation>`) or prose, and runs to where its elements close, blank lines and all; the page tags after it, past blank lines, join it. While the reply streams, a page still open, cut mid-tag or with nothing after it yet shows "Drawing the page when it's finished…"; a finished reply draws what was written.
-- HTML in a fenced code block or a code span is code, as written.
+- HTML in a fenced code block or a code span is code, as written, and a table row or header that starts with a tag is the table's. An open fold's pages count toward the reply's budget of pages mounted at once; a written page past 4 MB shows as its source.
 - A text tag draws only when it's closed; any other tag, or one left open, stays text. A colored `<span>` keeps only its color and background, and only a named color, hex or `rgb()`: nothing else of its style.
 - A `<details>` folds its Markdown away behind its summary (its own line or the next), closed unless written `open`, and folds what's written so far while its closing tag hasn't come.
 - Read Aloud and voices say "(There's a page here.)", live models hear "(a page in the chat)", previews, quotes and pushes read "🗂 Page", and the text tags are taken off; Copy keeps the HTML as written.
 
 **Open gaps**
 - The Watch draws no pages, folds or text tags.
+- A fold's body is drawn on its own: a selection can't run across an open fold, and a reference link (`[guide][ref]`) inside one doesn't find a definition written outside it.
+- Readers take off a drawn tag's name even where the chat leaves it as text (an unclosed `<b>`, a `<span>` with no color, a tag inside a code span that runs over lines).
 - A page's buttons can't send a prompt: its `window.hermes.send` answers `undelivered`, as a `::preview` page's does.
 
 **Checked:** 2026-11-26, #3329 with notifier #1096 and desktop#601 (new entry: HTML in replies, Eric's option A).

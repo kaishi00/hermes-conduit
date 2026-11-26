@@ -263,6 +263,11 @@ struct HTMLPreviewBlock<Fallback: View>: View {
         }
         // Written in the reply: nothing to read.
         if let written {
+            // Past what a file page may be, it shows as its source, as a file that large shows its card.
+            guard written.utf8.count <= HTMLPreviewPage.maximumDocumentBytes else {
+                state = .unavailable
+                return
+            }
             if state != .loaded(written) { show(written) }
             return
         }

@@ -159,8 +159,11 @@ enum MarkdownRichContentPolicy {
             return imageUnits
         case .htmlPreview, .htmlPage:
             return diagramUnits
+        case .fold(_, let body, let isOpen):
+            // An open fold mounts its body at once: its pages and tables count toward the reply's budget.
+            return isOpen ? MarkdownParser.parse(body).reduce(0) { $0 + richUnits($1) } : 0
         case .heading, .paragraph, .quote, .unorderedList, .orderedList,
-             .callout, .columns, .divider, .desktopCard, .fold:
+             .callout, .columns, .divider, .desktopCard:
             return 0
         }
     }
@@ -176,6 +179,8 @@ enum MarkdownRichContentPolicy {
             return formulaUnits
         case .htmlPreview, .htmlPage:
             return diagramUnits
+        case .fold(_, let body, let isOpen):
+            return isOpen ? MarkdownParser.parse(body).reduce(0) { $0 + webPageUnits($1) } : 0
         default:
             return 0
         }

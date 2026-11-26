@@ -3767,7 +3767,7 @@ enum MarkdownParser {
 
             // HTML the reply wrote: a page, drawn as `::preview`'s are, or
             // a fold (ReplyHTML). Either ends the outline.
-            if ReplyHTML.startsPage(line) {
+            if ReplyHTML.startsPage(in: lines, at: index) {
                 let page = ReplyHTML.page(in: lines, at: index)
                 blocks.append(.htmlPage(html: ReplyHTML.html(of: page, in: lines), isComplete: page.isComplete))
                 listIndents = []

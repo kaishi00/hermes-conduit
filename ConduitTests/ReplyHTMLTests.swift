@@ -60,9 +60,19 @@ final class ReplyHTMLTests: XCTestCase {
         ])
     }
 
+    func testAnOpenFoldCountsItsPagesTowardTheReplysBudget() {
+        let fold = MarkdownBlock.fold(summary: "Chart", body: "<div>A</div>\n\nAfter", isOpen: true)
+        XCTAssertEqual(MarkdownRichContentPolicy.richUnits(fold), MarkdownRichContentPolicy.diagramUnits)
+        XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(fold), MarkdownRichContentPolicy.diagramUnits)
+        XCTAssertEqual(MarkdownRichContentPolicy.richUnits(.fold(summary: "Chart", body: "<div>A</div>", isOpen: false)), 0)
+    }
+
     func testATableRowThatStartsWithATagIsTheTables() {
         let table = "Tag | Meaning\n--- | ---\n<div> | container\n\nNext steps"
         XCTAssertEqual(ReplyHTML.pagesSaid(table, as: "Page"), table)
+        let header = "Results:\n<div> | A\n--- | ---\n1 | 2"
+        XCTAssertEqual(ReplyHTML.pagesSaid(header, as: "Page"), header)
+        XCTAssertFalse(MarkdownParser.parse(header).contains { if case .htmlPage = $0 { return true } else { return false } })
     }
 
     func testAVoidElementIsAOneLinePage() {
