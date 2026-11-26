@@ -224,7 +224,7 @@ enum ReplyHTML {
     private static let lineBreakTag = compiled(#"<br\s*/?>"#, [.caseInsensitive])
     /// The tags the chat draws; any other stays text there, so it stays here too.
     private static let drawnTag = compiled(
-        #"</?(?:b|strong|i|em|u|ins|s|del|strike|mark|kbd|sub|sup|span|font|details|summary)(?:\s(?:[^<>"']|"[^"]*"|'[^']*')*)?/?>"#,
+        #"</?(?:b|strong|i|em|u|ins|s|del|strike|mark|kbd|sub|sup|span|font|details|summary)(?:\s+[\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>]+)|\s+open)*\s*/?>"#,
         [.caseInsensitive])
 
     private static func untagged(_ text: String) -> String {

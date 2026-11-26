@@ -184,6 +184,7 @@ final class ReplyHTMLTests: XCTestCase {
     func testReadersTakeOffOnlyTheTagsTheChatDraws() {
         XCTAssertEqual(ReplyHTML.withoutTags("a <b>b</b><br/>c"), "a b c")
         XCTAssertEqual(ReplyHTML.withoutTags("a <video> tag, Vec<String>, <me@example.com>"), "a <video> tag, Vec<String>, <me@example.com>")
+        XCTAssertEqual(ReplyHTML.withoutTags("if a <b and y > z"), "if a <b and y > z")
         XCTAssertEqual(ReplyHTML.withoutTags("`<b>x</b>`"), "`<b>x</b>`")
         XCTAssertEqual(ReplyHTML.withoutTags("```\n<b>x</b>\n```"), "```\n<b>x</b>\n```")
     }
