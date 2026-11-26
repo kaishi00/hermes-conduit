@@ -227,13 +227,15 @@ enum ReplyHTML {
         var codeFence = CodeFence()
         let inCode = lines.map { codeFence.isCode($0) }
         // More `</details>` after it than folds opened after it: one is left over for this line's.
-        // The last line counts as closed later: while a reply streams, its `</details>` hasn't come yet.
         var closes = 0
         for index in lines.indices.reversed() {
             closedAfter[index] = closes > 0
             guard !inCode[index] else { continue }
-            let line = replacing(notCounted, in: lines[index], with: "")
-            closes += foldClosingTag.numberOfMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+            let line = withoutCode(lines[index])
+            // Only a `</details>` ending its line closes a fold, as fold(in:at:) reads it; one in prose doesn't.
+            if matches(foldClosingEnd, line) {
+                closes += foldClosingTag.numberOfMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+            }
             if matches(foldOpeningStart, line) { closes = max(0, closes - 1) }
         }
         for (index, line) in lines.enumerated() {
@@ -244,7 +246,9 @@ enum ReplyHTML {
             var rest = line
             let ns = line as NSString
             if let opening = foldOpeningStart.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)),
-               opensFoldHere(after: ns.substring(with: opening.range(at: 2)), closedLater: closedAfter[index] || index == lines.count - 1) {
+               opensFoldHere(after: ns.substring(with: opening.range(at: 2)),
+                             closedLater: closedAfter[index],
+                             withSummary: ns.substring(with: opening.range(at: 1)).range(of: "</summary>", options: .caseInsensitive) != nil) {
                 let after = ns.substring(with: opening.range(at: 2))
                 guard !after.trimmingCharacters(in: .whitespaces).isEmpty else {
                     out.append(line)
@@ -274,19 +278,28 @@ enum ReplyHTML {
 
     private static let foldClosingTag = compiled(#"</details\s*>"#, [.caseInsensitive])
     private static let tagStart = compiled(#"<[a-zA-Z/!]"#)
-    /// A code span or a comment: a `</details>` in one closes nothing.
-    private static let notCounted = compiled(#"`[^`]*`|<!--.*?-->"#)
+    private static let comment = compiled(#"<!--.*?-->"#)
+
+    /// `line` without its code spans and comments: a `</details>` in one closes nothing.
+    private static func withoutCode(_ line: String) -> String {
+        let ns = NSMutableString(string: line)
+        for span in codeSpans(in: line).reversed() { ns.replaceCharacters(in: span, with: "") }
+        return replacing(comment, in: ns as String, with: "")
+    }
 
     /// Whether a `<details>` starting a line, followed by `after`, is a
     /// fold's opening: nothing after it, a body ending the fold on the line,
-    /// or text with no tags that a later `</details>` closes.
-    /// `<details> and <summary> make a fold.` stays prose.
-    private static func opensFoldHere(after: String, closedLater: Bool) -> Bool {
+    /// a body after its own `<summary>` (its `</details>` later or still
+    /// streaming in), or text with no
+    /// tags that a later `</details>` closes. `<details> and <summary> make a
+    /// fold.` and `<details> is the tag.` ending a reply stay prose.
+    private static func opensFoldHere(after: String, closedLater: Bool, withSummary: Bool) -> Bool {
         let body = after.trimmingCharacters(in: .whitespaces)
         if body.isEmpty { return true }
         // A body starting with a fence mark stays on the line, so it can't open a code block that runs on.
         if body.hasPrefix("```") || body.hasPrefix("~~~") { return false }
         if matches(foldClosingEnd, after) { return true }
+        if withSummary { return true }
         return closedLater && !matches(tagStart, after)
     }
 

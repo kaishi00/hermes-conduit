@@ -179,6 +179,10 @@ extension AppState {
         // follows: the larger count stands.
         counts.waiting = max(counts.waiting, waits)
         counts.working = max(counts.working, running)
+        // The step a running chat is on, for one the registry says runs.
+        if let steps = botLiveSteps[bot.lowercased()], let index {
+            counts.step = BotLiveStep.newest(in: steps, chats: index.workingChats(leavingOut: workstreams))
+        }
         return counts
     }
 
@@ -236,7 +240,49 @@ extension AppState {
         defer { endLiveStatusAsk(key, token: token) }
         while !Task.isCancelled {
             await refreshLiveSessionStatuses()
+            await refreshBotLiveSteps(bots: bots)
             try? await Task.sleep(for: .seconds(PollCadence.stretched(Self.botsHomeLiveStatusInterval, by: deviceConditions())))
         }
+    }
+
+    /// The steps of the bots with a chat running, from the plugin's GET
+    /// /live-steps (Eric, 2026-11-26: what each is doing, not "Replying"),
+    /// for the profile in use and the others by name; a bot with nothing
+    /// running is asked nothing, and its steps go. Only the bots given are
+    /// touched (a Bot Overview asks for its one bot while Bots Home shows
+    /// the rest), and a failed read keeps what the bot last showed.
+    func refreshBotLiveSteps(bots: [String]) async {
+        guard isConnected, notifierPlugin.reports(BotLiveStep.capability), let bridge = dashboardTicketBridge else {
+            if !botLiveSteps.isEmpty { botLiveSteps = [:] }
+            return
+        }
+        let dashboard = activeDashboardID
+        var read: [String: [String: BotLiveStep]] = [:]
+        var idle: Set<String> = []
+        for bot in bots {
+            guard (botLiveChats(bot)?.working ?? 0) > 0 else {
+                idle.insert(bot.lowercased())
+                continue
+            }
+            guard isSceneActive else { return }
+            let path = DashboardPath.withProfile(BotLiveStep.path, profile: bot)
+            guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 6_000),
+                  let steps = BotLiveStep.steps(listed: response) else { continue }
+            read[bot.lowercased()] = steps
+        }
+        // A dashboard switch while the reads were out: not this one's.
+        guard dashboard == activeDashboardID else { return }
+        let next = Self.mergedLiveSteps(botLiveSteps, read: read, idle: idle)
+        if next != botLiveSteps { botLiveSteps = next }
+    }
+
+    /// `current` with the bots just read replaced and the idle ones taken
+    /// out; every other bot keeps its steps.
+    nonisolated static func mergedLiveSteps(_ current: [String: [String: BotLiveStep]],
+                                            read: [String: [String: BotLiveStep]],
+                                            idle: Set<String>) -> [String: [String: BotLiveStep]] {
+        var next = current.filter { !idle.contains($0.key) }
+        next.merge(read) { _, new in new }
+        return next
     }
 }
