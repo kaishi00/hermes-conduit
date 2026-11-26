@@ -4341,8 +4341,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceReadBack.plainSpeech("## 🎉 Launch\nShip it 🚀 today"), "Launch.\nShip it today", "a dropped emoji leaves no stray space")
         XCTAssertEqual(
             VoiceReadBack.plainSpeech("Mail <sam@example.com>, see note[^1].\n<div>Hi</div> and <span class=\"x\">Vec<String></span>\n[^1]: The source."),
-            "Mail sam@example.com, see note.\nHi and Vec<String>\nThe source.",
-            "HTML tags and footnote marks aren't read; an email address and a generic type are"
+            "Mail sam@example.com, see note.\n\(ReplyHTML.spokenNote)\nThe source.",
+            "a page (a line starting with <div>, #3329) is said as a note, footnote marks aren't read; an email address is"
         )
         XCTAssertEqual(VoiceReadBack.plainSpeech("<a title=\"a > b\">Docs</a> here"), "Docs here", "a \">\" in a quoted attribute stays inside the tag")
         XCTAssertEqual(VoiceReadBack.plainSpeech("Run ```make``` or ``a ` b`` now"), "Run make or a ` b now", "code spans of any backtick length")

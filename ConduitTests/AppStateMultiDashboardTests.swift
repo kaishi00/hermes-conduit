@@ -2265,20 +2265,32 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(appState.isSessionStarred(screenChat), "the screen's chat under that id keeps its star")
     }
 
-    /// Issue 3252: a reachable far chat deleted end to end, once on the
-    /// profile its dashboard uses and once on another: its own dashboard's
-    /// stars lose it, and the screen's star, Archived list and pin under
-    /// the same id stay.
+    /// Issue 3252: a reachable far chat deleted end to end on the profile
+    /// its dashboard uses: its own dashboard's stars lose it, and the
+    /// screen's star, Archived list and pin under the same id stay.
     func testAReachableFarChatsDeleteTakesOnlyItsOwnDashboardsStar() async throws {
+        try await deleteAReachableFarChat(id: "chat-1", profile: nil)
+    }
+
+    /// The same for a far chat of another profile there, on a fixture of
+    /// its own.
+    func testAReachableFarChatOfAnotherProfileDeletesTheSameWay() async throws {
+        try await deleteAReachableFarChat(id: "chat-2", profile: "atlas")
+    }
+
+    private func deleteAReachableFarChat(id: String, profile: String?) async throws {
         let (appState, _, vps) = heldSwitchFixture()
         let farHeld = HeldDashboardRequests(baseURL: vps.normalizedURL)
         addTeardownBlock { @MainActor in farHeld.releaseAll() }
         let connection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "held")
         let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
                                         bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        // Its dashboard lists both profiles, so a row of the other one is
+        // deleted under it, not the one its client uses.
+        kept.runtime.profiles = ["default", "atlas"]
         appState.keptDashboardRuntimes[vps.id] = kept
         let screenProfile = appState.activeProfile
-        for (id, profile) in [("chat-1", nil), ("chat-2", "atlas")] as [(String, String?)] {
+        do {
             let screenChat = macSession(id)
             var archived = macSession(id)
             archived.isArchived = true
