@@ -67,7 +67,7 @@ struct LoginView: View {
                 .environmentObject(appState)
         }
         .onAppear { flow.attach(appState) }
-        .onReceive(appState.$pendingLoginFailure) { pending in
+        .onReceive(appState.pendingLoginFailureValues) { pending in
             // Typed handoff from AppState (a refused saved password,
             // requireSignIn). @Published replays the current value to this
             // subscriber on mount, so it lands whether the failure came

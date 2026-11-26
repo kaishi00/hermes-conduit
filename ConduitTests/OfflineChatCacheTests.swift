@@ -3226,7 +3226,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         // The chat re-sync after the refusal may post its own error later.
         var shown: [String?] = []
-        let subscription = appState.$errorMessage.dropFirst().sink { shown.append($0) }
+        let subscription = appState.errorMessageValues.dropFirst().sink { shown.append($0) }
         defer { subscription.cancel() }
 
         let sent = await appState.submitComposer(text: "", attachments: [photo])

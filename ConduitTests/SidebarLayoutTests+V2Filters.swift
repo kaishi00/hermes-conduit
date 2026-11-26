@@ -656,7 +656,7 @@ extension SidebarLayoutTests {
                                                    profile: appState.activeProfile, dashboardID: appState.activeDashboardID)
         XCTAssertNotNil(appState.sessionMute(chat))
         var published = 0
-        let changes = appState.$chatMutes.dropFirst().sink { _ in published += 1 }
+        let changes = appState.chatMutesValues.dropFirst().sink { _ in published += 1 }
         defer { changes.cancel() }
         try await untilChatDone({ published > 0 }, "published when it ends")
         XCTAssertNil(appState.sessionMute(chat))

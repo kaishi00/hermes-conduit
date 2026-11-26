@@ -166,7 +166,7 @@ extension AppState {
                         // Whether the composer wrote the error, even one reading
                         // the same as a banner already on screen.
                         var wroteError = false
-                        let errorWrites = self.$errorMessage.dropFirst().sink { wroteError = $0 != nil }
+                        let errorWrites = self.errorMessageValues.dropFirst().sink { wroteError = $0 != nil }
                         let sent = await self.submitComposer(text: text, onBusy: {})
                         errorWrites.cancel()
                         if sent {
