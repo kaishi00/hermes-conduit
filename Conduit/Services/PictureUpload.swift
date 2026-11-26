@@ -47,10 +47,9 @@ enum PictureUpload {
             kCGImageDestinationLossyCompressionQuality: jpegQuality
         ] as CFDictionary)
         guard CGImageDestinationFinalize(destination), output.length < data.count else { return nil }
-        let stem = (filename as NSString).deletingPathExtension
         return Prepared(
             data: output as Data,
-            filename: (stem.isEmpty ? "image" : stem) + (seeThrough ? ".png" : ".jpg"),
+            filename: AttachmentTypePolicy.pictureFilename(filename, withExtension: seeThrough ? "png" : "jpg"),
             mimeType: seeThrough ? "image/png" : "image/jpeg"
         )
     }

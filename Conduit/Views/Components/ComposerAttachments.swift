@@ -137,15 +137,24 @@ enum AttachmentTypePolicy {
     static func pictureFilename(_ name: String, type: UTType?) -> String {
         guard let type, type.conforms(to: .image), let preferred = type.preferredFilenameExtension else { return name }
         let ext = (name as NSString).pathExtension.lowercased()
-        let named = ext.isEmpty ? nil : UTType(filenameExtension: ext)
-        if named?.conforms(to: type) == true { return name }
-        let stem = named?.conforms(to: .image) == true ? (name as NSString).deletingPathExtension : name
-        return "\(stem.isEmpty ? "photo" : stem).\(preferred)"
+        if !ext.isEmpty, UTType(filenameExtension: ext)?.conforms(to: type) == true { return name }
+        return pictureFilename(name, withExtension: preferred)
+    }
+
+    /// `name` with the picture extension `ext`: a picture extension it has
+    /// is replaced, any other ending ("30", "com") stays part of the name,
+    /// and trailing dots go (issue 3331).
+    static func pictureFilename(_ name: String, withExtension ext: String) -> String {
+        var trimmed = Substring(name)
+        while trimmed.last == "." { trimmed.removeLast() }
+        let current = (String(trimmed) as NSString).pathExtension.lowercased()
+        let isPicture = !current.isEmpty && UTType(filenameExtension: current)?.conforms(to: .image) == true
+        let stem = isPicture ? (String(trimmed) as NSString).deletingPathExtension : String(trimmed)
+        return "\(stem.isEmpty ? "photo" : stem).\(ext)"
     }
 
     static func jpegFilename(for name: String) -> String {
-        let stem = (name as NSString).deletingPathExtension
-        return "\(stem.isEmpty ? "photo" : stem).jpg"
+        pictureFilename(name, withExtension: "jpg")
     }
 
     /// Short label under the name in the composer strip, e.g. "MP4 · 21 MB".
