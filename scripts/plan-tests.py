@@ -851,8 +851,9 @@ def cmd_hosted(args) -> int:
 
 def cmd_validate(args) -> int:
     """Inventory check: every XCTestCase class discovered, none duplicated or
-    malformed, and the timing baseline readable. No cap on the class count:
-    the nightly shards (`hosted`) take any number of classes."""
+    malformed; a missing or unreadable timing baseline only warns. No cap on
+    the class count: the nightly shards (`hosted`) take any number of
+    classes."""
     if not os.path.isdir(args.repo_root):
         print(f"::error::repo root not found: {args.repo_root}")
         return 2

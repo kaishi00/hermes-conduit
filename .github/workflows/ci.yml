@@ -275,10 +275,11 @@ jobs:
       - name: Validate inventory
         run: |
           set -euo pipefail
-          # plan-tests.py owns test discovery: every XCTestCase class is
-          # found, none is duplicated or malformed, and the timing baseline
-          # reads. There is no cap on the class count. Its regression tests
-          # run in ci-self-test.py below.
+          # plan-tests.py owns test discovery: every XCTestCase class
+          # declared on one line is found, and none is duplicated or
+          # malformed. A missing or unreadable timing baseline only warns.
+          # There is no cap on the class count. Its regression tests run in
+          # ci-self-test.py below.
           python3 scripts/plan-tests.py validate --repo-root . \
             --baseline scripts/test-timings.json
 

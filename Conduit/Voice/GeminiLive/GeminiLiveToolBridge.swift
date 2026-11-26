@@ -823,8 +823,10 @@ final class GeminiLiveToolBridge {
                 draft = nil
                 // Their no was about this request: it doesn't go with the
                 // next one as their words. Other words said while it waited
-                // ("also pin the best one") still do (issue 3271).
-                noteLastLineSent()
+                // ("also pin the best one") still do (issue 3271). A no read
+                // from a yes's line marks that line, not one the user began
+                // after it (issue 3285).
+                noteLastLineSent(answerLine)
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "dropped", "message": "Not sent: the user said no, so it won't go to Hermes. Tell them in a few words."], scheduling: .whenIdle)]
             case .no(let change?), .notYet(let change?):
                 draft = nil
@@ -1218,8 +1220,9 @@ final class GeminiLiveToolBridge {
 
     /// Marks only the user's last line sent: their answer, not what they
     /// said before it.
-    private func noteLastLineSent() {
-        guard let last = userLines().last else { return }
+    private func noteLastLineSent(_ line: UUID? = nil) {
+        let lines = userLines()
+        guard let last = line.flatMap({ id in lines.first { $0.id == id } }) ?? lines.last else { return }
         wordsSent[last.id] = last.text.count
     }
 
