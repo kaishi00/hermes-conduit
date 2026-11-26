@@ -2465,6 +2465,16 @@ extension BotModeTests {
         ])
         XCTAssertEqual(index.workingChats(), [["rt-1", "st-1"]])
         XCTAssertEqual(index.workingChats(leavingOut: ["st-1"]), [])
+
+        // A Bot Overview reads its one bot: the others keep their steps, a
+        // failed read keeps the bot's last ones, and an idle bot's go.
+        let ada = ["rt-1": BotLiveStep(phase: .tool, tool: .terminal, since: 1)]
+        let bea = ["rt-5": BotLiveStep(phase: .thinking, tool: nil, since: 2)]
+        let newer = ["rt-1": BotLiveStep(phase: .thinking, tool: nil, since: 3)]
+        let current = ["ada": ada, "bea": bea]
+        XCTAssertEqual(AppState.mergedLiveSteps(current, read: ["ada": newer], idle: []), ["ada": newer, "bea": bea])
+        XCTAssertEqual(AppState.mergedLiveSteps(current, read: [:], idle: []), current)
+        XCTAssertEqual(AppState.mergedLiveSteps(current, read: [:], idle: ["bea"]), ["ada": ada])
     }
 
     /// Live status for every bot: what the bot's chats do (its profile's
