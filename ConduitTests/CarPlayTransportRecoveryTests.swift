@@ -482,6 +482,21 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertTrue(resolved === client)
     }
 
+    /// An id the identity index rebound to another chat is that chat's,
+    /// though the shown chat's own ids still list it.
+    func testAReboundIdIsNotTheShownChat() {
+        let recorder = ReconnectRecorder()
+        let (appState, _) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.voiceSessionAliases.learn(runtimeID: "shown-chat", storedID: "rebound-id")
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("rebound-id")))
+        appState.reconciliation = AppState.Reconciliation(
+            token: UUID(), requestedSessionId: "shown-chat", movedOnSessionIDs: ["rebound-id"]
+        )
+
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.session("rebound-id")))
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("shown-chat")))
+    }
+
     func testCallRequestWithoutCarPlayOffScreenFailsAtOnce() async throws {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)
