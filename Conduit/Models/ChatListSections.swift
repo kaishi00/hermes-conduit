@@ -236,3 +236,19 @@ enum ChatListSectionToggle {
         contentHeight > 0 && visibleMinY >= contentHeight
     }
 }
+
+/// A list's last toggle that opened or closed rows, for the settle rule:
+/// each list (the Chats list, a project page) keeps its own.
+struct ChatListSectionToggleClock: Equatable {
+    private(set) var last = Date.distantPast
+
+    /// Whether this toggle slides its rows, and it becomes the last.
+    mutating func animates(listMoving: Bool, rows: Int, now: Date = Date()) -> Bool {
+        defer { last = now }
+        return ChatListSectionToggle.animates(
+            listMoving: listMoving,
+            rows: rows,
+            sinceLastToggle: now.timeIntervalSince(last)
+        )
+    }
+}

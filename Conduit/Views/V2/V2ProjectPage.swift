@@ -30,6 +30,11 @@ struct V2ProjectPage: View {
     /// newest one writes back.
     @State private var reloadGeneration = 0
     @State private var collapsedLanes: Set<String> = []
+    /// The list scrolling, the last lane toggle, and the list's rebuilds,
+    /// as the Chats list's sections keep them (issue 1583).
+    @State private var listMoving = false
+    @State private var toggleClock = ChatListSectionToggleClock()
+    @State private var listGeneration = 0
     /// The profile the page opened in: its project is the page's, and a
     /// tap on another profile's chat switches away from it.
     @State private var owner: String?
@@ -217,6 +222,8 @@ struct V2ProjectPage: View {
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 1)
             .modifier(V2SoftTopScrollEdge(isOn: true))
+            .modifier(V2SectionListRecovery(moving: $listMoving, generation: $listGeneration))
+            .id(listGeneration)
             .refreshable { await reload(force: true) }
         }
         .navigationTitle(project.title)
@@ -356,7 +363,10 @@ struct V2ProjectPage: View {
         let isCollapsed = collapsedLanes.contains(lane.id)
         Button {
             Haptics.light()
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            // Slides only on a list at rest, for a short lane, once the
+            // last slide is over, as the Chats list's sections (issue 1583).
+            let animates = toggleClock.animates(listMoving: listMoving, rows: lane.sessions.count)
+            withListToggle(animates: animates, reduceMotion: reduceMotion) {
                 if isCollapsed { collapsedLanes.remove(lane.id) } else { collapsedLanes.insert(lane.id) }
             }
         } label: {
