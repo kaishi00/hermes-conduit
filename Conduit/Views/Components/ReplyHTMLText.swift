@@ -74,7 +74,13 @@ extension ReplyHTML {
             guard let at = stack.lastIndex(where: { $0.name == found.name }) else { continue }
             let opening = stack[at].index
             stack.removeSubrange(at...)
-            guard styles.count < maximumStyles, let style = tags[opening].tag else { continue }
+            guard let style = tags[opening].tag else {
+                // A span with no color a reply may use pairs and draws nothing: its tags go.
+                replacements.append((tags[opening].range, ""))
+                replacements.append((found.range, ""))
+                continue
+            }
+            guard styles.count < maximumStyles else { continue }
             replacements.append((tags[opening].range, mark(openBase, styles.count)))
             replacements.append((found.range, mark(closeBase, styles.count)))
             styles.append(style)

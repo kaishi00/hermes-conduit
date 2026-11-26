@@ -65,6 +65,9 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(MarkdownRichContentPolicy.richUnits(fold), MarkdownRichContentPolicy.diagramUnits)
         XCTAssertEqual(MarkdownRichContentPolicy.webPageUnits(fold), MarkdownRichContentPolicy.diagramUnits)
         XCTAssertEqual(MarkdownRichContentPolicy.richUnits(.fold(summary: "Chart", body: "<div>A</div>", isOpen: false)), 0)
+        // A preview the fold's chat mounts counts too.
+        let preview = MarkdownBlock.fold(summary: "Chart", body: "::preview{file=\"/tmp/a.html\"}", isOpen: true)
+        XCTAssertEqual(MarkdownRichContentPolicy.richUnits(preview), MarkdownRichContentPolicy.diagramUnits)
     }
 
     func testAPageEndsAtProseAfterItsClosingTagEvenProseWithATag() {
@@ -81,9 +84,38 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.foldsApart(["Write </details> to close one."]), ["Write </details> to close one."])
     }
 
+    func testProseThatStartsWithDetailsStaysProse() {
+        let prose = ["<details> and <summary> make a fold.", "", "After."]
+        XCTAssertEqual(ReplyHTML.foldsApart(prose), prose)
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details> is the tag.", "After."]), ["<details> is the tag.", "After."])
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details data-x=\"a>b\"><summary>S</summary>Body</details>"]),
+                       ["<details data-x=\"a>b\"><summary>S</summary>", "Body", "</details>"])
+    }
+
+    func testAOneLineFoldWhoseBodyStartsWithAFenceStaysAsWritten() {
+        let line = ["<details><summary>S</summary>```code```</details>", "After"]
+        XCTAssertEqual(ReplyHTML.foldsApart(line), line)
+    }
+
+    func testAPageInAOneLineFoldIsSaidAsAPage() {
+        XCTAssertEqual(ReplyHTML.pagesSaid("<details><summary>S</summary><div>A</div></details>", as: "Page"),
+                       "<details><summary>S</summary>\nPage\n</details>")
+    }
+
+    func testOpenInsideAQuotedValueDoesNotOpenAFold() {
+        XCTAssertEqual(ReplyHTML.fold(in: ["<details title=\"open me\">", "<summary>S</summary>", "</details>"], at: 0)?.isOpen, false)
+    }
+
+    func testAPageCarriesOnOnlyAtAPageElementRightAfterIt() {
+        XCTAssertEqual(ReplyHTML.page(in: ["<div>x</div> Use <div> to wrap.", "More prose"], at: 0), .init(start: 0, end: 1, isComplete: true))
+        XCTAssertEqual(ReplyHTML.page(in: ["<div>a</div> <div>b", "</div>", "After"], at: 0).end, 2)
+    }
+
     func testReadersTakeOffOnlyTheTagsThatPairUp() {
         XCTAssertEqual(ReplyHTML.withoutTags("An <b>unclosed tag"), "An <b>unclosed tag")
         XCTAssertEqual(ReplyHTML.withoutTags("click <span hidden>secret</span> now"), "click secret now")
+        XCTAssertEqual(ReplyHTML.withoutTags("Use <b>`make`</b> now."), "Use `make` now.")
+        XCTAssertEqual(ReplyHTML.withoutTags("Write `<b>` then <i>x</i>"), "Write `<b>` then x")
     }
 
     func testAFoldTakesAttributesAndOpensOnlyWhenMarkedOpen() {

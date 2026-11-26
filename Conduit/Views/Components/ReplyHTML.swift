@@ -71,9 +71,11 @@ enum ReplyHTML {
             if let emptied {
                 let lineEnd = ns.range(of: "\n", range: NSRange(location: emptied, length: ns.length - emptied)).location
                 guard let match, lineEnd == NSNotFound || match.range.location <= lineEnd else { return emptied }
-                // Only another page element carries the page on; prose with a tag in it stays prose.
+                // Only another page element right after it carries the page on; prose with a tag in it stays prose.
                 guard match.range(at: 2).location != NSNotFound,
-                      pageTags.contains(ns.substring(with: match.range(at: 2)).lowercased()) else { return emptied }
+                      pageTags.contains(ns.substring(with: match.range(at: 2)).lowercased()),
+                      ns.substring(with: NSRange(location: emptied, length: match.range.location - emptied))
+                          .trimmingCharacters(in: .whitespaces).isEmpty else { return emptied }
             }
             guard let match else { return nil }
             let found = ns.substring(with: match.range)
@@ -166,7 +168,8 @@ enum ReplyHTML {
     /// `text` with each page outside a code fence as `said`; nil drops it.
     static func pagesSaid(_ text: String, as said: String?) -> String {
         guard text.contains("<") else { return text }
-        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        // Folds apart first, so a page inside a fold written on one line is said as a page too.
+        let lines = foldsApart(text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n"))
         var out: [String] = []
         var fence = CodeFence()
         var index = 0
@@ -206,7 +209,7 @@ enum ReplyHTML {
     private static let foldSummary = compiled(#"^ {0,3}<summary>(.*?)</summary>\s*$"#, [.caseInsensitive])
     private static let foldClosing = compiled(#"^ {0,3}</details\s*>\s*$"#, [.caseInsensitive])
 
-    private static let foldOpeningStart = compiled(#"^ {0,3}(<details\b[^>]*>(?:\s*<summary>.*?</summary>)?)(.*)$"#, [.caseInsensitive])
+    private static let foldOpeningStart = compiled(#"^ {0,3}(<details\b(?:[^>"']|"[^"]*"|'[^']*')*>(?:\s*<summary>.*?</summary>)?)(.*)$"#, [.caseInsensitive])
     private static let foldClosingEnd = compiled(#"^(.*?)</details\s*>\s*$"#, [.caseInsensitive])
 
     /// `lines` with a fold written on one line,
@@ -218,14 +221,22 @@ enum ReplyHTML {
         var out: [String] = []
         var fence = CodeFence()
         var depth = 0
-        for line in lines {
+        // Whether a `</details>` comes after line `index`: a tag starting a line of prose opens a fold only then.
+        var closedAfter = [Bool](repeating: false, count: lines.count)
+        var seen = false
+        for index in lines.indices.reversed() {
+            closedAfter[index] = seen
+            if matches(foldClosingTag, lines[index]) { seen = true }
+        }
+        for (index, line) in lines.enumerated() {
             if fence.isCode(line) {
                 out.append(line)
                 continue
             }
             var rest = line
             let ns = line as NSString
-            if let opening = foldOpeningStart.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) {
+            if let opening = foldOpeningStart.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)),
+               opensFoldHere(after: ns.substring(with: opening.range(at: 2)), closedLater: closedAfter[index]) {
                 let after = ns.substring(with: opening.range(at: 2))
                 guard !after.trimmingCharacters(in: .whitespaces).isEmpty else {
                     out.append(line)
@@ -253,6 +264,21 @@ enum ReplyHTML {
         return out
     }
 
+    private static let foldClosingTag = compiled(#"</details\s*>"#, [.caseInsensitive])
+
+    /// Whether a `<details>` starting a line, followed by `after`, is a
+    /// fold's opening: nothing after it, a body ending the fold on the line,
+    /// or text with no tags that a later `</details>` closes.
+    /// `<details> and <summary> make a fold.` stays prose.
+    private static func opensFoldHere(after: String, closedLater: Bool) -> Bool {
+        let body = after.trimmingCharacters(in: .whitespaces)
+        if body.isEmpty { return true }
+        // A body starting with a fence mark stays on the line, so it can't open a code block that runs on.
+        if body.hasPrefix("```") || body.hasPrefix("~~~") { return false }
+        if matches(foldClosingEnd, after) { return true }
+        return closedLater && !after.contains("<") && !after.contains(">")
+    }
+
     /// Whether `line` opens a fold.
     static func opensFold(_ line: String) -> Bool {
         line.contains("<") && matches(foldOpening, line)
@@ -262,7 +288,8 @@ enum ReplyHTML {
     static func fold(in lines: [String], at start: Int) -> Fold? {
         let opening = lines[start] as NSString
         guard let match = foldOpening.firstMatch(in: lines[start], range: NSRange(location: 0, length: opening.length)) else { return nil }
-        let isOpen = match.range(at: 1).length > 0 && matches(openAttribute, opening.substring(with: match.range(at: 1)))
+        let isOpen = match.range(at: 1).length > 0
+            && matches(openAttribute, opening.substring(with: match.range(at: 1)).replacingOccurrences(of: #""[^"]*"|'[^']*'"#, with: "\"\"", options: .regularExpression))
         var summary = match.range(at: 2).location != NSNotFound ? untagged(opening.substring(with: match.range(at: 2))) : nil
         var index = start + 1
         if summary == nil {
@@ -318,24 +345,25 @@ enum ReplyHTML {
         return text.components(separatedBy: "\n").map { line -> String in
             guard !fence.isCode(line), line.contains("<") else { return line }
             let ns = line as NSString
-            var result = ""
+            var spaced = ""
             var at = 0
             for span in codeSpans(in: line) + [NSRange(location: ns.length, length: 0)] {
-                let outside = ns.substring(with: NSRange(location: at, length: span.location - at))
-                result += pairedTagsOut(replacing(lineBreakTag, in: outside, with: " "))
-                result += ns.substring(with: span)
+                spaced += replacing(lineBreakTag, in: ns.substring(with: NSRange(location: at, length: span.location - at)), with: " ")
+                spaced += ns.substring(with: span)
                 at = span.location + span.length
             }
-            return result
+            // Paired over the whole line, a code span's own tags left out: `<b>`make`</b>` pairs.
+            return pairedTagsOut(spaced, outside: codeSpans(in: spaced))
         }.joined(separator: "\n")
     }
 
     /// `text` without the drawn tags that pair up, as the chat draws only
     /// those; an unclosed `<b>` stays, as it does there. A fold's
     /// `<details>` and `<summary>` always go.
-    private static func pairedTagsOut(_ text: String) -> String {
+    private static func pairedTagsOut(_ text: String, outside code: [NSRange] = []) -> String {
         let ns = text as NSString
         let found = drawnTag.matches(in: text, range: NSRange(location: 0, length: ns.length))
+            .filter { match in !code.contains { NSLocationInRange(match.range.location, $0) } }
         guard !found.isEmpty else { return text }
         var dropped = Set<Int>()
         var opened: [(name: String, index: Int)] = []

@@ -161,7 +161,8 @@ enum MarkdownRichContentPolicy {
             return diagramUnits
         case .fold(_, let body, let isOpen):
             // An open fold mounts its body at once: its pages and tables count toward the reply's budget.
-            return isOpen ? MarkdownParser.parse(body).reduce(0) { $0 + richUnits($1) } : 0
+            // Read as the fold draws it at most: with its previews and images, which a nested chat may mount.
+            return isOpen ? MarkdownParser.parse(body, recognizesGatewayMedia: true).reduce(0) { $0 + richUnits($1) } : 0
         case .heading, .paragraph, .quote, .unorderedList, .orderedList,
              .callout, .columns, .divider, .desktopCard:
             return 0
@@ -180,7 +181,7 @@ enum MarkdownRichContentPolicy {
         case .htmlPreview, .htmlPage:
             return diagramUnits
         case .fold(_, let body, let isOpen):
-            return isOpen ? MarkdownParser.parse(body).reduce(0) { $0 + webPageUnits($1) } : 0
+            return isOpen ? MarkdownParser.parse(body, recognizesGatewayMedia: true).reduce(0) { $0 + webPageUnits($1) } : 0
         default:
             return 0
         }
