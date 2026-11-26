@@ -145,13 +145,16 @@ final class TranscriptLayout: UICollectionViewLayout {
             measuredSinceChange.insert(id)
             return
         }
-        guard pendingRows == nil, rows.count == itemsInView else {
-            // Rows applied that the next pass takes up (another chat, as a
-            // swipe from a workstream into its Bot Chat): the index is the
-            // old rows', and a context naming items the collection view no
-            // longer has throws in its layout (App Store Connect crash log,
-            // build 282, and MetricKit reports from 278). The height is
-            // kept and the next pass lays every row out from it.
+        let inView = itemsInView
+        let staleIndex = index >= inView || pendingRows.map { index >= $0.count || $0[index].id != id } ?? false
+        guard !staleIndex else {
+            // The row's index is the old rows' and no longer names it in the
+            // collection view (another chat's rows applied, as on a swipe from
+            // a workstream into its Bot Chat, before the pass that takes them
+            // up): a context naming it, or items past the collection view's,
+            // throws in its layout (App Store Connect crash log, build 282,
+            // and MetricKit reports from 278). The height is kept and the
+            // next pass lays every row out from it.
             heights[id] = height
             measuredSinceChange.insert(id)
             markDirty(from: 0)
@@ -170,7 +173,7 @@ final class TranscriptLayout: UICollectionViewLayout {
         ChatViewportWatch.shared.rowResized()
         markDirty(from: index)
         let context = UICollectionViewLayoutInvalidationContext()
-        context.invalidateItems(at: Self.items(from: index, count: rows.count))
+        context.invalidateItems(at: Self.items(from: index, count: min(rows.count, inView)))
         context.contentSizeAdjustment = CGSize(width: 0, height: adjustment)
         invalidateLayout(with: context)
     }
