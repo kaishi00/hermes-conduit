@@ -475,6 +475,14 @@ struct V2ChatsView: View {
     @State private var collapsedSections = ChatListSection.collapsed(
         from: UserDefaults.standard.string(forKey: V2ChatsView.collapsedSectionsKey) ?? ChatListSection.defaultCollapsedRaw
     )
+    /// The list scrolling (iOS 18), when a section's toggle lands at once
+    /// (issue 1583).
+    @State private var listMoving = false
+    /// The last section toggle, so one right after it lands at once.
+    @State private var lastSectionToggle = Date.distantPast
+    /// Bumped to build the list again when it rests past its end, showing
+    /// nothing (issue 1583).
+    @State private var listGeneration = 0
     /// All grouped by profile: the closed profile sections, by name.
     @State private var collapsedProfiles = Set(
         (UserDefaults.standard.string(forKey: V2ChatsView.collapsedProfilesKey) ?? "")
@@ -1621,6 +1629,8 @@ struct V2ChatsView: View {
         // Right after launch the connection and the catalog publish many
         // times a second: a scroll draws them once it rests.
         .v2HoldsUpdatesWhileScrolling(updates)
+        .modifier(V2SectionListRecovery(moving: $listMoving, generation: $listGeneration))
+        .id(listGeneration)
         .refreshable {
             appState.refreshAllProfilesCatalog()
             // The other combined dashboards' chats only show in All.
@@ -1665,13 +1675,34 @@ struct V2ChatsView: View {
         sectionsCollapsible && collapsedSections.contains(section)
     }
 
-    private func toggleSection(_ section: ChatListSection, haptic: Bool = true) {
+    private func toggleSection(_ section: ChatListSection, rows: Int, haptic: Bool = true) {
         if haptic { Haptics.selection() }
         var collapsed = collapsedSections
         if collapsed.contains(section) { collapsed.remove(section) } else { collapsed.insert(section) }
         UserDefaults.standard.set(ChatListSection.storageValue(collapsed), forKey: Self.collapsedSectionsKey)
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+        withSectionToggleAnimation(rows: rows) {
             collapsedSections = collapsed
+        }
+    }
+
+    /// A section's rows slide in and out only on a list at rest, for a
+    /// short section, once the last toggle's slide is over; otherwise they
+    /// land at once, which kept a Mac's list from going blank when sections
+    /// were toggled quickly while it scrolled (issue 1583).
+    private func withSectionToggleAnimation(rows: Int, _ change: () -> Void) {
+        let now = Date()
+        let animates = ChatListSectionToggle.animates(
+            listMoving: listMoving,
+            rows: rows,
+            sinceLastToggle: now.timeIntervalSince(lastSectionToggle)
+        )
+        lastSectionToggle = now
+        if animates {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion), change)
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, change)
         }
     }
 
@@ -1798,13 +1829,13 @@ struct V2ChatsView: View {
         sectionsCollapsible && collapsedProfiles.contains(profile)
     }
 
-    private func toggleProfileSection(_ profile: String, haptic: Bool = true) {
+    private func toggleProfileSection(_ profile: String, rows: Int, haptic: Bool = true) {
         if haptic { Haptics.selection() }
         var collapsed = collapsedProfiles
         if collapsed.contains(profile) { collapsed.remove(profile) } else { collapsed.insert(profile) }
         collapsed = collapsed.filter { name in appState.profiles.contains(name) }
         UserDefaults.standard.set(collapsed.sorted().joined(separator: "\n"), forKey: Self.collapsedProfilesKey)
-        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+        withSectionToggleAnimation(rows: rows) {
             collapsedProfiles = collapsed
         }
     }
@@ -1891,7 +1922,7 @@ struct V2ChatsView: View {
         let collapsible = sectionsCollapsible
         let collapsed = isProfileCollapsed(profile)
         return Button {
-            toggleProfileSection(profile)
+            toggleProfileSection(profile, rows: count)
         } label: {
             HStack(spacing: 8) {
                 ProfileAvatarView(
@@ -1943,7 +1974,7 @@ struct V2ChatsView: View {
         if sectionsCollapsible {
             let collapsed = isCollapsed(section)
             Button {
-                toggleSection(section)
+                toggleSection(section, rows: count)
             } label: {
                 HStack(spacing: 6) {
                     Text(section.title)
@@ -2010,7 +2041,7 @@ struct V2ChatsView: View {
             pendingSectionReveal = nil
             if let profile = AllProfilesChats.profile(named: appState.activeProfile, in: appState.allProfilesIncluded),
                collapsedProfiles.contains(profile) {
-                toggleProfileSection(profile, haptic: false)
+                toggleProfileSection(profile, rows: 0, haptic: false)
             }
             return
         }
@@ -2022,7 +2053,7 @@ struct V2ChatsView: View {
         ) else { return }
         pendingSectionReveal = nil
         if collapsedSections.contains(section) {
-            toggleSection(section, haptic: false)
+            toggleSection(section, rows: 0, haptic: false)
         }
     }
 
@@ -2418,6 +2449,8 @@ struct V2ChatsView: View {
         .scrollDismissesKeyboard(.immediately)
         .environment(\.defaultMinListRowHeight, 1)
         .v2HoldsUpdatesWhileScrolling(updates)
+        .modifier(V2SectionListRecovery(moving: $listMoving, generation: $listGeneration))
+        .id(listGeneration)
         .refreshable {
             await appState.refreshProjects()
         }
@@ -3336,5 +3369,44 @@ struct V2ConnectionRepairCard: View {
         }
         .padding(14)
         .settingsCard()
+    }
+}
+
+/// Tells the Chats list whether it scrolls, so a section's toggle lands at
+/// once while it does, and builds the list again when it rests past its
+/// end showing nothing, as a relaunch did (issue 1583). iOS 18; earlier
+/// systems toggle without knowing and never rebuild.
+private struct V2SectionListRecovery: ViewModifier {
+    @Binding var moving: Bool
+    @Binding var generation: Int
+    @State private var pastEnd = false
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollPhaseChange { _, phase in
+                    moving = phase != .idle
+                }
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    ChatListSectionToggle.restsPastEnd(
+                        visibleMinY: geometry.visibleRect.minY,
+                        contentHeight: geometry.contentSize.height
+                    )
+                } action: { _, past in
+                    pastEnd = past
+                }
+                // A list that clamps itself does so within a frame or a
+                // slide: only one still past its end after that is built
+                // again.
+                .task(id: pastEnd && !moving) {
+                    guard pastEnd, !moving else { return }
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard !Task.isCancelled, pastEnd, !moving else { return }
+                    generation += 1
+                }
+                .onDisappear { moving = false }
+        } else {
+            content
+        }
     }
 }
