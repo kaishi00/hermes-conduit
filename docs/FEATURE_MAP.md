@@ -7012,6 +7012,43 @@ Sync across devices (the four Sessions bar preferences, as
 
 **Checked:** 2026-11-25, #3301 (Eric: Tasks' and Settings' strips hold every combined dashboard's profiles; of two far picks only the last switches; Rulings); 2026-11-24, #3243 (record only, after #3239: the accent ruling names project titles, dashboards' names and the Archived sheet, which #3239 changed too; the Scheduled search's case-only matching recorded as a gap)
 
+## Opening and closing Chats list sections
+
+The Chats list's sections that open and close from their header (#696):
+Pinned and the date sections (Today, Yesterday, Last 7 days, Older), All's
+profile sections when grouped by profile, and the Projects page's Pinned
+section; each closed one counts its chats and is remembered across launches.
+
+**Siblings:** the date sections and Pinned (V2: iPhone, iPad's split column
+and the Mac, one view) · All's profile sections (toggleProfileSection) · the
+Projects page's Pinned section · a chat opened from elsewhere opening its
+section (revealActiveSection) · a search or status filter, which keeps every
+section open · VoiceOver (Collapsed/Expanded and the hint) · not needed: the
+drawer sidebar (V1; only nests fold, no sections), Watch, CarPlay and the
+widget (no sections), the notifier (serves no part of it) · text: the
+existing VoiceOver strings; no Settings caption or doc describes it
+
+**Desktop app:** has it: the Chats list's sections close from their header
+and stay closed across launches (`desktop/src/renderer/src/components/ChatList.tsx`,
+closedSections). Its list is plain, unvirtualized DOM that doesn't animate a
+toggle, so the browser keeps the scroll inside the content and issue 1583's
+blank list can't happen there.
+
+**Code**
+- Sections and their saved state: `Conduit/Models/ChatListSections.swift` (ChatListSection; ChatListSectionToggle: when a toggle slides, restsPastEnd)
+- The list: `Conduit/Views/V2/V2ChatsView.swift` (toggleSection, toggleProfileSection, withSectionToggleAnimation, collapsibleHeader, profileSectionHeader, revealActiveSection, V2SectionListRecovery on sessionsList and projectsList)
+- Tests: `ConduitTests/ChatListSectionsTests.swift`
+
+**Rulings**
+- A toggle slides its rows only on a list at rest, for a section of 60 rows or fewer, and 0.5 s or more after the last toggle; otherwise the rows land at once. On a Mac, closing and opening sections quickly while the list still scrolled blanked the whole list until a relaunch (issue 1583, 2026-11-26, #3333).
+- A list that rests showing none of its content (scrolled past its shortened end) for 0.6 s is built again, at its top, as a relaunch did (iOS 18; issue 1583, 2026-11-26, #3333).
+
+**Open gaps**
+- Issue 1583 was never reproduced on a device: the fix follows the reporter's steps and the code, and waits on their check on the next build.
+- iOS 17 can't tell a scrolling list, so there a toggle slides whenever the section is short and the last slide is over, and a list past its end isn't rebuilt.
+
+**Checked:** 2026-11-26, #3333 (added, issue 1583).
+
 ## Project chats in Chats
 
 Which of a project's chats the Chats list shows: Settings > Appearance >
