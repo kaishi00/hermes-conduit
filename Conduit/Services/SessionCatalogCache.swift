@@ -19,7 +19,16 @@ import WebKit
 /// while it awaits WebKit, so a request must not overwrite a newer purge when
 /// it resumes.
 struct SessionCatalogCache {
-    static let fullHistoryRefreshInterval: TimeInterval = 5 * 60
+    /// How long a full read of every page (up to 25 of 200 rows) stays
+    /// current. The newest page is read on every change, backstop and
+    /// return, so the older pages only catch a rename or delete made
+    /// elsewhere to a chat past the newest 200; a pull to refresh reads
+    /// them at once (issue 853: every 5 minutes, this was the list's
+    /// heaviest background read).
+    static let fullHistoryRefreshInterval: TimeInterval = 30 * 60
+    /// How long the cron rows read beside the live list serve the reads
+    /// after it: a scheduled run that finished shows within this.
+    static let cronRefreshInterval: TimeInterval = 5 * 60
 
     private(set) var sessionsByKey: [String: [SessionSummary]] = [:]
     private(set) var loadedFullHistoryKeys = Set<String>()
@@ -87,9 +96,13 @@ struct SessionCatalogCache {
         return sessions(forKey: key)
     }
 
+    /// Whether `key`'s listing is due a full read: never read whole, a
+    /// forced read, or older than `maxAge` (the cron rows pass
+    /// `cronRefreshInterval`).
     func shouldLoadFullHistory(
         forKey key: String,
         forceRefresh: Bool,
+        maxAge: TimeInterval = Self.fullHistoryRefreshInterval,
         now: Date = Date()
     ) -> Bool {
         guard !forceRefresh,
@@ -97,7 +110,7 @@ struct SessionCatalogCache {
               let loadedAt = fullHistoryLoadedAt[key] else {
             return true
         }
-        return now.timeIntervalSince(loadedAt) >= Self.fullHistoryRefreshInterval
+        return now.timeIntervalSince(loadedAt) >= maxAge
     }
 
     static let maximumHistoryPages = 25

@@ -27,8 +27,10 @@ extension AppState {
     }
 
     /// How long the projects read after a catalog read stay current when
-    /// the catalog read changed nothing (issue 2357). A project's chat
-    /// count moves with the list, and the Projects page reads on its own.
+    /// the catalog read changed nothing (issue 2357): as long as the full
+    /// catalog read, 30 minutes (issue 853). A catalog read that changes
+    /// the list reads them at once, since a project's chat count moves
+    /// with it, and the Projects page and a pull read on their own.
     static let projectsRereadInterval: TimeInterval = SessionCatalogCache.fullHistoryRefreshInterval
 
     /// Whether a catalog read that listed nothing new reads the projects

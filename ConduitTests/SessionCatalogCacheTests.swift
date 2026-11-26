@@ -332,6 +332,40 @@ final class SessionCatalogCacheTests: XCTestCase {
         )
     }
 
+    func testTheFullReadWaitsHalfAnHourWhileCronRowsRefreshEveryFiveMinutes() {
+        var cache = SessionCatalogCache()
+        let loadedAt = Date(timeIntervalSince1970: 100)
+        XCTAssertTrue(
+            cache.commit(
+                liveSessions: [session(id: "stored-id", title: "Conversation")],
+                liveKey: "default:exclude",
+                cronSessions: [session(id: "cron-id", title: "Cron")],
+                cronKey: "default:cron",
+                historyMarkers: ["default:exclude": loadedAt, "default:cron": loadedAt],
+                at: cache.mutationGeneration
+            )
+        )
+        // Issue 853: the older pages aren't walked every 5 minutes any more.
+        XCTAssertEqual(SessionCatalogCache.fullHistoryRefreshInterval, 30 * 60)
+        XCTAssertEqual(SessionCatalogCache.cronRefreshInterval, 5 * 60)
+        let sixMinutesOn = loadedAt.addingTimeInterval(6 * 60)
+        XCTAssertFalse(
+            cache.shouldLoadFullHistory(forKey: "default:exclude", forceRefresh: false, now: sixMinutesOn)
+        )
+        XCTAssertTrue(
+            cache.shouldLoadFullHistory(
+                forKey: "default:cron",
+                forceRefresh: false,
+                maxAge: SessionCatalogCache.cronRefreshInterval,
+                now: sixMinutesOn
+            )
+        )
+        XCTAssertTrue(
+            cache.shouldLoadFullHistory(forKey: "default:exclude", forceRefresh: true, now: sixMinutesOn),
+            "a pull still reads every page"
+        )
+    }
+
     func testCronHistoryRefreshesAfterCacheLifetime() {
         var cache = SessionCatalogCache()
         let loadedAt = Date(timeIntervalSince1970: 100)
@@ -351,6 +385,7 @@ final class SessionCatalogCacheTests: XCTestCase {
             cache.shouldLoadFullHistory(
                 forKey: "default:cron",
                 forceRefresh: false,
+                maxAge: SessionCatalogCache.cronRefreshInterval,
                 now: loadedAt.addingTimeInterval(1)
             )
         )
@@ -358,7 +393,8 @@ final class SessionCatalogCacheTests: XCTestCase {
             cache.shouldLoadFullHistory(
                 forKey: "default:cron",
                 forceRefresh: false,
-                now: loadedAt.addingTimeInterval(SessionCatalogCache.fullHistoryRefreshInterval + 1)
+                maxAge: SessionCatalogCache.cronRefreshInterval,
+                now: loadedAt.addingTimeInterval(SessionCatalogCache.cronRefreshInterval + 1)
             )
         )
     }

@@ -133,7 +133,8 @@ extension AppState {
                     // changed while either was in flight.
                     let reusesCachedCron = !sessionCatalogCache.shouldLoadFullHistory(
                         forKey: cronKey,
-                        forceRefresh: forceRefresh
+                        forceRefresh: forceRefresh,
+                        maxAge: SessionCatalogCache.cronRefreshInterval
                     ) && sessionCatalogCache.cachedSessions(forKey: cronKey) != nil
                     async let cronFetch: [SessionSummary]? = reusesCachedCron
                         ? nil
@@ -763,7 +764,7 @@ struct ArchivedCallsRead {
     let readAt: Date
 
     /// How long a read serves the catalog reads after it.
-    static let lifetime: TimeInterval = SessionCatalogCache.fullHistoryRefreshInterval
+    static let lifetime: TimeInterval = SessionCatalogCache.cronRefreshInterval
 
     static func key(dashboard: UUID?, profile: String, pages: Int) -> String {
         "\(dashboard?.uuidString ?? "-")|\(profile.lowercased())|\(pages)"
