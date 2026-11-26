@@ -1885,6 +1885,14 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(700))
         XCTAssertEqual(farReads, readsAfterLanding, "nothing more is asked once a read landed")
         XCTAssertNil(failures())
+
+        // Its read going unread again later (the dashboard's roster read
+        // failed, so the profile isn't listed) asks again (#3346's reviews).
+        harness.appState.combinedDashboardChats[farDashboard.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(NSObject()), profiles: [], sessions: [], at: Date()
+        )
+        await settleChats { farReads > readsAfterLanding }
+        XCTAssertGreaterThan(farReads, readsAfterLanding, "a list unread again is asked for again")
         withExtendedLifetime(list) {}
     }
 

@@ -1386,12 +1386,14 @@ final class CarPlayVoiceCoordinator {
         if !appState.isConnected, chatCatalogLoad == nil, farAgent?.dashboardID == nil { didRequestChatCatalog = false }
         // A far read that landed meanwhile (the phone's poll, a
         // sessions.changed) ends the backoff: a later failed car read
-        // starts over from the shortest wait (#3323's review). Its sleeping
-        // retry no longer re-arms the ask, so this does: a list that goes
-        // unread again later is asked for again (#3346's review).
-        if farChatsFailures != nil, let far = farAgent?.dashboardID, farChatsRead(far, in: appState) {
-            farChatsFailures = nil
-            if chatCatalogLoad == nil { didRequestChatCatalog = false }
+        // starts over from the shortest wait (#3323's review).
+        if farChatsFailures != nil, let far = farAgent?.dashboardID, farChatsRead(far, in: appState) { farChatsFailures = nil }
+        // With no backoff armed and no read on its way, a far list that
+        // isn't read (its roster read failed after one landed, say) is
+        // asked for again: the sleeping retry that would have re-armed the
+        // ask is gone (#3346's reviews).
+        if farChatsFailures == nil, chatCatalogLoad == nil, let far = farAgent?.dashboardID, !farChatsRead(far, in: appState) {
+            didRequestChatCatalog = false
         }
         loadChatsIfMissing(appState)
         let chats = shownChatList(in: appState)
