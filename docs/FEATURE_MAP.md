@@ -2907,7 +2907,7 @@ README and docs don't describe the workbench
 - The timeline scrubber with the bot's read-only command terminal (desktop issue 453): next PR.
 - A host page's live reload socket (Vite's or Next's HMR) doesn't pass through yet: the page works, and Reload shows a change.
 
-**Checked:** 2026-11-26, #3344 (the desktop workbench with Changes, Files and terminals, desktop#622 and notifier #1105)
+**Checked:** 2026-11-26, #3352 (Browser tabs, desktop#629 and notifier #1106; before it #3344, the workbench with Changes, Files and terminals)
 
 ## Bots Home
 
