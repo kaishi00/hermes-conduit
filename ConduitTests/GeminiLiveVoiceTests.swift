@@ -1102,6 +1102,29 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.unknownJob))
         XCTAssertFalse(VoiceRequestWords.watchRequestTaken(["status": "not_started", "message": "capped"]))
         XCTAssertFalse(VoiceRequestWords.watchRequestTaken(WatchJobAnswer.result(body: ["ok": false, "detail": "busy"])))
+        // A workstream that didn't pass the request on says not_sent.
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(["status": "not_sent", "message": "busy with another action"]))
+        XCTAssertTrue(VoiceRequestWords.watchRequestTaken(["status": "workstream", "message": AppState.workstreamCallSent]))
+    }
+
+    /// #3293's reviews: each request holds the letters it carried, so a
+    /// refused one's words come back whatever was marked after them.
+    func testALinesUnsentWordsAreTheLettersNoRequestHolds() {
+        let line = "Book a table for four"
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: []).words, line)
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: []).offsets, IndexSet(integersIn: 0..<21))
+        // The line grew after a request took its start: only the rest goes.
+        let first = IndexSet(integersIn: 0..<12)
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: first).words, "for four")
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: first).offsets, IndexSet(integersIn: 12..<21))
+        // An earlier request refused, a later one on the rest taken: the
+        // refused one's words are what's left, not nothing.
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 12..<21)).words, "Book a table")
+        // Gaps on both sides of a held middle go as one line.
+        XCTAssertEqual(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 7..<12)).words, "Book a for four")
+        // All held, or a line that shrank under what was held: nothing.
+        XCTAssertNil(VoiceRequestWords.unclaimed(of: line, claimed: IndexSet(integersIn: 0..<40)).words)
+        XCTAssertNil(VoiceRequestWords.unclaimed(of: "  ", claimed: []).words)
     }
 
     func testGeminiLiveCancelJobSettlesOpenCallsSilentlyAndListReportsJobs() async throws {

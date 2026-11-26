@@ -317,9 +317,10 @@ extension AppState {
     /// its bot's plugin, which takes it as the answer to a question the
     /// workstream waits on, as words that wait behind an approval it waits
     /// on, as an interrupt while it works, and as its next turn otherwise;
-    /// no job session is made. What to tell the call (for the live model, not localized), or
-    /// nil when the chat isn't a workstream's.
-    func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
+    /// no job session is made. What it did with the request (what to tell
+    /// the call is for the live model, not localized), or nil when the
+    /// chat isn't a workstream's.
+    func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> VoiceWorkstreamSend? {
         // The work read here is the dashboard on screen's: a call off its
         // own dashboard sends its request as a job there instead.
         guard callDashboardOffScreen == nil else { return nil }
@@ -344,30 +345,41 @@ extension AppState {
             // A workstream's chat whose row isn't loaded (an older resolved
             // one): still no job of its own.
             guard botWork.workstreamSessionIDs.isDisjoint(with: ids) else {
-                return "This workstream isn't loaded right now, so that wasn't passed on. Say so, and suggest opening it from the Work panel."
+                return VoiceWorkstreamSend(message: "This workstream isn't loaded right now, so that wasn't passed on. Say so, and suggest opening it from the Work panel.", passedOn: false)
             }
             return nil
         }
         let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !words.isEmpty else { return "There were no words to pass on." }
+        guard !words.isEmpty else { return VoiceWorkstreamSend(message: "There were no words to pass on.", passedOn: false) }
         // Another action on it is on its way (a Stop or Reply from the Work
         // panel): nothing was sent, so a retry can't send it twice.
         guard !botWork.isActing(item.ref, profile: profile) else {
-            return "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment."
+            return VoiceWorkstreamSend(message: "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment.", passedOn: false)
         }
         // Read before the send waits: a picture added or removed meanwhile
         // wasn't what this request left behind.
         let leftPicture = pendingScreenshotEntry(forThread: thread) != nil
-        guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
-            return "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again."
+        switch await actOnWorkstreamOutcome(item, profile: profile, action: .send, text: words) {
+        case .done:
+            break
+        case .refused:
+            return VoiceWorkstreamSend(message: "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again.", passedOn: false)
+        case .unknown:
+            // It may have gone: counted as passed on, so a retry doesn't
+            // send the same words twice.
+            return VoiceWorkstreamSend(message: Self.workstreamCallUnknown, passedOn: true)
         }
         // A screenshot or photo waiting on the chat goes with the chat's
         // next turn, never into a workstream's session.
         if leftPicture {
-            return Self.workstreamCallSent + " " + Self.workstreamCallLeftPicture
+            return VoiceWorkstreamSend(message: Self.workstreamCallSent + " " + Self.workstreamCallLeftPicture, passedOn: true)
         }
-        return Self.workstreamCallSent
+        return VoiceWorkstreamSend(message: Self.workstreamCallSent, passedOn: true)
     }
+
+    /// What a workstream's call is told when its request went with no
+    /// answer back.
+    static let workstreamCallUnknown = "Hermes didn't answer whether this workstream got that, and it may have. Tell the user, and don't send it again unless they ask: its chat in the Work panel shows whether it went in."
 
     /// Added when a picture waits on the workstream's chat: the request
     /// went without it.
@@ -537,12 +549,43 @@ extension AppState {
     @discardableResult
     func actOnWorkstream(_ item: BotWorkItem, profile: String, action: BotWorkItem.Action, text: String? = nil,
                          requestID: String? = nil) async -> Bool {
-        guard botWork.begin(item.ref, profile: profile) else { return false }
+        await actOnWorkstreamOutcome(item, profile: profile, action: action, text: text, requestID: requestID) == .done
+    }
+
+    enum WorkstreamActOutcome: Equatable {
+        case done
+        /// Not sent, or the plugin answered that it didn't.
+        case refused
+        /// Sent, with no answer back (a timeout, a dropped connection): the
+        /// plugin may have done it.
+        case unknown
+    }
+
+    /// An action whose request may have reached the plugin though no answer
+    /// came back (#3337's review).
+    nonisolated static func workstreamActMayHaveLanded(_ error: Error) -> Bool {
+        switch error {
+        case DashboardTicketBridgeError.answeredAfterSwitch, is CancellationError:
+            return true
+        case DashboardTicketBridgeError.http(let status, _):
+            return status == 0 || status == 408 || status == 502 || status == 504
+        case let error as URLError:
+            return error.code == .timedOut || error.code == .networkConnectionLost
+        default:
+            return false
+        }
+    }
+
+    /// The same, saying whether an action that failed may have landed.
+    func actOnWorkstreamOutcome(_ item: BotWorkItem, profile: String, action: BotWorkItem.Action, text: String? = nil,
+                                requestID: String? = nil) async -> WorkstreamActOutcome {
+        guard botWork.begin(item.ref, profile: profile) else { return .refused }
         defer { botWork.end(item.ref, profile: profile) }
         botWork.setRefusal(nil, profile: profile)
         // A list read while this is on its way may predate it: it's dropped.
         botWork.noteAction(profile)
         let mark = botWork.mark(profile)
+        var outcome = WorkstreamActOutcome.refused
         do {
             let updated = try await botWorkClient(profile: profile).act(ref: item.ref, action: action, text: text,
                                                                          requestID: requestID)
@@ -553,7 +596,7 @@ extension AppState {
                 voiceBackgroundJobSupervisor.stoppedFromWorkPanel(sessionID: item.sessionID)
             }
             // After a server change the row isn't this server's (the plugin did it all the same).
-            guard botWork.mark(profile).epoch == mark.epoch else { return true }
+            guard botWork.mark(profile).epoch == mark.epoch else { return .done }
             botWork.noteAction(profile)
             if let updated {
                 whileKeepingTitle {
@@ -565,10 +608,11 @@ extension AppState {
             Haptics.success()
             // The buttons free up now; the list is read again behind them.
             Task { await refreshBotWork(profile: profile, afterAction: true) }
-            return true
+            return .done
         } catch {
+            outcome = Self.workstreamActMayHaveLanded(error) ? .unknown : .refused
             // After a server change the refusal isn't this server's either.
-            guard botWork.mark(profile).epoch == mark.epoch else { return false }
+            guard botWork.mark(profile).epoch == mark.epoch else { return outcome }
             if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty {
                 botWork.setRefusal(detail, profile: profile, ref: item.ref)
             } else {
@@ -579,7 +623,7 @@ extension AppState {
         Haptics.warning()
         // The refusal shows now; the row is read again behind it.
         Task { await refreshBotWork(profile: profile, afterAction: true) }
-        return false
+        return outcome
     }
 
     /// The user's Approve or Decline on a question the Bot Chat asked them
