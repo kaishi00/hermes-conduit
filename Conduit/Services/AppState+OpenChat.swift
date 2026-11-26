@@ -1391,6 +1391,9 @@ extension AppState {
         guard let shown = chatOpenFailureShown else { return }
         chatOpenFailureShown = nil
         if errorMessage == shown { errorMessage = nil }
+        // A failure that landed while a room covered the chat waits behind
+        // it; it goes too, or the room closing would bring it back.
+        if chatErrorBehindRoom == shown { chatErrorBehindRoom = nil }
     }
 
     /// Whether saved rows end in a turn with no reply yet: the user's latest
