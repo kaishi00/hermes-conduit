@@ -2241,7 +2241,9 @@ extension AppState {
         guard chatViewportTransitionIsCurrent(generation: failure.transition),
               groupRoomEpoch == failure.roomEpoch else { return }
         chatSyncErrorMessage = failure.message
-        if activeRoomSurface == nil { chatOpenFailureShown = failure.message }
+        // Behind a room too: it reaches the line when the room closes back
+        // to the chat, still the open's failure.
+        chatOpenFailureShown = failure.message
     }
 
     /// The route ended somewhere that explained itself (`unverified`'s own

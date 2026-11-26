@@ -816,7 +816,7 @@ extension AppState {
                 if let bot = Self.linkedBot(named: profile, in: self.farBotRoster(in: dashboardID)) {
                     _ = self.openFarBotChatInPlace(of: bot, in: dashboardID)
                 } else {
-                    self.errorMessage = Self.missingLinkedBotMessage(for: runtime.botModePhase)
+                    self.showMissingLinkedBot(for: runtime.botModePhase)
                 }
             }
             return

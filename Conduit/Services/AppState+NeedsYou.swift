@@ -546,7 +546,7 @@ extension AppState {
                         self.pendingNeedsYouReveal = nil
                     }
                     if self.errorMessage == nil {
-                        self.errorMessage = unavailable
+                        self.showChatOpenFailure(unavailable)
                     }
                     return
                 }

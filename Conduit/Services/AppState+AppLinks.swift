@@ -180,7 +180,7 @@ extension AppState {
                 bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
             guard let bot else {
-                self.errorMessage = Self.missingLinkedBotMessage(for: self.botModePhase)
+                self.showMissingLinkedBot(for: self.botModePhase)
                 return
             }
             // Its open is on its way from here (`botChatOnItsWay`).
@@ -191,6 +191,18 @@ extension AppState {
             if await self.openBotChat(for: bot) {
                 self.dismissSidebarDrawer()
             }
+        }
+    }
+
+    /// Says a bot link's bot isn't listed: an open's failure, which a chat
+    /// opening fine takes down (issue 3317), unless it's that this Hermes
+    /// has no Bot Mode, which stays.
+    func showMissingLinkedBot(for phase: BotModePhase) {
+        let message = Self.missingLinkedBotMessage(for: phase)
+        if case .gatewayUnsupported = phase {
+            errorMessage = message
+        } else {
+            showChatOpenFailure(message)
         }
     }
 
