@@ -154,6 +154,31 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(state.showSidebar)
     }
 
+    /// A turn in the chat over the list (its edges, the reply streaming in)
+    /// draws nothing under it: the edges wait with the list's other
+    /// updates, and the list doesn't observe the transcript (issue 828).
+    @MainActor
+    func testTurnUnderCoveredChatsListDrawsOnceItShows() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.isShown = false
+        state.turnState = .running
+        state.shownChat.messages = [ChatMessage(id: "a1", role: .assistant, content: "Hi", timestamp: "1")]
+        state.turnStateIsStale = true
+        state.turnState = .idle
+        settle()
+        XCTAssertEqual(sent, 0, "the covered list drew a turn under it")
+
+        updates.isShown = true
+        waitUntil { sent > 0 }
+        settle()
+        XCTAssertEqual(sent, 1)
+    }
+
     /// The V2 Chats list kept under a pushed chat doesn't redraw with every
     /// publish: it waits, then draws once with what it missed.
     @MainActor

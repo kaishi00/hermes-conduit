@@ -57,7 +57,7 @@ final class ChatState {
     }
     let messagesSends = WillSetValues<[ChatMessage]>()
     /// As `$messages` gave it: the value on subscribing, then each one set.
-    var messagesValues: AnyPublisher<[ChatMessage], Never> { messagesSends.publisher { [unowned self] in messages } }
+    var messagesValues: AnyPublisher<[ChatMessage], Never> { messagesSends.publisher { [weak self] in self?.messages ?? [] } }
     /// Bumped on every write to `messages`.
     private(set) var transcriptRevision: UInt64 = 0
     /// Bumped on every write to `messages` or `offlineChatPresentation`, the
@@ -77,7 +77,9 @@ final class ChatState {
     /// Retry, Edit, reactions, pins). Written through AppState's
     /// `offlineChatPresentation`, which also follows it with the chat on
     /// screen claim and a message waiting to send.
-    var offlineChatPresentation: OfflineChatPresentation? {
+    /// A turn edge (`edgeChanges`), not observed.
+    @ObservationIgnored var offlineChatPresentation: OfflineChatPresentation? {
+        willSet { if newValue != offlineChatPresentation { edgeChanges.send() } }
         didSet { rowsRevision &+= 1 }
     }
     /// Persisted-history pagination window of the chat.
@@ -138,12 +140,16 @@ final class ChatState {
     /// Written through AppState's `turnState`, which also follows a change
     /// with the message waiting to send, the backdrop and the chat on screen
     /// claim.
-    var turnState: TurnState = .idle {
-        willSet { turnStateSends.send(newValue) }
+    /// A turn edge (`edgeChanges`), not observed.
+    @ObservationIgnored var turnState: TurnState = .idle {
+        willSet {
+            turnStateSends.send(newValue)
+            if newValue != turnState { edgeChanges.send() }
+        }
     }
     let turnStateSends = WillSetValues<TurnState>()
     /// As `$turnState` gave it: the value on subscribing, then each one set.
-    var turnStateValues: AnyPublisher<TurnState, Never> { turnStateSends.publisher { [unowned self] in turnState } }
+    var turnStateValues: AnyPublisher<TurnState, Never> { turnStateSends.publisher { [weak self] in self?.turnState ?? .idle } }
     /// Whether `turnState` may have missed server-side turn edges. Set at
     /// lifecycle boundaries where the socket can die or the gateway can change
     /// state unobserved (scene dips, reconnects, ambiguous submissions);
@@ -152,8 +158,20 @@ final class ChatState {
     /// state. A stale idle state must not route the next input as a new-turn
     /// `prompt.submit` — Hermes would apply its busy policy to it and the
     /// message would silently join a turn the user never saw start.
-    /// Observed: the chat list's Working marker reads it.
-    var turnStateIsStale = false
+    /// A turn edge (`edgeChanges`), not observed: the chat list's Working
+    /// marker reads it.
+    @ObservationIgnored var turnStateIsStale = false {
+        willSet { if newValue != turnStateIsStale { edgeChanges.send() } }
+    }
+    /// The turn's edges and the saved copy shown (`turnState`,
+    /// `turnStateIsStale`, `offlineChatPresentation`) publish here, before
+    /// they change, and AppState passes them on as its own changes. They
+    /// change a few times a turn, and the held screens read them (the Chats
+    /// list's New Chat and Working markers, a project page's New
+    /// conversation): Observation would reach those screens past their
+    /// hold (`V2ShownUpdates`), so these stay AppState publishes, which the
+    /// hold covers. The reply streaming in is observed (issue 828).
+    let edgeChanges = PassthroughSubject<Void, Never>()
     var turnLifecycleEvidence = AppState.TurnLifecycleEvidence(revision: 0, running: false)
     /// Whether the visible persisted transcript may be MISSING rows —
     /// conceptually disjoint from `turnStateIsStale`, which answers "do I

@@ -107,6 +107,23 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertTrue(windowRead.isSet)
         XCTAssertEqual(appStatePublications, 0, "a write straight to the chat doesn't publish as AppState's")
         XCTAssertTrue(state.liveTurn === state.shownChat.liveTurn)
+
+        // The turn's edges and the saved copy shown publish as AppState's,
+        // once each change, where the held screens' hold covers them, and
+        // aren't observed (Observation would reach past the hold).
+        appStatePublications = 0
+        let edgeRead = Flag()
+        withObservationTracking {
+            _ = state.turnState
+            _ = state.turnStateIsStale
+            _ = state.offlineChatPresentation
+        } onChange: { edgeRead.isSet = true }
+        state.shownChat.turnState = .running
+        state.shownChat.turnState = .running
+        state.shownChat.turnStateIsStale = true
+        state.shownChat.turnStateIsStale = true
+        XCTAssertEqual(appStatePublications, 2)
+        XCTAssertFalse(edgeRead.isSet)
     }
 
     // MARK: - Coalescing

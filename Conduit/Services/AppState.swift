@@ -932,7 +932,8 @@ final class AppState: ObservableObject {
     @Published var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     /// The chat on screen: its transcript and the reply streaming into it
     /// (ChatState, stage 1 of the all-live rework). Views draw it; it is
-    /// observed on its own, so its changes don't publish as AppState's.
+    /// observed on its own, so its changes don't publish as AppState's,
+    /// except its turn's edges (`shownChatEdges`).
     let chatOnScreen = ChatState()
     /// The chat the app acts on: the one on screen, except while an event
     /// of a chat left mid-reply applies to that chat's own state
@@ -987,6 +988,9 @@ final class AppState: ObservableObject {
     /// the row read then, so the chat stays itself once its row leaves the
     /// catalog (issue 2764).
     var rowOfChatOnScreen: (row: SessionSummary, openIDs: Set<String>, dashboardID: UUID?, profile: String)?
+    /// The chat on screen's turn edges, passed on as AppState's changes
+    /// (`ChatState.edgeChanges`).
+    var shownChatEdges: AnyCancellable?
     /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
     /// the all-live rework). Observed on its own, like the chat on screen.
     let shownBot = BotState()
@@ -3561,9 +3565,15 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             voiceJobSessionIDsByProfile = stored
         }
+        // The chat on screen's turn edges publish as AppState's, so the
+        // held screens that read them wait while covered
+        // (`ChatState.edgeChanges`); the rest of the chat, and the bot on
+        // screen, are observed on their own (issue 828).
+        shownChatEdges = chatOnScreen.edgeChanges.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         // The runtime on screen's changes publish as AppState's, whichever
-        // it is. The chat and the bot on screen are observed on their own
-        // (issue 828).
+        // it is.
         runtimeOnScreenChanges = $runtimeOnScreen
             .map { $0.objectWillChange }
             .switchToLatest()
