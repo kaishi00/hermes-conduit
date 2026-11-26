@@ -89,6 +89,22 @@ enum AttachmentTypePolicy {
         return mime
     }
 
+    /// The name a staged file is previewed under when its path doesn't say
+    /// its type, since Quick Look picks its renderer by the extension; nil
+    /// when the staged copy can be shown in place. A screenshot is staged
+    /// without its extension, and a stem ending in a dotted time ("… at
+    /// 10.00.37") reads as having one, so the path's extension is checked
+    /// against the attachment's type, not against its name (desktop#611).
+    static func stagedPreviewName(name: String, fileURL: URL, mimeType: String?) -> String? {
+        guard let mimeType, let type = UTType(mimeType: mimeType), type != .data,
+              let preferredExtension = type.preferredFilenameExtension else { return nil }
+        if UTType(filenameExtension: fileURL.pathExtension)?.conforms(to: type) == true { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stem = trimmed.isEmpty ? "file" : trimmed
+        if UTType(filenameExtension: (stem as NSString).pathExtension)?.conforms(to: type) == true { return stem }
+        return "\(stem).\(preferredExtension)"
+    }
+
     /// The real file name when the system gave one, with an extension that
     /// matches the content; otherwise "photo"/"video"/"file" plus one.
     static func filename(suggested: String?, type: UTType?, ordinal: Int = 1) -> String {
@@ -408,10 +424,47 @@ struct ComposerAttachmentChip: View {
     @State private var byteCount: Int64?
     @State private var pastedPreview: String?
     @State private var isShowingPastedText = false
+    /// A preview still reading its copy; cancelled when the chip goes, so
+    /// a late read never opens Quick Look over another screen.
+    @State private var previewTask: Task<Void, Never>?
 
     private static let thumbnailSide: CGFloat = 40
 
     private var isPastedText: Bool { PastedText.isPastedText(attachment) }
+
+    /// The staged copy a tap previews; nil when the attachment isn't a file
+    /// on this device, or its copy is gone, so the chip isn't tappable.
+    private var stagedFileURL: URL? {
+        guard let url = URL(string: attachment.uri), url.isFileURL,
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
+    /// Opens the staged copy in Quick Look. A copy whose path doesn't say
+    /// its type is shown from a copy under a name that does
+    /// (`AttachmentTypePolicy.stagedPreviewName`); the presenter removes that
+    /// copy when the preview closes.
+    private func previewStagedFile(at url: URL) {
+        guard let filename = AttachmentTypePolicy.stagedPreviewName(
+            name: attachment.name, fileURL: url, mimeType: attachment.mimeType
+        ) else {
+            if !MediaPreviewPresenter.shared.present(fileURL: url, title: AttachmentTypePolicy.displayName(for: attachment)) {
+                Haptics.error()
+            }
+            return
+        }
+        previewTask?.cancel()
+        previewTask = Task {
+            let data = await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: url, options: .mappedIfSafe)
+            }.value
+            guard let data, !Task.isCancelled,
+                  await MediaPreviewPresenter.shared.present(data: data, filename: filename) else {
+                if !Task.isCancelled { Haptics.error() }
+                return
+            }
+        }
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -427,6 +480,18 @@ struct ComposerAttachmentChip: View {
                 .accessibilityValue(Text(pastedPreview ?? ""))
                 .accessibilityHint(Text(AppLocalization.string("Shows the pasted text", table: .chat)))
                 .accessibilityIdentifier("composer.pastedText.chip")
+            } else if let stagedFileURL {
+                // A tap previews the staged file to check it before it's
+                // sent, in Quick Look as a sent file opens (desktop#611):
+                // pictures, PDFs, audio and video play there. Closing it
+                // keeps the attachment; × removes it.
+                summary
+                    .accessibilityElement(children: .combine)
+                    .opensMediaPreview {
+                        Haptics.selection()
+                        previewStagedFile(at: stagedFileURL)
+                    }
+                    .accessibilityIdentifier("composer.attachment.preview")
             } else {
                 summary
             }
@@ -461,6 +526,7 @@ struct ComposerAttachmentChip: View {
         .sheet(isPresented: $isShowingPastedText) {
             PastedTextSheet(attachment: attachment, actions: pastedText)
         }
+        .onDisappear { previewTask?.cancel() }
         .task(id: attachment.uri) {
             if let url = URL(string: attachment.uri), url.isFileURL {
                 byteCount = AttachmentSizeLimit.fileSize(at: url)
