@@ -1660,6 +1660,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(waitReads, 12, "a failed read is asked again on the next pass")
         await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(140))
         XCTAssertEqual(waitReads, 12, "a read that landed holds the gate again")
+        // Taken up, its stamps go, so kept again it reads at once.
+        XCTAssertFalse(appState.combinedDashboardWaitsReadAt.keys.filter { $0.hasPrefix("\(mac.id.uuidString)|") }.isEmpty)
+        _ = appState.takeKeptDashboardRuntime(mac.id, profile: "default")
+        XCTAssertTrue(appState.combinedDashboardWaitsReadAt.keys.filter { $0.hasPrefix("\(mac.id.uuidString)|") }.isEmpty,
+                      "a dashboard taken up keeps no far waits stamps")
         XCTAssertGreaterThan(AppState.farChatMarksReadInterval, NeedsYouStore.pollInterval,
                              "a far dashboard's marks skip a pass inside their interval")
     }

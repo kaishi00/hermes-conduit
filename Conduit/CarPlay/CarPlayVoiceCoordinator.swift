@@ -259,7 +259,7 @@ final class CarPlayVoiceCoordinator {
     /// The far agent whose chat reads keep bringing nothing back, and how
     /// many in a row. Starts over on a read that lands, another agent, or
     /// the list closing.
-    private(set) var farChatsFailures: (key: String, count: Int)?
+    private(set) var farChatsFailures: (key: String, count: Int, retry: UUID)?
     private var isChatsRefreshScheduled = false
     /// Whether the chat list on screen is being kept current.
     var isObservingChats: Bool { chatsObservation != nil }
@@ -1339,12 +1339,13 @@ final class CarPlayVoiceCoordinator {
             if let far, !self.farChatsRead(far, in: appState) {
                 let key = "\(far.uuidString)|\(self.farAgent?.profile.lowercased() ?? "")"
                 let failures = self.farChatsFailures?.key == key ? (self.farChatsFailures?.count ?? 0) + 1 : 1
-                self.farChatsFailures = (key, failures)
+                let retry = UUID()
+                self.farChatsFailures = (key, failures, retry)
                 try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: failures))
                 // The list that scheduled it: one closed and opened again
                 // meanwhile keeps its own schedule.
                 guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far,
-                      self.farChatsFailures?.key == key, self.farChatsFailures?.count == failures else { return }
+                      self.farChatsFailures?.retry == retry else { return }
                 self.didRequestChatCatalog = false
             } else {
                 self.farChatsFailures = nil
