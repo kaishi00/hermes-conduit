@@ -407,6 +407,8 @@ extension MarkdownBlock {
         case .image(let url, let alt): return "\(alt) \(url)"
         case .htmlPreview(let path): return path
         case .desktopCard(let card): return card.source
+        case .htmlPage(let html, _): return html
+        case .fold(let summary, let body, _): return summary + "\n" + body
         case .divider: return ""
         }
     }
