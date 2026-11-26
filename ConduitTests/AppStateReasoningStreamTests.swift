@@ -101,10 +101,11 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(state.chatTranscriptRevision, state.shownChat.transcriptRevision)
 
         appStatePublications = 0
-        let windowRead = Flag()
-        withObservationTracking { _ = state.persistedTranscriptWindow } onChange: { windowRead.isSet = true }
-        state.shownChat.persistedTranscriptWindow = nil
-        XCTAssertTrue(windowRead.isSet)
+        // A value that changes (Observation skips an equal one).
+        let tokenRead = Flag()
+        withObservationTracking { _ = state.composerPrefillToken } onChange: { tokenRead.isSet = true }
+        state.shownChat.composerPrefillToken = UUID()
+        XCTAssertTrue(tokenRead.isSet)
         XCTAssertEqual(appStatePublications, 0, "a write straight to the chat doesn't publish as AppState's")
         XCTAssertTrue(state.liveTurn === state.shownChat.liveTurn)
 
