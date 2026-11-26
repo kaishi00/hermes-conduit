@@ -654,9 +654,9 @@ struct V2VoiceButtonContent: View, Equatable {
     /// A chat couldn't be made or opened: say so, unless something already did.
     private func reportCouldNotOpen() {
         guard appState.errorMessage == nil else { return }
-        appState.errorMessage = appState.isConnected
+        appState.showChatOpenFailure(appState.isConnected
             ? AppLocalization.string("Couldn't open that chat for voice.")
-            : AppLocalization.string("Reconnect to Hermes to start voice.")
+            : AppLocalization.string("Reconnect to Hermes to start voice."))
     }
 
     /// Opens a bot's Bot Chat and calls the bot in it.

@@ -862,7 +862,7 @@ extension AppState {
                 case .opened: inChat = true
                 case .superseded: return
                 case .failed:
-                    errorMessage = AppLocalization.string("Couldn't open that chat for voice.")
+                    showChatOpenFailure(AppLocalization.string("Couldn't open that chat for voice."))
                     return
                 }
             }

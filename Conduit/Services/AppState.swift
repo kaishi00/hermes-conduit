@@ -1642,6 +1642,10 @@ final class AppState: ObservableObject {
     /// Counts every write to `errorMessage`, the same text again included,
     /// so an open can tell whether it said why it failed (issue 2079).
     private(set) var errorMessageWrites = 0
+    /// The error an open's own failure put on the line (`showChatOpenFailure`):
+    /// a chat that couldn't be opened, or is no longer there. A chat opening
+    /// fine afterwards takes it down (issue 3317).
+    var chatOpenFailureShown: String?
     /// The open chat's sync error, raised while a room covers the chat. A
     /// room's banner shows `errorMessage`, so a chat that fails to resume
     /// behind it (a return to the app) would put its error in the room

@@ -459,9 +459,9 @@ extension AppState {
            // the error already showing (a retry that failed the same way);
            // an error from before it doesn't.
            errorMessage == nil || errorMessageWrites == writes {
-            errorMessage = AppLocalization.string(
+            showChatOpenFailure(AppLocalization.string(
                 "Could not open \(bot.displayLabel)'s Bot Chat."
-            )
+            ))
         }
         return outcome == .opened
     }
@@ -690,17 +690,17 @@ extension AppState {
         } else if !Task.isCancelled, chatViewportTransitionIsCurrent(transition) {
             switch stage {
             case .lookup:
-                errorMessage = AppLocalization.string(
+                showChatOpenFailure(AppLocalization.string(
                     "Could not check \(bot.displayLabel)'s Bot Chat — not starting a new chat."
-                )
+                ))
             case .create:
-                errorMessage = AppLocalization.string(
+                showChatOpenFailure(AppLocalization.string(
                     "Could not create \(bot.displayLabel)'s Bot Chat."
-                )
+                ))
             case .title:
-                errorMessage = AppLocalization.string(
+                showChatOpenFailure(AppLocalization.string(
                     "Could not title \(bot.displayLabel)'s Bot Chat — not starting a new chat."
-                )
+                ))
             }
         }
         return false
@@ -708,9 +708,9 @@ extension AppState {
 
     private func refuseBotChatConfirmation(_ bot: BotProfile, transition: UInt64?) {
         guard chatViewportTransitionIsCurrent(transition) else { return }
-        errorMessage = AppLocalization.string(
+        showChatOpenFailure(AppLocalization.string(
             "Could not confirm \(bot.displayLabel)'s Bot Chat — not starting a new chat."
-        )
+        ))
     }
 
     /// A rename names the profile's open Bot Chats too: the label each
@@ -1079,6 +1079,7 @@ extension AppState {
             cancelExplicitSessionOpen()
             widgetLaunchCoordinator.supersede()
             noteActiveChatSeen()
+            clearChatOpenFailure()
             return Task { true }
         }
         cancelExplicitSessionOpen()
@@ -1211,7 +1212,7 @@ extension AppState {
         }) ?? (sessions + cronSessions).first(where: { $0.storedSessionId == sessionId })
         if conversationProfile == nil,
            let session = listedSession, !sessionBelongsToProfile(session, profile: activeProfile) {
-            errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
+            showChatOpenFailure(AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it."))
             return (.failed, true, false)
         }
         // Read before the open marks it read: an unread chat lands at the
@@ -1370,7 +1371,29 @@ extension AppState {
         // copy of it.
         if let leftReply { releaseFollowedChat(answering: leftReply.sessionIDs) }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
+        clearChatOpenFailure()
         return (.opened, false, false)
+    }
+
+    /// Says an open failed: the chat couldn't be opened, or isn't there any
+    /// more. It's the open's word, not the chat's, so it stays across chat
+    /// switches until a chat opens fine (issue 3317: it stayed red over
+    /// every chat opened after, for as long as Conduit ran).
+    func showChatOpenFailure(_ message: String) {
+        errorMessage = message
+        chatOpenFailureShown = message
+    }
+
+    /// A chat opened fine (any chat, or the same one tried again): an open's
+    /// failure still on the line is old news. Anything written over it since
+    /// (a sign-in, a setting, the chat's own error) stays.
+    func clearChatOpenFailure() {
+        guard let shown = chatOpenFailureShown else { return }
+        chatOpenFailureShown = nil
+        if errorMessage == shown { errorMessage = nil }
+        // A failure that landed while a room covered the chat waits behind
+        // it; it goes too, or the room closing would bring it back.
+        if chatErrorBehindRoom == shown { chatErrorBehindRoom = nil }
     }
 
     /// Whether saved rows end in a turn with no reply yet: the user's latest
@@ -2221,6 +2244,9 @@ extension AppState {
         guard chatViewportTransitionIsCurrent(generation: failure.transition),
               groupRoomEpoch == failure.roomEpoch else { return }
         chatSyncErrorMessage = failure.message
+        // Behind a room too: it reaches the line when the room closes back
+        // to the chat, still the open's failure.
+        chatOpenFailureShown = failure.message
     }
 
     /// The route ended somewhere that explained itself (`unverified`'s own

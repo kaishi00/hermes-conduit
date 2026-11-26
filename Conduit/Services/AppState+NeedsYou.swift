@@ -572,7 +572,7 @@ extension AppState {
                         self.pendingNeedsYouReveal = nil
                     }
                     if self.errorMessage == nil {
-                        self.errorMessage = unavailable
+                        self.showChatOpenFailure(unavailable)
                     }
                     return
                 }
@@ -594,11 +594,11 @@ extension AppState {
                 self?.retainNeedsYouRelayGateway(for: item, on: dashboardID)
             }, onFailure: { [weak self] sessionWasNotFound in
                 guard let self else { return }
-                self.errorMessage = Self.linkedSessionFailureMessage(
+                self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                     current: self.errorMessage,
                     sessionWasNotFound: sessionWasNotFound,
                     unavailable: unavailable
-                )
+                ))
             }) else { return false }
             ensureKeptPluginReport(for: dashboardID)
             errorMessage = nil
@@ -618,11 +618,11 @@ extension AppState {
                 retainNeedsYouRelayGateway(for: item, on: dashboardID)
                 return requestOpenSession(primaryID, onFailure: { [weak self] sessionWasNotFound in
                     guard let self else { return }
-                    self.errorMessage = Self.linkedSessionFailureMessage(
+                    self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                         current: self.errorMessage,
                         sessionWasNotFound: sessionWasNotFound,
                         unavailable: unavailable
-                    )
+                    ))
                 })
             }
             awaitFarNeedsYouChatOpen(open, reveal: reveal)
@@ -654,7 +654,8 @@ extension AppState {
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID,
            let roomID = item.roomID, let runtime = keptRuntimeOpeningRoomsInPlace(dashboardID) {
             dismissSidebarDrawer()
-            guard !isOpenChat(item) else { return }
+            // The chat already open counts as one that opened fine.
+            guard !isOpenChat(item) else { clearChatOpenFailure(); return }
             let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
             Task { @MainActor [weak self] in
                 guard let self, await self.readyKeptRuntimeForRooms(runtime, dashboardID) else { return }
@@ -664,7 +665,7 @@ extension AppState {
                 self.closeFarRoomIfLetGo(runtime, dashboardID)
                 guard outcome == .retry, self.chatViewportTransitionGeneration == viewport,
                       self.groupRoomEpoch == roomEpoch else { return }
-                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                self.showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
             }
             return
         }
@@ -676,6 +677,7 @@ extension AppState {
                 pendingNeedsYouReveal = item.asked != nil ? nil : NeedsYouReveal(opening: activeSessionId)
                 dismissSidebarDrawer()
                 if activeRoomSurface != nil { closeGroupRoom() }
+                clearChatOpenFailure()
                 return
             }
             if openFarNeedsYouInPlace(item, in: dashboardID) { return }
@@ -695,7 +697,7 @@ extension AppState {
             // A wait in a group room this Hermes hosts: the room opens (in
             // any profile, since rooms are the dashboard's) with its card.
             dismissSidebarDrawer()
-            guard !isOpenChat(item) else { return }
+            guard !isOpenChat(item) else { clearChatOpenFailure(); return }
             let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch, dashboardID = activeDashboardID
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -708,7 +710,7 @@ extension AppState {
                 // Offline, or Hermes' rooms not read yet: say so, as a chat's
                 // open does, unless something opened meanwhile.
                 guard await self.openNotificationRoom(roomID) == .retry, owned() else { return }
-                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                self.showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
             }
             return
         }
@@ -730,7 +732,7 @@ extension AppState {
         // it comes forward.
         dismissSidebarDrawer()
         if isOpen, activeRoomSurface != nil { closeGroupRoom() }
-        guard !isOpen else { return }
+        guard !isOpen else { clearChatOpenFailure(); return }
         openAppLink(.session(id: sessionID, profile: item.profile))
     }
 

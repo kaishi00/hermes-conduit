@@ -29,7 +29,7 @@ extension AppState {
             // first, failing closed for one this device doesn't know.
             if let dashboard {
                 guard let owner = UUID(uuidString: dashboard) else {
-                    errorMessage = AppLocalization.string("That chat is no longer available.")
+                    showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
                     return
                 }
                 if owner != activeDashboardID {
@@ -116,7 +116,7 @@ extension AppState {
         }
         guard let target = notificationProfileID(profile),
               target == "default" || profiles.contains(target) else {
-            errorMessage = AppLocalization.string("That chat is no longer available.")
+            showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
             return
         }
         PushNotificationService.shared.routeChatLink(
@@ -180,7 +180,7 @@ extension AppState {
                 bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
             guard let bot else {
-                self.errorMessage = Self.missingLinkedBotMessage(for: self.botModePhase)
+                self.showMissingLinkedBot(for: self.botModePhase)
                 return
             }
             // Its open is on its way from here (`botChatOnItsWay`).
@@ -191,6 +191,18 @@ extension AppState {
             if await self.openBotChat(for: bot) {
                 self.dismissSidebarDrawer()
             }
+        }
+    }
+
+    /// Says a bot link's bot isn't listed: an open's failure, which a chat
+    /// opening fine takes down (issue 3317), unless it's that this Hermes
+    /// has no Bot Mode, which stays.
+    func showMissingLinkedBot(for phase: BotModePhase) {
+        let message = Self.missingLinkedBotMessage(for: phase)
+        if case .gatewayUnsupported = phase {
+            errorMessage = message
+        } else {
+            showChatOpenFailure(message)
         }
     }
 
@@ -262,11 +274,11 @@ extension AppState {
             self.errorMessage = nil
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] sessionWasNotFound in
                 guard let self else { return }
-                self.errorMessage = Self.linkedSessionFailureMessage(
+                self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                     current: self.errorMessage,
                     sessionWasNotFound: sessionWasNotFound,
                     unavailable: unavailable
-                )
+                ))
             }.value
             // From outside a chat (a Live Activity, another app) the chat
             // must come forward: V2 keeps the Chats list over it until the

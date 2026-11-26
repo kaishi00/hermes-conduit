@@ -4,6 +4,75 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    /// A route's failure said while a room is up waits behind it, still the
+    /// open's failure: the room closing back to the chat shows it, and a chat
+    /// opening fine afterwards takes it down (issue 3317).
+    func testARouteFailureBehindARoomStaysAnOpensFailure() {
+        let defaults = makeScratchDefaults("AppStateChatResumeTests.routeFailureBehindRoom")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        let tap = ConduitNotificationTarget(profile: nil, sessionId: "chat-a", type: "response.ready")
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0
+        )
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: UUID(), room: room))
+        let before = appState.notificationRouteErrorSnapshot()
+        let failure = AppLocalization.string("Couldn't open that chat. Try again.")
+        appState.chatSyncErrorMessage = failure
+        appState.holdNotificationRouteFailure(for: tap, restoring: before, transition: appState.chatViewportTransitionGeneration)
+        appState.publishNotificationRouteFailure(for: tap)
+        XCTAssertEqual(appState.chatErrorBehindRoom, failure, "behind the room, not on its banner")
+        XCTAssertEqual(appState.chatOpenFailureShown, failure)
+
+        appState.closeGroupRoom()
+        XCTAssertEqual(appState.errorMessage, failure, "the chat shows it once the room closes back to it")
+        appState.clearChatOpenFailure()
+        XCTAssertNil(appState.errorMessage, "a chat that opens fine takes it down")
+        XCTAssertNil(appState.chatOpenFailureShown)
+    }
+
+    /// A tap on the room that's already open settles the open while the
+    /// failure still waits behind the room: it goes then, and closing the
+    /// room shows nothing. Another error behind the room stays.
+    func testAnOpensFailureBehindARoomGoesWhenTheRoomOpensFine() {
+        let defaults = makeScratchDefaults("AppStateChatResumeTests.routeFailureBehindRoomCleared")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        let tap = ConduitNotificationTarget(profile: nil, sessionId: "chat-a", type: "response.ready")
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0
+        )
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: UUID(), room: room))
+        let before = appState.notificationRouteErrorSnapshot()
+        let failure = AppLocalization.string("Couldn't open that chat. Try again.")
+        appState.chatSyncErrorMessage = failure
+        appState.holdNotificationRouteFailure(for: tap, restoring: before, transition: appState.chatViewportTransitionGeneration)
+        appState.publishNotificationRouteFailure(for: tap)
+        XCTAssertEqual(appState.chatErrorBehindRoom, failure)
+
+        appState.clearChatOpenFailure()
+        XCTAssertNil(appState.chatErrorBehindRoom, "the failure behind the room goes with the marker")
+        XCTAssertNil(appState.chatOpenFailureShown)
+        appState.closeGroupRoom()
+        XCTAssertNil(appState.errorMessage, "closing the room brings nothing back")
+
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: UUID(), room: room))
+        appState.chatSyncErrorMessage = "Sign in again."
+        appState.chatOpenFailureShown = failure
+        appState.clearChatOpenFailure()
+        XCTAssertEqual(appState.chatErrorBehindRoom, "Sign in again.", "a different error behind the room stays")
+    }
+
     /// A notification route's failed attempt that will be retried holds its
     /// words instead of showing them, puts back what the chat said before,
     /// and says them only when the route ends with nothing opened; another

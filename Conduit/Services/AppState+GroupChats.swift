@@ -1070,7 +1070,7 @@ extension AppState {
         var listed = groupRooms.first(where: { $0.roomID == roomID })
         if listed == nil {
             if groupChatPhase == .gatewayUnsupported {
-                errorMessage = AppLocalization.string("That chat is no longer available.")
+                showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
                 return .failed
             }
             // No list read yet: the room opens from it once one is.
@@ -1088,7 +1088,7 @@ extension AppState {
             }
         }
         guard let room = listed, !room.isDisbanded else {
-            errorMessage = AppLocalization.string("That chat is no longer available.")
+            showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
             return .failed
         }
         showSidebar = false
@@ -1101,7 +1101,7 @@ extension AppState {
         if let gone = roomFoundGoneOnOpen, gone.roomID == roomID, gone.epoch == groupRoomEpoch,
            chatViewportTransitionGeneration == viewport, activeDashboardID == dashboardID,
            activeRoomSurface == nil, errorMessage == nil {
-            errorMessage = AppLocalization.string("That chat is no longer available.")
+            showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
         }
         return .failed
     }
@@ -1128,13 +1128,13 @@ extension AppState {
             let roomID = room.roomID
             guard groupRoomsListed else {
                 // A Hermes that hosts no rooms any more won't open it on a retry.
-                errorMessage = groupChatPhase == .gatewayUnsupported
+                showChatOpenFailure(groupChatPhase == .gatewayUnsupported
                     ? AppLocalization.string("That chat is no longer available.")
-                    : AppLocalization.string("Couldn't open that chat. Try again.")
+                    : AppLocalization.string("Couldn't open that chat. Try again."))
                 return
             }
             guard let listed = groupRooms.first(where: { $0.roomID == roomID }) else {
-                errorMessage = AppLocalization.string("That chat is no longer available.")
+                showChatOpenFailure(AppLocalization.string("That chat is no longer available."))
                 return
             }
             room = listed

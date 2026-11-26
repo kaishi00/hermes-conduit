@@ -1038,14 +1038,36 @@ final class TranscriptScroller: ObservableObject {
                   let state = self.restoration else { return }
             ChatViewportTrace.shared.log("restore abandoned")
             self.dropRestoration()
-            self.leaveRestoring()
+            let landed = self.landAtLatestAfterAbandonedRestoration()
             self.emit(.abandonRestoration(generation: state.request.generation))
+            // Once the abandon has let the viewport go: the saved place, so
+            // a relaunch opens where the reader was left. Saved while the
+            // restore still held it, it was dropped.
+            if landed { self.emit(.persistSnapshot(self.renderedSessionKey)) }
         }
     }
 
     private func dropRestoration() {
         restoration = nil
         restorationDeadlineGeneration &+= 1
+    }
+
+    /// A saved place that never came (its rows took longer to draw than the
+    /// deadline, or its row never got a frame) opens the chat at its end, as
+    /// a saved row no longer in the transcript does
+    /// (`ChatResumeViewportResolver`), not wherever the rows drawn so far
+    /// left the viewport: that was a different spot mid-history on each
+    /// slow open (issue 3317). The reader hasn't scrolled, since a drag
+    /// drops the restoration.
+    @discardableResult
+    private func landAtLatestAfterAbandonedRestoration() -> Bool {
+        guard mode == .restoring else { return false }
+        setMode(.following)
+        // No surface yet (the deadline never runs while paused): the next
+        // layout pins.
+        if let surface { pin(surface) } else { pinOwed = true }
+        refreshJumpButton()
+        return true
     }
 
     /// Following at the end, else browsing where the reader is.

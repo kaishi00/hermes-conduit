@@ -763,7 +763,7 @@ extension AppState {
     func openFarWorkstreamInPlace(_ sessionID: String, profile: String, in dashboardID: UUID) -> Task<Bool, Never>? {
         guard !sessionID.isEmpty, dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID) else { return nil }
         guard let runtime = keptRuntime(dashboardID, on: profile) else {
-            errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+            showChatOpenFailure(AppLocalization.string("Couldn't open that chat. Try again."))
             return nil
         }
         ensureKeptPluginReport(for: dashboardID)
@@ -772,11 +772,11 @@ extension AppState {
         let task = act(onRuntime: runtime) {
             requestOpenSession(sessionID, onFailure: { [weak self] sessionWasNotFound in
                 guard let self else { return }
-                self.errorMessage = Self.linkedSessionFailureMessage(
+                self.showChatOpenFailure(Self.linkedSessionFailureMessage(
                     current: self.errorMessage,
                     sessionWasNotFound: sessionWasNotFound,
                     unavailable: AppLocalization.string("That chat is no longer available.")
-                )
+                ))
             })
         }
         Task { @MainActor [weak self] in
@@ -816,7 +816,7 @@ extension AppState {
                 if let bot = Self.linkedBot(named: profile, in: self.farBotRoster(in: dashboardID)) {
                     _ = self.openFarBotChatInPlace(of: bot, in: dashboardID)
                 } else {
-                    self.errorMessage = Self.missingLinkedBotMessage(for: runtime.botModePhase)
+                    self.showMissingLinkedBot(for: runtime.botModePhase)
                 }
             }
             return
