@@ -10246,7 +10246,7 @@ only show beside an iPhone
   Conduit row at all. Whether other iPhone and iPad apps show the same
   generic icon there is asked of the reporter.
 
-**Checked:** 2026-11-26, #PRNUM (issue 2208's blank icon is Spotlight's System Settings row; the built app's icon keys and files are all there, gap reworded, no app fix found); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2217 (docs/VOICE_SETTINGS.md's Mac hint says to search System Settings for "Voices", as the hints in the app already did); 2026-11-11, #2210 (new entry).
+**Checked:** 2026-11-26, #3336 (issue 2208's blank icon is Spotlight's System Settings row; the built app's icon keys and files are all there, gap reworded, no app fix found); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2217 (docs/VOICE_SETTINGS.md's Mac hint says to search System Settings for "Voices", as the hints in the app already did); 2026-11-11, #2210 (new entry).
 
 ## Swiping list rows on a Mac
 
