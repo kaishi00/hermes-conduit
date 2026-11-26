@@ -3785,6 +3785,50 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(second.contains("Make the booking for four." + VoiceRequestWords.marker + "Make it four please"), second)
     }
 
+    /// Issue 3285, from #3320's reviews: a yes whose line is read again as
+    /// a bare no (the transcript rewrote it), then a new line: the no marks its own line, and the new line's
+    /// words go with the next request.
+    func testAYesThatTurnsToNoMarksItsOwnLineWhenTheNextBegins() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor, requestWordsWait: .seconds(5))
+        bridge.lateYesWait = .zero
+        var spokeAt = Date(timeIntervalSince1970: 1_000)
+        let answer = UUID()
+        var lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Book a table for Sam")]
+        bridge.lastUserSpeechAt = { spokeAt }
+        bridge.userLines = { lines }
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Book a table for Sam."]))
+        let script: [[(id: UUID, text: String)]] = [
+            lines + [(id: answer, text: "Yes")],
+            lines + [(id: answer, text: "Yes")],
+            lines + [(id: answer, text: "No")],
+            lines + [(id: answer, text: "No")],
+            lines + [(id: answer, text: "No"), (id: UUID(), text: "Book the cinema for Friday")],
+        ]
+        var reads = 0
+        bridge.lastUserWords = {
+            lines = script[min(reads, script.count - 1)]
+            reads += 1
+            return lines.last?.text ?? ""
+        }
+        spokeAt = spokeAt.addingTimeInterval(5)
+        let dropped = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+        guard case .toolResponse("call_2", _, let droppedResult, _)? = dropped.first else { return XCTFail("\(dropped)") }
+        XCTAssertEqual(droppedResult["status"], "dropped")
+        XCTAssertEqual(fake.created, 0)
+
+        bridge.lastUserWords = { lines.last?.text ?? "" }
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "Book the cinema."]))
+        lines.append((id: UUID(), text: "Yes"))
+        spokeAt = spokeAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 1)
+        let prompt = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(prompt.contains("Book the cinema." + VoiceRequestWords.marker + "Book the cinema for Friday"), prompt)
+        XCTAssertFalse(prompt.contains(VoiceRequestWords.marker + "No"), prompt)
+    }
+
     func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {
         let (supervisor, fake) = makeSupervisor()
         supervisor.beginLiveCall(asksBeforeSending: true)
