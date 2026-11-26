@@ -368,7 +368,7 @@ final class GPTLiveDelegationBridge {
         // Marked nothing Conduit answers itself: in a call from Hermes about
         // a question, the user's answer (above). "New job:" and a "Job 9:"
         // with no job stay separate work.
-        if !startsNewJob, draft == nil, supervisor.callWaitsOn == .question {
+        if !startsNewJob, draft == nil, !Self.isSendMarker(instructions), supervisor.callWaitsOn == .question {
             return await answeredCallQuestion(id: id, delegated: ownWords, userWords: spoken, call: call)
         }
         // The model's own words for the request. Without any, the request
