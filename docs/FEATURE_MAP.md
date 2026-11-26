@@ -10235,11 +10235,18 @@ only show beside an iPhone
 **Open gaps**
 - Not yet seen on a Mac: that System Settings opens at each pane from the
   iPad app, and Notifications at Conduit's row.
-- The System Settings search on a Mac shows a blank icon for Conduit
-  (issue 2208); the Dock, Finder and the Notifications list show it. Not
-  reproduced or explained yet.
+- Spotlight, scoped to System Settings, shows Conduit's row there with
+  macOS's generic app icon (issue 2208's screenshot); the Dock, Finder and
+  the Notifications list show the real one. The built app carries the icon
+  every way macOS reads it (`CFBundleIconName` AppIcon for iPhone and iPad,
+  Assets.car, the AppIcon60x60 and AppIcon76x76 PNGs; build 284 read on
+  Agriass-Air 2026-11-26), and an iPhone and iPad app's asset catalog can't
+  hold a Mac icon, so nothing in Conduit's bundle is known to fix it. Not
+  reproduced: Agriass-Air's Spotlight and System Settings search list no
+  Conduit row at all. Whether other iPhone and iPad apps show the same
+  generic icon there is asked of the reporter.
 
-**Checked:** 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2217 (docs/VOICE_SETTINGS.md's Mac hint says to search System Settings for "Voices", as the hints in the app already did); 2026-11-11, #2210 (new entry).
+**Checked:** 2026-11-26, #PRNUM (issue 2208's blank icon is Spotlight's System Settings row; the built app's icon keys and files are all there, gap reworded, no app fix found); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2217 (docs/VOICE_SETTINGS.md's Mac hint says to search System Settings for "Voices", as the hints in the app already did); 2026-11-11, #2210 (new entry).
 
 ## Swiping list rows on a Mac
 
