@@ -1271,7 +1271,9 @@ extension AppState {
     /// resumed the chat as well: until then Hermes may no longer hold the
     /// chat's runtime and refuses what is sent to it. That replaces failing
     /// on the spot and leaving the call to say it didn't go through (#1060).
-    /// A wait that runs out throws `notConnected`. A connect already under
+    /// A wait that runs out throws `notConnected`, unless what it still
+    /// waits on is a non-stale sync of the chat on screen (an ordinary open),
+    /// which the request goes on through. A connect already under
     /// way (a cold launch's too) is waited for the same way. Without one
     /// nothing waits, and the result is what it was before: the current
     /// client, or `notConnected` without one.
@@ -1396,7 +1398,13 @@ extension AppState {
                 // no longer be about the chat on screen.
                 let states = self.isConnectedValues
                     .combineLatest(self.isConnectingValues, self.shownChat.$turnState, self.$activeSessionId).values
-                for await (connected, connecting, turn, _) in states {
+                // Each change only wakes it: the state is read as it stands
+                // now, since changes made together reach the loop as the
+                // first of them, and a later one may not come at all.
+                for await _ in states {
+                    let connected = self.isConnected
+                    let connecting = self.isConnecting
+                    let turn = self.turnState
                     if connected, !resumingShownChat() || (turn != .reconnecting && turn != .synchronizing) { return }
                     // Signed out, or sign-in needed: no reconnect is coming.
                     if self.connection == nil || self.signInRequiredForReconnect { return }
