@@ -82,7 +82,7 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     @MainActor
-    func testInstalledVoicesAreKeptUntilForgotten() {
+    func testInstalledVoicesAreKeptUntilForgotten() async {
         let saved = IPhoneVoices.readInstalled
         defer {
             IPhoneVoices.readInstalled = saved
@@ -95,18 +95,46 @@ extension HermesVoiceGatewayTimeoutTests {
             return listed
         }
         IPhoneVoices.forgetInstalled()
-        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha"])
+        let first = await IPhoneVoices.installed()
+        XCTAssertEqual(first.map(\.id), ["samantha"])
         // A voice downloaded meanwhile is read once the list is forgotten.
         listed.append(iPhoneVoice("ava", "Ava", "en-US", quality: 3))
-        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha"])
+        let kept = await IPhoneVoices.installed()
+        XCTAssertEqual(kept.map(\.id), ["samantha"])
         XCTAssertEqual(reads, 1)
         IPhoneVoices.forgetInstalled()
-        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha", "ava"])
+        let again = await IPhoneVoices.installed()
+        XCTAssertEqual(again.map(\.id), ["samantha", "ava"])
         XCTAssertEqual(reads, 2)
     }
 
+    /// The list is read off the main thread (iOS's speech service can keep
+    /// it waiting long enough for the watchdog to end Conduit), and callers
+    /// waiting at once share one read.
     @MainActor
-    func testIOSSayingTheVoicesChangedReadsThemAgain() {
+    func testInstalledVoicesAreReadOffTheMainThreadOnce() async {
+        let saved = IPhoneVoices.readInstalled
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.forgetInstalled()
+        }
+        let reads = LockedCount()
+        IPhoneVoices.readInstalled = {
+            reads.add(onMain: Thread.isMainThread)
+            return [iPhoneVoice("samantha", "Samantha", "en-US")]
+        }
+        IPhoneVoices.forgetInstalled()
+        async let one = IPhoneVoices.installed()
+        async let two = IPhoneVoices.installed()
+        let (a, b) = await (one, two)
+        XCTAssertEqual(a.map(\.id), ["samantha"])
+        XCTAssertEqual(b.map(\.id), ["samantha"])
+        XCTAssertEqual(reads.count, 1)
+        XCTAssertEqual(reads.onMain, 0)
+    }
+
+    @MainActor
+    func testIOSSayingTheVoicesChangedReadsThemAgain() async {
         let saved = IPhoneVoices.readInstalled
         defer {
             IPhoneVoices.readInstalled = saved
@@ -115,10 +143,12 @@ extension HermesVoiceGatewayTimeoutTests {
         var listed = [iPhoneVoice("samantha", "Samantha", "en-US")]
         IPhoneVoices.readInstalled = { listed }
         IPhoneVoices.forgetInstalled()
-        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha"])
+        let first = await IPhoneVoices.installed()
+        XCTAssertEqual(first.map(\.id), ["samantha"])
         listed.append(iPhoneVoice("ava", "Ava", "en-US", quality: 3))
         NotificationCenter.default.post(name: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil)
-        XCTAssertEqual(IPhoneVoices.installed().map(\.id), ["samantha", "ava"])
+        let changed = await IPhoneVoices.installed()
+        XCTAssertEqual(changed.map(\.id), ["samantha", "ava"])
     }
 
     func testAutomaticOverADeletedPickClearsIt() {
@@ -184,7 +214,7 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     @MainActor
-    func testALanguageWithNoInstalledVoiceUsesIOSsOwn() {
+    func testALanguageWithNoInstalledVoiceUsesIOSsOwn() async {
         let saved = IPhoneVoices.readInstalled
         let savedSystem = IPhoneVoices.systemVoice
         defer {
@@ -201,8 +231,9 @@ extension HermesVoiceGatewayTimeoutTests {
         }
         IPhoneVoices.readInstalled = { [] }
         IPhoneVoices.forgetInstalled()
-        XCTAssertNil(IPhoneVoices.voice(for: "en-US"), "No installed voice: iOS's own, which has none here")
-        XCTAssertEqual(asked, ["en-US", "en-US"], "The lookup and the fallback each ask iOS for the language's own voice")
+        let voice = await IPhoneVoices.voice(for: "en-US")
+        XCTAssertNil(voice, "No installed voice: iOS's own, which has none here")
+        XCTAssertEqual(asked, ["en-US"], "iOS is asked once for the language's own voice, which is also the fallback")
     }
 
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
@@ -751,4 +782,20 @@ private final class ScriptedSpeechStream: VoiceSpeechStream {
     func cancel() {
         cancelled = true
     }
+}
+
+/// Counts reads made on another thread, for the off-main voice list test.
+private final class LockedCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var reads = 0
+    private var mainReads = 0
+
+    func add(onMain: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        reads += 1
+        if onMain { mainReads += 1 }
+    }
+
+    var count: Int { lock.lock(); defer { lock.unlock() }; return reads }
+    var onMain: Int { lock.lock(); defer { lock.unlock() }; return mainReads }
 }

@@ -145,6 +145,19 @@ final class TranscriptLayout: UICollectionViewLayout {
             measuredSinceChange.insert(id)
             return
         }
+        guard pendingRows == nil, rows.count == itemsInView else {
+            // Rows applied that the next pass takes up (another chat, as a
+            // swipe from a workstream into its Bot Chat): the index is the
+            // old rows', and a context naming items the collection view no
+            // longer has throws in its layout (App Store Connect crash log,
+            // build 282, and MetricKit reports from 278). The height is
+            // kept and the next pass lays every row out from it.
+            heights[id] = height
+            measuredSinceChange.insert(id)
+            markDirty(from: 0)
+            invalidateLayout()
+            return
+        }
         let adjustment = noteHeight(height, at: index)
         switch rows[index].kind {
         case .thinking, .streaming:
@@ -169,7 +182,15 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// row drawn over them, a closed one's old height left empty) until a
     /// scroll or another visit laid them out afresh.
     private static func items(from index: Int, count: Int) -> [IndexPath] {
-        (index..<count).map { IndexPath(item: $0, section: 0) }
+        guard index < count else { return [] }
+        return (index..<count).map { IndexPath(item: $0, section: 0) }
+    }
+
+    /// The items the collection view has now, which an invalidation context
+    /// may name; past them UIKit throws.
+    private var itemsInView: Int {
+        guard let collectionView, collectionView.numberOfSections > 0 else { return 0 }
+        return collectionView.numberOfItems(inSection: 0)
     }
 
     /// Keeps a row's new height and returns how much the content's height
@@ -365,7 +386,9 @@ final class TranscriptLayout: UICollectionViewLayout {
         withOriginalAttributes originalAttributes: UICollectionViewLayoutAttributes
     ) -> Bool {
         let index = originalAttributes.indexPath.item
-        guard originalAttributes.indexPath.section == 0, index < rows.count else { return false }
+        // Not against rows the next pass replaces: the index is the
+        // collection view's, and the cell measures again after that pass.
+        guard originalAttributes.indexPath.section == 0, pendingRows == nil, index < rows.count else { return false }
         // Taken only for the width the rows are laid out at, as in
         // rowResized: a cell measured at the last width (a rotation, a
         // split window) is measured again at the new one.
@@ -392,9 +415,11 @@ final class TranscriptLayout: UICollectionViewLayout {
         context.contentSizeAdjustment = CGSize(width: 0, height: preferredAdjustment)
         preferredAdjustment = 0
         let index = originalAttributes.indexPath.item
-        // The rows under it move too (`items(from:count:)`).
-        if index + 1 < rows.count {
-            context.invalidateItems(at: Self.items(from: index + 1, count: rows.count))
+        // The rows under it move too (`items(from:count:)`), as many as the
+        // collection view has.
+        let count = min(rows.count, itemsInView)
+        if index + 1 < count {
+            context.invalidateItems(at: Self.items(from: index + 1, count: count))
         }
         markDirty(from: index)
         return context

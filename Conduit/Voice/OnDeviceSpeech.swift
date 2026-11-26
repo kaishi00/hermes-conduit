@@ -415,10 +415,23 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         sentenceAudio = 0
         self.onDone = onDone
         let request = AVSpeechUtterance(string: text)
-        request.voice = voice(for: language)
         self.request = request
-        LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: request.voice))", run: traceRun)
+        // The watchdog runs from here, so a voice iOS's speech service never
+        // hands back ends the sentence as silent audio would.
         armWatchdog(id)
+        let wanted = language ?? AVSpeechSynthesisVoice.currentLanguageCode()
+        Task { @MainActor [weak self] in
+            // Found off the main thread (IPhoneVoices.voice(for:)).
+            let voice = await IPhoneVoices.voice(for: wanted)
+            guard let self, self.utterance == id else { return }
+            if voice == nil { onDeviceSpeechLog.notice("No iPhone voice for \(wanted, privacy: .public)") }
+            request.voice = voice
+            LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: voice))", run: self.traceRun)
+            self.write(request, id: id, number: number)
+        }
+    }
+
+    private func write(_ request: AVSpeechUtterance, id: Int, number: Int) {
         synthesizer.write(request) { [weak self] buffer in
             // Called off the main thread, in order; the main queue keeps it.
             guard let pcm = buffer as? AVAudioPCMBuffer else { return }
@@ -511,15 +524,6 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         default: "Default"
         }
         return "\(quality) voice \(voice.identifier)"
-    }
-
-    /// The voice picked for `language` in Settings, or else the best one
-    /// installed (IPhoneVoices).
-    private func voice(for language: String?) -> AVSpeechSynthesisVoice? {
-        let wanted = language ?? AVSpeechSynthesisVoice.currentLanguageCode()
-        let chosen = IPhoneVoices.voice(for: wanted)
-        if chosen == nil { onDeviceSpeechLog.notice("No iPhone voice for \(wanted, privacy: .public)") }
-        return chosen
     }
 
     nonisolated static func int16Data(_ buffer: AVAudioPCMBuffer) -> Data {

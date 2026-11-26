@@ -157,24 +157,42 @@ enum IPhoneVoices {
     }
 
     @MainActor private static var cachedInstalled: [IPhoneVoiceOption]?
+    @MainActor private static var reading: Task<[IPhoneVoiceOption], Never>?
     @MainActor private static var voicesChanged: NSObjectProtocol?
 
     /// Every voice installed on this iPhone that can speak a reply. Kept
     /// until iOS says the list changed (a voice downloaded or deleted while
     /// Conduit runs is used from the next sentence) or Settings asks again.
-    @MainActor static func installed() -> [IPhoneVoiceOption] {
+    ///
+    /// Read off the main thread: iOS's speech service can keep
+    /// speechVoices() waiting for many seconds, and on the main thread that
+    /// froze Conduit until the watchdog ended it (relay crash reports,
+    /// builds 276 to 281). Callers waiting at once share one read.
+    @MainActor static func installed() async -> [IPhoneVoiceOption] {
         if voicesChanged == nil {
             voicesChanged = NotificationCenter.default.addObserver(
                 forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification,
                 object: nil,
                 queue: .main
             ) { _ in
-                MainActor.assumeIsolated { IPhoneVoices.cachedInstalled = nil }
+                MainActor.assumeIsolated { IPhoneVoices.forgetInstalled() }
             }
         }
         if let cachedInstalled { return cachedInstalled }
-        let voices = readInstalled()
-        cachedInstalled = voices
+        let task: Task<[IPhoneVoiceOption], Never>
+        if let reading {
+            task = reading
+        } else {
+            nonisolated(unsafe) let read = readInstalled
+            task = Task.detached(priority: .userInitiated) { read() }
+            reading = task
+        }
+        let voices = await task.value
+        // A list forgotten while it was read is read again next time.
+        if reading == task {
+            reading = nil
+            cachedInstalled = voices
+        }
         return voices
     }
 
@@ -182,9 +200,10 @@ enum IPhoneVoices {
     /// Conduit comes back from iPhone Settings.
     @MainActor static func forgetInstalled() {
         cachedInstalled = nil
+        reading = nil
     }
 
-    /// What installed() reads; tests swap it.
+    /// What installed() reads, off the main thread; tests swap it.
     @MainActor static var readInstalled: () -> [IPhoneVoiceOption] = readSystemVoices
 
     /// Novelty voices and Personal Voice are left out: one is a joke, the
@@ -202,30 +221,37 @@ enum IPhoneVoices {
         }
     }
 
-    /// iOS's own default voice for `language`, if it has one.
-    @MainActor static func systemDefault(for language: String) -> String? {
-        systemVoice(language)?.identifier
+    /// iOS's own default voice for `language`, if it has one, asked off the
+    /// main thread like the list.
+    @MainActor static func systemDefault(for language: String) async -> String? {
+        nonisolated(unsafe) let ask = systemVoice
+        return await Task.detached(priority: .userInitiated) { ask(language)?.identifier }.value
     }
 
     /// iOS's own voice for a language; tests swap it, since the
     /// simulator's speech service can take minutes to answer.
     @MainActor static var systemVoice: (String) -> AVSpeechSynthesisVoice? = { AVSpeechSynthesisVoice(language: $0) }
 
-    @MainActor static func option(for language: String) -> IPhoneVoiceOption? {
-        pick(
-            installed(),
-            wanted: language,
-            chosen: chosenVoice(for: language),
-            region: Locale.current.region?.identifier,
-            systemDefault: systemDefault(for: language)
-        )
+    /// The voice to speak `language` with: the pick or the best installed
+    /// one, or else iOS's own. Every call into iOS's speech service here runs
+    /// off the main thread, the voice's own init included.
+    @MainActor static func voice(for language: String) async -> AVSpeechSynthesisVoice? {
+        let installed = await installed()
+        let chosen = chosenVoice(for: language)
+        let region = Locale.current.region?.identifier
+        nonisolated(unsafe) let ask = systemVoice
+        let found = await Task.detached(priority: .userInitiated) { () -> FoundVoice in
+            let system = ask(language)
+            let option = pick(installed, wanted: language, chosen: chosen, region: region, systemDefault: system?.identifier)
+            if let option, let voice = AVSpeechSynthesisVoice(identifier: option.id) { return FoundVoice(voice: voice) }
+            return FoundVoice(voice: system)
+        }.value
+        return found.voice
     }
 
-    /// The voice to speak `language` with.
-    @MainActor static func voice(for language: String) -> AVSpeechSynthesisVoice? {
-        if let option = option(for: language), let voice = AVSpeechSynthesisVoice(identifier: option.id) {
-            return voice
-        }
-        return systemVoice(language)
+    /// A voice handed back from the read off the main thread; the voice
+    /// isn't changed after it's made.
+    private struct FoundVoice: @unchecked Sendable {
+        let voice: AVSpeechSynthesisVoice?
     }
 }

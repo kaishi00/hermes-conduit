@@ -21,6 +21,13 @@ struct IPhoneVoiceSettingsView: View {
     @State private var chosen: String?
     /// Nothing is said about missing voices before the list is read.
     @State private var loaded = false
+    /// iOS's own voice for `language`, which Automatic leans toward.
+    @State private var systemDefault: String?
+    /// Bumped to read again; each read runs off the main thread
+    /// (IPhoneVoices.installed()).
+    @State private var readCount = 0
+    /// The next read asks iOS for the list again, as when Settings opens.
+    @State private var readsListAgain = true
 
     private static let automaticID = "automatic"
     private static var appLanguageKey: String { IPhoneVoices.languageKey(OnDeviceSpeechStream.appLanguage ?? "en") }
@@ -31,6 +38,8 @@ struct IPhoneVoiceSettingsView: View {
                 ConduitMenuPicker(value: language, choices: languageChoices, onSelect: { picked in
                     language = picked
                     chosen = IPhoneVoices.chosenVoice(for: picked)
+                    systemDefault = nil
+                    readCount += 1
                 }) {
                     Text("Language").foregroundStyle(.secondary)
                 }
@@ -66,7 +75,7 @@ struct IPhoneVoiceSettingsView: View {
                     .foregroundStyle(.orange)
             }
         }
-        .onAppear(perform: reload)
+        .task(id: readCount) { await read() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { reload() }
         }
@@ -76,8 +85,21 @@ struct IPhoneVoiceSettingsView: View {
     }
 
     private func reload() {
-        IPhoneVoices.forgetInstalled()
-        voices = IPhoneVoices.installed()
+        readsListAgain = true
+        readCount += 1
+    }
+
+    private func read() async {
+        if readsListAgain {
+            readsListAgain = false
+            IPhoneVoices.forgetInstalled()
+        }
+        let reading = language
+        let installed = await IPhoneVoices.installed()
+        let system = await IPhoneVoices.systemDefault(for: reading)
+        guard !Task.isCancelled, reading == language else { return }
+        voices = installed
+        systemDefault = system
         chosen = IPhoneVoices.chosenVoice(for: language)
         loaded = true
     }
@@ -118,7 +140,7 @@ struct IPhoneVoiceSettingsView: View {
             candidates,
             wanted: language,
             region: Locale.current.region?.identifier,
-            systemDefault: IPhoneVoices.systemDefault(for: language)
+            systemDefault: systemDefault
         )
         let automaticTitle = automatic.map { AppLocalization.string("Automatic (\(title(for: $0)))", table: .voice) }
             ?? AppLocalization.string("Automatic")

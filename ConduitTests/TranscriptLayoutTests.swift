@@ -282,6 +282,29 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(Set(context.invalidatedItemIndexPaths ?? []).intersection([IndexPath(item: 2, section: 0), IndexPath(item: 3, section: 0)]).count, 2)
     }
 
+    /// App Store Connect crash log (build 282, a swipe from a workstream
+    /// into its Bot Chat) and MetricKit reports from 278: an exception in
+    /// the collection view's layout. A row of the old chat resized after the
+    /// new chat's fewer rows were applied, and its context named items past
+    /// the ones the collection view had. Now the height is kept and the next
+    /// pass lays the new rows out.
+    func testARowResizedAfterFewerRowsWereAppliedNamesNoMissingItem() throws {
+        let many = (0..<40).map { "old-\($0)" }
+        show(many)
+        measure(Dictionary(uniqueKeysWithValues: many.map { ($0, CGFloat(60)) }))
+
+        // The new chat's rows are applied; the pass that takes them hasn't run.
+        layout.setRows([TranscriptRow(id: "new-0", kind: .empty), TranscriptRow(id: "new-1", kind: .empty)], changed: [])
+        rows.count = 2
+        view.reloadData()
+        layout.rowResized("old-5", to: CGSize(width: layout.itemWidth, height: 200))
+        view.layoutIfNeeded()
+
+        XCTAssertEqual(view.numberOfItems(inSection: 0), 2)
+        XCTAssertNotNil(layout.rowFrame("new-1"))
+        XCTAssertNil(layout.rowFrame("old-5"))
+    }
+
     func testAHeightMeasuredAtAnotherWidthIsNotTaken() throws {
         show(["a"])
         measure(["a": 100])
