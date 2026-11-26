@@ -9066,7 +9066,7 @@ describes it)
 
 **Rulings**
 - Only main surfaces drift (`drifts: true`); sheets and pushed screens keep the still composition (#474).
-- Settings > Appearance > Moving background turns the drift off everywhere it runs, on this device. It starts off when the iPad app runs on a Mac and on everywhere else: a Mac window is several times a phone's, and redrawing a whole-window glow ten times a second made the window lag on an M3 Pro (Eric, 2026-11-25, PR_NUM). The working line's breathing is left out: it shows work in progress, not the background.
+- Settings > Appearance > Moving background turns the drift off everywhere it runs, on this device. It starts off when the iPad app runs on a Mac and on everywhere else: a Mac window is several times a phone's, and redrawing a whole-window glow ten times a second made the window lag on an M3 Pro (Eric, 2026-11-25, #3325). The working line's breathing is left out: it shows work in progress, not the background.
 - The drift pauses with the app inactive, Reduce Motion, Low Power Mode, a hot device (serious or critical), or Conduit idle for a couple of minutes with no turn running, and resumes from the phase it showed, never jumping (#465, #474).
 - UI tests and the App Store screenshots launch with `CONDUIT_STILL_BACKDROP=1` (`XCUIApplication.conduit()`), which holds the drift still: XCUITest waits for the app to settle before each step, and a drifting backdrop never settles (about two minutes a tap, #1994). The demo videos keep the drift. The same launches, the demo videos' too, set `CONDUIT_NO_PASSWORD_AUTOFILL=1` (Connection setup guide's ruling, #2958).
 - The glows are drawn from the timeline's tick, so they move on every frame. Drawn from a closure that only ran when something else redrew the backdrop, they sat still and then jumped across the screen in one frame whenever an input changed (the drift pausing or resuming, a color, a size), which looked like the backdrop going dark and coming back (issue 1980).
@@ -9074,7 +9074,7 @@ describes it)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-25, PR_NUM (Moving background switch, off by default on a Mac); 2026-11-21, #2960 (the UI tests', screenshots' and demo videos' launches also keep Passwords AutoFill off, #2958; the drift itself unchanged); 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
+**Checked:** 2026-11-25, #3325 (Moving background switch, off by default on a Mac); 2026-11-21, #2960 (the UI tests', screenshots' and demo videos' launches also keep Passwords AutoFill off, #2958; the drift itself unchanged); 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
 
 ## Profile names
 
