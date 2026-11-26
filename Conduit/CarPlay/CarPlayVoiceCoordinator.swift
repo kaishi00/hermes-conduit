@@ -245,8 +245,21 @@ final class CarPlayVoiceCoordinator {
     /// The chat list on screen already asked for the chats once.
     private var didRequestChatCatalog = false
     /// How long before a far agent's chat read that brought nothing back
-    /// is tried again while the car's list shows.
-    static let farChatsRetryDelay: Duration = .seconds(10)
+    /// is tried again while the car's list shows: 10 s after the first,
+    /// then 30 s, then each minute, so a far host that keeps failing over a
+    /// long drive is asked at most once a minute (issue 3284). A recovered
+    /// host's `sessions.changed` still reads at once.
+    static func farChatsRetryDelay(afterFailures failures: Int) -> Duration {
+        switch failures {
+        case ...1: return .seconds(10)
+        case 2: return .seconds(30)
+        default: return .seconds(60)
+        }
+    }
+    /// The far agent whose chat reads keep bringing nothing back, and how
+    /// many in a row. Starts over on a read that lands, another agent, or
+    /// the list closing.
+    private(set) var farChatsFailures: (key: String, count: Int)?
     private var isChatsRefreshScheduled = false
     /// Whether the chat list on screen is being kept current.
     var isObservingChats: Bool { chatsObservation != nil }
@@ -1324,9 +1337,14 @@ final class CarPlayVoiceCoordinator {
             // A far read that brought nothing back is tried again while the
             // list shows, rather than leave a bare list until it's reopened.
             if let far, !self.farChatsRead(far, in: appState) {
-                try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay)
+                let key = "\(far.uuidString)|\(self.farAgent?.profile.lowercased() ?? "")"
+                let failures = self.farChatsFailures?.key == key ? (self.farChatsFailures?.count ?? 0) + 1 : 1
+                self.farChatsFailures = (key, failures)
+                try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: failures))
                 guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far else { return }
                 self.didRequestChatCatalog = false
+            } else {
+                self.farChatsFailures = nil
             }
             self.scheduleChatsRefresh()
         }
@@ -1380,6 +1398,7 @@ final class CarPlayVoiceCoordinator {
         shownAttachedChatID = nil
         chatCatalogLoad = nil
         didRequestChatCatalog = false
+        farChatsFailures = nil
         isChatsRefreshScheduled = false
     }
 

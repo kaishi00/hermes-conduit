@@ -150,11 +150,20 @@ enum KanbanFullTextFormatter {
     /// by the style's point size against default-size caption (12 pt), so
     /// footnote comments and the larger text sizes, accessibility sizes
     /// included, count the fewer columns they hold.
+    /// Kept per style and size: a task's screen asks on every body pass
+    /// (each keystroke in its comment box), and a new size is a new key
+    /// (issue 3283).
     static func lineWidth(for style: UIFont.TextStyle, at size: DynamicTypeSize) -> Int {
+        let key = "\(style.rawValue)|\(size)" as NSString
+        if let kept = lineWidths.object(forKey: key) { return kept.intValue }
         let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
         let points = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits).pointSize
-        return lineWidth(points: points)
+        let width = lineWidth(points: points)
+        lineWidths.setObject(NSNumber(value: width), forKey: key)
+        return width
     }
+
+    private static let lineWidths = NSCache<NSString, NSNumber>()
 
     /// `rowLineWidth` for text of `points` (the pure half of the above).
     static func lineWidth(points: CGFloat) -> Int {
@@ -238,7 +247,28 @@ enum KanbanFullTextFormatter {
     /// the few lines a row shows are words, not `## Handoff` and an empty
     /// line. A code span keeps what's inside it whole (`__init__`), only its
     /// backticks go. The sheet renders the Markdown itself.
+    ///
+    /// Kept by its text: it's pure, and a task's screen asks for every
+    /// comment's, run's and result's on every body pass (each keystroke in
+    /// its comment box, each poll), so unchanged text isn't stripped again
+    /// (issue 3283). NSCache is safe from any thread and lets go under
+    /// memory pressure.
     static func plainPreview(_ markdown: String) -> String {
+        let key = markdown as NSString
+        if let kept = previews.object(forKey: key) { return kept as String }
+        let preview = strippedPreview(markdown)
+        previews.setObject(preview as NSString, forKey: key, cost: markdown.utf16.count)
+        return preview
+    }
+
+    private static let previews: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        // About 2 MB of source text.
+        cache.totalCostLimit = 1_000_000
+        return cache
+    }()
+
+    private static func strippedPreview(_ markdown: String) -> String {
         // Each kept line split on backticks: even pieces are prose, odd ones
         // the inside of a code span, left as written. A fenced block's lines
         // (blank ones too) are kept as written, and emphasis pairs only

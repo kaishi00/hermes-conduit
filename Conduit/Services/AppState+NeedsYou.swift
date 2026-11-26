@@ -26,8 +26,10 @@ extension AppState {
     /// be read, or a connection that dropped for a moment, keeps what it
     /// last showed; only a dashboard without the list clears it. Reads
     /// asked for while one runs (a burst of pushes) make one more read
-    /// after it, never several at once.
-    func refreshNeedsYou() async {
+    /// after it, never several at once. `force` (all but the poll) reads
+    /// the other combined dashboards' waits however fresh they are.
+    func refreshNeedsYou(force: Bool = true) async {
+        if force { combinedDashboardWaitsForced = true }
         // The other combined dashboards are read beside this one's, never
         // ahead of it: a slow one doesn't hold back a push's wait here.
         let others = Task { @MainActor [weak self] in await self?.refreshOtherCombinedDashboards() }
@@ -43,7 +45,12 @@ extension AppState {
     /// dashboard's reads.
     func refreshOtherCombinedDashboards() async {
         await otherCombinedReads.coalescing { [weak self] in
-            await self?.readOtherCombinedDashboardsNeedsYou()
+            guard let self else { return }
+            // Taken as each pass starts, so a forced ask that waited for
+            // the pass before reads in full.
+            let force = self.combinedDashboardWaitsForced
+            self.combinedDashboardWaitsForced = false
+            await self.readOtherCombinedDashboardsNeedsYou(force: force)
             await self?.readOtherCombinedDashboardsChats()
             await self?.readOtherCombinedDashboardsBots()
             await self?.readOtherCombinedDashboardsRooms()
@@ -56,6 +63,11 @@ extension AppState {
         servesNeedsYou || !needsYou.otherDashboards.isEmpty
     }
 
+    /// How long another combined dashboard's waits stand before the poll
+    /// reads them again, as its chats do: a wait's push reads at once, so
+    /// the poll is the recovery (issue 3282).
+    static let combinedDashboardWaitsMaxAge: TimeInterval = combinedDashboardChatsMaxAge
+
     /// How long before another combined dashboard's plugin that didn't
     /// answer the Needs you pass's capabilities ask is asked again.
     static let combinedDashboardNameRetryInterval: TimeInterval = 300
@@ -63,8 +75,10 @@ extension AppState {
     /// The other combined dashboards' waits, each read through its kept
     /// connection for every one of its profiles (all-live stage 4a). Quiet
     /// on failure, as this dashboard's: a profile that can't be read keeps
-    /// what it showed, and a dashboard let go says nothing more.
-    func readOtherCombinedDashboardsNeedsYou(now: Date = Date()) async {
+    /// what it showed, and a dashboard let go says nothing more. Unless
+    /// `force`, a profile read through the same kept connection within
+    /// `combinedDashboardWaitsMaxAge` isn't read again.
+    func readOtherCombinedDashboardsNeedsYou(force: Bool = true, now: Date = Date()) async {
         // `now` is the pass's start; an attempt's clock runs from when it is
         // made, after the reads before it (#3143).
         let passStarted = Date()
@@ -73,6 +87,8 @@ extension AppState {
         keptDashboardProfiles = keptDashboardProfiles.filter { id, read in
             kept[id].map { ObjectIdentifier($0.bridge) == read.bridge } == true
         }
+        let keptBridges = Set(kept.values.map { ObjectIdentifier($0.bridge) })
+        combinedDashboardWaitsReadAt = combinedDashboardWaitsReadAt.filter { keptBridges.contains($0.value.bridge) }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
@@ -105,6 +121,11 @@ extension AppState {
             }
             for profile in profiles {
                 guard isSceneActive else { return }
+                let readKey = "\(id.uuidString)|\(profile.lowercased())"
+                let readAt = now.addingTimeInterval(Date().timeIntervalSince(passStarted))
+                if !force, let last = combinedDashboardWaitsReadAt[readKey], last.bridge == bridgeID,
+                   readAt.timeIntervalSince(last.at) < Self.combinedDashboardWaitsMaxAge { continue }
+                combinedDashboardWaitsReadAt[readKey] = (bridgeID, readAt)
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, or opened, while the read was out: not this pass's.
@@ -413,7 +434,7 @@ extension AppState {
     /// root view runs it; it ends with its task.
     func runNeedsYouPoll() async {
         while !Task.isCancelled {
-            if isSceneActive { await refreshNeedsYou() }
+            if isSceneActive { await refreshNeedsYou(force: false) }
             try? await Task.sleep(for: .seconds(PollCadence.stretched(NeedsYouStore.pollInterval, by: deviceConditions())))
         }
     }

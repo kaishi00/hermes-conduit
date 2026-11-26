@@ -452,6 +452,14 @@ final class AppState: ObservableObject {
     /// plugin without the route isn't asked on every poll (Dashboard names).
     /// One that didn't answer is asked again from `retryAt` (issue 2948).
     var combinedDashboardNameReads: [UUID: (bridge: ObjectIdentifier, retryAt: Date?)] = [:]
+    /// When the Needs you poll last read another combined dashboard's
+    /// waits, by dashboard and profile, with the kept connection it read
+    /// through: a poll pass reads them at most every
+    /// `combinedDashboardWaitsMaxAge` (issue 3282).
+    var combinedDashboardWaitsReadAt: [String: (bridge: ObjectIdentifier, at: Date)] = [:]
+    /// A push, the open list or an action asked for the other combined
+    /// dashboards' waits while a pass ran: the next pass reads them all.
+    var combinedDashboardWaitsForced = false
     /// Whether the last forced sign-in of each dashboard was a native one,
     /// decided while its bridge was still there: a repeat finds the bridge
     /// gone and, after a silent renewal, the native grant cleared too.

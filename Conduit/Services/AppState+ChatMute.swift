@@ -103,12 +103,12 @@ extension AppState {
     /// screen's (`refreshChatMutes`) or another combined dashboard's
     /// (`refreshFarChatMarks`).
     func readChatMutes(dashboardID: UUID?, bridge: DashboardTicketBridge, profiles: [String], force: Bool = false,
-                       now: Date = Date()) {
+                       interval: TimeInterval = chatMutesReadInterval, now: Date = Date()) {
         for profile in profiles {
             let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
             guard !chatMutesReads.contains(key), chatMutesPendingWrites[key] == nil else { continue }
             if !force, mutes(of: dashboardID).hasRead(profile, dashboardID: dashboardID), let last = chatMutesReadAt[key],
-               now.timeIntervalSince(last) < Self.chatMutesReadInterval { continue }
+               now.timeIntervalSince(last) < interval { continue }
             chatMutesReads.insert(key)
             chatMutesReadAt[key] = now
             let writes = chatMutesWrites[key] ?? 0

@@ -110,7 +110,7 @@ extension AppState {
     /// screen's (`refreshChatDoneMarks`) or another combined dashboard's
     /// (`refreshFarChatMarks`).
     func readChatDoneMarks(dashboardID: UUID?, bridge: DashboardTicketBridge, profiles: [String], force: Bool = false,
-                           now: Date = Date()) {
+                           interval: TimeInterval = chatDoneMarksReadInterval, now: Date = Date()) {
         for profile in profiles {
             let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
             guard !chatDoneMarksReads.contains(key), chatDoneMarksPendingWrites[key] == nil else { continue }
@@ -118,7 +118,7 @@ extension AppState {
             // each profile's, even once this dashboard's marks are back.
             if !force, doneMarks(of: dashboardID).hasRead(profile, dashboardID: dashboardID),
                let last = chatDoneMarksReadAt[key],
-               now.timeIntervalSince(last) < Self.chatDoneMarksReadInterval { continue }
+               now.timeIntervalSince(last) < interval { continue }
             chatDoneMarksReads.insert(key)
             chatDoneMarksReadAt[key] = now
             let writes = chatDoneMarksWrites[key] ?? 0
