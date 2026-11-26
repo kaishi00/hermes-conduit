@@ -213,7 +213,8 @@ def load_estimates(path, purpose: str) -> tuple:
     estimates, warns = {}, []
     for name, secs in doc["classes"].items():
         # math.isfinite: nan survives the <= 0 check and would poison every
-        # downstream ceil()/comparison in the planner.
+        # downstream sum and comparison (smoke's changed-class budget and
+        # the hosted shards' split).
         if (isinstance(secs, bool) or not isinstance(secs, (int, float))
                 or not math.isfinite(secs) or secs <= 0):
             warns.append(f"{purpose}: ignoring non-positive timing for {name!r}")

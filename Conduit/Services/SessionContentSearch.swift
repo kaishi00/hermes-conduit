@@ -487,7 +487,9 @@ final class SessionContentSearchModel: ObservableObject {
                 // Another combined dashboard's: one that fails, or whose
                 // Hermes has no search route, is left out.
                 Task { @MainActor () -> [SessionContentSearchHit] in
-                    // Marked since the filter above (an older query's 404): not asked.
+                    // Marked since the filter above (an older query's 404,
+                    // or an answer of its that wasn't a search response):
+                    // not asked.
                     guard !support.isUnsupported(far.search.scope) else { return [] }
                     let response: [String: Any]
                     do {

@@ -808,7 +808,7 @@ final class GeminiLiveToolBridge {
             // The user's own answer sends it, as on GPT-Live, never the
             // model's reading of it (#1007): any words after the ask, a
             // "wait" or a no included, used to send it.
-            let answer = await heardAnswer()
+            let (answer, answerLine) = await heardAnswer()
             guard !isEnding else { return [] }
             // Another request replaced it meanwhile: that one waits for its
             // own answer.
@@ -842,10 +842,12 @@ final class GeminiLiveToolBridge {
             // the next one.
             // A bare no or "not yet" the model let pass before the yes is
             // no words of it either (issue 3271).
-            let saidWaiting = unsentWords().filter { !Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0)) }
+            // Lines the user began after their yes are the next request's
+            // (issue 3285).
+            let saidWaiting = unsentWords(through: answerLine).filter { !Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0)) }
             // A refusal gives back the draft's words and these, never a bare
             // answer, which was about this request.
-            let marks = waiting.marks.merging(noteWordsSent(keepingBare: true)) { held, _ in held }
+            let marks = waiting.marks.merging(noteWordsSent(keepingBare: true, through: answerLine)) { held, _ in held }
             let approved = GeminiLiveProtocol.FunctionCall(
                 id: call.id,
                 name: call.name,
@@ -1121,30 +1123,36 @@ final class GeminiLiveToolBridge {
     /// The user's answer to sending the draft. Their words reach the
     /// transcript a moment after the model heard them, so words that don't
     /// read as an answer yet are given `lateYesWait` to become one.
-    private func heardAnswer() async -> VoiceThreadRouting.HeldRequestAnswer {
+    /// `line` is the transcript line a yes was read from: the user's
+    /// lines after it belong to the next request (issue 3285).
+    private func heardAnswer() async -> (answer: VoiceThreadRouting.HeldRequestAnswer, line: UUID?) {
         let deadline = ContinuousClock.now + lateYesWait
         while true {
             let answer = VoiceThreadRouting.heldRequestAnswer(lastUserWords())
             if case .yes = answer { return await wholeAnswer(answer) }
-            guard !answer.isAnswer, ContinuousClock.now < deadline else { return answer }
-            do { try await Task.sleep(for: .milliseconds(250)) } catch { return answer }
+            guard !answer.isAnswer, ContinuousClock.now < deadline else { return (answer, nil) }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return (answer, nil) }
         }
     }
 
     /// A yes whose line is still arriving ("Yes", then "make it for four"):
     /// read once it stops growing, so the rest goes with this request and
-    /// not the next one.
-    private func wholeAnswer(_ first: VoiceThreadRouting.HeldRequestAnswer) async -> VoiceThreadRouting.HeldRequestAnswer {
+    /// not the next one. A new line of the user's (they went on after the
+    /// model spoke) ends it with the yes read so far standing: those words
+    /// are the next request's, never a new reading of this answer, as on
+    /// Conduit for desktop (desktop#528/#537, issue 3285).
+    private func wholeAnswer(_ first: VoiceThreadRouting.HeldRequestAnswer) async -> (answer: VoiceThreadRouting.HeldRequestAnswer, line: UUID?) {
         var answer = first
+        let line = userLines().last?.id
         let deadline = ContinuousClock.now + requestWordsWait
         while ContinuousClock.now < deadline {
             let words = lastUserWords()
-            do { try await Task.sleep(for: .milliseconds(250)) } catch { return answer }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return (answer, line) }
             let now = lastUserWords()
-            guard now != words else { break }
+            guard userLines().last?.id == line, now != words else { break }
             answer = VoiceThreadRouting.heldRequestAnswer(now)
         }
-        return answer
+        return (answer, line)
     }
 
     /// What the user said since the last request, for the one being made
@@ -1177,8 +1185,9 @@ final class GeminiLiveToolBridge {
         }
     }
 
-    private func unsentWords() -> [String] {
-        userLines().compactMap { line -> String? in
+    /// `through`: only the lines up to that one (all when nil or gone).
+    private func unsentWords(through last: UUID? = nil) -> [String] {
+        lines(through: last).compactMap { line -> String? in
             let rest = String(line.text.dropFirst(wordsSent[line.id] ?? 0)).trimmingCharacters(in: .whitespacesAndNewlines)
             return rest.isEmpty ? nil : rest
         }
@@ -1187,15 +1196,24 @@ final class GeminiLiveToolBridge {
     /// Marks every line sent; what it moved, with each line's count before.
     /// `keepingBare` leaves a bare answer's line out of what it returns: it
     /// was about a held request, so a refusal doesn't give it back.
-    private func noteWordsSent(keepingBare: Bool = false) -> WordMarks {
+    /// `through` marks only the lines up to that one (all when nil or gone).
+    private func noteWordsSent(keepingBare: Bool = false, through last: UUID? = nil) -> WordMarks {
         var moved: WordMarks = [:]
-        for line in userLines() where wordsSent[line.id] != line.text.count {
+        for line in lines(through: last) where wordsSent[line.id] != line.text.count {
             if !(keepingBare && Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer(line.text))) {
                 moved[line.id] = WordMark(before: wordsSent[line.id], after: line.text.count)
             }
             wordsSent[line.id] = line.text.count
         }
         return moved
+    }
+
+    /// The user's lines, oldest first, up to and including `last`; all of
+    /// them when it is nil or no longer in the transcript.
+    private func lines(through last: UUID?) -> [(id: UUID, text: String)] {
+        let all = userLines()
+        guard let last, let index = all.firstIndex(where: { $0.id == last }) else { return all }
+        return Array(all[...index])
     }
 
     /// Marks only the user's last line sent: their answer, not what they

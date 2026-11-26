@@ -3736,6 +3736,55 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(menus.contains(VoiceRequestWords.marker), menus)
     }
 
+    /// Issue 3285: a yes still being read ends where the user's next line
+    /// begins (they went on after the model spoke). The yes stands, and the
+    /// new line goes with the next request, as on Conduit for desktop
+    /// (desktop#528/#537).
+    func testAYesStandsWhenTheUsersNextLineBeginsWhileItIsRead() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor, requestWordsWait: .seconds(5))
+        bridge.lateYesWait = .zero
+        var spokeAt = Date(timeIntervalSince1970: 1_000)
+        let yes = UUID()
+        var lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Book a table for Sam")]
+        bridge.lastUserSpeechAt = { spokeAt }
+        bridge.userLines = { lines }
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Book a table for Sam."]))
+
+        // Each read of the user's last line sees the transcript a little
+        // later: the yes grows, then a new line begins.
+        let script: [[(id: UUID, text: String)]] = [
+            lines + [(id: yes, text: "Yes")],
+            lines + [(id: yes, text: "Yes")],
+            lines + [(id: yes, text: "Yes, and at eight")],
+            lines + [(id: yes, text: "Yes, and at eight")],
+            lines + [(id: yes, text: "Yes, and at eight"), (id: UUID(), text: "Make it four please")],
+        ]
+        var reads = 0
+        bridge.lastUserWords = {
+            lines = script[min(reads, script.count - 1)]
+            reads += 1
+            return lines.last?.text ?? ""
+        }
+        spokeAt = spokeAt.addingTimeInterval(5)
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 1, "the yes read before the new line sends it: \(sent)")
+        let first = try XCTUnwrap(fake.submissions.first?.1)
+        XCTAssertTrue(first.contains("Yes, and at eight"), first)
+        XCTAssertFalse(first.contains("Make it four please"), first)
+
+        // The new line is the next request's words.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "Make the booking for four."]))
+        lines.append((id: UUID(), text: "Yes"))
+        bridge.lastUserWords = { lines.last?.text ?? "" }
+        spokeAt = spokeAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "send_request", arguments: [:]))
+        XCTAssertEqual(fake.created, 2)
+        let second = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(second.contains("Make the booking for four." + VoiceRequestWords.marker + "Make it four please"), second)
+    }
+
     func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {
         let (supervisor, fake) = makeSupervisor()
         supervisor.beginLiveCall(asksBeforeSending: true)
