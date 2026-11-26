@@ -1192,6 +1192,7 @@ extension VoiceConversationControllerTests {
         decisions.waitsOn = .question
         _ = await gpt.handleDelegation(id: "d6", request: "Answer: main", userWords: "um, main please")
         XCTAssertEqual(decisions.answers.last, "um, main please", "The user's own words go, not the model's")
+        let jobsBeforeUnmarked = supervisor.jobs.count
         // GPT-Live often leaves out "Answer:": in a call about a question, a
         // delegation marking nothing else is the user's answer, never a new
         // request Hermes would refuse while it's paused on the question.
@@ -1199,7 +1200,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(decisions.answers.last, "Fire TV, version 8.1")
         _ = await gpt.handleDelegation(id: "d8", request: "The user says it's a Fire TV", userWords: "it's a Fire TV")
         XCTAssertEqual(decisions.answers.last, "it's a Fire TV", "The user's own words, not the model's summary")
-        XCTAssertTrue(supervisor.jobs.isEmpty, "Unmarked answers never reach Hermes as work")
+        XCTAssertEqual(supervisor.jobs.count, jobsBeforeUnmarked, "Unmarked answers never reach Hermes as work")
         decisions.waitsOn = .approval
         let unmarked = await gpt.handleDelegation(id: "d9", request: "", userWords: "yes")
         XCTAssertEqual(decisions.choices, ["once", "deny", "once"], "An approval is never given without its marker")

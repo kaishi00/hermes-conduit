@@ -277,7 +277,7 @@ final class GPTLiveDelegationBridge {
         // empty: in a call from Hermes about a question, a delegation that
         // marks nothing else is the user's answer to it, never a new request
         // Hermes would refuse while it's paused on the question.
-        if instructions.isEmpty, supervisor.callWaitsOn == .question {
+        if instructions.isEmpty, !startsNewJob, supervisor.callWaitsOn == .question {
             return await answeredCallQuestion(id: id, delegated: "", userWords: spoken, call: call)
         }
         guard !instructions.isEmpty else {
@@ -363,8 +363,9 @@ final class GPTLiveDelegationBridge {
             return read.isEmpty ? [] : dropped + read
         }
         // Marked nothing Conduit answers itself: in a call from Hermes about
-        // a question, the user's answer (above).
-        if supervisor.callWaitsOn == .question {
+        // a question, the user's answer (above). "New job:" and a "Job 9:"
+        // with no job stay separate work.
+        if !startsNewJob, supervisor.callWaitsOn == .question {
             return await answeredCallQuestion(id: id, delegated: ownWords, userWords: spoken, call: call)
         }
         // The model's own words for the request. Without any, the request

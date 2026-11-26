@@ -1325,14 +1325,19 @@ final class WatchBridgeCallModel: ObservableObject {
         let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
         if relay.tools.contains(WatchCallAnswer.tool), !spoken.isEmpty, relay.canRun(WatchCallAnswer.tool) {
             answerCall(for: id, arguments: ["answer": spoken], relay: relay) { [weak self] in
-                self?.startNewWork(for: id, request: request, ownWords: ownWords, relay: relay)
+                // A goodbye or End while the host answered: no new work, as above.
+                guard let self, self.endRequestedAt == nil, self.goodbyeHeardAt == nil else { return }
+                // The probe spent a grant call the job's budget never counted.
+                self.startNewWork(for: id, request: request, ownWords: ownWords, relay: relay, spentOnProbe: 1)
             }
             return
         }
         startNewWork(for: id, request: request, ownWords: ownWords, relay: relay)
     }
 
-    private func startNewWork(for id: String, request: String, ownWords: String, relay: WatchToolRelayClient) {
+    /// `spentOnProbe`: grant calls an `answer_call` probe the host took no
+    /// answer from spent first, left out of the new job's budget.
+    private func startNewWork(for id: String, request: String, ownWords: String, relay: WatchToolRelayClient, spentOnProbe: Int = 0) {
         let tool = relay.hasJobs ? WatchJobAnswer.startJob : WatchToolAnswer.webSearch
         guard relay.tools.contains(tool) else {
             answer(id, WatchBridgeDelegation.notStarted("jobs from the Watch are off in Conduit's Watch settings."), channel: .speakable)
@@ -1346,7 +1351,7 @@ final class WatchBridgeCallModel: ObservableObject {
         }
         if relay.hasJobs {
             // Too few calls left to follow a new job's news to its result.
-            guard relay.callsLeft >= Self.callsForNewJob else {
+            guard relay.callsLeft + spentOnProbe >= Self.callsForNewJob else {
                 answer(id, WatchBridgeDelegation.notStarted(WatchBridgeDelegation.grantNearlyOut), channel: .speakable)
                 return
             }
