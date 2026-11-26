@@ -406,6 +406,47 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 10)
     }
 
+    /// A request whose chat leaves the screen while it waits goes once the
+    /// socket is back, whatever the chat now on screen is doing.
+    func testARequestWhoseChatLeavesTheScreenStopsWaitingOnItsResume() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.isConnected = false
+        appState.isConnecting = true
+        let shown = VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: nil, title: "Shown")
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .thread(shown))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "the request waits while the socket comes back")
+
+        appState.activeSessionId = "another-chat"
+        appState.turnState = .reconnecting
+        let started = Date()
+        appState.isConnected = true
+        appState.isConnecting = false
+        let resolved = await request.value
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "the chat now on screen resuming is nothing it waits for")
+    }
+
+    /// An approval named by its chat's stored id is about the chat on
+    /// screen, as its card is (spokenApprovalsWaiting).
+    func testASessionNamedByTheShownChatsStoredIdIsTheShownChat() {
+        let recorder = ReconnectRecorder()
+        let (appState, _) = makeAppStateResumingTheShownChat(recorder: recorder)
+        let owned = appState.chatOwnSessionIDsForTesting("shown-chat")
+        for id in owned {
+            XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session(id)))
+        }
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.session("other-chat")))
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.noChat))
+    }
+
     func testCallRequestWithoutCarPlayOffScreenFailsAtOnce() async throws {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)

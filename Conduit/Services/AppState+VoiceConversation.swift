@@ -1286,15 +1286,12 @@ extension AppState {
         // A call off its dashboard goes on through that dashboard's own
         // connection, never the screen's (no-switch stage 2).
         if let client = try clientOfCallOffScreen() { return client }
-        var waitsForResume = voiceRequestIsAboutShownChat(chat)
-        var waited = await waitForTransportIfDropped(resumingShownChat: waitsForResume)
-        // The chat came on screen while the request waited for the socket:
-        // it now goes through the chat on screen, so waits for its resume.
-        if !waitsForResume, voiceRequestIsAboutShownChat(chat) {
-            waitsForResume = true
-            if await waitForTransportIfDropped(resumingShownChat: true) { waited = true }
-        }
-        if waited, !isConnected || (waitsForResume && isResumingAfterDrop) {
+        // Read as the wait goes, not once: the chat on screen can change
+        // meanwhile, and only whether the request's chat is on screen now
+        // decides whether it waits for the resume.
+        let aboutShownChat: @MainActor () -> Bool = { self.voiceRequestIsAboutShownChat(chat) }
+        if await waitForTransportIfDropped(resumingShownChat: aboutShownChat),
+           !isConnected || (aboutShownChat() && isResumingAfterDrop) {
             throw HermesError.notConnected
         }
         guard let client else { throw HermesError.notConnected }
@@ -1307,18 +1304,24 @@ extension AppState {
         switch chat {
         case .shown: return true
         case .thread(let thread): return isOpenChat(thread)
-        case .session(let sessionID): return callDashboardOffScreen == nil && eventBelongsToActiveSession(sessionID)
+        case .session(let sessionID):
+            guard callDashboardOffScreen == nil else { return false }
+            if eventBelongsToActiveSession(sessionID) { return true }
+            // The chat's stored and durable ids too, as its approval cards
+            // are matched (spokenApprovalsWaiting).
+            guard let shown = activeSessionId, !shown.isEmpty, !sessionID.isEmpty else { return false }
+            return chatOwnSessionIDs(for: shown).contains(sessionID)
         case .noChat: return false
         }
     }
 
     /// `clientForVoiceRequest`'s wait on its own, for Classic voice's turns
     /// and steers, which go through the composer. True when it waited.
-    /// `resumingShownChat` false waits for the socket alone.
+    /// While `resumingShownChat` is false it waits for the socket alone.
     @discardableResult
-    func waitForTransportIfDropped(resumingShownChat: Bool = true) async -> Bool {
+    func waitForTransportIfDropped(resumingShownChat: @escaping @MainActor () -> Bool = { true }) async -> Bool {
         await checkQuietTransportOffScreen()
-        guard voiceRequestWaitsForTransport(resumingShownChat: resumingShownChat) else { return false }
+        guard voiceRequestWaitsForTransport(resumingShownChat: resumingShownChat()) else { return false }
         reconnectNowForWaitingVoice("Voice request waiting")
         await awaitTransportForVoiceRequest(timeout: voiceRequestConnectionWait, resumingShownChat: resumingShownChat)
         return true
@@ -1386,12 +1389,12 @@ extension AppState {
         turnState == .reconnecting || (turnState == .synchronizing && turnStateIsStale)
     }
 
-    private func awaitTransportForVoiceRequest(timeout: Duration, resumingShownChat: Bool) async {
+    private func awaitTransportForVoiceRequest(timeout: Duration, resumingShownChat: @escaping @MainActor () -> Bool) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
                 let states = self.isConnectedValues.combineLatest(self.isConnectingValues, self.shownChat.$turnState).values
                 for await (connected, connecting, turn) in states {
-                    if connected, !resumingShownChat || (turn != .reconnecting && turn != .synchronizing) { return }
+                    if connected, !resumingShownChat() || (turn != .reconnecting && turn != .synchronizing) { return }
                     // Signed out, or sign-in needed: no reconnect is coming.
                     if self.connection == nil || self.signInRequiredForReconnect { return }
                     // A cycle that ended without arming the next one hands
