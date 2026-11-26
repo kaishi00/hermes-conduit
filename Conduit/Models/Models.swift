@@ -545,6 +545,13 @@ struct ClarifyActivity: Codable, Equatable {
         questions.contains { $0.status == .submitting || $0.status == .answered }
     }
 
+    /// Whether the session authority's list of open questions speaks for
+    /// the card: a relay card (`conduit-push-…`) was asked by another Hermes
+    /// process, which no resume lists, so its own wait decides it.
+    var isTheAuthoritys: Bool {
+        !requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix)
+    }
+
     /// The card's user-facing state. A partially active batch can have an
     /// expired sibling while another question still accepts an answer.
     var presentationStatus: Status {

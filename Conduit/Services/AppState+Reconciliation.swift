@@ -2990,9 +2990,9 @@ extension AppState {
         let sessionIDs = [result.sessionId, reconciliation?.requestedSessionId].compactMap { $0 }
         let gatewayDecisionKeys = Set(result.messages.compactMap(SessionPresentationCache.decisionKey(for:)))
         // The session authority lists every question still open (`prompts`):
-        // a kept card it doesn't list was answered or withdrawn, here or
-        // elsewhere, and is let go instead of shown again at the end of the
-        // chat (issue 3276).
+        // a kept card of its own it doesn't list was answered or withdrawn,
+        // here or elsewhere, and is let go instead of shown again at the end
+        // of the chat (issue 3276). A relay card isn't its to list.
         let openClarifies = result.snapshot.openClarifyRequestIDs
         if let openClarifies {
             letGoClosedClarifyCards(open: openClarifies, sessionID: result.sessionId, alongWith: sessionIDs)
@@ -3002,9 +3002,9 @@ extension AppState {
                   !gatewayDecisionKeys.contains(key) else {
                 return false
             }
-            if let openClarifies, let clarify = message.clarify,
+            if let openClarifies, let clarify = message.clarify, clarify.isTheAuthoritys,
                !clarify.hasAnswerOnItsWay, !openClarifies.contains(clarify.requestId) { return false }
-            return restorePendingDecisionCards
+            return true
         }
         let restored = sessionPresentationCache.merge(
             result.messages + retainedMessages,
@@ -4041,7 +4041,8 @@ extension AppState {
     /// authority's open questions (`open`, request ids) leave out. Only for
     /// a resume that lists them: an older gateway can leave an open question
     /// out of its resume, so its kept cards stay. A card with an answer on
-    /// its way stays too: only its answer's completion settles it.
+    /// its way stays too: only its answer's completion settles it. A relay
+    /// card was asked by another Hermes process, so it stays as well.
     func letGoClosedClarifyCards(open: Set<String>, sessionID: String, alongWith sessionIDs: [String]) {
         let profile = presentationProfile(for: sessionID)
         let cacheIDs = Array(Set(presentationCacheSessionIDs(for: sessionID) + sessionIDs))

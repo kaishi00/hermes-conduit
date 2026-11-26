@@ -892,9 +892,10 @@ final class SessionPresentationCache {
         return Set(keys)
     }
 
-    /// The request ids of the kept question cards waiting on an answer with
-    /// none on its way: no question of theirs is being sent or answered (a
-    /// form between its sends, or a relay answer, keeps waiting, as ruled).
+    /// The request ids of the kept question cards the session authority
+    /// speaks for, waiting on an answer with none on its way: no question of
+    /// theirs is being sent or answered (a form between its sends, or a
+    /// relay answer, keeps waiting, as ruled). Relay cards aren't its.
     func storedUnansweredClarifyRequestIDs(
         profile: String,
         sessionIDs: [String]
@@ -904,7 +905,7 @@ final class SessionPresentationCache {
             .compactMap { stored[key(profile: profile, sessionID: $0)] }
             .flatMap { session in session.messages.compactMap(\.clarify) }
             .filter { clarify in
-                Self.isPendingDecision(clarify) && !clarify.hasAnswerOnItsWay
+                Self.isPendingDecision(clarify) && !clarify.hasAnswerOnItsWay && clarify.isTheAuthoritys
             }
             .map(\.requestId))
     }

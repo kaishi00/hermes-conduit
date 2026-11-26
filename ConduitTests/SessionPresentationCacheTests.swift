@@ -2457,7 +2457,9 @@ final class SessionPresentationCacheTests: XCTestCase {
 
     /// Issue 3276: a kept question card the session authority no longer
     /// lists as open was answered or withdrawn: it isn't shown again at the
-    /// end of the chat, and the cache lets it go. One it lists stays.
+    /// end of the chat, and the cache lets it go, whether kept on the phone
+    /// or by an earlier restore. One it lists, one with an answer on its way
+    /// and a relay card stay.
     func testApplyChatResumeLetsGoOfAKeptQuestionTheAuthorityNoLongerLists() {
         let suiteName = "conduit.tests.session-presentation-closed-clarify-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -2482,7 +2484,17 @@ final class SessionPresentationCacheTests: XCTestCase {
             )
             return ChatMessage(id: "clarify-\(id)", role: .clarify, content: clarify.displayQuestion, timestamp: "2024-01-01", clarify: clarify)
         }
-        cache.save([card("req-answered", .pending), card("req-open", .pending), card("req-sending", .submitting)], profile: profile, sessionIDs: [sessionId])
+        let relayID = PendingDecisionPayload.relayRequestPrefix + "q1"
+        cache.save([card("req-answered", .pending), card("req-open", .pending), card("req-sending", .submitting), card(relayID, .pending)],
+                   profile: profile, sessionIDs: [sessionId])
+        // Cards a resume restored earlier, still waiting on Hermes' word.
+        appState.restoredPendingDecisionCardsAwaitingConfirmation = AppState.PendingDecisionRestorationGuard(
+            profile: profile,
+            sessionID: sessionId,
+            pendingDecisionKeys: ["clarify:req-guard", "clarify:req-guard-sending"],
+            restoredAt: Date(),
+            messages: [card("req-guard", .pending), card("req-guard-sending", .submitting)]
+        )
         defer {
             cache.clear()
             defaults.removePersistentDomain(forName: suiteName)
@@ -2499,12 +2511,11 @@ final class SessionPresentationCacheTests: XCTestCase {
             ])
         ))
 
-        XCTAssertEqual(Set(appState.messages.compactMap(\.clarify?.requestId)), ["req-open", "req-sending"],
-                       "an answer on its way keeps its card, as only its completion settles it")
-        XCTAssertEqual(
-            cache.storedPendingDecisionKeys(profile: profile, sessionIDs: [sessionId]),
-            ["clarify:req-open", "clarify:req-sending"]
-        )
+        XCTAssertEqual(Set(appState.messages.compactMap(\.clarify?.requestId)), ["req-open", "req-sending", "req-guard-sending", relayID],
+                       "an answer on its way keeps its card, as only its completion settles it; a relay card isn't the authority's to list")
+        let kept = cache.storedPendingDecisionKeys(profile: profile, sessionIDs: [sessionId])
+        XCTAssertTrue(kept.isSuperset(of: ["clarify:req-open", "clarify:req-sending", "clarify:\(relayID)"]))
+        XCTAssertTrue(kept.isDisjoint(with: ["clarify:req-answered", "clarify:req-guard"]))
 
         // A resume that doesn't list them (no session authority) keeps the
         // kept cards, as before.
