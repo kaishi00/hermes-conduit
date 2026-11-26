@@ -28,6 +28,54 @@ final class ConversationIdentityTests: XCTestCase {
         XCTAssertEqual(identity.resumeTargetID, "runtime-new")
     }
 
+    // MARK: - A compressed chat's segments (issue 3276)
+
+    /// The gateway resumes a compressed chat listed under its newest segment
+    /// as its owner, a middle segment: the chat's own segments answer for it,
+    /// and another chat still doesn't.
+    @MainActor
+    func testACompressedChatAdmitsItsOwnerSegmentAndStillRefusesAnotherChat() throws {
+        let suite = "ConversationIdentityTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.sessions = MessageNormalizer.normalizeSessions(
+            .object([
+                "sessions": .array([
+                    .object([
+                        "id": .string("tip"),
+                        "_lineage_root_id": .string("root"),
+                        "_lineage_ids": .array([.string("root"), .string("owner"), .string("tip")]),
+                        "continuation_kind": .string("compression")
+                    ]),
+                    .object(["id": .string("other")])
+                ])
+            ]),
+            profile: appState.activeProfile
+        )
+
+        let selected = try XCTUnwrap(appState.captureConversationIdentity(for: "tip"))
+        XCTAssertEqual(selected.durableSessionID, "tip")
+        let catalog = appState.sessions
+        XCTAssertEqual(
+            ConversationIdentityGate.admit(
+                claim: ResumeIdentityClaim(runtimeSessionID: "owner", durableSessionID: "owner"),
+                selected: selected,
+                catalog: catalog
+            ),
+            .success(.knownAlias)
+        )
+        XCTAssertEqual(
+            ConversationIdentityGate.admit(
+                claim: ResumeIdentityClaim(runtimeSessionID: "other", durableSessionID: "other"),
+                selected: selected,
+                catalog: catalog
+            ),
+            .failure(.durableContradiction(selected: "tip", returned: "other"))
+        )
+        XCTAssertEqual(appState.knownSessionIDs(for: "owner"), ["tip", "root", "owner"], "the owner finds its chat's row")
+    }
+
     // MARK: - Admission: durable identity
 
     func testGateAcceptsWhenReturnedDurableIdentityMatchesSelected() {

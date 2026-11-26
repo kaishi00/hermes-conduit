@@ -562,8 +562,8 @@ suites.
 
 * `scripts/test-timings.json` - checked-in **baseline** (seconds per class).
   Smoke charges each changed unit class its time against `changed_budget_s`
-  (a class missing from it is charged 3 s), and the nightly planner splits
-  the unit shards with it. The unit classes come from a green nightly's two
+  (a class missing from it is charged 3 s), and `plan-tests.py hosted` splits
+  the nightly unit shards with it. The unit classes come from a green nightly's two
   unit shards on the hosted runners: `scripts/refresh-test-timings.py
   --baseline scripts/test-timings.json <shard logs>` reads each class's
   `Test Suite ... passed|failed` and `Executed ... (S) seconds` lines and

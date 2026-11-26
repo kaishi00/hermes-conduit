@@ -4641,6 +4641,21 @@ final class HermesClientTests: XCTestCase {
         XCTAssertNil(snapshot.pendingClarify)
     }
 
+    /// Issue 3276: the session authority lists every open question in a
+    /// resume's `prompts`; without it the open ones aren't known whole.
+    func testResumeSnapshotKnowsTheOpenQuestionsOnlyWhenTheAuthorityListsThem() {
+        XCTAssertNil(SessionRuntimeSnapshot(object: ["running": .bool(false)]).openClarifyRequestIDs)
+        XCTAssertEqual(SessionRuntimeSnapshot(object: ["prompts": .array([])]).openClarifyRequestIDs, [])
+        let snapshot = SessionRuntimeSnapshot(object: [
+            "prompts": .array([
+                .object(["kind": .string("clarify"), "prompt_id": .string("prompt-1"), "question": .string("Which?"), "choices": .array([.string("a")])]),
+                .object(["kind": .string("approval"), "prompt_id": .string("prompt-2"), "description": .string("Run it?")])
+            ]),
+            "pending_clarify": .object(["request_id": .string("srq-1"), "question": .string("Open?"), "choices": .array([.string("y")])])
+        ])
+        XCTAssertEqual(snapshot.openClarifyRequestIDs, ["prompt-1", "srq-1"])
+    }
+
     // MARK: - session.compress
 
     func testSessionCompressTimeoutPinsDedicatedBudget() {

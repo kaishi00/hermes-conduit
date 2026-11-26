@@ -176,8 +176,11 @@ extension AppState {
     /// profile differently (#3306 follow-up).
     nonisolated static func avatar(in avatars: [String: URL], for profile: String) -> URL? {
         if let url = avatars[profile] { return url }
-        // The first by key, so two other cases of it (never in one folder,
-        // but a merged map could hold both) always give the same one.
+        // The first by key, so two other cases of it always give the same
+        // one: a merged map can hold both, and so can one dashboard's saved
+        // folder, whose files are named by the exact profile
+        // (`ProfileAppearanceStore.fileName(for:)`), so `loadAvatarURLs`
+        // can list "Atlas" and "atlas" side by side.
         return avatars.filter { profilesMatch($0.key, profile) }.min { $0.key < $1.key }?.value
     }
 

@@ -27,9 +27,10 @@ def write_swift(path, class_name, superclass="XCTestCase", body="func testSometh
 def make_repo(root, unit_classes=(), ui_classes=(), extra_files=None):
     """Create a synthetic repo tree with ConduitTests/ and ConduitUITests/."""
     root.mkdir(parents=True, exist_ok=True)
-    # Both target directories always exist: the planner treats a missing
-    # target directory as a hard error (broken checkout), and fixtures should
-    # model a valid tree unless they test exactly that error.
+    # Both target directories always exist: discovery (validate, smoke and
+    # hosted) treats a missing target directory as a hard error (broken
+    # checkout), and fixtures should model a valid tree unless they test
+    # exactly that error.
     (root / "ConduitTests").mkdir(exist_ok=True)
     (root / "ConduitUITests").mkdir(exist_ok=True)
     for name in unit_classes:

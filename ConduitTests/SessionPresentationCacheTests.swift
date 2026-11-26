@@ -2455,6 +2455,81 @@ final class SessionPresentationCacheTests: XCTestCase {
         )
     }
 
+    /// Issue 3276: a kept question card the session authority no longer
+    /// lists as open was answered or withdrawn: it isn't shown again at the
+    /// end of the chat, and the cache lets it go, whether kept on the phone
+    /// or by an earlier restore. One it lists, one with an answer on its way
+    /// and a relay card stay.
+    func testApplyChatResumeLetsGoOfAKeptQuestionTheAuthorityNoLongerLists() {
+        let suiteName = "conduit.tests.session-presentation-closed-clarify-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Could not create isolated UserDefaults suite")
+            return
+        }
+        let cache = SessionPresentationCache(defaults: defaults)
+        let sessionId = "test-apply-resume-closed-clarify-\(UUID().uuidString)"
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: { cache.clear() },
+            sessionPresentationCache: cache
+        )
+        let profile = appState.activeProfile
+        let card = { (id: String, status: ClarifyQuestion.Status) -> ChatMessage in
+            // Each its own question: a relay card asking what a gateway card
+            // asks is superseded by it, which isn't what this tests.
+            let clarify = ClarifyActivity(
+                requestId: id,
+                question: "Which color for \(id)?",
+                choices: [ClarifyChoice(label: "Red", value: "red")],
+                status: status
+            )
+            return ChatMessage(id: "clarify-\(id)", role: .clarify, content: clarify.displayQuestion, timestamp: "2024-01-01", clarify: clarify)
+        }
+        let relayID = PendingDecisionPayload.relayRequestPrefix + "q1"
+        cache.save([card("req-answered", .pending), card("req-open", .pending), card("req-sending", .submitting), card(relayID, .pending)],
+                   profile: profile, sessionIDs: [sessionId])
+        // Cards a resume restored earlier, still waiting on Hermes' word.
+        appState.restoredPendingDecisionCardsAwaitingConfirmation = AppState.PendingDecisionRestorationGuard(
+            profile: profile,
+            sessionID: sessionId,
+            pendingDecisionKeys: ["clarify:req-guard", "clarify:req-guard-sending"],
+            restoredAt: Date(),
+            messages: [card("req-guard", .pending), card("req-guard-sending", .submitting)]
+        )
+        defer {
+            cache.clear()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "2024-01-01")],
+            snapshot: SessionRuntimeSnapshot(object: [
+                "running": .bool(false),
+                "prompts": .array([
+                    .object(["kind": .string("clarify"), "prompt_id": .string("req-open"), "question": .string("Which color for req-open?"), "choices": .array([.string("Red")])])
+                ])
+            ])
+        ))
+
+        XCTAssertEqual(Set(appState.messages.compactMap(\.clarify?.requestId)), ["req-open", "req-sending", "req-guard-sending", relayID],
+                       "an answer on its way keeps its card, as only its completion settles it; a relay card isn't the authority's to list")
+        let kept = cache.storedPendingDecisionKeys(profile: profile, sessionIDs: [sessionId])
+        XCTAssertTrue(kept.isSuperset(of: ["clarify:req-open", "clarify:req-sending", "clarify:\(relayID)"]))
+        XCTAssertTrue(kept.isDisjoint(with: ["clarify:req-answered", "clarify:req-guard"]))
+
+        // A resume that doesn't list them (no session authority) keeps the
+        // kept cards, as before.
+        cache.save([card("req-kept", .pending)], profile: profile, sessionIDs: [sessionId])
+        appState.applyChatResume(SessionResumeResult(
+            sessionId: sessionId,
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: [:])
+        ))
+        XCTAssertTrue(appState.messages.contains { $0.clarify?.requestId == "req-kept" })
+    }
+
     func testApplyChatResumeRestoresPendingApprovalWhenRunningIsNil() {
         let suiteName = "conduit.tests.session-presentation-approval-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {

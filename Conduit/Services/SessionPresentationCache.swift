@@ -892,6 +892,25 @@ final class SessionPresentationCache {
         return Set(keys)
     }
 
+    /// The request ids of the kept question cards the session authority
+    /// speaks for, waiting on an answer with none on its way: no question of
+    /// theirs is being sent or answered (a form between its sends, or a
+    /// gateway card answered through the relay, keeps waiting, as ruled).
+    /// Relay cards (`conduit-push-…`) aren't the authority's to list.
+    func storedUnansweredClarifyRequestIDs(
+        profile: String,
+        sessionIDs: [String]
+    ) -> Set<String> {
+        let stored = load()
+        return Set(sessionIDs
+            .compactMap { stored[key(profile: profile, sessionID: $0)] }
+            .flatMap { session in session.messages.compactMap(\.clarify) }
+            .filter { clarify in
+                Self.isPendingDecision(clarify) && !clarify.hasAnswerOnItsWay && clarify.isTheAuthoritys
+            }
+            .map(\.requestId))
+    }
+
     /// Evicts a still-pending decision record from the cache. Used when a
     /// live event supersedes a push-delivered card: the two carry different
     /// decision keys (gateway vs plugin-minted ids), so the merge can never

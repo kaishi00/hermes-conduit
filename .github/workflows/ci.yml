@@ -19,7 +19,7 @@ name: CI
 #                        (scripts/smoke-suite.json, validated against the
 #                        discovered inventory) and whether the change needs
 #                        the macOS build at all.
-#   self-test  (ubuntu)  beside the build: inventory/planner validation,
+#   self-test  (ubuntu)  beside the build: test inventory validation,
 #                        localization coverage, plugin version, the feature
 #                        map, the nightly partition (scripts/hosted-suite.json)
 #                        and the CI-tooling suites, bash wrapper tests included.
@@ -272,12 +272,13 @@ jobs:
           # (the feature map check reads the base's map).
           fetch-depth: 2
 
-      - name: Validate inventory + planner
+      - name: Validate inventory
         run: |
           set -euo pipefail
-          # The planner owns inventory discovery, so its own completeness
-          # invariant (every discovered XCTestCase class planned exactly once)
-          # is checked on every run. Its regression tests run in
+          # plan-tests.py owns test discovery: every XCTestCase class
+          # declared on one line is found, and none is duplicated or
+          # malformed. A missing or unreadable timing baseline only warns.
+          # There is no cap on the class count. Its regression tests run in
           # ci-self-test.py below.
           python3 scripts/plan-tests.py validate --repo-root . \
             --baseline scripts/test-timings.json

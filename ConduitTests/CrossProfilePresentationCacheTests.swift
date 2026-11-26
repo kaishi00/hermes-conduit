@@ -2802,6 +2802,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(AppState.avatar(in: ["nova": macAtlas], saved: ["Nova": macNova], for: "Nova"), macNova,
                        "an exact saved spelling before another case in the roster")
         XCTAssertEqual(AppState.avatar(in: [:], saved: ["nova": macNova], for: "Nova"), macNova, "a saved picture the roster lacks")
+        // Two other cases of it, in a merged map or side by side in one
+        // dashboard's saved folder: always the first by key (issue 3311).
+        XCTAssertEqual(AppState.avatar(in: ["Nova": macNova, "nova": macAtlas], for: "NOVA"), macNova)
+        XCTAssertEqual(AppState.avatar(in: ["nova": macAtlas, "Nova": macNova], for: "NOVA"), macNova)
+        XCTAssertEqual(AppState.avatar(in: [:], saved: ["nova": macAtlas, "Nova": macNova], for: "NOVA"), macNova,
+                       "a saved folder holding two other cases")
 
         // Its display settings and busy mode are its own dashboard's kept
         // ones; this dashboard's stay its own.
