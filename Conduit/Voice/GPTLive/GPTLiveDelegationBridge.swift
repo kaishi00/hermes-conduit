@@ -158,7 +158,9 @@ final class GPTLiveDelegationBridge {
     /// the delegation itself or the user's recent words. `userWords` are the
     /// user's own words since the last delegation: a follow-up to work
     /// Hermes is still doing hands it those (#451).
-    func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
+    /// `answersQuestion` false: work inside a marker ("Call me: check the
+    /// server") that never answers the call's question.
+    func handleDelegation(id: String, request: String, userWords: String = "", answersQuestion: Bool = true) async -> [Outgoing] {
         // "Approve:", "Deny:" or "Answer: …" (#449 step 4): the user's answer
         // to what a call from Hermes waits on. Never reaches Hermes as work.
         // Only in such a call: anywhere else the words are a request.
@@ -188,15 +190,7 @@ final class GPTLiveDelegationBridge {
                     }
                 case .deny: outcome = await supervisor.answerApproval(choice: "deny")
                 case .answer(let words):
-                    // The user's own words, as said since the last request;
-                    // the model's only when there are none.
-                    let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let answer = spoken.isEmpty ? words : spoken
-                    if answer.isEmpty {
-                        outcome = .userHasNotSpoken
-                    } else {
-                        outcome = await supervisor.answerQuestion(answer)
-                    }
+                    outcome = await questionAnswer(delegated: words, userWords: userWords)
                 }
             }
             guard callGeneration == call, !isEnding else { return [] }
@@ -221,7 +215,7 @@ final class GPTLiveDelegationBridge {
                 // takes it: a new one, or a running one taking it as a
                 // change. Held for the user's OK, it asks once it goes.
                 let call = callGeneration
-                let sent = await handleDelegation(id: id, request: rest, userWords: userWords)
+                let sent = await handleDelegation(id: id, request: rest, userWords: userWords, answersQuestion: false)
                 guard callGeneration == call, !isEnding else { return sent }
                 let outcome: VoiceCallbackRequestOutcome
                 if marker.scope != .latest {
@@ -280,6 +274,16 @@ final class GPTLiveDelegationBridge {
         if let rest = Self.newJobMarker(in: instructions) {
             instructions = rest
             startsNewJob = true
+        }
+        // GPT-Live often leaves a delegation's text, and so its "Answer:",
+        // empty: in a call from Hermes about a question, a delegation that
+        // marks nothing else is the user's answer to it, never a new request
+        // Hermes would refuse while it's paused on the question.
+        // A request held for the user's OK settles first, and words asking
+        // to hear a reply again are a read-back (below), never the answer.
+        if instructions.isEmpty, answersQuestion, !startsNewJob, draft == nil, supervisor.callWaitsOn == .question,
+           !VoiceThreadRouting.wantsLastReply(spoken), !VoiceThreadRouting.endsWithLastReplyRequest(spoken) {
+            return await answeredCallQuestion(id: id, delegated: "", userWords: spoken, call: call)
         }
         guard !instructions.isEmpty else {
             // GPT-Live delegated on the user's answer before their words
@@ -362,6 +366,16 @@ final class GPTLiveDelegationBridge {
             let read = await readBack(id: id, call: call)
             // The call ended meanwhile: nothing is answered.
             return read.isEmpty ? [] : dropped + read
+        }
+        // Marked nothing at all: in a call from Hermes about a question, the
+        // user's answer (above). A marker keeps its meaning: "New job:", a
+        // "Job 9:" with no job, "Quick:", "Send:", the work in "Call me:"
+        // and a "Deny:" with no approval waiting stay what they say.
+        let marksNothing = answersQuestion && Self.decisionMarker(in: request) == nil
+            && ownWords == routingWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        if marksNothing, !startsNewJob, draft == nil, !Self.isSendMarker(instructions), supervisor.callWaitsOn == .question,
+           !VoiceThreadRouting.endsWithLastReplyRequest(spoken) {
+            return await answeredCallQuestion(id: id, delegated: ownWords, userWords: spoken, call: call)
         }
         // The model's own words for the request. Without any, the request
         // is the user's words.
@@ -1394,6 +1408,25 @@ final class GPTLiveDelegationBridge {
     static func newJobMarker(in request: String) -> String? {
         guard let range = request.range(of: #"^\s*new\s+job\s*[:,.\-–—]"#, options: [.regularExpression, .caseInsensitive]) else { return nil }
         return request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What answering the call's question with the user's words did: their
+    /// own words since the last request, the model's only when there are
+    /// none, and nothing before the user has said anything.
+    private func questionAnswer(delegated: String, userWords: String) async -> VoiceCallDecisionOutcome {
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        let answer = spoken.isEmpty ? delegated.trimmingCharacters(in: .whitespacesAndNewlines) : spoken
+        guard (spokenWords?.wordsMark() ?? 0) > 0, !answer.isEmpty else { return .userHasNotSpoken }
+        return await supervisor.answerQuestion(answer)
+    }
+
+    /// A delegation with no marker in a call from Hermes about a question,
+    /// answered as "Answer:" would be.
+    private func answeredCallQuestion(id: String, delegated: String, userWords: String, call: UInt64) async -> [Outgoing] {
+        let outcome = await questionAnswer(delegated: delegated, userWords: userWords)
+        guard callGeneration == call, !isEnding else { return [] }
+        spokenWords?.settleWords(.delegation(id))
+        return [.delegationReply(delegationID: id, text: outcome.modelMessage, channel: .commentary)]
     }
 
     // MARK: Job updates

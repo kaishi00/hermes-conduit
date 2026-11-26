@@ -368,6 +368,11 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual(watch?.rest, phone?.rest, text)
         }
         XCTAssertEqual(WatchBridgeDelegation.addToJobMarker(in: "Add to job 2: a quiet table")?.rest, "a quiet table")
+        // Separate work in a call about a question (#3328), with the phone's marker.
+        for text in ["New job: check the weather", "new job, the receipts", "New jobs to do", "Job 2: make it Alex"] {
+            XCTAssertEqual(WatchBridgeDelegation.newJobMarker(in: text), GPTLiveDelegationBridge.newJobMarker(in: text), text)
+        }
+        XCTAssertEqual(WatchBridgeDelegation.newJobMarker(in: "New job: check the weather"), "check the weather")
         XCTAssertEqual(WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": "watch-2", "message": "a quiet table", "kind": " ADD "]) as? [String: String],
                        ["job_id": "watch-2", "message": "a quiet table", "kind": "add"])
         // No kind, or one Conduit doesn't know, redirects as before.

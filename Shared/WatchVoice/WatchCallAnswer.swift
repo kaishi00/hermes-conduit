@@ -75,6 +75,12 @@ enum WatchCallAnswer {
         return nil
     }
 
+    /// Whether the host took a question's answer: false when nothing
+    /// waited on one (an approval, or every question answered already).
+    static func tookAnswer(body: [String: Any]) -> Bool {
+        body["ok"] as? Bool == true && body["status"] as? String == "answered" && body["answer"] is String
+    }
+
     /// The model's answer for the host's response.
     static func result(body: [String: Any]) -> [String: String] {
         guard body["ok"] as? Bool == true else {
