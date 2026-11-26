@@ -1204,6 +1204,7 @@ WATCH_SHARED_SOURCES = (
     "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
     "Conduit/Views/Components/GatewayMediaTags.swift",
     "Conduit/Views/Components/TranscriptDirectives.swift",
+    "Conduit/Views/Components/ReplyHTML.swift",
 )
 
 

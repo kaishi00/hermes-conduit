@@ -46,6 +46,34 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
 
     // MARK: - Names
 
+    // MARK: - Previewing a staged file (desktop#611)
+
+    func testAStagedFileWhosePathSaysItsTypePreviewsInPlace() {
+        let url = URL(fileURLWithPath: "/tmp/staged/1234-IMG_0042.png")
+        XCTAssertNil(AttachmentTypePolicy.stagedPreviewName(name: "IMG_0042.png", fileURL: url, mimeType: "image/png"))
+        let pdf = URL(fileURLWithPath: "/tmp/staged/1234-Report.pdf")
+        XCTAssertNil(AttachmentTypePolicy.stagedPreviewName(name: "Report.pdf", fileURL: pdf, mimeType: "application/pdf"))
+    }
+
+    func testAScreenshotStagedWithoutAnExtensionPreviewsUnderItsType() {
+        let url = URL(fileURLWithPath: "/tmp/staged/1234-IMG_0042")
+        XCTAssertEqual(AttachmentTypePolicy.stagedPreviewName(name: "IMG_0042.png", fileURL: url, mimeType: "image/png"), "IMG_0042.png")
+    }
+
+    func testAScreenshotWhoseNameEndsInADottedTimePreviewsAsAPicture() {
+        let url = URL(fileURLWithPath: "/tmp/staged/1234-Screenshot 2026-11-26 at 10.00.37")
+        XCTAssertEqual(
+            AttachmentTypePolicy.stagedPreviewName(name: "Screenshot 2026-11-26 at 10.00.37", fileURL: url, mimeType: "image/png"),
+            "Screenshot 2026-11-26 at 10.00.37.png"
+        )
+    }
+
+    func testAFileOfNoKnownTypePreviewsInPlace() {
+        let url = URL(fileURLWithPath: "/tmp/staged/1234-notes.xyz")
+        XCTAssertNil(AttachmentTypePolicy.stagedPreviewName(name: "notes.xyz", fileURL: url, mimeType: "application/octet-stream"))
+        XCTAssertNil(AttachmentTypePolicy.stagedPreviewName(name: "notes.xyz", fileURL: url, mimeType: nil))
+    }
+
     func testRealFileNameIsKept() {
         XCTAssertEqual(
             AttachmentTypePolicy.filename(suggested: "ScreenRecording_10-03.MP4", type: .mpeg4Movie),

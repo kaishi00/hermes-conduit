@@ -30,9 +30,10 @@ extension DesktopCardDirective {
 
 extension TranscriptDirectives {
     /// `text` for places that read a reply rather than render it (Read
-    /// Aloud, voice read-backs): previews go, a Desktop card is a short note.
+    /// Aloud, voice read-backs): previews go, a Desktop card or a page the
+    /// reply wrote is a short note, and tags go.
     static func readable(from text: String) -> String {
-        rewriting(text, preview: { _ in nil }, card: { _ in DesktopCardDirective.spokenNote })
+        rewriting(text, preview: { _ in nil }, card: { _ in DesktopCardDirective.spokenNote }, page: ReplyHTML.spokenNote)
     }
 }
 

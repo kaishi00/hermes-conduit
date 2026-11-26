@@ -208,3 +208,31 @@ enum HiddenChatProjects {
         !pinned && !listedWait && hidden.contains(projectID ?? noProject)
     }
 }
+
+/// Opening or closing a section without leaving the list blank (issue
+/// 1583). On a Mac, closing and opening sections quickly while the list
+/// still scrolled blanked the whole list, headers included, until a
+/// relaunch: the rows' animated insert and delete ran against the
+/// scroll's momentum and each other, and the list could rest past its
+/// shortened end.
+enum ChatListSectionToggle {
+    /// A section with more rows than this opens and closes at once: a
+    /// slide of hundreds of rows draws for no one and is the costliest
+    /// update the list makes.
+    static let animatedRowLimit = 60
+    /// About the open/close spring's length: a toggle sooner than this
+    /// after the last lands at once, not over the slide still running.
+    static let settleInterval: TimeInterval = 0.5
+
+    /// Whether a toggle slides its rows: only on a list at rest, for a
+    /// section of a few rows, once the last toggle's slide has ended.
+    static func animates(listMoving: Bool, rows: Int, sinceLastToggle: TimeInterval) -> Bool {
+        !listMoving && rows <= animatedRowLimit && sinceLastToggle >= settleInterval
+    }
+
+    /// A list at rest that shows none of its content: scrolled past its
+    /// end after its rows went away. The list is built again, at its top.
+    static func restsPastEnd(visibleMinY: CGFloat, contentHeight: CGFloat) -> Bool {
+        contentHeight > 0 && visibleMinY >= contentHeight
+    }
+}

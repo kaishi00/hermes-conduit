@@ -165,6 +165,14 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// hold its recent-conversation lines (issue 3271). A refused submit
     /// leaves them for the call's next request.
     var requestTaken = false
+    /// Its submit failed in a way that doesn't say whether Hermes took it
+    /// (a dropped connection or a lost acknowledgement): the user's words
+    /// with it count as sent, so a retry never sends them twice (#3293's
+    /// reviews).
+    var requestOutcomeUnknown = false
+    /// Hermes may hold the user's words with this job's request: it took
+    /// it, or its submit's outcome is unknown.
+    var requestWordsSpent: Bool { requestTaken || requestOutcomeUnknown }
     /// In a Watch call's shared chat: its replies are matched against replays.
     var sharesCallChat: Bool { continuesChat || opensCallChat }
     /// The live call that started this job and where in its transcript,
@@ -332,6 +340,16 @@ enum VoiceBackgroundJobNotice: Equatable {
 /// turn surface report is dropped, as after a refused send.
 struct VoiceJobNotSentError: Error {}
 
+/// What a bot's workstream did with a call's request (notifier #618).
+struct VoiceWorkstreamSend: Equatable {
+    /// What to tell the call (for the live model, not localized).
+    let message: String
+    /// Whether the request went into the workstream's session: only then
+    /// did the user's words with it reach Hermes, so a refused one's go
+    /// with the retry (#3293's reviews).
+    let passedOn: Bool
+}
+
 /// Hermes operations the supervisor needs. Closures (not a protocol) so
 /// AppState can bind them to whichever client is current at call time and
 /// tests can script them.
@@ -358,9 +376,9 @@ struct VoiceBackgroundJobBackend {
     /// session (Eric 2026-11-02): its requests go to the workstream, as the
     /// answer to a question it waits on, behind an approval it waits on, as
     /// an interrupt while it works, or as its next turn otherwise, and never
-    /// make a job of their own. What to
-    /// tell the call, or nil when the chat isn't a workstream's.
-    var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
+    /// make a job of their own. What it did with the request, or nil when
+    /// the chat isn't a workstream's.
+    var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> VoiceWorkstreamSend? = { _, _ in nil }
     /// A call that kept a job with its chat (`callChat`) left it: when the
     /// chat is the Bot Chat, the updates its workstreams held go out. Every
     /// voice mode ends this way, Classic too, which never saves its turns
@@ -467,6 +485,20 @@ struct VoiceThreadBusyError: Error {}
 /// `message` rather than wait for a reply that is not its own.
 struct VoiceThreadNotStartedError: Error {
     let message: String
+}
+
+/// Which chat a call's request to Hermes is about. After a drop, only a
+/// request about the chat on screen waits for the reconnect to resume it;
+/// any other waits for the socket alone (issue 2855).
+enum VoiceRequestChat {
+    /// The chat on screen, or a request not about one chat (the live list).
+    case shown
+    /// A chat the call names, on screen or not.
+    case thread(VoiceThreadTarget)
+    /// A chat by one of its session ids, on screen or not.
+    case session(String)
+    /// No chat yet: a new one being made.
+    case noChat
 }
 
 /// The Hermes chat a live call is attached to: requests go there as its
@@ -1619,7 +1651,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         onJobCreated: (@MainActor (UUID) -> Void)? = nil
     ) async -> String {
         // A workstream's call: every request stays in its session.
-        if let thread = liveThread, let said = await backend.sendToCallWorkstream(thread, requested) { return said }
+        if let thread = liveThread, let said = await backend.sendToCallWorkstream(thread, requested) { return said.message }
         if joinsCall, liveThread == nil {
             // Said while the call's first job is still making its chat: it
             // joins that chat once it's made.
@@ -1803,7 +1835,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             case .failed?:
                 break
             default:
-                update(job.id) { $0.status = .failed(UserFacingError.message(for: error)) }
+                // Only a submit that went out can have reached Hermes, and
+                // only an error that doesn't prove a refusal leaves it open.
+                let unknown = self.job(job.id)?.requestSent == true && AppState.isAmbiguousPromptDelivery(error)
+                update(job.id) {
+                    $0.status = .failed(UserFacingError.message(for: error))
+                    $0.requestOutcomeUnknown = unknown
+                }
                 // A submit can fail after Hermes accepted the turn (a lost
                 // acknowledgement). The user is told the start failed, so
                 // interrupt whatever may be running rather than leave it
@@ -2073,7 +2111,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A workstream's call: a request the live model sends as the chat's
     /// turn goes to the workstream too (see startJob).
-    func sendToWorkstream(_ request: String) async -> String? {
+    func sendToWorkstream(_ request: String) async -> VoiceWorkstreamSend? {
         guard let thread = liveThread else { return nil }
         return await backend.sendToCallWorkstream(thread, request)
     }

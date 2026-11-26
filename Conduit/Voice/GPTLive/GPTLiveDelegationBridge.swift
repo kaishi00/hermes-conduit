@@ -515,13 +515,12 @@ final class GPTLiveDelegationBridge {
             guard callGeneration == call, !isEnding else { return [] }
             if let said {
                 // Not passed on (busy, unreachable): the user's retry isn't
-                // "already sent". A sent request's result can go on (a
-                // picture that didn't go with it), so it's read by its start.
-                if !said.hasPrefix(AppState.workstreamCallSent) {
+                // "already sent".
+                if !said.passedOn {
                     if confirmed { lastSentAt = nil }
                     lastUntaken = id
                 }
-                return [.delegationReply(delegationID: id, text: Self.relay(said), channel: .speakable)]
+                return [.delegationReply(delegationID: id, text: Self.relay(said.message), channel: .speakable)]
             }
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
@@ -539,6 +538,17 @@ final class GPTLiveDelegationBridge {
         }
         // The "Quick:" marker routes; it isn't part of the task.
         let task = VoiceThreadRouting.removingQuickMarker(instructions)
+        // A workstream's call keeps a background job's request in its
+        // session too: what it did with it decides whether the user's retry
+        // counts as already sent (#3337's review).
+        if supervisor.liveThread != nil, let said = await supervisor.sendToWorkstream(task) {
+            guard callGeneration == call, !isEnding else { return [] }
+            if !said.passedOn {
+                if confirmed { lastSentAt = nil }
+                lastUntaken = id
+            }
+            return [.delegationReply(delegationID: id, text: Self.relay(said.message), channel: .speakable)]
+        }
         var createdJobID: UUID?
         // A call that ends while Hermes creates the job must not leave this
         // delegation in the next call's table.
