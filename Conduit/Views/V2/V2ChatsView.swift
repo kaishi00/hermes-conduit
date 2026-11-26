@@ -732,8 +732,9 @@ struct V2ChatsView: View {
         // The list's first read once the connection is up (a sign-in lands
         // here before its catalog sync has published anything): when that
         // sync settles without a catalog, the list reads it itself. Only
-        // while the list shows, like the rest of its updates.
-        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(appState.turnState == .synchronizing)|\(isShown)") {
+        // while the list shows, like the rest of its updates: covered, it
+        // doesn't read the chat's turn, so a turn under it redraws nothing.
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(isShown && appState.turnState == .synchronizing)|\(isShown)") {
             guard isShown else { return }
             await appState.loadSessionCatalogIfNeeded()
         }

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Observation
 
 /// One bot's own state (a Hermes profile on the dashboard): its scheduled
 /// jobs, its skills, toolsets and tools, and its projects first, then its
@@ -8,44 +9,46 @@ import Combine
 /// `ChatState`, there is one, `AppState.shownBot`, for the bot on screen,
 /// never replaced: a profile switch refills it as AppState's own properties
 /// were refilled. Views and tests still read it through AppState's
-/// forwarders, and AppState publishes its changes as its own.
+/// forwarders. It is `@Observable` (issue 828): a view redraws for the bot
+/// properties it reads, and a bot change no longer publishes as AppState's.
 @MainActor
-final class BotState: ObservableObject {
+@Observable
+final class BotState {
 
     // MARK: Scheduled jobs
 
-    @Published var cronJobs: [CronJob] = []
-    @Published var cronRuns: [CronRun] = []
+    var cronJobs: [CronJob] = []
+    var cronRuns: [CronRun] = []
     /// The job `cronRuns` is the history of (#1707).
     var cronRunsJobID: String?
     /// The newest Run history read, so an older one that lands last is dropped.
     var cronRunsLoad = 0
     /// Whether `cronRuns` holds an answer for `cronRunsJobID` yet, so the
     /// sheet says a job hasn't run only once it knows.
-    @Published var cronRunsLoaded = false
+    var cronRunsLoaded = false
     /// Why the open job's history couldn't be read, before any answer came:
     /// the sheet says so rather than that the job hasn't run.
-    @Published var cronRunsFailure: String?
-    @Published var cronJobsLoading = false
-    @Published var cronJobActionID: String?
+    var cronRunsFailure: String?
+    var cronJobsLoading = false
+    var cronJobActionID: String?
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
     var cronJobsGeneration = 0
     /// The read in flight and the list generation, profile and connection
     /// it is for. A second ask for the same list joins it.
-    var cronJobsRead: (owner: String, token: UUID, task: Task<Void, Never>)?
+    @ObservationIgnored var cronJobsRead: (owner: String, token: UUID, task: Task<Void, Never>)?
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
-    @Published var cronMutedJobIDs: Set<String> = []
-    @Published var cronMutedJobsKey: String?
+    var cronMutedJobIDs: Set<String> = []
+    var cronMutedJobsKey: String?
     /// Cron jobs delivered to a Bot Chat whose report starts the bot's turn
     /// (the rest just show it), read with `cronMutedJobIDs` and keyed by
     /// the same `cronMutedJobsKey`.
-    @Published var cronActingJobIDs: Set<String> = []
+    var cronActingJobIDs: Set<String> = []
     /// Whether the host's Hermes shows a Bot Chat job's report without a
     /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
-    @Published var cronShowsBotChatReports = false
-    @Published var cronNotificationsChangingJobID: String?
+    var cronShowsBotChatReports = false
+    var cronNotificationsChangingJobID: String?
     /// A notification read asked for while a save was in flight. The
     /// capability report can land then, so the read is repeated when the
     /// save ends instead of being dropped.
@@ -55,10 +58,10 @@ final class BotState: ObservableObject {
 
     // MARK: Skills, toolsets and tools
 
-    @Published var skills: [CapabilitySkill] = []
-    @Published var toolsets: [CapabilityToolset] = []
+    var skills: [CapabilitySkill] = []
+    var toolsets: [CapabilityToolset] = []
     /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
-    @Published var toolCatalog = ToolCatalog()
+    var toolCatalog = ToolCatalog()
     /// Whose catalog `toolCatalog` is (dashboard and profile), and the
     /// catalogs Hermes already sent this run, or is sending now.
     var toolCatalogOwner: String?
@@ -68,20 +71,20 @@ final class BotState: ObservableObject {
     /// read from. Rows are only presentable, and their switches only act,
     /// while this equals `currentCapabilitiesOwner`: two dashboards can have
     /// a profile of the same name.
-    @Published var capabilitiesOwner: CapabilitySnapshotOwner?
+    var capabilitiesOwner: CapabilitySnapshotOwner?
     /// The installed skills and toolsets shown are the ones kept from
     /// Hermes' last answer (#1533), drawn until it answers again.
-    @Published var capabilitiesAreKept = false
+    var capabilitiesAreKept = false
     /// Monotonic request token for capability loads; older requests can never
     /// commit over newer ones (protects the A -> B -> A race).
     var capabilityLoadGeneration: UInt64 = 0
     /// Skill and toolset switches, written in the order flipped.
     let capabilityToggleWrites = CapabilityToggleWrites()
-    @Published var mcpServers: [CapabilityMcpServer] = []
+    var mcpServers: [CapabilityMcpServer] = []
 
     // MARK: Projects
 
-    @Published var projects: [ProjectSummary] = [] {
+    var projects: [ProjectSummary] = [] {
         didSet {
             projectPositionsBySessionID = nil
             projectsSeededFromSavedList = false
@@ -96,15 +99,15 @@ final class BotState: ObservableObject {
     /// `knownProjectID(for:)`, which the chat list asks for every row on
     /// every render.
     var projectPositionsBySessionID: [String: Int]?
-    @Published var supportsProjects = false
-    @Published var projectsLoading = false
+    var supportsProjects = false
+    var projectsLoading = false
     /// The last projects load failed for a reason other than the host not
     /// having projects (a dropped or timed-out request), so an empty list
     /// isn't "no projects".
-    @Published var projectsLoadFailed = false
+    var projectsLoadFailed = false
     /// The projects as last read: for which profile, through which client,
     /// and when. A catalog read that changed nothing reads them again only
     /// past `projectsRereadInterval` (issue 2357).
-    var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
+    @ObservationIgnored var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
     var projectsRequestGeneration = 0
 }

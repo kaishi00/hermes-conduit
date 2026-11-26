@@ -1397,7 +1397,7 @@ extension AppState {
                 // The chat on screen changing wakes it too: the request may
                 // no longer be about the chat on screen.
                 let states = self.isConnectedValues
-                    .combineLatest(self.isConnectingValues, self.shownChat.$turnState, self.$activeSessionId).values
+                    .combineLatest(self.isConnectingValues, self.shownChat.turnStateValues, self.$activeSessionId).values
                 // Each change only wakes it: the state is read as it stands
                 // now, since changes made together reach the loop as the
                 // first of them, and a later one may not come at all.

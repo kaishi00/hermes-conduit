@@ -98,10 +98,13 @@ struct BotLastReply: View {
     /// That's the newest reply row, as `read()` takes it, not the newest
     /// row (a tool step or a steer can follow it), and a finished reply can
     /// replace its row's text under the same id, so the text counts too
-    /// (streamed tokens don't touch `messages`).
+    /// (streamed tokens don't touch `messages`). Covered by that chat, it
+    /// doesn't read the transcript, so replies under it redraw nothing; the
+    /// key changes as it shows again.
     private var readKey: String {
         let chat = bot.canonicalSession
-        let openTail = appState.activeBotChatProfile == bot.name ? Self.replyKey(appState.messages) : ""
+        let openTail = !shell.isRootCovered && appState.activeBotChatProfile == bot.name
+            ? Self.replyKey(appState.messages) : ""
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
                 String(appState.isConnected), String(shell.isTabActive),
                 String(shell.isRootCovered)].joined(separator: "\u{1F}")

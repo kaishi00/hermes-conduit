@@ -1,4 +1,5 @@
 import Combine
+import Observation
 import XCTest
 @testable import Conduit
 
@@ -80,23 +81,31 @@ final class AppStateReasoningStreamTests: XCTestCase {
 
     // MARK: - The chat on screen's state (all-live stage 1)
 
-    /// The transcript lives on `shownChat` now; AppState's views redraw on
-    /// its changes as they did when it was AppState's own published state,
-    /// and its derived values follow it as before.
-    func testShownChatChangesPublishAsAppStateChanges() {
+    /// The transcript lives on `shownChat`, which is observed on its own
+    /// (issue 828): what reads the chat through AppState's forwarders
+    /// redraws on its changes, and a change made to the chat doesn't publish
+    /// as AppState's, so views that don't read it are left alone. Its derived
+    /// values follow it as before.
+    func testShownChatChangesReachWhatReadsThemOnly() {
         let state = makeAppState()
         var appStatePublications = 0
         let cancellable = state.objectWillChange.sink { appStatePublications += 1 }
         defer { cancellable.cancel() }
 
+        final class Flag { var isSet = false }
+        let transcriptRead = Flag()
+        withObservationTracking { _ = state.messages } onChange: { transcriptRead.isSet = true }
         state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
-        XCTAssertGreaterThan(appStatePublications, 0, "a transcript write redraws AppState's views")
+        XCTAssertTrue(transcriptRead.isSet, "a transcript write redraws what reads the transcript")
         XCTAssertEqual(state.shownChat.messages.map(\.id), ["u1"])
         XCTAssertEqual(state.chatTranscriptRevision, state.shownChat.transcriptRevision)
 
         appStatePublications = 0
+        let windowRead = Flag()
+        withObservationTracking { _ = state.persistedTranscriptWindow } onChange: { windowRead.isSet = true }
         state.shownChat.persistedTranscriptWindow = nil
-        XCTAssertGreaterThan(appStatePublications, 0, "a write straight to the chat publishes too")
+        XCTAssertTrue(windowRead.isSet)
+        XCTAssertEqual(appStatePublications, 0, "a write straight to the chat doesn't publish as AppState's")
         XCTAssertTrue(state.liveTurn === state.shownChat.liveTurn)
     }
 
@@ -109,7 +118,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         let expectedTotal = chunks.joined()
 
         var burstPublications = 0
-        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in burstPublications += 1 }
+        let cancellable = state.shownChat.messagesValues.dropFirst().sink { _ in burstPublications += 1 }
         feedReasoning(chunks, sessionId: "stored-a", state: state)
         cancellable.cancel()
 
@@ -140,7 +149,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // force-flush, no boundary event. The wait only needs to clear the
         // cadence interval, so generous slack keeps it stable on CI runners.
         var scheduledTranscriptPublications = 0
-        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in
+        let cancellable = state.shownChat.messagesValues.dropFirst().sink { _ in
             scheduledTranscriptPublications += 1
         }
         try await Task.sleep(for: .milliseconds(500))
@@ -950,7 +959,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // No coalesced publish may fire after the boundary: not the
         // transcript equality, and not even a single republication.
         var postBoundaryPublications = 0
-        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in
+        let cancellable = state.shownChat.messagesValues.dropFirst().sink { _ in
             postBoundaryPublications += 1
         }
         try await Task.sleep(for: .milliseconds(250))
@@ -979,7 +988,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
 
         var postBoundaryPublications = 0
-        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in
+        let cancellable = state.shownChat.messagesValues.dropFirst().sink { _ in
             postBoundaryPublications += 1
         }
         try await Task.sleep(for: .milliseconds(250))
