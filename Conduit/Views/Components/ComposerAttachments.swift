@@ -89,6 +89,22 @@ enum AttachmentTypePolicy {
         return mime
     }
 
+    /// The name a staged file is previewed under when its path doesn't say
+    /// its type, since Quick Look picks its renderer by the extension; nil
+    /// when the staged copy can be shown in place. A screenshot is staged
+    /// without its extension, and a stem ending in a dotted time ("… at
+    /// 10.00.37") reads as having one, so the path's extension is checked
+    /// against the attachment's type, not against its name (desktop#611).
+    static func stagedPreviewName(name: String, fileURL: URL, mimeType: String?) -> String? {
+        guard let mimeType, let type = UTType(mimeType: mimeType), type != .data,
+              let preferredExtension = type.preferredFilenameExtension else { return nil }
+        if UTType(filenameExtension: fileURL.pathExtension)?.conforms(to: type) == true { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stem = trimmed.isEmpty ? "file" : trimmed
+        if UTType(filenameExtension: (stem as NSString).pathExtension)?.conforms(to: type) == true { return stem }
+        return "\(stem).\(preferredExtension)"
+    }
+
     /// The real file name when the system gave one, with an extension that
     /// matches the content; otherwise "photo"/"video"/"file" plus one.
     static func filename(suggested: String?, type: UTType?, ordinal: Int = 1) -> String {
@@ -424,15 +440,17 @@ struct ComposerAttachmentChip: View {
         return url
     }
 
-    /// Opens the staged copy in Quick Look. A copy whose path doesn't carry
-    /// its type (a screenshot is staged without one) is shown from a copy
-    /// under its display name, since Quick Look picks its renderer by the
-    /// extension; the presenter removes that copy when the preview closes.
+    /// Opens the staged copy in Quick Look. A copy whose path doesn't say
+    /// its type is shown from a copy under a name that does
+    /// (`AttachmentTypePolicy.stagedPreviewName`); the presenter removes that
+    /// copy when the preview closes.
     private func previewStagedFile(at url: URL) {
-        let title = AttachmentTypePolicy.displayName(for: attachment)
-        let filename = AttachmentPreviewFilename.make(name: attachment.name, uri: url.lastPathComponent)
-        if (filename as NSString).pathExtension.caseInsensitiveCompare(url.pathExtension) == .orderedSame {
-            if !MediaPreviewPresenter.shared.present(fileURL: url, title: title) { Haptics.error() }
+        guard let filename = AttachmentTypePolicy.stagedPreviewName(
+            name: attachment.name, fileURL: url, mimeType: attachment.mimeType
+        ) else {
+            if !MediaPreviewPresenter.shared.present(fileURL: url, title: AttachmentTypePolicy.displayName(for: attachment)) {
+                Haptics.error()
+            }
             return
         }
         previewTask?.cancel()
