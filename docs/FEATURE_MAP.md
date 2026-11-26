@@ -2860,11 +2860,12 @@ Work Here in This Chat (done, #2364: the folder header's menu moves the open cha
 Conduit for desktop's workbench beside a chat with a folder (Eric,
 2026-11-26, "B · Project mode"; desktop issues 450 to 453): the chat's
 folder as a project, its views on the chat tabs' strip (Changes, Files,
-then Browser tabs), and its terminals in a drawer below. Everything runs on
+then Browser tabs), a timeline of the chat's steps over them, and its
+terminals in a drawer below, the bot's own commands first. Everything runs on
 the Hermes host, in the chat's folder: Git through the plugin's workspace
 git routes, shells through its terminals routes and socket, and a Browser
 tab's localhost is the host's, through its workspace preview route. The
-timeline with the bot's command terminal (453) comes next, in its own PR.
+timeline and the bot's commands are read from the chat's transcript.
 
 **Siblings:** Workspace files (the bench's Files view is the desktop's
 Folder, embedded; the Git and terminal roots follow the Folder's workspace
@@ -2874,7 +2875,8 @@ bench draws the same tab strip) · the notifier's `workspace-git` and
 `workspace-preview` route for host pages (done, notifier #1106) · Settings >
 Workspace & safety (done: the host's Allow terminals switch, which host
 pages follow too) · chat links (done: a localhost link in a reply opens in a
-Browser tab while the bench is open) · the phone
+Browser tab while the bench is open) · the chat's step cards (done: the
+timeline lands on the same steps, and the chat scrolls to the one it's on) · the phone
 (not needed: Eric, 2026-11-25, the phone stays as it is; it has no
 workbench) · Bot Chats and project chats (gap: the bench opens beside a
 chat with a folder in Chats; a Bot Chat open in Bots doesn't offer it yet) ·
@@ -2882,16 +2884,17 @@ the Watch, CarPlay and group rooms (not needed: no folder
 workspace) · Text: the desktop's captions and shortcut list (done);
 README and docs don't describe the workbench
 
-**Desktop app:** has it: the workbench (`desktop/src/renderer/src/components/Workbench.tsx`, desktop#622), Changes (`desktop/src/renderer/src/components/ChangesView.tsx`), terminals (`desktop/src/renderer/src/components/TerminalDrawer.tsx`), the shared tab strip (`desktop/src/renderer/src/components/TabStrip.tsx`) and Browser tabs (`desktop/src/renderer/src/components/BrowserView.tsx`, desktop#629).
+**Desktop app:** has it: the workbench (`desktop/src/renderer/src/components/Workbench.tsx`, desktop#622), Changes (`desktop/src/renderer/src/components/ChangesView.tsx`), terminals (`desktop/src/renderer/src/components/TerminalDrawer.tsx`), the shared tab strip (`desktop/src/renderer/src/components/TabStrip.tsx`) and Browser tabs (`desktop/src/renderer/src/components/BrowserView.tsx`, desktop#629), and the timeline with the bot's commands (`desktop/src/renderer/src/components/BenchTimeline.tsx`, desktop#638).
 
 **Code**
 - Plugin Git: `notifier/workspace_git.py` (Git, LocalRunner, SshRunner, for_workspace), `notifier/dashboard/api/source_control.py` (GET status, diff, log, branches; POST init, stage, unstage, discard, commit, switch, pull, push, fetch)
 - Plugin terminals: `notifier/terminal_host.py` (Terminal, TerminalHost, its scrollback and viewers), `notifier/dashboard/api/terminals.py` (list, create, close, rename, settings, and the socket)
 - Plugin host pages: `notifier/dashboard/api/workspace_preview.py` (ANY /workspace/preview/{port}/{path}, wrapped)
 - Desktop host pages: `desktop/src/main/hostPages.ts` (the conduit-host-page scheme, the two sessions, where a tab may go), `desktop/src/main/hostPageRules.ts`, `desktop/src/shared/browserAddress.ts`, `desktop/src/renderer/src/state/browserTabs.ts`
+- Desktop timeline: `desktop/src/renderer/src/state/benchTimeline.ts` (the steps, read from the transcript), `desktop/src/renderer/src/components/BenchTimeline.tsx` (the scrubber, its list, and the bot's commands)
 - Desktop state: `desktop/src/renderer/src/state/sourceControl.ts`, `desktop/src/renderer/src/state/terminals.ts`, `desktop/src/renderer/src/state/workbench.ts`
 - Desktop views: `desktop/src/renderer/src/components/BrowserView.tsx`, `desktop/src/renderer/src/components/Workbench.tsx`, `desktop/src/renderer/src/components/ChangesView.tsx`, `desktop/src/renderer/src/components/TerminalDrawer.tsx`, `desktop/src/renderer/src/components/TerminalSettings.tsx`, `desktop/src/renderer/src/components/TabStrip.tsx`
-- Tests: `notifier/tests/test_workspace_git.py`, `notifier/tests/test_terminals.py`, `desktop/test/sourceControl.test.ts`, `desktop/test/terminals.test.ts`, `desktop/test/workbench.test.ts`, `notifier/tests/test_workspace_preview.py`, `desktop/test/browserTabs.test.ts`
+- Tests: `notifier/tests/test_workspace_git.py`, `notifier/tests/test_terminals.py`, `desktop/test/sourceControl.test.ts`, `desktop/test/terminals.test.ts`, `desktop/test/workbench.test.ts`, `notifier/tests/test_workspace_preview.py`, `desktop/test/browserTabs.test.ts`, `desktop/test/benchTimeline.test.ts`
 
 **Rulings**
 - One workspace, not features bolted on (Eric, 2026-11-26, B): the bench opens beside a chat that has a folder, with Ctrl+B or ⌘B or the header's button, takes the side panel's place and tucks the chat list to its faces; its views and its terminals draw the chat tabs' strip.
@@ -2900,14 +2903,16 @@ README and docs don't describe the workbench
 - Terminals keep running while the drawer folds or Conduit closes, and come back with what they wrote meanwhile (256 KB kept per terminal); closing a tab ends its shell. A host runs at most 8 per profile and 32 in all, and one nobody has watched for a week ends (notifier #1105).
 - Settings has a switch that turns terminals off for the whole host, ending every one running; hosted installs, SSH profiles and Windows hosts offer none.
 - Git shows a file that holds keys or passwords in the lists but never its contents, as the Folder does; push and pull never ask for a password (batch mode), and a repository's commands wait for each other.
+- The timeline (453): the chat's steps on a scrubber under the bench's tabs, oldest at the left: what was asked, and each command, file written or read, page opened and other tool (the cards and the plan the chat draws are left out). Landing on a step moves every view to it: the chat scrolls there, the bot's commands to its command, Files opens its file; Now follows the chat again. The full list sits behind the step's label. It needs nothing from the plugin (desktop#638).
+- The bot's commands are the drawer's first tab, never closed and read-only: each command it ran in this chat with its output and a failed exit code. A host without terminals still has it (desktop#638).
 - GitHub pull requests are out of v1. The phone is unchanged (Eric, 2026-11-25).
 
 **Open gaps**
 - A Bot Chat open in Bots doesn't offer the bench yet.
-- The timeline scrubber with the bot's read-only command terminal (desktop issue 453): next PR.
+- The timeline doesn't move Changes or a Browser tab: Changes shows the folder as it is now, not at the step.
 - A host page's live reload socket (Vite's or Next's HMR) doesn't pass through yet: the page works, and Reload shows a change.
 
-**Checked:** 2026-11-26, #3352 (Browser tabs, desktop#629 and notifier #1106; before it #3344, the workbench with Changes, Files and terminals)
+**Checked:** 2026-11-26, #3364 (the timeline and the bot's commands, desktop#638; before it #3352, Browser tabs, and #3344, the workbench with Changes, Files and terminals)
 
 ## Bots Home
 
