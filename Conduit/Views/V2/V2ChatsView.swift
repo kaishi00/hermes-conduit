@@ -759,7 +759,10 @@ struct V2ChatsView: View {
         // last read is old (a chat started elsewhere meanwhile).
         .onChange(of: scenePhase) { _, phase in
             // Off screen, a scroll may never report coming to rest.
-            if phase != .active { updates.endScrolling() }
+            if phase != .active {
+                updates.endScrolling()
+                listMoving = false
+            }
             if phase == .active, isShown, listInView {
                 appState.chatListBecameActive()
                 // All's poll skips its reads while the app is away: back on
