@@ -991,7 +991,7 @@ struct SessionList: View {
                     }
                     .tint(.conduitAccent)
 
-                    ReadStateToggleButton(session: session, nest: nest)
+                    ReadStateToggleButton(session: session, nest: nest, inSwipe: true)
                         .tint(.blue)
                 }
             }
@@ -1641,6 +1641,8 @@ struct DoneToggleButton: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
+    /// A row swipe's short label (see `ReadStateToggleButton.inSwipe`).
+    var inSwipe = false
 
     var body: some View {
         let done = appState.isSessionDone(session)
@@ -1649,10 +1651,17 @@ struct DoneToggleButton: View {
             appState.setSessionDone(session, done: !done)
         } label: {
             Label(
-                done ? AppLocalization.string("Mark as Not Done", table: .chat) : AppLocalization.string("Mark as Done", table: .chat),
+                title(done: done),
                 systemImage: done ? "arrow.uturn.backward.circle" : "checkmark.circle"
             )
         }
+    }
+
+    private func title(done: Bool) -> String {
+        if inSwipe {
+            return done ? AppLocalization.string("Mark Not Done", table: .chat) : AppLocalization.string("Mark Done", table: .chat)
+        }
+        return done ? AppLocalization.string("Mark as Not Done", table: .chat) : AppLocalization.string("Mark as Done", table: .chat)
     }
 }
 
@@ -1666,6 +1675,11 @@ struct ReadStateToggleButton: View {
     /// activity, and its "Mark as read" clears the whole nest — non-nil
     /// IS the lit dot. Nil reads the row's own state, as every flat row.
     var nest: NestReadToggle? = nil
+    /// A row swipe's short label (Mark Read, Mark Unread): iOS lays a swipe's
+    /// buttons out at their labels' full width and never wraps or shrinks
+    /// them, so "Mark as …" in Russian or German pushed the last buttons
+    /// off the screen. The touch-and-hold menu keeps the full wording.
+    var inSwipe = false
 
     var body: some View {
         // A nest rides along only with its lit dot: non-nil is the
@@ -1684,7 +1698,7 @@ struct ReadStateToggleButton: View {
             }
         } label: {
             Label(
-                isUnread ? AppLocalization.string("Mark as read", table: .chat) : AppLocalization.string("Mark as unread", table: .chat),
+                title(isUnread: isUnread),
                 systemImage: isUnread ? "envelope.open" : "envelope.badge"
             )
         }
@@ -1695,6 +1709,13 @@ struct ReadStateToggleButton: View {
         } else {
             button
         }
+    }
+
+    private func title(isUnread: Bool) -> String {
+        if inSwipe {
+            return isUnread ? AppLocalization.string("Mark Read", table: .chat) : AppLocalization.string("Mark Unread", table: .chat)
+        }
+        return isUnread ? AppLocalization.string("Mark as read", table: .chat) : AppLocalization.string("Mark as unread", table: .chat)
     }
 }
 

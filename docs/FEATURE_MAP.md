@@ -7412,7 +7412,7 @@ the iPad and the desktop show the same ones, and the agent's
 `conduit_chat_done` tool marks its own chat.
 
 **Siblings:** the row's touch-and-hold menu (Mark as Done / Not Done) and
-leading swipe (done) · the open chat's title menu and the conversation's ⋯
+leading swipe (done, short labels) · the open chat's title menu and the conversation's ⋯
 menu, which share that menu (done) · the row's look: dimmed title and preview, check
 before the time, Running and Approve still shown, a nested child row and an "In messages" search hit too (done) · the Chats list's
 In progress and Done filters, combined with status, source and project
@@ -7440,11 +7440,12 @@ Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 - A mark shows at once. A read that went out before its write was answered is dropped, and the marks are read again once no write is pending, so a quick read never un-marks the row the user just marked (#2830 review).
 - The agent marks a chat only when the user, or their own instructions or a skill, ask it to; never on its own judgment (the tool's description says so).
 - Done and In progress show only on a plugin that reports `chat-done`; before it answers, the filters and the menu item stay hidden.
+- A row's leading swipe uses short labels of its own (Chat table): Mark Done / Mark Not Done, Mark Read / Mark Unread, and "Unpin (swipe)", "Star (swipe)" and "Unstar (swipe)", whose English is Unpin, Star and Unstar but whose translations are shorter where the menus' are long; the menus keep "Mark as …" and the full wording. iOS lays a swipe's buttons out at their labels' full width and never wraps or shrinks them, so the long wording pushed the read toggle off the screen in Russian (TestFlight report, 2026-11-26, #3353). All four buttons in their longest states are kept under about 375 pt in every shipped language (estimated from the label lengths); a new swipe button or translation keeps to that.
 
 **Open gaps**
 - Another combined dashboard's row in the Chats list has no menu or swipe, so its chat is marked from its open chat's menus only.
 
-**Checked:** 2026-11-26, #3323 (issue 3282, after #3322: another combined dashboard's Done marks are read with its chat list at most every `farChatMarksReadInterval` (60 s), a pull on the list at once; the dashboard on screen keeps its own interval; Desktop reads its hosts' marks on its own cadence, not needed); 2026-11-24, #3230 (another combined dashboard's chat shows and takes its own dashboard's Done mark without a switch; the desktop's far rows not checked here); 2026-11-19, #2840 (a profile's marks read again at once when another dashboard's read dropped them, in All Profiles too; tests for the write fence and order); 2026-11-19, #2830 (added: a Done mark set by the user or the agent, fish0859 on Reddit).
+**Checked:** 2026-11-26, #3353 (the leading swipe's four buttons take short labels, the drawer sidebar's read toggle too, so they fit a 375 pt phone in every shipped language; Desktop not needed: no row swipes); 2026-11-26, #3323 (issue 3282, after #3322: another combined dashboard's Done marks are read with its chat list at most every `farChatMarksReadInterval` (60 s), a pull on the list at once; the dashboard on screen keeps its own interval; Desktop reads its hosts' marks on its own cadence, not needed); 2026-11-24, #3230 (another combined dashboard's chat shows and takes its own dashboard's Done mark without a switch; the desktop's far rows not checked here); 2026-11-19, #2840 (a profile's marks read again at once when another dashboard's read dropped them, in All Profiles too; tests for the write fence and order); 2026-11-19, #2830 (added: a Done mark set by the user or the agent, fish0859 on Reddit).
 
 ## Archiving chats
 

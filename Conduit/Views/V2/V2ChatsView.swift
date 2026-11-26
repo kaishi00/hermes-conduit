@@ -3033,7 +3033,9 @@ private struct V2SessionMenuItems: View {
     }
 }
 
-/// Swiping right: Pin, Star, and the read toggle.
+/// Swiping right: Pin, Star, Done and the read toggle, each with its
+/// short swipe label: iOS lays these out at their labels' full width and
+/// never wraps or shrinks them, so four long labels run off the screen.
 private struct V2SessionLeadingSwipes: View {
     let appState: AppState
     let session: SessionSummary
@@ -3047,7 +3049,7 @@ private struct V2SessionLeadingSwipes: View {
             appState.toggleSessionPinned(session)
         } label: {
             Label(
-                pinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                pinned ? AppLocalization.string("Unpin (swipe)", table: .chat) : AppLocalization.string("Pin"),
                 systemImage: pinned ? "pin.slash" : "pin"
             )
         }
@@ -3058,18 +3060,18 @@ private struct V2SessionLeadingSwipes: View {
             appState.toggleSessionStarred(session)
         } label: {
             Label(
-                starred ? AppLocalization.string("Unstar", table: .chat) : AppLocalization.string("Star", table: .chat),
+                starred ? AppLocalization.string("Unstar (swipe)", table: .chat) : AppLocalization.string("Star (swipe)", table: .chat),
                 systemImage: starred ? "star.slash" : "star"
             )
         }
         .tint(.yellow)
 
         if appState.canMarkSessionDone(session) {
-            DoneToggleButton(session: session)
+            DoneToggleButton(session: session, inSwipe: true)
                 .tint(.green)
         }
 
-        ReadStateToggleButton(session: session, nest: nest())
+        ReadStateToggleButton(session: session, nest: nest(), inSwipe: true)
             .tint(.blue)
     }
 }
