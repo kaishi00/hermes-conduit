@@ -232,6 +232,17 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
     }
 
     func testVoiceTooLargeMessageNamesTheLimitAndWhereToRaiseIt() {
+        // The words checked are English: pin the app's language for them.
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
         let message = AttachmentSizeLimit.voiceTooLargeMessage(megabytes: 32)
         XCTAssertTrue(message.contains("32 MB"), message)
         XCTAssertTrue(message.contains("Settings › Chat"), message)
