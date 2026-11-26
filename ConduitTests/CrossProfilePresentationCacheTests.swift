@@ -5273,6 +5273,10 @@ extension CrossProfilePresentationCacheTests {
             var opened: [(ObjectIdentifier, String, String?)] = []
             var roomClients: [String: [ObjectIdentifier]] = [:]
             var created: [ObjectIdentifier] = []
+            var sent: [(ObjectIdentifier, String, String)] = []
+            var roomCreated: [ObjectIdentifier] = []
+            var titled: [String] = []
+            var duringTitle: (@MainActor () -> Void)?
         }
         let script = Script()
         let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
@@ -5302,6 +5306,19 @@ extension CrossProfilePresentationCacheTests {
         operations.findBotChat = { _, _ in
             if let error = script.botLookupError { throw error }
             return script.botLookupRows
+        }
+        operations.sendPrompt = { client, sessionID, text in
+            script.sent.append((ObjectIdentifier(client), sessionID, text))
+            return .accepted
+        }
+        operations.createRoomChat = { client, _ in
+            script.roomCreated.append(ObjectIdentifier(client))
+            let id = "room-new-\(script.roomCreated.count)"
+            return (id, id, nil)
+        }
+        operations.titleRoomChat = { _, runtimeID, _, _ in
+            script.titled.append(runtimeID)
+            script.duringTitle?()
         }
         operations.createSession = { client, _ in
             script.created.append(ObjectIdentifier(client))
@@ -5566,6 +5583,25 @@ extension CrossProfilePresentationCacheTests {
         let roomAgain = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
         XCTAssertEqual(roomAgain, .opened)
         XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
+        // Its Group Settings' router model row reads and saves on the
+        // room's own dashboard, through its kept connection (#3251, issue
+        // 3252).
+        let router = appState.roomHelperModelSettings(task: HelperModelSlot.groupRouter, inProfile: GroupRouterModelRow.profile)
+        let routerRead = Task { @MainActor in try await router.load() }
+        try await held.answer(
+            ["tasks": [["task": "group_router", "provider": "openrouter", "model": "fast/router"]]],
+            toPathEnding: "/api/model/auxiliary"
+        )
+        let routerLoaded = try await routerRead.value
+        var routerSetting = try XCTUnwrap(routerLoaded, "read on the room's dashboard")
+        XCTAssertEqual(routerSetting.model, "fast/router")
+        routerSetting.model = "fast/router-2"
+        let routerSave = Task { @MainActor in await router.save(routerSetting, false) }
+        try await held.answer(["ok": true], toPathEnding: "/api/model/set")
+        let routerSaved = await routerSave.value
+        XCTAssertEqual(routerSaved, .saved, "saved on the room's dashboard")
+        XCTAssertEqual(held.sent.last { $0.path.hasSuffix("/api/model/set") }?.method, "POST")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for the router row")
         let roomChatTask = Task { @MainActor in
             await appState.openRoomChat(with: RoomChatAgent(profile: "atlas", name: "Atlas"), wrapUp: false)
         }
@@ -5579,6 +5615,86 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for a far room's chat")
         XCTAssertNil(appState.activeRoomSurface, "the chat took the room's place")
+        // Wrap Up from the far room's Group Info: the room's chat opens in
+        // place and its wrap-up goes in through the room's own kept
+        // connection, never the screen's (#3251's review, issue 3252).
+        let roomForWrapUp = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+        XCTAssertEqual(roomForWrapUp, .opened)
+        let sentBeforeWrapUp = script.sent.count
+        let wrapUpTask = Task { @MainActor in
+            await appState.openRoomChat(with: RoomChatAgent(profile: "atlas", name: "Atlas"), wrapUp: true)
+        }
+        try await held.answer(
+            ["ok": true, "chats": [["room_id": "trip", "chat_id": "room-chat-1", "notes_seq": 0]]],
+            toPathEnding: "/rooms/chats"
+        )
+        let wrapUpFailure = await wrapUpTask.value
+        XCTAssertNil(wrapUpFailure)
+        XCTAssertEqual(appState.activeSessionId, "room-chat-1")
+        XCTAssertEqual(script.sent.count, sentBeforeWrapUp + 1, "the wrap-up went in once")
+        XCTAssertEqual(script.sent.last?.1, "room-chat-1")
+        XCTAssertEqual(script.sent.last?.0, appState.keptDashboardRuntimes[mac.id].map { ObjectIdentifier($0.client) },
+                       "through the room's own kept connection")
+        XCTAssertEqual(script.sent.last?.2, RoomChatText.wrapUpPrompt)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch for a far Wrap Up")
+
+        // A far Ask's fences (#3251's reviews, #3323, issue 3252). The room
+        // left while its chats are read: superseded, it opens nothing.
+        let roomForAsk = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+        XCTAssertEqual(roomForAsk, .opened)
+        let openedBeforeAsk = script.opened.count
+        let sentBeforeAsk = held.sent.count
+        appState.errorMessage = nil
+        let leftAsk = Task { @MainActor in
+            await appState.openRoomChat(with: RoomChatAgent(profile: "atlas", name: "Atlas"), wrapUp: false)
+        }
+        try await held.waitForRequests(sentBeforeAsk + 1)
+        appState.groupRoomEpoch &+= 1
+        try await held.answer(
+            ["ok": true, "chats": [["room_id": "trip", "chat_id": "room-chat-1", "notes_seq": 0]]],
+            toPathEnding: "/rooms/chats"
+        )
+        let leftAskFailure = await leftAsk.value
+        XCTAssertNil(leftAskFailure, "another navigation took over: nothing to say")
+        XCTAssertEqual(script.opened.count, openedBeforeAsk, "a room left since opens no chat over what's there")
+        XCTAssertNil(appState.errorMessage)
+
+        // Its kept chat gone: a replacement is made, registered and titled
+        // there. A chat or the list opened meanwhile (the viewport moved
+        // since the gone open closed the room) keeps it from opening.
+        func askReplacingAGoneChat(movingWhileTitled: Bool) async throws -> String? {
+            let room = await appState.openFarNotificationInPlace(roomPush, in: mac.id)
+            XCTAssertEqual(room, .opened)
+            script.error = RpcError(code: 4007, message: "Session not found")
+            script.duringTitle = {
+                script.error = nil
+                if movingWhileTitled { appState.chatViewportTransitionGeneration &+= 1 }
+            }
+            let ask = Task { @MainActor in
+                await appState.openRoomChat(with: RoomChatAgent(profile: "atlas", name: "Atlas"), wrapUp: false)
+            }
+            try await held.answer(
+                ["ok": true, "chats": [["room_id": "trip", "chat_id": "room-chat-1", "notes_seq": 0]]],
+                toPathEnding: "/rooms/chats"
+            )
+            let replacement = "room-new-\(script.roomCreated.count + 1)"
+            try await held.answer(
+                ["ok": true, "chat": ["room_id": "trip", "chat_id": replacement, "notes_seq": 0]],
+                toPathEnding: "/rooms/chats"
+            )
+            let failure = await ask.value
+            script.duringTitle = nil
+            XCTAssertNil(failure)
+            XCTAssertEqual(script.titled.last, replacement, "made and titled on the room's dashboard")
+            return replacement
+        }
+        let moved = try await askReplacingAGoneChat(movingWhileTitled: true)
+        XCTAssertFalse(script.opened.contains { $0.1 == moved }, "the replacement doesn't open over what was opened meanwhile")
+        let stayed = try await askReplacingAGoneChat(movingWhileTitled: false)
+        XCTAssertEqual(script.opened.last?.1, stayed, "nothing moved: the replacement opens")
+        XCTAssertEqual(appState.activeSessionId, stayed)
+        XCTAssertEqual(appState.farChat, FarChatOwner(dashboardID: mac.id, profile: "atlas"))
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
 
         // 5. Call pushes keep switching by ruling (even when targeting a room or listed chat).
         let callPush = ConduitNotificationTarget(
@@ -5600,6 +5716,34 @@ extension CrossProfilePresentationCacheTests {
         let roomCallOutcome = await appState.openFarNotificationInPlace(roomCallPush, in: mac.id)
         XCTAssertNil(callOutcome, "call push keeps switching")
         XCTAssertNil(roomCallOutcome, "call push keeps switching even with roomID")
+
+        // Do it on a far card whose kept connection can't carry the open
+        // (its socket dropped): the card's chat, the Bot Chat it goes to and
+        // its new chat each fall to the switch, opening nothing (#3265's
+        // review, issue 3252).
+        appState.openCombinedPulse(mac.id)
+        XCTAssertEqual(appState.pulseDashboardID, mac.id)
+        let keptNow = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        keptNow.runtime.botRoster = [atlas]
+        keptNow.runtime.notifierPlugin.state = .reported(version: "0.200.0", capabilities: [PulseClient.actedChatCapability])
+        keptNow.client.disconnect()
+        XCTAssertFalse(keptNow.client.isConnected)
+        let shownBeforeFalls = appState.activeSessionId
+        let createdBeforeFalls = script.created.count
+        let openedBeforeFalls = script.opened.count
+        let falls: [(PulseCard, PulseDoItTarget?, String)] = [
+            (doItCards[0], nil, "the card's chat"),
+            (doItCards[1], .bot("atlas"), "its Bot Chat"),
+            (doItCards[1], .newChat, "its new chat"),
+        ]
+        for (card, picked, what) in falls {
+            if case .notInPlace = await appState.doFarPulseCard(card, in: picked, for: mac.id) {} else {
+                XCTFail("\(what) falls to the switch")
+            }
+        }
+        XCTAssertEqual(appState.activeSessionId, shownBeforeFalls, "nothing opened")
+        XCTAssertEqual(script.created.count, createdBeforeFalls, "no chat made")
+        XCTAssertEqual(script.opened.count, openedBeforeFalls)
 
         // 6. Dropped kept runtime falls back to switching for room, Pulse, and unlisted pushes.
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)

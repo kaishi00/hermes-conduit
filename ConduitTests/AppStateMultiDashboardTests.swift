@@ -2225,6 +2225,50 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(appState.isSessionStarred(screenChat), "the screen's chat under that id keeps its star")
     }
 
+    /// Issue 3252: a reachable far chat deleted end to end, once on the
+    /// profile its dashboard uses and once on another: its own dashboard's
+    /// stars lose it, and the screen's star, Archived list and pin under
+    /// the same id stay.
+    func testAReachableFarChatsDeleteTakesOnlyItsOwnDashboardsStar() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let farHeld = HeldDashboardRequests(baseURL: vps.normalizedURL)
+        addTeardownBlock { @MainActor in farHeld.releaseAll() }
+        let connection = HermesConnection(baseUrl: vps.normalizedURL, ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        appState.keptDashboardRuntimes[vps.id] = kept
+        let screenProfile = appState.activeProfile
+        for (id, profile) in [("chat-1", nil), ("chat-2", "atlas")] as [(String, String?)] {
+            let screenChat = macSession(id)
+            var archived = macSession(id)
+            archived.isArchived = true
+            appState.sessions = [screenChat]
+            appState.archivedSessions = [archived]
+            appState.setSessionStarred(screenChat, starred: true, profile: screenProfile)
+            appState.setLocalPin(screenChat, pinned: true, profile: screenProfile)
+            var farListed = macSession(id)
+            farListed.profile = profile
+            kept.runtime.sessions = [farListed]
+            var farRow = farListed
+            farRow.combinedDashboardID = vps.id
+            appState.toggleFarSessionStarred(farRow, in: vps.id)
+            XCTAssertTrue(appState.isFarSessionStarred(farRow, in: vps.id))
+
+            let delete = Task { await appState.deleteSession(farRow) }
+            try await farHeld.answer()      // the mutation snapshot read
+            try await farHeld.answer()      // the VPS deleted it
+            _ = await delete.value
+
+            let on = profile ?? "the profile in use"
+            XCTAssertFalse(appState.isFarSessionStarred(farRow, in: vps.id), "its dashboard's stars lose it (\(on))")
+            appState.farSessionStarsByDashboard = [:]
+            XCTAssertFalse(appState.isFarSessionStarred(farRow, in: vps.id), "and its saved stars (\(on))")
+            XCTAssertTrue(appState.isSessionStarred(screenChat), "the screen's chat under that id keeps its star (\(on))")
+            XCTAssertTrue(appState.isSessionPinned(screenChat), "and its pin (\(on))")
+            XCTAssertEqual(appState.archivedSessions.map(\.id), [id], "and the screen's Archived list (\(on))")
+        }
+    }
+
     /// Issue 3147: what is kept by profile and chat id alone (the YOLO
     /// override, the cached presentation, where the list was left) and a
     /// dashboard's runtime-id mapping stay with another chat that answers

@@ -265,6 +265,14 @@ final class CarPlayVoiceCoordinator {
     var isObservingChats: Bool { chatsObservation != nil }
     /// Test seam over loading the chat list.
     var chatCatalogLoader: @MainActor (AppState) async -> Void = { await $0.loadSessions() }
+    /// Test seam over reading a far agent's chats through its dashboard's
+    /// kept connection, with the phone's scene in the background, as the
+    /// car runs.
+    var farChatsLoader: @MainActor (AppState, UUID) async -> Void = { appState, far in
+        await appState.readOtherCombinedDashboardsChats(force: true, only: far, forCar: true)
+    }
+    /// Test seam over the far read's backoff (`farChatsRetryDelay`).
+    var farChatsRetryWait: (Int) -> Duration = { CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: $0) }
     /// Test seam over opening a picked chat on the phone.
     var chatOpener: @MainActor (AppState, String) async -> AppState.SessionOpenOutcome = {
         await $0.openSessionOutcome($1)
@@ -284,6 +292,8 @@ final class CarPlayVoiceCoordinator {
     /// (no-switch stage 2, `onFarCallDashboard`). Nil for the dashboard
     /// on screen's.
     private(set) var farAgent: CarPlayAgent?
+    /// Picks a far agent as the Voice list's row does, for tests.
+    func pickFarAgentForTesting(_ agent: CarPlayAgent?) { farAgent = agent }
     /// The far start running now: one far start on a dashboard at a time
     /// (`onFarCallDashboard`), so each waits for the one before.
     private var farStartTail: Task<Void, Never>?
@@ -1324,11 +1334,9 @@ final class CarPlayVoiceCoordinator {
         // Another combined dashboard's agent's chats come from its kept
         // read, never the screen's catalog.
         let far = farAgent?.dashboardID
-        Task { @MainActor [weak self, loader = chatCatalogLoader] in
+        Task { @MainActor [weak self, loader = chatCatalogLoader, farLoader = farChatsLoader] in
             if let far {
-                // Read with the phone's scene in the background, as the car
-                // runs.
-                await appState.readOtherCombinedDashboardsChats(force: true, only: far, forCar: true)
+                await farLoader(appState, far)
             } else {
                 await loader(appState)
             }
@@ -1341,7 +1349,7 @@ final class CarPlayVoiceCoordinator {
                 let failures = self.farChatsFailures?.key == key ? (self.farChatsFailures?.count ?? 0) + 1 : 1
                 let retry = UUID()
                 self.farChatsFailures = (key, failures, retry)
-                try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: failures))
+                try? await Task.sleep(for: self.farChatsRetryWait(failures))
                 // The list that scheduled it: one closed and opened again
                 // meanwhile keeps its own schedule.
                 guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far,

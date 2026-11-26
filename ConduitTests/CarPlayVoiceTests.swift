@@ -1832,6 +1832,68 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(loads, 0, "chats already here are not loaded again")
     }
 
+    /// #3322's and #3323's reviews (issue 3324): a far agent's chat read
+    /// that brings nothing back counts its failures for that agent alone,
+    /// and starts over on another agent, on the list closing (a list
+    /// opened again keeps its own count) and on a read that lands.
+    func testAFarAgentsChatBackoffStartsOverOnAnotherAgentTheListClosingOrALandedRead() async throws {
+        let harness = makeHarness()
+        let screen = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://mac.invalid")
+        let farDashboard = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://vps.invalid")
+        var registry = SavedDashboardRegistry(activeDashboardID: screen.id, dashboards: [screen, farDashboard])
+        registry.dashboards = registry.dashboards.map { dashboard in
+            var dashboard = dashboard
+            dashboard.combined = true
+            return dashboard
+        }
+        harness.appState.savedDashboardRegistry = registry
+        XCTAssertTrue(harness.appState.isInCombinedGroup(farDashboard.id))
+        var farReads = 0
+        harness.coordinator.chatCatalogLoader = { _ in }
+        harness.coordinator.farChatsLoader = { _, _ in farReads += 1 }
+        harness.coordinator.farChatsRetryWait = { _ in .milliseconds(300) }
+        harness.coordinator.handleConnect(harness.spy)
+        harness.coordinator.pickFarAgentForTesting(CarPlayAgent(dashboardID: farDashboard.id, profile: "atlas"))
+        func failures() -> (key: String, count: Int)? {
+            harness.coordinator.farChatsFailures.map { ($0.key, $0.count) }
+        }
+
+        harness.coordinator.showChats()
+        var list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate)
+        await settleChats { (failures()?.count ?? 0) >= 2 }
+        XCTAssertGreaterThanOrEqual(failures()?.count ?? 0, 2, "the same agent's reads count up")
+        XCTAssertGreaterThanOrEqual(farReads, 2)
+
+        // Another agent of that dashboard: its own count, from one.
+        harness.coordinator.pickFarAgentForTesting(CarPlayAgent(dashboardID: farDashboard.id, profile: "kazuha"))
+        await settleChats { failures()?.key.hasSuffix("|kazuha") == true }
+        XCTAssertEqual(failures()?.count, 1, "another agent starts over")
+
+        // The list closing ends the count; opened again it starts over,
+        // its retry its own.
+        harness.coordinator.handleTemplateDidDisappear(list)
+        XCTAssertNil(failures(), "the list closing ends the count")
+        harness.coordinator.showChats()
+        list = try XCTUnwrap(harness.spy.pushedTemplates.last as? CPListTemplate)
+        await settleChats { failures() != nil }
+        XCTAssertEqual(failures()?.count, 1, "a list opened again starts over")
+
+        // A read that lands (the phone's own poll, say) ends it, and the
+        // retry sleeping meanwhile asks nothing more.
+        var landed = chatSession("far-1", activity: 1)
+        landed.profile = "kazuha"
+        harness.appState.combinedDashboardChats[farDashboard.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(NSObject()), profiles: ["kazuha"], sessions: [landed], at: Date()
+        )
+        await settleChats { failures() == nil }
+        XCTAssertNil(failures(), "a landed read ends the backoff")
+        let readsAfterLanding = farReads
+        try await Task.sleep(for: .milliseconds(700))
+        XCTAssertEqual(farReads, readsAfterLanding, "nothing more is asked once a read landed")
+        XCTAssertNil(failures())
+        withExtendedLifetime(list) {}
+    }
+
     func testLeavingTheChatListStopsKeepingItCurrent() async throws {
         let harness = makeHarness()
         harness.coordinator.chatCatalogLoader = { _ in }
