@@ -1503,7 +1503,7 @@ it starts GPT-Live without one · the notifier README's Watch audio section
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-26, #NNNN with notifier #1098 (CONDUIT_WATCH_AUDIO_PREPARE=off; the app shows the route's reason as it is, so no app change); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-26, #1247 (the Watch broker's bridge start keeps Conduit running through BackgroundTaskHold); 2026-10-25, at #1254.
+**Checked:** 2026-11-26, #3338 with notifier #1098 (CONDUIT_WATCH_AUDIO_PREPARE=off; the app shows the route's reason as it is, so no app change); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-26, #1247 (the Watch broker's bridge start keeps Conduit running through BackgroundTaskHold); 2026-10-25, at #1254.
 
 ## A Watch call with no network
 
@@ -5601,7 +5601,7 @@ chat's events
 - The widget bundle still lists the Live Activity on a Mac: `WidgetBundleBuilder` takes no runtime `if` (#1891's try didn't compile), so whether the launcher widgets load on macOS 14 is untried.
 - The registration and its retry go through `URLSession.shared`, so only their decisions (`needsRegistration`, `liveActivityStartedAgo`, `liveActivityRouteExists`) are tested.
 
-**Checked:** 2026-11-26, #NNNN with notifier #1098 (a card belongs to the first gateway that reports on it, issue 156; the app's registration is unchanged); 2026-11-15, #2590 (all-live stage 2 merged into main with main's changes); 2026-11-15, #2579 (a message from the pane's or a chat window's box starts a card, kept current from that chat's events); 2026-11-15, #2531 with notifier #826 (a chat closed mid-turn ends it stopped through on_session_finalize when Hermes skips its on_session_end, issue 820); 2026-11-13, #2392 (a card in another profile on screen, a Bot Chat's on Bots Home, settles from that profile's registry read by name); 2026-11-12, #2304 (paths the AppState split missed, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (map paths for code moved out of AppState.swift, issue 828); 2026-11-10, #2111 with notifier #666 (a script's, a one-shot's or a Kanban worker's turn starts and ends no card; see Notifications); 2026-11-07, #1918, carrying #1917 (a failed tap calls the chat gone only on Hermes' not found; app links and call cards' transcript links share the open, bot links already said it only from a read roster); 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
+**Checked:** 2026-11-26, #3338 with notifier #1098 (a card belongs to the first gateway that reports on it, issue 156; the app's registration is unchanged); 2026-11-15, #2590 (all-live stage 2 merged into main with main's changes); 2026-11-15, #2579 (a message from the pane's or a chat window's box starts a card, kept current from that chat's events); 2026-11-15, #2531 with notifier #826 (a chat closed mid-turn ends it stopped through on_session_finalize when Hermes skips its on_session_end, issue 820); 2026-11-13, #2392 (a card in another profile on screen, a Bot Chat's on Bots Home, settles from that profile's registry read by name); 2026-11-12, #2304 (paths the AppState split missed, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (map paths for code moved out of AppState.swift, issue 828); 2026-11-10, #2111 with notifier #666 (a script's, a one-shot's or a Kanban worker's turn starts and ends no card; see Notifications); 2026-11-07, #1918, carrying #1917 (a failed tap calls the chat gone only on Hermes' not found; app links and call cards' transcript links share the open, bot links already said it only from a read roster); 2026-11-06, #1891 (no card on a Mac and ActivityKit weak-linked, issue 1877; the relay, the plugin's reporter and the card's views needed no change); 2026-10-29, #1495, carrying #1489 (a chat's fork never touches the card, notifier #464); 2026-10-27, #1374.
 
 ## Large code blocks in messages
 
@@ -8309,7 +8309,7 @@ allowlist sections
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-26, #NNNN (added with notifier #1098: the relay allowlist, issue 156)
+**Checked:** 2026-11-26, #3338 (added with notifier #1098: the relay allowlist, issue 156)
 
 ## Pairing a computer
 
