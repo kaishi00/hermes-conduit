@@ -101,7 +101,7 @@ final class FakeVoiceJobBackend {
     private(set) var keptEndings: [String?] = []
     /// Chats that are workstreams', and what their calls sent there.
     var workstreamChats: Set<String> = []
-    var workstreamReply = AppState.workstreamCallSent
+    var workstreamReply = VoiceWorkstreamSend(message: AppState.workstreamCallSent, passedOn: true)
     private(set) var workstreamSends: [(String, String)] = []
     private(set) var leftChats: [(String?, String)] = []
     var activeProfile: String? = "default"
@@ -599,7 +599,7 @@ extension VoiceConversationControllerTests {
     func testAWorkstreamsRefusalIsToldToGPTLiveAsItCame() async {
         let (supervisor, fake) = makeSupervisor()
         fake.workstreamChats = ["rt-work"]
-        fake.workstreamReply = "W3 is busy with another action. Try again in a moment."
+        fake.workstreamReply = VoiceWorkstreamSend(message: "W3 is busy with another action. Try again in a moment.", passedOn: false)
         supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
         let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
         let refused = await gpt.handleDelegation(id: "del_1", request: "use the first option")
@@ -610,7 +610,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(channel, .speakable)
         XCTAssertTrue(text.contains("W3 is busy with another action."), text)
         // Not taken, so the same words asked again go to the workstream again.
-        fake.workstreamReply = AppState.workstreamCallSent
+        fake.workstreamReply = VoiceWorkstreamSend(message: AppState.workstreamCallSent, passedOn: true)
         _ = await gpt.handleDelegation(id: "del_2", request: "use the first option")
         XCTAssertEqual(fake.workstreamSends.map(\.1), ["use the first option", "use the first option"])
         XCTAssertTrue(fake.submissions.isEmpty)
@@ -3646,6 +3646,118 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse("call_5", _, let nothingResult, _)? = nothing.first else { return XCTFail("\(nothing)") }
         XCTAssertNotNil(nothingResult["error"], "the draft went with the send")
         XCTAssertEqual(fake.created, 1)
+    }
+
+    /// A refusal no request words can have reached Hermes with.
+    private struct RefusedSubmit: Error {}
+
+    /// #3293's reviews: a request whose submit Hermes refused gives the
+    /// user's words back, so the retry carries them under the marker.
+    func testARefusedSubmitsWordsGoWithTheRetry() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Book a table for four at eight")]
+        bridge.userLines = { lines }
+        fake.submitError = RefusedSubmit()
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Book a table."]))
+        XCTAssertEqual(fake.submissions.count, 1)
+        guard case .failed? = supervisor.jobs.first?.status else { return XCTFail("the submit was refused") }
+        XCTAssertEqual(supervisor.jobs.first?.requestWordsSpent, false)
+
+        fake.submitError = nil
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "Book a table."]))
+        let retry = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertEqual(fake.submissions.count, 2)
+        XCTAssertTrue(retry.contains(VoiceRequestWords.marker + "Book a table for four at eight"), retry)
+    }
+
+    /// #3293's reviews: a submit whose outcome is unknown (a lost
+    /// acknowledgement) may have reached Hermes: its words count as sent,
+    /// so a retry never sends them twice.
+    func testAnUnknownSubmitOutcomeKeepsTheWordsSent() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Book a table for four at eight")]
+        bridge.userLines = { lines }
+        fake.submitError = URLError(.networkConnectionLost)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Book a table."]))
+        guard case .failed? = supervisor.jobs.first?.status else { return XCTFail("the submit failed") }
+        XCTAssertEqual(supervisor.jobs.first?.requestOutcomeUnknown, true)
+
+        fake.submitError = nil
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "Book a table."]))
+        let retry = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertEqual(fake.submissions.count, 2)
+        XCTAssertFalse(retry.contains(VoiceRequestWords.marker), retry)
+    }
+
+    /// #3293's reviews: a workstream that didn't pass the request on (busy
+    /// with another action) says not_sent, and the user's words go with
+    /// the retry.
+    func testAWorkstreamRefusalGivesTheUsersWordsToTheRetry() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        fake.workstreamReply = VoiceWorkstreamSend(message: "W3 is busy with another action. Try again in a moment.", passedOn: false)
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let lines: [(id: UUID, text: String)] = [(id: UUID(), text: "Go with the staging database")]
+        bridge.userLines = { lines }
+        let refused = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "Use staging."]))
+        guard case .toolResponse("call_1", _, let refusal, _)? = refused.first else { return XCTFail("\(refused)") }
+        XCTAssertEqual(refusal["status"], "not_sent")
+        XCTAssertFalse(VoiceRequestWords.watchRequestTaken(refusal))
+
+        fake.workstreamReply = VoiceWorkstreamSend(message: AppState.workstreamCallSent, passedOn: true)
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "ask_thread", arguments: ["request": "Use staging."]))
+        guard case .toolResponse("call_2", _, let taken, _)? = sent.first else { return XCTFail("\(sent)") }
+        XCTAssertEqual(taken["status"], "workstream")
+        XCTAssertEqual(fake.workstreamSends.count, 2)
+        let retry = try XCTUnwrap(fake.workstreamSends.last?.1)
+        XCTAssertTrue(retry.contains(VoiceRequestWords.marker + "Go with the staging database"), retry)
+
+        // Taken: the next request carries none of them.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "ask_thread", arguments: ["request": "And check the logs."]))
+        let after = try XCTUnwrap(fake.workstreamSends.last?.1)
+        XCTAssertFalse(after.contains(VoiceRequestWords.marker), after)
+        // A background job asked for in a workstream's chat stays in its
+        // session too, answered as the workstream's.
+        let job = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_4", name: "start_job", arguments: ["instructions": "In the background, check the backups."]))
+        guard case .toolResponse("call_4", _, let jobResult, _)? = job.first else { return XCTFail("\(job)") }
+        XCTAssertEqual(jobResult["status"], "workstream")
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+    }
+
+    /// #3293's reviews: a draft's line that grew while it waited for the
+    /// user's OK holds both parts, so a refusal gives back the whole line.
+    func testADraftsGrownLineComesBackWholeOnARefusal() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        bridge.lateYesWait = .zero
+        var spokeAt = Date(timeIntervalSince1970: 1_000)
+        let first = UUID()
+        var lines: [(id: UUID, text: String)] = [(id: first, text: "Clean the inbox")]
+        bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { lines.last?.text ?? "" }
+        bridge.userLines = { lines }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "Clean up the mail."]))
+        // The transcript caught up after the hold.
+        lines[0].text = "Clean the inbox and the spam folder"
+        lines.append((id: UUID(), text: "Yes"))
+        spokeAt = spokeAt.addingTimeInterval(5)
+        fake.submitError = RefusedSubmit()
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+        let refused = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(refused.contains(VoiceRequestWords.marker + "Clean the inbox\nand the spam folder"), refused)
+
+        fake.submitError = nil
+        supervisor.setAsksBeforeSending(false)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_3", name: "start_job", arguments: ["instructions": "Clean up the mail."]))
+        XCTAssertEqual(fake.submissions.count, 2)
+        let retry = try XCTUnwrap(fake.submissions.last?.1)
+        XCTAssertTrue(retry.contains(VoiceRequestWords.marker + "Clean the inbox and the spam folder"), retry)
+        XCTAssertFalse(retry.contains("Yes"), retry)
     }
 
     func testANoAboutAWaitingRequestStaysOutOfTheNextRequestsWords() async throws {

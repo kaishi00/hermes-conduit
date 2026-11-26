@@ -92,7 +92,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// 2026-11-02), so it answers the question the workstream waits on
     /// (notifier #618). What to tell the call, or nil when the chat isn't
     /// a workstream's.
-    func sendToWorkstream(_ request: String) async -> String?
+    func sendToWorkstream(_ request: String) async -> VoiceWorkstreamSend?
     /// The background job with this number in spoken job lists.
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob?
     /// Puts the user's follow-up into a request Hermes is working on.
@@ -131,7 +131,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
 /// as new work, as before #451.
 extension GeminiLiveJobSupervising {
     func threadFollowUpTarget() -> UUID? { nil }
-    func sendToWorkstream(_ request: String) async -> String? { nil }
+    func sendToWorkstream(_ request: String) async -> VoiceWorkstreamSend? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { nil }
     func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome { .finished(title: "") }
     var asksBeforeSending: Bool { false }
@@ -580,12 +580,9 @@ final class GeminiLiveToolBridge {
         /// a refused send gives them back for the retry.
         var marks: WordMarks = [:]
     }
-    /// A user line's sent count before and after a request marked it.
-    struct WordMark: Equatable {
-        let before: Int?
-        let after: Int
-    }
-    typealias WordMarks = [UUID: WordMark]
+    /// The letters of each user line a request carried (offsets into the
+    /// line's text), so a refusal gives back only its own.
+    typealias WordMarks = [UUID: IndexSet]
     private var draft: Draft?
     /// When the user last said to send something to Hermes: the next new
     /// request goes at once.
@@ -604,8 +601,11 @@ final class GeminiLiveToolBridge {
     /// How long the user's words are given to finish arriving: their
     /// transcript can trail the model's call.
     private let requestWordsWait: Duration
-    /// How much of each of the user's lines went with a request already.
-    private var wordsSent: [UUID: Int] = [:]
+    /// The letters of each of the user's lines that went with a request
+    /// already, or are on their way with one: a line that grew after a
+    /// request carries only its new letters with the next, and a refused
+    /// request's letters are free again whatever came after them.
+    private var wordsSent: [UUID: IndexSet] = [:]
     /// How long a yes still being transcribed is waited for.
     var lateYesWait: Duration = .seconds(3)
     private let now: () -> Date
@@ -666,13 +666,7 @@ final class GeminiLiveToolBridge {
         // A workstream's chat: once asking first lets it go, its session
         // takes the request, never a chat turn queued behind the question
         // it waits on.
-        let taken = await supervisor.sendToWorkstream(words)
-        guard !isEnding else { return [] }
-        if let taken {
-            // What the workstream's plugin did with it, said as is: it may
-            // also say the request couldn't go in.
-            return [.toolResponse(id: call.id, name: call.name, result: ["status": "workstream", "message": taken], scheduling: .whenIdle)]
-        }
+        if let sent = await workstreamResponse(call, words: words, marks: marks) { return sent }
         let sent = supervisor.startThreadTurn(request: words)
         guard let jobID = sent.jobID else {
             requestNotTaken(marks)
@@ -691,6 +685,21 @@ final class GeminiLiveToolBridge {
         ], scheduling: nil)]
     }
 
+    /// What a workstream's chat did with a request (Eric 2026-11-02): its
+    /// plugin's answer, said as is; nil when the call's chat isn't a
+    /// workstream's. One it didn't pass on (busy, not loaded) gives the
+    /// user's words back for the retry, and tells a Watch call it wasn't
+    /// sent (#3293's reviews).
+    private func workstreamResponse(_ call: GeminiLiveProtocol.FunctionCall, words: String, marks: WordMarks) async -> [Outgoing]? {
+        guard let sent = await supervisor.sendToWorkstream(words) else { return nil }
+        guard !isEnding else { return [] }
+        guard sent.passedOn else {
+            requestNotTaken(marks)
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.message], scheduling: .whenIdle)]
+        }
+        return [.toolResponse(id: call.id, name: call.name, result: ["status": "workstream", "message": sent.message], scheduling: .whenIdle)]
+    }
+
     /// Starts `instructions` as a background job; its outcome answers
     /// `call` (start_job, or send_request for a draft).
     private func startBackgroundJob(_ call: GeminiLiveProtocol.FunctionCall, instructions: String, profile: String, said: [String], marks: WordMarks) async -> [Outgoing] {
@@ -698,6 +707,10 @@ final class GeminiLiveToolBridge {
         let task = VoiceRequestWords.adding(said, to: VoiceThreadRouting.removingQuickMarker(instructions))
         // Routing reads the model's request, not the user's words with it.
         let routed = VoiceRequestWords.modelWords(of: instructions)
+        // A workstream's call keeps every request in its session, a
+        // background job's too: what it did with the words decides
+        // whether they went.
+        if supervisor.liveThread != nil, let sent = await workstreamResponse(call, words: task, marks: marks) { return sent }
         var createdJobID: UUID?
         // The call is registered the moment the job exists, so a
         // withdrawal arriving during Hermes' session setup is honored.
@@ -721,8 +734,9 @@ final class GeminiLiveToolBridge {
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_started", "message": reply], scheduling: .whenIdle)]
         }
         // Made but its submit refused (a busy session, say): Hermes didn't
-        // take it, so its words go with the retry too.
-        if let job = supervisor.jobs.first(where: { $0.id == jobID }), case .failed = job.status, !job.requestTaken {
+        // take it, so its words go with the retry too. A submit whose
+        // outcome is unknown (a lost acknowledgement) keeps them sent.
+        if let job = supervisor.jobs.first(where: { $0.id == jobID }), case .failed = job.status, !job.requestWordsSpent {
             requestNotTaken(marks)
         }
         if withdrawnCallIDs.remove(call.id) != nil || openCalls[jobID] != call.id {
@@ -849,7 +863,9 @@ final class GeminiLiveToolBridge {
             let saidWaiting = unsentWords(through: answerLine).filter { !Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer($0)) }
             // A refusal gives back the draft's words and these, never a bare
             // answer, which was about this request.
-            let marks = waiting.marks.merging(noteWordsSent(keepingBare: true, through: answerLine)) { held, _ in held }
+            // A draft's line that grew while it waited holds both parts:
+            // a refusal gives back the whole line (#3293's reviews).
+            let marks = waiting.marks.merging(noteWordsSent(keepingBare: true, through: answerLine)) { held, grown in held.union(grown) }
             let approved = GeminiLiveProtocol.FunctionCall(
                 id: call.id,
                 name: call.name,
@@ -1189,23 +1205,24 @@ final class GeminiLiveToolBridge {
 
     /// `through`: only the lines up to that one (all when nil or gone).
     private func unsentWords(through last: UUID? = nil) -> [String] {
-        lines(through: last).compactMap { line -> String? in
-            let rest = String(line.text.dropFirst(wordsSent[line.id] ?? 0)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return rest.isEmpty ? nil : rest
+        lines(through: last).compactMap { line in
+            VoiceRequestWords.unclaimed(of: line.text, claimed: wordsSent[line.id] ?? []).words
         }
     }
 
-    /// Marks every line sent; what it moved, with each line's count before.
+    /// Marks every line sent; the letters it marked, line by line.
     /// `keepingBare` leaves a bare answer's line out of what it returns: it
     /// was about a held request, so a refusal doesn't give it back.
     /// `through` marks only the lines up to that one (all when nil or gone).
     private func noteWordsSent(keepingBare: Bool = false, through last: UUID? = nil) -> WordMarks {
         var moved: WordMarks = [:]
-        for line in lines(through: last) where wordsSent[line.id] != line.text.count {
+        for line in lines(through: last) {
+            let open = VoiceRequestWords.unclaimed(of: line.text, claimed: wordsSent[line.id] ?? []).offsets
+            guard !open.isEmpty else { continue }
             if !(keepingBare && Self.isBareAnswer(VoiceThreadRouting.heldRequestAnswer(line.text))) {
-                moved[line.id] = WordMark(before: wordsSent[line.id], after: line.text.count)
+                moved[line.id] = open
             }
-            wordsSent[line.id] = line.text.count
+            wordsSent[line.id, default: []].formUnion(open)
         }
         return moved
     }
@@ -1223,15 +1240,15 @@ final class GeminiLiveToolBridge {
     private func noteLastLineSent(_ line: UUID? = nil) {
         let lines = userLines()
         guard let last = line.flatMap({ id in lines.first { $0.id == id } }) ?? lines.last else { return }
-        wordsSent[last.id] = last.text.count
+        wordsSent[last.id, default: []].formUnion(IndexSet(integersIn: 0..<last.text.count))
     }
 
     /// The request `marks` went with wasn't taken (the supervisor refused
     /// it, or the work had finished): its words go with the next. Each
-    /// request gives back only its own lines, so one refused while another
-    /// went meanwhile leaves the other's sent.
+    /// request gives back only its own letters, so one refused while
+    /// another went meanwhile leaves the other's sent, in either order.
     private func requestNotTaken(_ marks: WordMarks) {
-        for (id, mark) in marks where wordsSent[id] == mark.after { wordsSent[id] = mark.before }
+        for (id, letters) in marks { wordsSent[id]?.subtract(letters) }
     }
 
     /// A yes, no or "not yet" that says nothing more.

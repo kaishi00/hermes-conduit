@@ -317,9 +317,10 @@ extension AppState {
     /// its bot's plugin, which takes it as the answer to a question the
     /// workstream waits on, as words that wait behind an approval it waits
     /// on, as an interrupt while it works, and as its next turn otherwise;
-    /// no job session is made. What to tell the call (for the live model, not localized), or
-    /// nil when the chat isn't a workstream's.
-    func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
+    /// no job session is made. What it did with the request (what to tell
+    /// the call is for the live model, not localized), or nil when the
+    /// chat isn't a workstream's.
+    func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> VoiceWorkstreamSend? {
         // The work read here is the dashboard on screen's: a call off its
         // own dashboard sends its request as a job there instead.
         guard callDashboardOffScreen == nil else { return nil }
@@ -344,29 +345,29 @@ extension AppState {
             // A workstream's chat whose row isn't loaded (an older resolved
             // one): still no job of its own.
             guard botWork.workstreamSessionIDs.isDisjoint(with: ids) else {
-                return "This workstream isn't loaded right now, so that wasn't passed on. Say so, and suggest opening it from the Work panel."
+                return VoiceWorkstreamSend(message: "This workstream isn't loaded right now, so that wasn't passed on. Say so, and suggest opening it from the Work panel.", passedOn: false)
             }
             return nil
         }
         let words = request.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !words.isEmpty else { return "There were no words to pass on." }
+        guard !words.isEmpty else { return VoiceWorkstreamSend(message: "There were no words to pass on.", passedOn: false) }
         // Another action on it is on its way (a Stop or Reply from the Work
         // panel): nothing was sent, so a retry can't send it twice.
         guard !botWork.isActing(item.ref, profile: profile) else {
-            return "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment."
+            return VoiceWorkstreamSend(message: "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment.", passedOn: false)
         }
         // Read before the send waits: a picture added or removed meanwhile
         // wasn't what this request left behind.
         let leftPicture = pendingScreenshotEntry(forThread: thread) != nil
         guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
-            return "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again."
+            return VoiceWorkstreamSend(message: "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again.", passedOn: false)
         }
         // A screenshot or photo waiting on the chat goes with the chat's
         // next turn, never into a workstream's session.
         if leftPicture {
-            return Self.workstreamCallSent + " " + Self.workstreamCallLeftPicture
+            return VoiceWorkstreamSend(message: Self.workstreamCallSent + " " + Self.workstreamCallLeftPicture, passedOn: true)
         }
-        return Self.workstreamCallSent
+        return VoiceWorkstreamSend(message: Self.workstreamCallSent, passedOn: true)
     }
 
     /// Added when a picture waits on the workstream's chat: the request

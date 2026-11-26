@@ -135,6 +135,23 @@ enum VoiceRequestWords {
         }
     }
 
+    /// What of a transcript line no request holds yet, given the letters
+    /// (offsets into `text`) that requests hold: their words, the parts
+    /// joined with a space, or nil when none is left; and those letters.
+    /// Each request holds the letters it carried, so one refused gives
+    /// back only its own, whatever order the requests on a line were made,
+    /// taken or refused in, and one taken after a refused one never takes
+    /// the refused one's letters with it (#3293's reviews).
+    static func unclaimed(of text: String, claimed: IndexSet) -> (words: String?, offsets: IndexSet) {
+        let letters = Array(text)
+        var open = IndexSet(integersIn: 0..<letters.count)
+        open.subtract(claimed)
+        let parts = open.rangeView
+            .map { String(letters[$0]).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return (parts.isEmpty ? nil : parts.joined(separator: " "), open)
+    }
+
     /// The request as the model wrote it, without the user's words:
     /// routing reads only this.
     static func modelWords(of request: String) -> String {

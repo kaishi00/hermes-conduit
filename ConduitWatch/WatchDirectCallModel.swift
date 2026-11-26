@@ -207,14 +207,17 @@ final class WatchDirectCallModel: ObservableObject {
     private var endPhrases: [String] = []
     /// The transcript line of the user's latest utterance.
     private var exchangeUserLine: Int?
-    /// The user's line (counted from the call's first) and how much of it
-    /// went with a request already.
-    private var requestWordsSent: (turn: Int, length: Int)?
+    /// The user's line (counted from the call's first) and the letters of
+    /// it that went with a request already.
+    private var requestWordsSent: (turn: Int, letters: IndexSet)?
     /// The same, for requests still on their way: counted as sent while
     /// they run, so a second call on the words doesn't carry them again,
     /// and kept only when the answer says Hermes took the request
-    /// (issue 3271).
-    private var requestWordsPending: [String: (turn: Int, length: Int)] = [:]
+    /// (issue 3271). Each holds only the letters it carried, from where
+    /// the line's unsent part started, so a later request taken after a
+    /// refused one never counts the refused one's words as sent
+    /// (#3293's reviews).
+    private var requestWordsPending: [String: (turn: Int, letters: IndexSet)] = [:]
     private var hasSentOpening = false
     private(set) var callID: UInt32 = 0
     private var callUUID = UUID()
@@ -1758,16 +1761,16 @@ final class WatchDirectCallModel: ObservableObject {
             var said: String? = transcript[line].text
             if call.name == WatchJobAnswer.startJob || call.name == WatchJobAnswer.interruptJob {
                 requestWordsPending = requestWordsPending.filter { toolsInFlight.contains($0.key) }
-                let sentLength = ([requestWordsSent].compactMap { $0 } + Array(requestWordsPending.values))
-                    .filter { $0.turn == turn }.map(\.length).max()
-                if let sentLength {
-                    said = transcript[line].text.count > sentLength ? String(transcript[line].text.dropFirst(sentLength)) : nil
-                }
+                let claimed = ([requestWordsSent].compactMap { $0 } + Array(requestWordsPending.values))
+                    .filter { $0.turn == turn }
+                    .reduce(into: IndexSet()) { $0.formUnion($1.letters) }
+                let open = VoiceRequestWords.unclaimed(of: transcript[line].text, claimed: claimed)
+                if !claimed.isEmpty { said = open.words }
                 // Counted as sent only when this request carries them: one
                 // with no text, or too long to take them, leaves them for
                 // the next. And only once its answer says Hermes took it.
                 if let said, VoiceRequestWords.watchCarries(name: call.name, arguments: call.arguments, said: said) {
-                    requestWordsPending[call.id] = (turn, transcript[line].text.count)
+                    requestWordsPending[call.id] = (turn, open.offsets)
                 }
             }
             wire.arguments = VoiceRequestWords.watchArguments(name: call.name, arguments: call.arguments, said: said)
@@ -2768,7 +2771,12 @@ final class WatchDirectCallModel: ObservableObject {
     private func settleRequestWords(id: String, taken: Bool) {
         guard let words = requestWordsPending.removeValue(forKey: id), taken else { return }
         // One answered after a later turn's request keeps that later record.
-        if let sent = requestWordsSent, sent.turn > words.turn || (sent.turn == words.turn && sent.length >= words.length) { return }
+        if let sent = requestWordsSent, sent.turn > words.turn { return }
+        // The same turn's: what each took counts, and only that.
+        if let sent = requestWordsSent, sent.turn == words.turn {
+            requestWordsSent = (words.turn, sent.letters.union(words.letters))
+            return
+        }
         requestWordsSent = words
     }
 
