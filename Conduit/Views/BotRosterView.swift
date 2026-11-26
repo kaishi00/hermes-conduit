@@ -18,7 +18,7 @@ struct BotRosterView: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @State private var presentedDesktopGroup: DesktopGroupChat?
     /// The group support probe a show started, waiting for the list to settle.
-    @State private var groupProbe: Task<Void, Never>?
+    @State private var groupProbe = BotsGroupProbe()
     @State private var editorMode: BotEditorSheet.Mode?
     @State private var pendingDelete: BotProfile?
     /// Outcome of the last management action that needs explaining (a
@@ -145,22 +145,13 @@ struct BotRosterView: View {
         // rosterRefreshKey as it was and groups unprobed: shown again, it
         // probes them.
         .onChange(of: Self.isShown(in: shell)) { _, shown in
-            // One probe at a time, and none for a list covered again or
-            // gone while it waited (issue 3227).
-            groupProbe?.cancel()
-            groupProbe = nil
-            if Self.probesGroupsOnShow(shown: shown, connected: appState.isConnected, phase: appState.groupChatPhase) {
-                groupProbe = Task {
-                    await updates.settled()
-                    guard !Task.isCancelled else { return }
-                    await appState.refreshGroupChatSupport()
-                }
-            }
+            groupProbe.show(
+                shown, connected: appState.isConnected, phase: appState.groupChatPhase,
+                settled: { [updates] in await updates.settled() },
+                probe: { [appState] in await appState.refreshGroupChatSupport() }
+            )
         }
-        .onDisappear {
-            groupProbe?.cancel()
-            groupProbe = nil
-        }
+        .onDisappear { groupProbe.cancel() }
         .onChange(of: canStartRoomHere) { _, can in
             if !can, !creatingNewRoom { newRoom.clear() }
         }
@@ -2385,5 +2376,29 @@ struct BotRosterHost: View {
         BotRosterView()
             .environmentObject(updates)
             .environment(\.v2ShownUpdates, updates)
+    }
+}
+
+/// Bots Home's group support probe on show (issue 3227): one at a time, held
+/// by the view, so a new show or the list covered again cancels the last
+/// one, and one cancelled while it waits for the list to settle reads nothing.
+@MainActor
+final class BotsGroupProbe {
+    private(set) var task: Task<Void, Never>?
+
+    func show(_ shown: Bool, connected: Bool, phase: AppState.GroupChatPhase,
+              settled: @escaping @MainActor () async -> Void, probe: @escaping @MainActor () async -> Void) {
+        cancel()
+        guard BotRosterView.probesGroupsOnShow(shown: shown, connected: connected, phase: phase) else { return }
+        task = Task { @MainActor in
+            await settled()
+            guard !Task.isCancelled else { return }
+            await probe()
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
     }
 }

@@ -75,6 +75,53 @@ final class AppStateSessionCompressTests: XCTestCase {
         ])
     }
 
+    /// Issue 3262 (from #3259): the compressed transcript isn't the
+    /// history the paging window described, so a call card from before its
+    /// rows isn't held back for an older page: every card of the chat
+    /// shows, a call before the rows at the top.
+    func testCompressionKeepsEveryCallCardOfTheChat() async throws {
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            compressSession: { _, _, _ in Self.compressedResult() }
+        ))
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        func call(_ id: String, at time: String) throws -> VoiceCallChatLink {
+            let start = try XCTUnwrap(ISO8601DateFormatter().date(from: time))
+            return VoiceCallChatLink(
+                callID: id, callSessionID: "", chatRuntimeSessionID: origin.id, chatStoredSessionID: nil,
+                chatTitle: "Build", profile: harness.appState.activeProfile, startedAt: start,
+                endedAt: start.addingTimeInterval(20), resumed: false
+            )
+        }
+        // One call long before the compressed rows, one between them.
+        harness.appState.voiceCallChatLinks.add(try call("early", at: "2026-09-13T07:00:00Z"))
+        harness.appState.voiceCallChatLinks.add(try call("between", at: "2026-09-13T08:00:02Z"))
+        // The window from before: older pages it says are left would hold
+        // the early call back, were it passed.
+        harness.appState.persistedTranscriptWindow = PersistedTranscriptWindowState(
+            requestedSessionID: origin.id, profile: harness.appState.activeProfile, pageSize: 120,
+            resolvedSessionID: origin.id, runtimeSessionID: origin.id, nextOffset: 120, canLoadEarlier: true
+        )
+        harness.appState.messages = [
+            ChatMessage(id: "m1", role: .user, content: "Old question", timestamp: "2026-09-13T07:30:00Z")
+        ]
+
+        _ = await harness.appState.submitComposer(text: "/compress")
+
+        XCTAssertEqual(harness.appState.messages.map(\.id).filter { $0.hasPrefix("voice-call-") },
+                       ["voice-call-early", "voice-call-between"], "both calls show, the early one first")
+        let contents = harness.appState.messages.map { $0.displayKind == VoiceCallChatLink.displayKind ? $0.id : $0.content }
+        XCTAssertEqual(contents, [
+            "voice-call-early",
+            "Summary carrier",
+            "voice-call-between",
+            "Tail answer",
+            "Compressed 13 → 4 messages"
+        ])
+    }
+
     func testCompactAliasRoutesIdentically() async throws {
         let recorder = SlashCallRecorder()
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

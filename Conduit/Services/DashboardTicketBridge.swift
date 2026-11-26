@@ -873,6 +873,8 @@ final class DashboardTicketBridge: NSObject {
     /// Cookies the dashboard set on requests sent without the page, newest
     /// last, so a rotated session cookie is the one sent next.
     var backgroundIssuedCookies: [HTTPCookie] = []
+    /// Reads WebKit's cookie store in place of the page's own. Test seam.
+    var webKitCookiesForTesting: (@MainActor (Duration) async -> [HTTPCookie]?)?
     /// Sends a request without the page in place of URLSession. Test seam.
     var loadWithoutPageForTesting: (@MainActor (URLRequest) async throws -> (Data, URLResponse))?
     /// Observes the hidden page's load lifecycle for AppState's connection

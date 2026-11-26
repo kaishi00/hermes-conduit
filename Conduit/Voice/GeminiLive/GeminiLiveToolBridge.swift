@@ -1389,6 +1389,10 @@ final class GeminiLiveToolBridge {
                 // Hermes may have its request all the same (a lost
                 // acknowledgement): the Watch keeps its words as sent.
                 if job.requestOutcomeUnknown { result["delivery"] = "unknown" }
+            case .cancelled where !job.requestWordsSpent:
+                // Cancelled before its submit went: Hermes never had it, so
+                // the Watch gives its words back for the retry too.
+                result["delivery"] = "not_sent"
             default:
                 break
             }

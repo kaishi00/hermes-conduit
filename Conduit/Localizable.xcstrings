@@ -94725,6 +94725,94 @@
         }
       }
     },
+    "No answer from this bot's work. Its chat shows whether it went in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Antwort von der Arbeit dieses Bots. Sein Chat zeigt, ob es angekommen ist."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No answer from this bot's work. Its chat shows whether it went in."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin respuesta del trabajo de este bot. Su chat muestra si llegó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas de réponse du travail de ce bot. Son chat montre si c’est passé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada jawaban dari pekerjaan bot ini. Chat-nya menunjukkan apakah permintaan itu masuk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna risposta dal lavoro di questo bot. La sua chat mostra se è arrivato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このボットの作業から応答がありません。届いたかどうかはチャットで確認できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 봇의 작업에서 응답이 없습니다. 전달되었는지는 채팅에서 확인할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak odpowiedzi od pracy tego bota. Jego czat pokaże, czy dotarło."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sem resposta do trabalho deste bot. O chat dele mostra se chegou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Работа этого бота не ответила. В её чате видно, дошло ли."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu botun işlerinden yanıt gelmedi. Ulaşıp ulaşmadığını sohbetinde görebilirsin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此机器人的工作没有回应。可在它的聊天中查看是否已送达。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此機器人的工作沒有回應。可在它的聊天中查看是否已送達。"
+          }
+        }
+      }
+    },
     "No capabilities found" : {
       "localizations" : {
         "de" : {
