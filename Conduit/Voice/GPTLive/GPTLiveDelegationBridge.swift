@@ -373,7 +373,8 @@ final class GPTLiveDelegationBridge {
         // and a "Deny:" with no approval waiting stay what they say.
         let marksNothing = answersQuestion && Self.decisionMarker(in: request) == nil
             && ownWords == routingWords.trimmingCharacters(in: .whitespacesAndNewlines)
-        if marksNothing, !startsNewJob, draft == nil, !Self.isSendMarker(instructions), supervisor.callWaitsOn == .question {
+        if marksNothing, !startsNewJob, draft == nil, !Self.isSendMarker(instructions), supervisor.callWaitsOn == .question,
+           !VoiceThreadRouting.endsWithLastReplyRequest(spoken) {
             return await answeredCallQuestion(id: id, delegated: ownWords, userWords: spoken, call: call)
         }
         // The model's own words for the request. Without any, the request
