@@ -9020,7 +9020,7 @@ text and Recipes rule)
 - The Watch draws no pages, folds or text tags.
 - A page's buttons can't send a prompt: its `window.hermes.send` answers `undelivered`, as a `::preview` page's does.
 
-**Checked:** 2026-11-26, #9999 with notifier #9998 and desktop#9997 (new entry: HTML in replies, Eric's option A).
+**Checked:** 2026-11-26, #3329 with notifier #1096 and desktop#601 (new entry: HTML in replies, Eric's option A).
 
 ## Self-improvement updates
 
