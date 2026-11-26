@@ -1008,6 +1008,20 @@ final class KanbanV2Tests: XCTestCase {
         store.configure(requester: requester, serverIdentity: "https://example.test")
         return store
     }
+
+    /// Issue 3283: a task's previews and line widths are kept, and a kept
+    /// answer is the one worked out fresh.
+    func testKeptPreviewsAndLineWidthsMatchFreshOnes() {
+        let markdown = "## Handoff\n\n> **done** with `__init__`\n\n```\nraw\n```"
+        let first = KanbanFullTextFormatter.plainPreview(markdown)
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview(markdown), first)
+        XCTAssertFalse(first.contains("##"))
+        XCTAssertNotEqual(KanbanFullTextFormatter.plainPreview(markdown + " more"), first, "other text, its own preview")
+        let small = KanbanFullTextFormatter.lineWidth(for: .footnote, at: .medium)
+        XCTAssertEqual(KanbanFullTextFormatter.lineWidth(for: .footnote, at: .medium), small)
+        XCTAssertLessThan(KanbanFullTextFormatter.lineWidth(for: .footnote, at: .accessibility3), small,
+                          "a larger size is its own key")
+    }
 }
 
 // MARK: - Test doubles

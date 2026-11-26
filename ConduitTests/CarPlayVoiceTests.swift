@@ -3726,4 +3726,14 @@ extension CarPlayVoiceTemplateFactoryTests {
         await fulfillment(of: [ran], timeout: 5)
         XCTAssertEqual(order, ["end", "listen"])
     }
+
+    /// Issue 3284: a far agent's chat read that keeps bringing nothing back
+    /// is tried again after 10 s, then 30 s, then once a minute.
+    func testAFarAgentsEmptyChatReadBacksOffToOnceAMinute() {
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: 1), .seconds(10))
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: 2), .seconds(30))
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: 3), .seconds(60))
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatsRetryDelay(afterFailures: 40), .seconds(60), "capped")
+    }
+
 }

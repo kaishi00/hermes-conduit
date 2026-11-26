@@ -85,8 +85,15 @@ extension AppState {
         if let dashboardID, farChatMutes[dashboardID] != mutes { farChatMutes[dashboardID] = mutes }
     }
 
+    /// How often another combined dashboard's Done marks and mutes are
+    /// read: as often as its chats (`combinedDashboardChatsMaxAge`), above
+    /// the Needs you pass's 20 s, so a pass inside it reads none (issue
+    /// 3282). A mark made here shows at once and holds reads back while it
+    /// saves; a pull on the list reads at once.
+    static let farChatMarksReadInterval: TimeInterval = combinedDashboardChatsMaxAge
+
     /// Reads another combined dashboard's Done marks and mutes for
-    /// `profiles`, with its chat list: each at its own interval, and only
+    /// `profiles`, with its chat list: each at most every `farChatMarksReadInterval`, and only
     /// what its plugin keeps.
     func refreshFarChatMarks(_ dashboardID: UUID, profiles: [String], force: Bool = false, now: Date = Date()) {
         guard dashboardID != dashboardIDOnScreen, let kept = keptDashboardRuntimes[dashboardID] else { return }
@@ -96,10 +103,12 @@ extension AppState {
         ensureKeptPluginReport(for: dashboardID)
         let plugin = kept.runtime.notifierPlugin
         if V2ShellPreference.isOn, plugin.reports(ChatDoneMarks.capability) {
-            readChatDoneMarks(dashboardID: dashboardID, bridge: kept.bridge, profiles: profiles, force: force, now: now)
+            readChatDoneMarks(dashboardID: dashboardID, bridge: kept.bridge, profiles: profiles, force: force,
+                              interval: Self.farChatMarksReadInterval, now: now)
         }
         if plugin.reports(ChatMutes.capability) {
-            readChatMutes(dashboardID: dashboardID, bridge: kept.bridge, profiles: profiles, force: force, now: now)
+            readChatMutes(dashboardID: dashboardID, bridge: kept.bridge, profiles: profiles, force: force,
+                          interval: Self.farChatMarksReadInterval, now: now)
         }
     }
 

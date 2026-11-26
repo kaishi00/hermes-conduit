@@ -1620,6 +1620,37 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(URLError(.timedOut)), .down)
     }
 
+    /// Issue 3282: the poll reads another combined dashboard's waits at most
+    /// once a minute per profile and kept connection; a push, the open list
+    /// or a new connection reads at once.
+    func testThePollReadsAKeptDashboardsWaitsAtMostOnceAMinute() async throws {
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: switchLifecycleOperations(workCatalog: []) { _ in [] })
+        await appState.switchDashboard(to: vps.id)
+        _ = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var waitReads = 0
+        appState.keptDashboardJSONReader = { _, path in
+            if path == "/api/profiles" { return ["profiles": [["name": "default"], ["name": "atlas"]]] }
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [String]()] }
+            if path.hasPrefix(NeedsYouStore.path) { waitReads += 1 }
+            return ["waiting": []]
+        }
+        let start = Date()
+        await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start)
+        XCTAssertEqual(waitReads, 2, "a first pass reads every profile")
+        await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(20))
+        XCTAssertEqual(waitReads, 2, "the next poll pass inside a minute reads none")
+        await appState.readOtherCombinedDashboardsNeedsYou(force: true, now: start.addingTimeInterval(25))
+        XCTAssertEqual(waitReads, 4, "a forced read (a push, the open list) reads at once")
+        await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(25 + AppState.combinedDashboardWaitsMaxAge + 1))
+        XCTAssertEqual(waitReads, 6, "past a minute the poll reads again")
+        // A new kept connection reads at once.
+        appState.combinedDashboardWaitsReadAt = appState.combinedDashboardWaitsReadAt.mapValues { (bridge: ObjectIdentifier(NSObject()), at: $0.at) }
+        await appState.readOtherCombinedDashboardsNeedsYou(force: false, now: start.addingTimeInterval(90))
+        XCTAssertEqual(waitReads, 8, "a read through another connection doesn't count")
+        XCTAssertGreaterThan(AppState.farChatMarksReadInterval, NeedsYouStore.pollInterval,
+                             "a far dashboard's marks skip a pass inside their interval")
+    }
+
     /// Needs you lists the other combined dashboards' waits, read through
     /// their kept connections for every profile there, badged; a row opens
     /// by switching through the kept connection (all-live stage 4a).

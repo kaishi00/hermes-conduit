@@ -957,12 +957,21 @@ struct KanbanTaskDetailView: View {
     }
 
     private func linkedTaskTitle(for id: String) -> String {
-        let title = store.board?.columns.flatMap(\.tasks).first(where: { $0.id == id })?.title
+        let title = linkedTask(id)?.title
         return title?.isEmpty == false ? title! : KanbanShortID.of(id)
     }
 
     private func linkedTaskStatus(for id: String) -> String? {
-        store.board?.columns.flatMap(\.tasks).first(where: { $0.id == id })?.status
+        linkedTask(id)?.status
+    }
+
+    /// The board's task, found column by column without copying every
+    /// column's tasks into one array on each pass (issue 3283).
+    private func linkedTask(_ id: String) -> KanbanTask? {
+        for column in store.board?.columns ?? [] {
+            if let task = column.tasks.first(where: { $0.id == id }) { return task }
+        }
+        return nil
     }
 
     // MARK: - Comments
