@@ -102,6 +102,18 @@ final class ReplyHTMLTests: XCTestCase {
                        "<details><summary>S</summary>\nPage\n</details>")
     }
 
+    func testProseStartingWithDetailsStaysProseWhenLaterClosesAreOtherFoldsOrCode() {
+        let other = ["<details> makes a section.", "", "<details>", "<summary>S</summary>", "body", "</details>"]
+        XCTAssertEqual(ReplyHTML.foldsApart(other), other)
+        let code = ["<details> makes a section.", "", "```", "</details>", "```"]
+        XCTAssertEqual(ReplyHTML.foldsApart(code), code)
+    }
+
+    func testACompactFoldWithAnArrowInItsBodyFolds() {
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>Flow</summary>input -> parse", "then render", "</details>"]),
+                       ["<details><summary>Flow</summary>", "input -> parse", "then render", "</details>"])
+    }
+
     func testOpenInsideAQuotedValueDoesNotOpenAFold() {
         XCTAssertEqual(ReplyHTML.fold(in: ["<details title=\"open me\">", "<summary>S</summary>", "</details>"], at: 0)?.isOpen, false)
     }

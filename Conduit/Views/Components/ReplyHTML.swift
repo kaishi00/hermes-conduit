@@ -223,10 +223,17 @@ enum ReplyHTML {
         var depth = 0
         // Whether a `</details>` comes after line `index`: a tag starting a line of prose opens a fold only then.
         var closedAfter = [Bool](repeating: false, count: lines.count)
-        var seen = false
+        // A `</details>` in code closes nothing.
+        var codeFence = CodeFence()
+        let inCode = lines.map { codeFence.isCode($0) }
+        // More `</details>` after it than folds opened after it: one is left over for this line's.
+        var closes = 0
         for index in lines.indices.reversed() {
-            closedAfter[index] = seen
-            if matches(foldClosingTag, lines[index]) { seen = true }
+            closedAfter[index] = closes > 0
+            guard !inCode[index] else { continue }
+            let line = lines[index]
+            closes += foldClosingTag.numberOfMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+            if matches(foldOpeningStart, line) { closes = max(0, closes - 1) }
         }
         for (index, line) in lines.enumerated() {
             if fence.isCode(line) {
@@ -265,6 +272,7 @@ enum ReplyHTML {
     }
 
     private static let foldClosingTag = compiled(#"</details\s*>"#, [.caseInsensitive])
+    private static let tagStart = compiled(#"<[a-zA-Z/!]"#)
 
     /// Whether a `<details>` starting a line, followed by `after`, is a
     /// fold's opening: nothing after it, a body ending the fold on the line,
@@ -276,7 +284,7 @@ enum ReplyHTML {
         // A body starting with a fence mark stays on the line, so it can't open a code block that runs on.
         if body.hasPrefix("```") || body.hasPrefix("~~~") { return false }
         if matches(foldClosingEnd, after) { return true }
-        return closedLater && !after.contains("<") && !after.contains(">")
+        return closedLater && !matches(tagStart, after)
     }
 
     /// Whether `line` opens a fold.
