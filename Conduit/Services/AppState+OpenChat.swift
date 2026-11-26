@@ -690,17 +690,17 @@ extension AppState {
         } else if !Task.isCancelled, chatViewportTransitionIsCurrent(transition) {
             switch stage {
             case .lookup:
-                errorMessage = AppLocalization.string(
+                showChatOpenFailure(AppLocalization.string(
                     "Could not check \(bot.displayLabel)'s Bot Chat — not starting a new chat."
-                )
+                ))
             case .create:
-                errorMessage = AppLocalization.string(
+                showChatOpenFailure(AppLocalization.string(
                     "Could not create \(bot.displayLabel)'s Bot Chat."
-                )
+                ))
             case .title:
-                errorMessage = AppLocalization.string(
+                showChatOpenFailure(AppLocalization.string(
                     "Could not title \(bot.displayLabel)'s Bot Chat — not starting a new chat."
-                )
+                ))
             }
         }
         return false
@@ -708,9 +708,9 @@ extension AppState {
 
     private func refuseBotChatConfirmation(_ bot: BotProfile, transition: UInt64?) {
         guard chatViewportTransitionIsCurrent(transition) else { return }
-        errorMessage = AppLocalization.string(
+        showChatOpenFailure(AppLocalization.string(
             "Could not confirm \(bot.displayLabel)'s Bot Chat — not starting a new chat."
-        )
+        ))
     }
 
     /// A rename names the profile's open Bot Chats too: the label each

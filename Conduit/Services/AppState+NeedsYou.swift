@@ -628,7 +628,8 @@ extension AppState {
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID,
            let roomID = item.roomID, let runtime = keptRuntimeOpeningRoomsInPlace(dashboardID) {
             dismissSidebarDrawer()
-            guard !isOpenChat(item) else { return }
+            // The chat already open counts as one that opened fine.
+            guard !isOpenChat(item) else { clearChatOpenFailure(); return }
             let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
             Task { @MainActor [weak self] in
                 guard let self, await self.readyKeptRuntimeForRooms(runtime, dashboardID) else { return }
@@ -650,6 +651,7 @@ extension AppState {
                 pendingNeedsYouReveal = item.asked != nil ? nil : NeedsYouReveal(opening: activeSessionId)
                 dismissSidebarDrawer()
                 if activeRoomSurface != nil { closeGroupRoom() }
+                clearChatOpenFailure()
                 return
             }
             if openFarNeedsYouInPlace(item, in: dashboardID) { return }
@@ -669,7 +671,7 @@ extension AppState {
             // A wait in a group room this Hermes hosts: the room opens (in
             // any profile, since rooms are the dashboard's) with its card.
             dismissSidebarDrawer()
-            guard !isOpenChat(item) else { return }
+            guard !isOpenChat(item) else { clearChatOpenFailure(); return }
             let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch, dashboardID = activeDashboardID
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -704,7 +706,7 @@ extension AppState {
         // it comes forward.
         dismissSidebarDrawer()
         if isOpen, activeRoomSurface != nil { closeGroupRoom() }
-        guard !isOpen else { return }
+        guard !isOpen else { clearChatOpenFailure(); return }
         openAppLink(.session(id: sessionID, profile: item.profile))
     }
 
