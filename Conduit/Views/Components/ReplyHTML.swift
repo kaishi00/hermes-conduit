@@ -206,6 +206,53 @@ enum ReplyHTML {
     private static let foldSummary = compiled(#"^ {0,3}<summary>(.*?)</summary>\s*$"#, [.caseInsensitive])
     private static let foldClosing = compiled(#"^ {0,3}</details\s*>\s*$"#, [.caseInsensitive])
 
+    private static let foldOpeningStart = compiled(#"^ {0,3}(<details\b[^>]*>(?:\s*<summary>.*?</summary>)?)(.*)$"#, [.caseInsensitive])
+    private static let foldClosingEnd = compiled(#"^(.*?)</details\s*>\s*$"#, [.caseInsensitive])
+
+    /// `lines` with a fold written on one line,
+    /// `<details><summary>S</summary>body</details>`, taken apart into its
+    /// opening, its body and its `</details>`, each a line of its own, as
+    /// `fold(in:at:)` reads them. Code is left as written.
+    static func foldsApart(_ lines: [String]) -> [String] {
+        guard lines.contains(where: { $0.range(of: "details", options: .caseInsensitive) != nil }) else { return lines }
+        var out: [String] = []
+        var fence = CodeFence()
+        var depth = 0
+        for line in lines {
+            if fence.isCode(line) {
+                out.append(line)
+                continue
+            }
+            var rest = line
+            let ns = line as NSString
+            if let opening = foldOpeningStart.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) {
+                let after = ns.substring(with: opening.range(at: 2))
+                guard !after.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    out.append(line)
+                    depth += 1
+                    continue
+                }
+                out.append(ns.substring(with: opening.range(at: 1)))
+                depth += 1
+                rest = after
+            } else if matches(foldClosing, line) {
+                depth = max(0, depth - 1)
+                out.append(line)
+                continue
+            }
+            let restNS = rest as NSString
+            if depth > 0, let closing = foldClosingEnd.firstMatch(in: rest, range: NSRange(location: 0, length: restNS.length)) {
+                let body = restNS.substring(with: closing.range(at: 1))
+                if !body.trimmingCharacters(in: .whitespaces).isEmpty { out.append(body) }
+                out.append("</details>")
+                depth -= 1
+                continue
+            }
+            out.append(rest)
+        }
+        return out
+    }
+
     /// Whether `line` opens a fold.
     static func opensFold(_ line: String) -> Bool {
         line.contains("<") && matches(foldOpening, line)
@@ -255,7 +302,7 @@ enum ReplyHTML {
     private static let lineBreakTag = compiled(#"<br\s*/?>"#, [.caseInsensitive])
     /// The tags the chat draws; any other stays text there, so it stays here too.
     private static let drawnTag = compiled(
-        #"</?(?:b|strong|i|em|u|ins|s|del|strike|mark|kbd|sub|sup|span|font|details|summary)(?:\s+[\w-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>]+)|\s+open)*\s*/?>"#,
+        #"</?(b|strong|i|em|u|ins|s|del|strike|mark|kbd|sub|sup|span|font|details|summary)(?:\s+[\w-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>]+))?)*\s*/?>"#,
         [.caseInsensitive])
 
     private static func untagged(_ text: String) -> String {
@@ -275,12 +322,40 @@ enum ReplyHTML {
             var at = 0
             for span in codeSpans(in: line) + [NSRange(location: ns.length, length: 0)] {
                 let outside = ns.substring(with: NSRange(location: at, length: span.location - at))
-                result += replacing(drawnTag, in: replacing(lineBreakTag, in: outside, with: " "), with: "")
+                result += pairedTagsOut(replacing(lineBreakTag, in: outside, with: " "))
                 result += ns.substring(with: span)
                 at = span.location + span.length
             }
             return result
         }.joined(separator: "\n")
+    }
+
+    /// `text` without the drawn tags that pair up, as the chat draws only
+    /// those; an unclosed `<b>` stays, as it does there. A fold's
+    /// `<details>` and `<summary>` always go.
+    private static func pairedTagsOut(_ text: String) -> String {
+        let ns = text as NSString
+        let found = drawnTag.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        guard !found.isEmpty else { return text }
+        var dropped = Set<Int>()
+        var opened: [(name: String, index: Int)] = []
+        for (index, match) in found.enumerated() {
+            let name = ns.substring(with: match.range(at: 1)).lowercased()
+            if name == "details" || name == "summary" {
+                dropped.insert(index)
+            } else if !ns.substring(with: match.range).hasPrefix("</") {
+                opened.append((name, index))
+            } else if let at = opened.lastIndex(where: { $0.name == name }) {
+                dropped.insert(opened[at].index)
+                dropped.insert(index)
+                opened.removeSubrange(at...)
+            }
+        }
+        let result = NSMutableString(string: text)
+        for (index, match) in found.enumerated().reversed() where dropped.contains(index) {
+            result.replaceCharacters(in: match.range, with: "")
+        }
+        return result as String
     }
 
     /// The code spans in `text`: a run of backticks up to the next run of

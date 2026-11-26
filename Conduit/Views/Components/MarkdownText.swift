@@ -3661,7 +3661,7 @@ enum MarkdownParser {
         #if DEBUG
         recordParseSize(source.utf8.count)
         #endif
-        let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        let lines = ReplyHTML.foldsApart(source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n"))
         var visibleLines: [String] = []
         var definitions: [String] = []
         var openFence: MarkdownFence?

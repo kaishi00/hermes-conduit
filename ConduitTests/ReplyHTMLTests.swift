@@ -73,6 +73,19 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.page(in: lines, at: 0).end, 2)
     }
 
+    func testAFoldWrittenOnOneLineFolds() {
+        XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>The body.</details>", "After."]),
+                       ["<details><summary>S</summary>", "The body.", "</details>", "After."])
+        XCTAssertEqual(ReplyHTML.foldsApart(["```", "<details><summary>S</summary>x</details>", "```"]),
+                       ["```", "<details><summary>S</summary>x</details>", "```"], "code stays as written")
+        XCTAssertEqual(ReplyHTML.foldsApart(["Write </details> to close one."]), ["Write </details> to close one."])
+    }
+
+    func testReadersTakeOffOnlyTheTagsThatPairUp() {
+        XCTAssertEqual(ReplyHTML.withoutTags("An <b>unclosed tag"), "An <b>unclosed tag")
+        XCTAssertEqual(ReplyHTML.withoutTags("click <span hidden>secret</span> now"), "click secret now")
+    }
+
     func testAFoldTakesAttributesAndOpensOnlyWhenMarkedOpen() {
         XCTAssertEqual(ReplyHTML.fold(in: ["<details class=\"x\" open>", "<summary>Why</summary>", "Because.", "</details>"], at: 0)?.isOpen, true)
         XCTAssertEqual(ReplyHTML.fold(in: ["<details class=\"opener\">", "<summary>Why</summary>", "</details>"], at: 0)?.isOpen, false)
