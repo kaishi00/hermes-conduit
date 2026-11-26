@@ -120,6 +120,19 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertEqual(AttachmentTypePolicy.pictureFilename("Event 8.30", type: nil), "Event 8.30")
     }
 
+    func testPictureNamesDropTrailingDotsAndKeepOtherEndingsWhenReencoded() {
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("Apple.", type: .png), "Apple.png")
+        // A HEIC or a resized picture keeps the ending a page title had.
+        XCTAssertEqual(AttachmentTypePolicy.jpegFilename(for: "Event 8.30"), "Event 8.30.jpg")
+        XCTAssertEqual(AttachmentTypePolicy.jpegFilename(for: "tickets.example.com"), "tickets.example.com.jpg")
+        XCTAssertEqual(AttachmentTypePolicy.jpegFilename(for: ""), "photo.jpg")
+    }
+
+    func testAResizedPictureKeepsItsNamesOtherEnding() throws {
+        let prepared = try XCTUnwrap(PictureUpload.resized(try pngData(width: 2600, height: 1950), filename: "Event 8.30.png"))
+        XCTAssertEqual(prepared.filename, "Event 8.30.jpg")
+    }
+
     private func stagedFile(_ data: Data, named name: String) throws -> URL {
         let url = try AttachmentStaging.destination(for: name)
         try data.write(to: url)
