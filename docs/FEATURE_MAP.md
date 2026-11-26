@@ -2859,19 +2859,22 @@ Work Here in This Chat (done, #2364: the folder header's menu moves the open cha
 
 Conduit for desktop's workbench beside a chat with a folder (Eric,
 2026-11-26, "B · Project mode"; desktop issues 450 to 453): the chat's
-folder as a project, its views on the chat tabs' strip (Changes, Files),
-and its terminals in a drawer below. Everything runs on the Hermes host,
-in the chat's folder: Git through the plugin's workspace git routes,
-shells through its terminals routes and socket. Browser tabs (451) and the
-timeline with the bot's command terminal (453) come next, each in its own
-PR.
+folder as a project, its views on the chat tabs' strip (Changes, Files,
+then Browser tabs), and its terminals in a drawer below. Everything runs on
+the Hermes host, in the chat's folder: Git through the plugin's workspace
+git routes, shells through its terminals routes and socket, and a Browser
+tab's localhost is the host's, through its workspace preview route. The
+timeline with the bot's command terminal (453) comes next, in its own PR.
 
 **Siblings:** Workspace files (the bench's Files view is the desktop's
 Folder, embedded; the Git and terminal roots follow the Folder's workspace
 rules) · the chat tabs over the chat column (the
 bench draws the same tab strip) · the notifier's `workspace-git` and
-`terminals` capabilities and routes (done, notifier #1105) · Settings >
-Workspace & safety (done: the host's Allow terminals switch) · the phone
+`terminals` capabilities and routes (done, notifier #1105) and its
+`workspace-preview` route for host pages (done, notifier #1106) · Settings >
+Workspace & safety (done: the host's Allow terminals switch, which host
+pages follow too) · chat links (done: a localhost link in a reply opens in a
+Browser tab while the bench is open) · the phone
 (not needed: Eric, 2026-11-25, the phone stays as it is; it has no
 workbench) · Bot Chats and project chats (gap: the bench opens beside a
 chat with a folder in Chats; a Bot Chat open in Bots doesn't offer it yet) ·
@@ -2879,18 +2882,21 @@ the Watch, CarPlay and group rooms (not needed: no folder
 workspace) · Text: the desktop's captions and shortcut list (done);
 README and docs don't describe the workbench
 
-**Desktop app:** has it: the workbench (`desktop/src/renderer/src/components/Workbench.tsx`, desktop#622), Changes (`desktop/src/renderer/src/components/ChangesView.tsx`), terminals (`desktop/src/renderer/src/components/TerminalDrawer.tsx`) and the shared tab strip (`desktop/src/renderer/src/components/TabStrip.tsx`).
+**Desktop app:** has it: the workbench (`desktop/src/renderer/src/components/Workbench.tsx`, desktop#622), Changes (`desktop/src/renderer/src/components/ChangesView.tsx`), terminals (`desktop/src/renderer/src/components/TerminalDrawer.tsx`) the shared tab strip (`desktop/src/renderer/src/components/TabStrip.tsx`) and Browser tabs (`desktop/src/renderer/src/components/BrowserView.tsx`, desktop#629).
 
 **Code**
 - Plugin Git: `notifier/workspace_git.py` (Git, LocalRunner, SshRunner, for_workspace), `notifier/dashboard/api/source_control.py` (GET status, diff, log, branches; POST init, stage, unstage, discard, commit, switch, pull, push, fetch)
 - Plugin terminals: `notifier/terminal_host.py` (Terminal, TerminalHost, its scrollback and viewers), `notifier/dashboard/api/terminals.py` (list, create, close, rename, settings, and the socket)
+- Plugin host pages: `notifier/dashboard/api/workspace_preview.py` (ANY /workspace/preview/{port}/{path}, wrapped)
+- Desktop host pages: `desktop/src/main/hostPages.ts` (the conduit-host-page scheme, the two sessions, where a tab may go), `desktop/src/main/hostPageRules.ts`, `desktop/src/shared/browserAddress.ts`, `desktop/src/renderer/src/state/browserTabs.ts`
 - Desktop state: `desktop/src/renderer/src/state/sourceControl.ts`, `desktop/src/renderer/src/state/terminals.ts`, `desktop/src/renderer/src/state/workbench.ts`
-- Desktop views: `desktop/src/renderer/src/components/Workbench.tsx`, `desktop/src/renderer/src/components/ChangesView.tsx`, `desktop/src/renderer/src/components/TerminalDrawer.tsx`, `desktop/src/renderer/src/components/TerminalSettings.tsx`, `desktop/src/renderer/src/components/TabStrip.tsx`
-- Tests: `notifier/tests/test_workspace_git.py`, `notifier/tests/test_terminals.py`, `desktop/test/sourceControl.test.ts`, `desktop/test/terminals.test.ts`, `desktop/test/workbench.test.ts`
+- Desktop views: `desktop/src/renderer/src/components/BrowserView.tsx`, `desktop/src/renderer/src/components/Workbench.tsx`, `desktop/src/renderer/src/components/ChangesView.tsx`, `desktop/src/renderer/src/components/TerminalDrawer.tsx`, `desktop/src/renderer/src/components/TerminalSettings.tsx`, `desktop/src/renderer/src/components/TabStrip.tsx`
+- Tests: `notifier/tests/test_workspace_git.py`, `notifier/tests/test_terminals.py`, `desktop/test/sourceControl.test.ts`, `desktop/test/terminals.test.ts`, `desktop/test/workbench.test.ts`, `notifier/tests/test_workspace_preview.py`, `desktop/test/browserTabs.test.ts`
 
 **Rulings**
 - One workspace, not features bolted on (Eric, 2026-11-26, B): the bench opens beside a chat that has a folder, with Ctrl+B or ⌘B or the header's button, takes the side panel's place and tucks the chat list to its faces; its views and its terminals draw the chat tabs' strip.
-- Everything lives on the Hermes host: Git runs and shells start there, in the chat's folder, under the Folder's root rules. Pages will render locally, with a host dev server reached through the dashboard (451).
+- Everything lives on the Hermes host: Git runs and shells start there, in the chat's folder, under the Folder's root rules. Pages render locally, with a host dev server reached through the dashboard (451).
+- Browser tabs (451): a port or localhost address is the host's, served from the desktop's own scheme with each request wrapped for the plugin, so the page's headers, cookies, redirects and 401s never mix with the dashboard's; the dev server's cookies stay in the desktop's memory. Any other address is a web page loaded on the computer, in a session of its own. Neither gets a preload or any permission; a host page keeps to its host, a web page never reaches a host page or the computer's localhost. Host pages reach only the host's loopback, never its own dashboard port, and follow the Allow terminals switch; hosted installs offer none (notifier #1106, desktop#629).
 - Terminals keep running while the drawer folds or Conduit closes, and come back with what they wrote meanwhile (256 KB kept per terminal); closing a tab ends its shell. A host runs at most 8 per profile and 32 in all, and one nobody has watched for a week ends (notifier #1105).
 - Settings has a switch that turns terminals off for the whole host, ending every one running; hosted installs, SSH profiles and Windows hosts offer none.
 - Git shows a file that holds keys or passwords in the lists but never its contents, as the Folder does; push and pull never ask for a password (batch mode), and a repository's commands wait for each other.
@@ -2898,7 +2904,8 @@ README and docs don't describe the workbench
 
 **Open gaps**
 - A Bot Chat open in Bots doesn't offer the bench yet.
-- Browser tabs with the host dev-server proxy (desktop issue 451) and the timeline scrubber with the bot's read-only command terminal (desktop issue 453): next PRs.
+- The timeline scrubber with the bot's read-only command terminal (desktop issue 453): next PR.
+- A host page's live reload socket (Vite's or Next's HMR) doesn't pass through yet: the page works, and Reload shows a change.
 
 **Checked:** 2026-11-26, #3344 (the desktop workbench with Changes, Files and terminals, desktop#622 and notifier #1105)
 
