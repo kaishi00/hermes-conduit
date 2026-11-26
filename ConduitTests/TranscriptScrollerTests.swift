@@ -1532,6 +1532,30 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertTrue(scroller.isFollowingLatest, "left at the end, following")
     }
 
+    /// A saved place whose row isn't drawn by the deadline opens the chat
+    /// at its end, not wherever the rows drawn so far left the viewport
+    /// (issue 3317: a different spot mid-history on each slow open).
+    func testAnAbandonedRestorationLandsAtTheEnd() {
+        let (scroller, surface) = makeScroller()
+        scroller.transcriptChanged(
+            messages: Self.messages(0..<14),
+            transcriptRevision: 2,
+            viewportTransitionGeneration: 1
+        )
+        scroller.restorationRequested(anchorRequest(scroller, row: 10), transcriptRevision: 2)
+        XCTAssertEqual(scroller.mode, .restoring, "m10 has no frame yet")
+        surface.contentOffsetY = 1000
+        runScheduled()
+        XCTAssertNil(scroller.restoration)
+        XCTAssertEqual(events.last, .abandonRestoration(generation: 9))
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertEqual(surface.contentOffsetY, 3200, "at the end, not mid-history")
+
+        for id in Self.ids(10..<14) { surface.append(id, height: 400) }
+        surface.layOut()
+        XCTAssertEqual(surface.contentOffsetY, 4800, "the rows drawn after keep it at the end")
+    }
+
     func testOnlyTheLatestRestorationsDeadlineActs() {
         let (scroller, _) = makeScroller()
         scroller.restorationRequested(anchorRequest(scroller, row: 5), transcriptRevision: 2)
