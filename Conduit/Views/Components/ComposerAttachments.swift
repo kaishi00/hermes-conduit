@@ -408,6 +408,9 @@ struct ComposerAttachmentChip: View {
     @State private var byteCount: Int64?
     @State private var pastedPreview: String?
     @State private var isShowingPastedText = false
+    /// A preview still reading its copy; cancelled when the chip goes, so
+    /// a late read never opens Quick Look over another screen.
+    @State private var previewTask: Task<Void, Never>?
 
     private static let thumbnailSide: CGFloat = 40
 
@@ -432,12 +435,14 @@ struct ComposerAttachmentChip: View {
             if !MediaPreviewPresenter.shared.present(fileURL: url, title: title) { Haptics.error() }
             return
         }
-        Task {
+        previewTask?.cancel()
+        previewTask = Task {
             let data = await Task.detached(priority: .userInitiated) {
                 try? Data(contentsOf: url, options: .mappedIfSafe)
             }.value
-            guard let data, await MediaPreviewPresenter.shared.present(data: data, filename: filename) else {
-                Haptics.error()
+            guard let data, !Task.isCancelled,
+                  await MediaPreviewPresenter.shared.present(data: data, filename: filename) else {
+                if !Task.isCancelled { Haptics.error() }
                 return
             }
         }
@@ -503,6 +508,7 @@ struct ComposerAttachmentChip: View {
         .sheet(isPresented: $isShowingPastedText) {
             PastedTextSheet(attachment: attachment, actions: pastedText)
         }
+        .onDisappear { previewTask?.cancel() }
         .task(id: attachment.uri) {
             if let url = URL(string: attachment.uri), url.isFileURL {
                 byteCount = AttachmentSizeLimit.fileSize(at: url)
