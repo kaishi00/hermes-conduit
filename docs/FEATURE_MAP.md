@@ -9102,7 +9102,7 @@ text and Recipes rule)
 - Readers take off a paired tag even where the chat leaves it as text: a tag inside a code span that runs over lines.
 - A page's buttons can't send a prompt: its `window.hermes.send` answers `undelivered`, as a `::preview` page's does.
 
-**Checked:** 2026-11-26, #PRNUM (fold edge cases: words after a one-line close, attribute text, a comment after a close) with desktop#623; 2026-11-26, #3342 (fold leftovers: a fold with its summary folds any body, only line-ending closes count); 2026-11-26, #3329 with notifier #1096, notifier #1099 and desktop#601 (new entry: HTML in replies, Eric's option A).
+**Checked:** 2026-11-26, #3348 (fold edge cases: words after a one-line close, attribute text, a comment after a close) with desktop#623; 2026-11-26, #3342 (fold leftovers: a fold with its summary folds any body, only line-ending closes count); 2026-11-26, #3329 with notifier #1096, notifier #1099 and desktop#601 (new entry: HTML in replies, Eric's option A).
 
 ## Self-improvement updates
 
