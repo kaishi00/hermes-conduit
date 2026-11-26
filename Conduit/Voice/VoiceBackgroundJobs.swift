@@ -487,6 +487,20 @@ struct VoiceThreadNotStartedError: Error {
     let message: String
 }
 
+/// Which chat a call's request to Hermes is about. After a drop, only a
+/// request about the chat on screen waits for the reconnect to resume it;
+/// any other waits for the socket alone (issue 2855).
+enum VoiceRequestChat {
+    /// The chat on screen, or a request not about one chat (the live list).
+    case shown
+    /// A chat the call names, on screen or not.
+    case thread(VoiceThreadTarget)
+    /// A chat by one of its session ids, on screen or not.
+    case session(String)
+    /// No chat yet: a new one being made.
+    case noChat
+}
+
 /// The Hermes chat a live call is attached to: requests go there as its
 /// next turn instead of starting a background job.
 struct VoiceThreadTarget: Equatable, Codable {

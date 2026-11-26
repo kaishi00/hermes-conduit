@@ -2327,7 +2327,7 @@ final class AppState: ObservableObject {
                     let expected = profile ?? self.voiceCallProfile
                     // The client as of the create, not of the turn's start:
                     // a reconnect during the runtime read replaced it.
-                    let client = try await self.clientForVoiceRequest()
+                    let client = try await self.clientForVoiceRequest(about: .noChat)
                     // The call's request: a switch it goes on across carries it.
                     let created = try await CallRequestScope.$isCallRequest.withValue(true) {
                         try await client.createSession(inProfile: profile ?? self.callProfileOffScreen)
@@ -2353,7 +2353,7 @@ final class AppState: ObservableObject {
         isBusy: { [weak self] chat in
             guard let self else { return false }
             if chat.runtimeID == self.activeSessionId { return self.isBusy }
-            let client = try await self.clientForVoiceRequest()
+            let client = try await self.clientForVoiceRequest(about: .session(chat.runtimeID))
             let rows = try await client.activeSessions(inProfile: chat.profile ?? self.callProfileOffScreen)
             return rows.contains { $0.runtimeSessionId == chat.runtimeID && $0.isRunning }
         },
@@ -2361,7 +2361,7 @@ final class AppState: ObservableObject {
             guard let self else { throw HermesError.notConnected }
             // Before the on-screen check: the wait for a dropped transport
             // can outlast the chat on screen.
-            let waited = try await self.clientForVoiceRequest()
+            let waited = try await self.clientForVoiceRequest(about: .session(chat.runtimeID))
             if chat.runtimeID == self.activeSessionId {
                 let client = waited
                 // On screen it goes through the composer, so the chat shows
@@ -2392,7 +2392,7 @@ final class AppState: ObservableObject {
             // handed the socket to a new one, and the call goes on there.
             let client: HermesClient
             do {
-                client = try await self.clientForVoiceRequest()
+                client = try await self.clientForVoiceRequest(about: .session(chat.runtimeID))
                 outcome = try await self.sendCallPromptTakingOver(
                     runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile ?? self.callProfileOffScreen,
                     stillWanted: self.localLiveTurns.currentTurnCheck()
@@ -2579,7 +2579,7 @@ final class AppState: ObservableObject {
         let supervisor = VoiceBackgroundJobSupervisor(backend: VoiceBackgroundJobBackend(
             createSession: { [weak self] targetProfile, callsModel in
                 guard let self else { throw HermesError.notConnected }
-                let client = try await self.clientForVoiceRequest()
+                let client = try await self.clientForVoiceRequest(about: .noChat)
                 if let targetProfile {
                     // A job on another profile or bot runs on that profile's
                     // own model: this profile's voice-job model is not its.
@@ -2630,7 +2630,7 @@ final class AppState: ObservableObject {
                 return (created.sessionId, created.storedSessionId, profile)
             },
             setTitle: { [weak self] sessionID, title in
-                guard let client = try? await self?.clientForVoiceRequest() else { return }
+                guard let client = try? await self?.clientForVoiceRequest(about: .session(sessionID)) else { return }
                 try? await client.setSessionTitle(sessionID, title: title)
             },
             keepInRegistry: { [weak self] targetProfile, sessionID, title, instructions, fromWatch, callChat, endedWith, call in
@@ -2647,7 +2647,7 @@ final class AppState: ObservableObject {
             activeProfile: { [weak self] in self?.voiceCallProfile },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
-                let client = try await self.clientForVoiceRequest()
+                let client = try await self.clientForVoiceRequest(about: .session(sessionID))
                 _ = try await client.sendPrompt(sessionID, text: text)
             },
             reportTurnSurface: { [weak self] sessionID, text, fromWatch in
@@ -2663,7 +2663,7 @@ final class AppState: ObservableObject {
             },
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
-                let client = try await self.clientForVoiceRequest()
+                let client = try await self.clientForVoiceRequest(about: .session(sessionID))
                 // A job in the open chat: its turn is noted as any cancel there is.
                 // Never with the call off its dashboard: the open chat is another Hermes'.
                 let open = self.callDashboardOffScreen != nil ? nil
@@ -2690,7 +2690,7 @@ final class AppState: ObservableObject {
             },
             sessionRunning: { [weak self] sessionID, targetProfile in
                 guard let self else { throw HermesError.notConnected }
-                let client = try await self.clientForVoiceRequest()
+                let client = try await self.clientForVoiceRequest(about: .session(sessionID))
                 return try await client.sessionRunning(sessionID, profile: targetProfile ?? self.callProfileOffScreen)
             },
             resolveProfile: { [weak self] spokenName in

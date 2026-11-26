@@ -323,6 +323,165 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         } catch HermesError.notConnected {}
     }
 
+    /// The socket is back and the reconnect is still resuming the chat on
+    /// screen, which a call's request about that chat waits for (#1060).
+    private func makeAppStateResumingTheShownChat(recorder: ReconnectRecorder) -> (AppState, HermesClient) {
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.setCarPlayVoiceSurfaceActive(true)
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.client = client
+        appState.quietTransportLiveness = { _ in true }
+        appState.activeSessionId = "shown-chat"
+        appState.isConnected = true
+        appState.turnState = .reconnecting
+        appState.voiceRequestConnectionWait = .seconds(30)
+        return (appState, client)
+    }
+
+    /// A call's request about another chat goes as soon as the socket is
+    /// back: the chat on screen resuming is nothing it needs (issue 2855).
+    func testARequestForAnotherChatDoesNotWaitOnTheShownChatsResume() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        let other = VoiceThreadTarget(runtimeSessionID: "other-chat", storedSessionID: "other-stored", title: "Other")
+
+        let started = Date()
+        let byThread = try await appState.clientForVoiceRequest(about: .thread(other))
+        let bySession = try await appState.clientForVoiceRequest(about: .session("other-chat"))
+        let newChat = try await appState.clientForVoiceRequest(about: .noChat)
+
+        XCTAssertTrue(byThread === client)
+        XCTAssertTrue(bySession === client)
+        XCTAssertTrue(newChat === client)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "nothing waited on the chat on screen")
+    }
+
+    /// One about the chat on screen still waits for its resume.
+    func testARequestForTheShownChatWaitsForItsResume() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        let shown = VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: nil, title: "Shown")
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .thread(shown))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "the request waits while the chat on screen resumes")
+
+        appState.turnState = .idle
+        let resolved = await request.value
+        XCTAssertTrue(resolved === client)
+    }
+
+    /// Another chat's request whose socket is still down waits for the
+    /// socket, and goes once it's back though the chat on screen is still
+    /// resuming.
+    func testARequestForAnotherChatWaitsForTheSocketOnly() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.isConnected = false
+        appState.isConnecting = true
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .session("other-chat"))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "the request waits while the socket comes back")
+
+        let started = Date()
+        appState.isConnected = true
+        appState.isConnecting = false
+        let resolved = await request.value
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertEqual(appState.turnState, .reconnecting, "the chat on screen is still resuming")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+    }
+
+    /// A request whose chat leaves the screen while it waits goes once the
+    /// socket is back, whatever the chat now on screen is doing.
+    func testARequestWhoseChatLeavesTheScreenStopsWaitingOnItsResume() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.isConnected = false
+        appState.isConnecting = true
+        let shown = VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: nil, title: "Shown")
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .thread(shown))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "the request waits while the socket comes back")
+
+        appState.activeSessionId = "another-chat"
+        appState.turnState = .reconnecting
+        let started = Date()
+        appState.isConnected = true
+        appState.isConnecting = false
+        let resolved = await request.value
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "the chat now on screen resuming is nothing it waits for")
+    }
+
+    /// With the socket already back, another chat opening while the chat
+    /// on screen still resumes ends the wait at once: nothing else changes.
+    func testARequestWhoseChatLeavesTheScreenOnAConnectedSocketGoesAtOnce() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        let shown = VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: nil, title: "Shown")
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .thread(shown))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "the request waits while its chat resumes")
+
+        let started = Date()
+        appState.activeSessionId = "another-chat"
+        let resolved = await request.value
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertEqual(appState.turnState, .reconnecting)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "the chat leaving the screen ends the wait")
+    }
+
+    /// An approval named by its chat's stored id is about the chat on
+    /// screen, as its card is (spokenApprovalsWaiting).
+    func testASessionNamedByTheShownChatsStoredIdIsTheShownChat() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.voiceSessionAliases.learn(runtimeID: "shown-chat", storedID: "shown-stored")
+        XCTAssertTrue(appState.chatOwnSessionIDsForTesting("shown-chat").contains("shown-stored"))
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("shown-stored")))
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.session("other-chat")))
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.noChat))
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .session("shown-stored"))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "a request named by the shown chat's stored id waits for its resume")
+
+        appState.turnState = .idle
+        let resolved = await request.value
+        XCTAssertTrue(resolved === client)
+    }
+
     func testCallRequestWithoutCarPlayOffScreenFailsAtOnce() async throws {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)

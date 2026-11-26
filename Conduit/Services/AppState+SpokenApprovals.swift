@@ -147,7 +147,7 @@ extension AppState {
         }
         // A call's request like any other: a socket off screen is checked
         // first, and a drop is waited out (#1060, #1362).
-        let client = try await clientForVoiceRequest()
+        let client = try await clientForVoiceRequest(about: .session(approval.sessionId))
         return try await client.respondToApproval(sessionId: approval.sessionId, requestId: approval.requestId,
                                                   choice: choice, profile: profile)
     }
@@ -173,7 +173,7 @@ extension AppState {
             if target?.status == .error { throw HermesError.notConnected }
             return after
         }
-        let client = try await clientForVoiceRequest()
+        let client = try await clientForVoiceRequest(about: sessionID.map { VoiceRequestChat.session($0) } ?? .shown)
         guard let index = questionID.flatMap({ id in clarify.questions.firstIndex { $0.id == id } })
                 ?? clarify.questions.firstIndex(where: { $0.status == .pending || $0.status == .error }) else { return nil }
         let question = clarify.questions[index]
