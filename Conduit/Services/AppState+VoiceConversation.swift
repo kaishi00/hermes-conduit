@@ -1392,8 +1392,11 @@ extension AppState {
     private func awaitTransportForVoiceRequest(timeout: Duration, resumingShownChat: @escaping @MainActor () -> Bool) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
-                let states = self.isConnectedValues.combineLatest(self.isConnectingValues, self.shownChat.$turnState).values
-                for await (connected, connecting, turn) in states {
+                // The chat on screen changing wakes it too: the request may
+                // no longer be about the chat on screen.
+                let states = self.isConnectedValues
+                    .combineLatest(self.isConnectingValues, self.shownChat.$turnState, self.$activeSessionId).values
+                for await (connected, connecting, turn, _) in states {
                     if connected, !resumingShownChat() || (turn != .reconnecting && turn != .synchronizing) { return }
                     // Signed out, or sign-in needed: no reconnect is coming.
                     if self.connection == nil || self.signInRequiredForReconnect { return }

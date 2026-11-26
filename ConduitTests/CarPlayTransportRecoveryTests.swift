@@ -434,6 +434,30 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 10, "the chat now on screen resuming is nothing it waits for")
     }
 
+    /// With the socket already back, another chat opening while the chat
+    /// on screen still resumes ends the wait at once: nothing else changes.
+    func testARequestWhoseChatLeavesTheScreenOnAConnectedSocketGoesAtOnce() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        let shown = VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: nil, title: "Shown")
+
+        let progress = RequestProgress()
+        let request = Task { @MainActor () -> HermesClient? in
+            defer { progress.finished = true }
+            return try? await appState.clientForVoiceRequest(about: .thread(shown))
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(progress.finished, "the request waits while its chat resumes")
+
+        let started = Date()
+        appState.activeSessionId = "another-chat"
+        let resolved = await request.value
+
+        XCTAssertTrue(resolved === client)
+        XCTAssertEqual(appState.turnState, .reconnecting)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "the chat leaving the screen ends the wait")
+    }
+
     /// An approval named by its chat's stored id is about the chat on
     /// screen, as its card is (spokenApprovalsWaiting).
     func testASessionNamedByTheShownChatsStoredIdIsTheShownChat() async throws {
