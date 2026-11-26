@@ -493,9 +493,12 @@ final class TranscriptLayoutTests: XCTestCase {
         // The placed board itself changing (its row's answer read again, a
         // live card brought up to date), with the same ids and rows, still
         // measures that reply again, and only it (issue 3266).
-        var redrawn = placed
-        redrawn.chatRowState.shownBoards = ["cb-0000000000d1": RichBoard(cards: [], tabs: false, followUps: ["More"], markdown: "Book early")]
-        XCTAssertEqual(redrawn.measurementChange(from: placed).rowIDs(in: rows), ["old"])
+        var arrived = placed
+        arrived.chatRowState.shownBoards = ["cb-0000000000d1": RichBoard(cards: [], tabs: false, followUps: ["More"], markdown: "Book early")]
+        XCTAssertEqual(arrived.measurementChange(from: placed).rowIDs(in: rows), ["old"], "a board arriving")
+        var redrawn = arrived
+        redrawn.chatRowState.shownBoards = ["cb-0000000000d1": RichBoard(cards: [], tabs: false, followUps: ["More"], markdown: "Book later")]
+        XCTAssertEqual(redrawn.measurementChange(from: arrived).rowIDs(in: rows), ["old"], "a shown board's content changing")
         var unplacedBoard = idle
         unplacedBoard.chatRowState.shownBoards = ["cb-0000000000d1": RichBoard(cards: [], tabs: false, followUps: [], markdown: nil)]
         XCTAssertEqual(unplacedBoard.measurementChange(from: idle).rowIDs(in: rows), [],

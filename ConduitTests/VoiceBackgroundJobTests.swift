@@ -3727,6 +3727,14 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(AppState.workstreamActMayHaveLanded(DashboardTicketBridgeError.http(status: 409, detail: "busy")))
         XCTAssertFalse(AppState.workstreamActMayHaveLanded(DashboardTicketBridgeError.notReady))
         XCTAssertFalse(AppState.workstreamActMayHaveLanded(URLError(.cannotConnectToHost)))
+        // The Work panel's row says it may have gone in, before a gateway's
+        // own words (#3346's review); a refusal shows the plugin's.
+        let mayHaveGone = AppLocalization.string("No answer from this bot's work. Its chat shows whether it went in.")
+        XCTAssertEqual(AppState.workstreamActRefusal(DashboardTicketBridgeError.http(status: 504, detail: "Dashboard request failed (504).")), mayHaveGone)
+        XCTAssertEqual(AppState.workstreamActRefusal(URLError(.timedOut)), mayHaveGone)
+        XCTAssertEqual(AppState.workstreamActRefusal(DashboardTicketBridgeError.http(status: 409, detail: "busy")), "busy")
+        XCTAssertEqual(AppState.workstreamActRefusal(DashboardTicketBridgeError.notReady),
+                       AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."))
 
         fake.submitError = nil
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "start_job", arguments: ["instructions": "Book a table."]))
