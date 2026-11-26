@@ -625,6 +625,11 @@ enum MarkdownBlock: Equatable {
     case htmlPreview(path: String)
     /// A Hermes Desktop plugin's card (`::richui{id="…"}`, #1522).
     case desktopCard(DesktopCardDirective)
+    /// HTML the reply wrote, drawn as a page (ReplyHTML). Not complete
+    /// while more may still join it.
+    case htmlPage(html: String, isComplete: Bool)
+    /// A `<details>` fold and the Markdown inside it (ReplyHTML).
+    case fold(summary: String, body: String, isOpen: Bool)
 }
 
 struct MarkdownQuoteLine: Equatable {
@@ -1058,6 +1063,19 @@ struct MarkdownBlockView: View {
         case .desktopCard(let card):
             DesktopCardBlock(card: card)
 
+        case .htmlPage(let html, let isComplete):
+            HTMLPreviewBlock(html: html, isComplete: isComplete || !isStreamingTail)
+
+        case .fold(let summary, let body, let isOpen):
+            ReplyFoldBlock(
+                summary: summary,
+                markdown: body,
+                isOpen: isOpen,
+                foregroundStyle: foregroundStyle,
+                usesAccentSurface: usesAccentSurface,
+                gatewayMediaDataURL: gatewayMediaDataURL
+            )
+
         case .math(let source):
             // The #88 oversized-math guard applies to the block itself,
             // wherever it renders — never only inside large-document mode.
@@ -1218,10 +1236,15 @@ enum InlineMarkdownContent {
         // reference-style links for this fragment too. The definition block
         // is invisible under `.full`; if parsing fails, fall back to the bare
         // fragment so definitions never surface as text.
+        // A reply's text tags (`<mark>`, a colored `<span>`…) go to
+        // Foundation as marks and come back as their styles (ReplyHTML).
+        let marked = ReplyHTML.marking(source)
+        let source = marked?.text ?? source
         var attributed = (try? AttributedString(
             markdown: references.markdownForParsing(references.keepsLineBreaks ? keepingLineBreaks(source) : source),
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
+        if let marked { attributed = ReplyHTML.applying(marked.styles, to: attributed) }
         // Foundation draws a hard break as a line separator; a newline is
         // what the reply wrote and what selection copies. One walk, so a
         // paragraph of many short lines stays linear.
@@ -1648,6 +1671,62 @@ private struct MarkdownCallout: View {
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(detail.color.opacity(0.28), lineWidth: 1)
+        }
+    }
+}
+
+/// A `<details>` fold a reply wrote (ReplyHTML): its summary, and the
+/// Markdown inside drawn when it's open. Closed unless it was written open.
+struct ReplyFoldBlock: View {
+    let summary: String
+    let markdown: String
+    let isOpen: Bool
+    let foregroundStyle: Color
+    let usesAccentSurface: Bool
+    let gatewayMediaDataURL: ((String) async -> String?)?
+
+    @State private var expanded: Bool?
+
+    private var isExpanded: Bool { expanded ?? isOpen }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) { expanded = !isExpanded }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(verbatim: summary.isEmpty ? AppLocalization.string("Details") : summary)
+                        .scaledFont(.body.weight(.semibold))
+                        .foregroundStyle(foregroundStyle)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .scaledFont(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(isExpanded ? Text("Expanded") : Text("Collapsed"))
+            if isExpanded {
+                MarkdownText(
+                    source: markdown,
+                    foregroundStyle: foregroundStyle,
+                    usesAccentSurface: usesAccentSurface,
+                    gatewayMediaDataURL: gatewayMediaDataURL
+                )
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            usesAccentSurface ? Color.black.opacity(0.13) : Color.primary.opacity(0.04),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(usesAccentSurface ? Color.white.opacity(0.26) : Color.secondary.opacity(0.20), lineWidth: 1)
         }
     }
 }
@@ -3675,6 +3754,24 @@ enum MarkdownParser {
                 continue
             }
 
+            // HTML the reply wrote: a page, drawn as `::preview`'s are, or
+            // a fold (ReplyHTML). Either ends the outline.
+            if ReplyHTML.startsPage(line) {
+                let page = ReplyHTML.page(in: lines, at: index)
+                blocks.append(.htmlPage(html: ReplyHTML.html(of: page, in: lines), isComplete: page.isComplete))
+                listIndents = []
+                outlineNumbers = [:]
+                index = page.end
+                continue
+            }
+            if ReplyHTML.opensFold(line), let fold = ReplyHTML.fold(in: lines, at: index) {
+                blocks.append(.fold(summary: fold.summary, body: fold.body, isOpen: fold.isOpen))
+                listIndents = []
+                outlineNumbers = [:]
+                index = fold.end
+                continue
+            }
+
             if let inlineMath = singleLineMath(trimmed) { blocks.append(.math(inlineMath)); index += 1; continue }
             if let closing = mathBlockOpening(trimmed) {
                 index += 1
@@ -3833,7 +3930,7 @@ enum MarkdownParser {
             while index < lines.count {
                 let candidate = lines[index]
                 let next = candidate.trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && GatewayMediaTags.segments(in: next) != nil) || directiveSegments(in: next, recognizesGatewayMedia: recognizesGatewayMedia) != nil || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
+                if next.isEmpty || ReplyHTML.startsPage(candidate) || ReplyHTML.opensFold(candidate) || MarkdownFence.opening(next) != nil || mathBlockOpening(next) != nil || singleLineMath(next) != nil || directiveStart(next) != nil || (recognizesGatewayMedia && GatewayMediaTags.segments(in: next) != nil) || directiveSegments(in: next, recognizesGatewayMedia: recognizesGatewayMedia) != nil || imageMarkdown(next) != nil || directImageURL(next) != nil || isDivider(next) || heading(next) != nil || next.hasPrefix(">") || unorderedItem(next) != nil || orderedItem(next) != nil || isTableHeader(lines, at: index) { break }
                 paragraph.append(candidate); index += 1
             }
             blocks.append(.paragraph(paragraph.joined(separator: "\n")))

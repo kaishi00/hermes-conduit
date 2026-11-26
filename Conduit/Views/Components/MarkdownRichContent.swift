@@ -157,10 +157,10 @@ enum MarkdownRichContentPolicy {
             return formulaUnits
         case .image:
             return imageUnits
-        case .htmlPreview:
+        case .htmlPreview, .htmlPage:
             return diagramUnits
         case .heading, .paragraph, .quote, .unorderedList, .orderedList,
-             .callout, .columns, .divider, .desktopCard:
+             .callout, .columns, .divider, .desktopCard, .fold:
             return 0
         }
     }
@@ -174,7 +174,7 @@ enum MarkdownRichContentPolicy {
             return diagramUnits
         case .math:
             return formulaUnits
-        case .htmlPreview:
+        case .htmlPreview, .htmlPage:
             return diagramUnits
         default:
             return 0

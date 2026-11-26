@@ -732,6 +732,19 @@ struct SelectableTextView: UIViewRepresentable {
             if let runColor = run.foregroundColor {
                 bridged.addAttribute(.foregroundColor, value: UIColor(runColor), range: range)
             }
+            // A reply's text tags (ReplyHTML): a highlight or background,
+            // an underline, and sub- and superscript a size down.
+            if let background = run[AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] {
+                bridged.addAttribute(.backgroundColor, value: UIColor(background), range: range)
+            }
+            if run[AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self] != nil {
+                bridged.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            }
+            if let offset = run[AttributeScopes.SwiftUIAttributes.BaselineOffsetAttribute.self] {
+                let font = bridged.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont ?? defaultFont
+                bridged.addAttribute(.font, value: font.withSize(font.pointSize * 0.75), range: range)
+                bridged.addAttribute(.baselineOffset, value: offset, range: range)
+            }
             if let link = run.link {
                 // A group room's @mention is linked only to be found here:
                 // it shows as a tinted tag, not a tappable link.

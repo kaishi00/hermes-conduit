@@ -107,14 +107,18 @@ enum TranscriptDirectives {
         rewriting(
             text,
             preview: { file in "(a file in the chat: \(fileName(file)))" },
-            card: { card in "(a card in the chat made for Hermes Desktop, from \(card.plugin))" }
+            card: { card in "(a card in the chat made for Hermes Desktop, from \(card.plugin))" },
+            page: "(a page in the chat)"
         )
     }
 
-    /// `text` with each directive written as `preview` and `card` say; nil
-    /// drops it. A line left empty goes; a fenced code block is code.
-    static func rewriting(_ text: String, preview: (String) -> String?, card: (DesktopCardDirective) -> String?) -> String {
-        rewritingLines(text) { line in
+    /// `text` with each directive written as `preview` and `card` say, and
+    /// each page the reply wrote in HTML as `page` (ReplyHTML), its other
+    /// tags taken off; nil drops it. A line left empty goes; a fenced code
+    /// block is code.
+    static func rewriting(_ text: String, preview: (String) -> String?, card: (DesktopCardDirective) -> String?, page: String?) -> String {
+        let text = ReplyHTML.withoutTags(ReplyHTML.pagesSaid(text, as: page))
+        return rewritingLines(text) { line in
             guard let segments = segments(in: line) else { return line }
             let kept = segments.compactMap { segment -> String? in
                 switch segment {

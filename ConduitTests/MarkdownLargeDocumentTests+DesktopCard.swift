@@ -222,7 +222,7 @@ extension MarkdownLargeDocumentTests {
     func testDesktopCard_FencedCodeStaysAsWritten() {
         let text = "Example:\n```\n\(Self.richUILine)\n```\n\(Self.richUILine)"
         XCTAssertEqual(
-            TranscriptDirectives.rewriting(text, preview: { _ in nil }, card: { _ in "CARD" }),
+            TranscriptDirectives.rewriting(text, preview: { _ in nil }, card: { _ in "CARD" }, page: nil),
             "Example:\n```\n\(Self.richUILine)\n```\nCARD"
         )
     }

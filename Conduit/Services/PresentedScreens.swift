@@ -582,10 +582,13 @@ final class PresentedScreensSync: ObservableObject {
     /// (plugin 0.150+); "pulse-more-shapes": their number, waiting and
     /// found shapes too (plugin 0.162+). "placed-boards": a board drawn
     /// where the reply holds its ::conduit-board line, and left out of its
-    /// conduit_show row (plugin 0.196+, issue 3215).
+    /// conduit_show row (plugin 0.196+, issue 3215). "reply-html": HTML a
+    /// reply writes draws, a page in a card and a few tags as text, so
+    /// Hermes hears it may use it where no card fits (plugin 0.199+,
+    /// ReplyHTML).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
                            "text-drafts", "email-texts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks",
-                           "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards"]
+                           "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards", "reply-html"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.

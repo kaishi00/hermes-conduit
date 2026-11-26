@@ -8978,6 +8978,50 @@ notifier's push text and the README line that describes it · `::preview`
 
 **Checked:** 2026-11-25, #3261 with notifier #1069 and desktop#519 (issue 3215: the exception for the plugin's `::conduit-board` line now places its board where the line is in a chat; the line is still never shown, said, previewed or handed to live models; Rulings); 2026-11-07, #1914 (a group room's bot message supplies its own profile's file reader, falling back to the room's; the Desktop card's read is unchanged); 2026-11-04, #1751 with notifier #539 (the plugin's `::conduit-board` line is hidden, not a card; Siblings, Rulings); 2026-10-30, #1524.
 
+## HTML written in replies
+
+HTML Hermes writes straight into a reply, outside a code block: a page (a
+block starting with a page tag such as `<div>`, `<table>`, `<svg>` or
+`<style>`) drawn as a card like a `::preview` page, a `<details>` fold, and
+the small text tags (`<b>`, `<i>`, `<u>`, `<s>`, `<mark>`, `<kbd>`, `<sub>`,
+`<sup>`, `<br>`, a colored `<span>` or `<font>`) drawn as styled words.
+
+**Siblings:** chats, project chats, Bot Chat and group rooms (every Markdown
+surface, the saved-chat copy and call job sheets included) · the page card
+and its full-screen sheet (the `::preview` block, see Cards drawn in web
+pages) · Copy and selection (the reply as written) · Read Aloud, Classic
+voice's spoken reply and live read-backs (through Desktop cards' readable
+text) · what live models are handed, on the phone and the Watch · chat list
+and bot list previews and quote chips · the notifier's push text · the
+briefing models read (`conduit_show`'s board rule, see Cards Hermes shows) ·
+text that describes it (README.md's Chat list, the notifier README's push
+text and Recipes rule)
+
+**Desktop app:** has it: pages drawn as page cards, folds and text tags in Markdown, speech, previews and Copy (htmlInReplies.ts, `desktop/src/renderer/src/state/media.ts` splitReply, `desktop/src/renderer/src/components/PagePreview.tsx` ReplyPage, `desktop/src/renderer/src/components/Markdown.tsx`).
+
+**Code**
+- The grammar (pages, folds, tags taken off plain text): `Conduit/Views/Components/ReplyHTML.swift` (startsPage, page(in:at:), opensFold, fold(in:at:), withoutTags, pagesSaid; also built into the Watch app, `project.yml`)
+- Text tags drawn: `Conduit/Views/Components/ReplyHTMLText.swift` (marking, applying, safeColor), through `Conduit/Views/Components/MarkdownText.swift` (InlineMarkdownContent.attributed) and `Conduit/Views/Components/SelectableTextView.swift` (bridge)
+- Blocks: `Conduit/Views/Components/MarkdownText.swift` (htmlPage and fold blocks, ReplyFoldBlock), the page card `Conduit/Views/Components/HTMLPreviewBlock.swift` (written, ReplyPageSource)
+- Readers: `Conduit/Views/Components/TranscriptDirectives.swift` (rewriting's page note, naming), `Conduit/Views/Components/DesktopCardBlock.swift` (readable), `Conduit/Services/PreviewText.swift`, `Conduit/Views/Components/ChatQuote.swift`
+- The flag that tells the plugin this Conduit draws it: `Conduit/Services/PresentedScreens.swift` (features, "reply-html")
+- Push text and the briefing: `notifier/events.py` (starts_page, page_end, pages_said, without_tags, plain_text), `notifier/show_tool.py` (REPLY_HTML_BOARD_RULE, board_rule)
+- Tests: `ConduitTests/ReplyHTMLTests.swift`, `notifier/tests/test_events.py`, `notifier/tests/test_show.py`
+
+**Rulings**
+- HTML only for what cards can't do: data, tables and charts a card can show stay on `conduit_show`, and HTML (a page or the text tags) is for a one-off visual no card covers. The briefing says so, and only to a Conduit that draws it (every connected Conduit sending `reply-html`) (Eric, 2026-11-26).
+- A page starts at a page tag at a line's start (up to three spaces in), never at a text tag, a tag-like word (`<Conversation>`) or prose, and runs to where its elements close, blank lines and all; the page tags after it, past blank lines, join it. While the reply streams, a page still open, cut mid-tag or with nothing after it yet shows "Drawing the page when it's finished…"; a finished reply draws what was written.
+- HTML in a fenced code block or a code span is code, as written.
+- A text tag draws only when it's closed; any other tag, or one left open, stays text. A colored `<span>` keeps only its color and background, and only a named color, hex or `rgb()`: nothing else of its style.
+- A `<details>` folds its Markdown away behind its summary (its own line or the next), closed unless written `open`, and folds what's written so far while its closing tag hasn't come.
+- Read Aloud and voices say "(There's a page here.)", live models hear "(a page in the chat)", previews, quotes and pushes read "🗂 Page", and the text tags are taken off; Copy keeps the HTML as written.
+
+**Open gaps**
+- The Watch draws no pages, folds or text tags.
+- A page's buttons can't send a prompt: its `window.hermes.send` answers `undelivered`, as a `::preview` page's does.
+
+**Checked:** 2026-11-26, #9999 with notifier #9998 and desktop#9997 (new entry: HTML in replies, Eric's option A).
+
 ## Self-improvement updates
 
 The "💾 Self-improvement review" rows Hermes adds to a chat after it saves a
