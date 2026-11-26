@@ -244,11 +244,13 @@ enum IPhoneVoices {
     /// off the main thread, the voice's own init included.
     @MainActor static func voice(for language: String) async -> AVSpeechSynthesisVoice? {
         let chosen = chosenVoice(for: language)
-        let key = "\(language)|\(chosen ?? "")"
+        // The region breaks ties between equally good voices, so it's part
+        // of the key too.
+        let region = Locale.current.region?.identifier
+        let key = "\(language)|\(chosen ?? "")|\(region ?? "")"
         if let found = foundVoices[key] { return found.voice }
         let started = generation
         let installed = await installed()
-        let region = Locale.current.region?.identifier
         nonisolated(unsafe) let ask = systemVoice
         let found = await Task.detached(priority: .userInitiated) { () -> FoundVoice in
             let system = ask(language)
