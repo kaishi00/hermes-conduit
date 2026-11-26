@@ -482,6 +482,33 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertTrue(resolved === client)
     }
 
+    /// An id the identity index rebound to another chat is that chat's,
+    /// though the shown chat's own ids still list it.
+    func testAReboundIdIsNotTheShownChat() async throws {
+        let recorder = ReconnectRecorder()
+        let (appState, client) = makeAppStateResumingTheShownChat(recorder: recorder)
+        appState.voiceSessionAliases.learn(runtimeID: "shown-chat", storedID: "rebound-id")
+        let reboundThread = VoiceThreadTarget(runtimeSessionID: "rebound-id", storedSessionID: nil, title: "Other")
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("rebound-id")))
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.thread(reboundThread)))
+        appState.reconciliation = AppState.Reconciliation(
+            token: UUID(), requestedSessionId: "shown-chat", movedOnSessionIDs: ["rebound-id"]
+        )
+
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.session("rebound-id")))
+        XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.thread(reboundThread)))
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("shown-chat")))
+        XCTAssertTrue(appState.voiceRequestIsAboutShownChat(
+            .thread(VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: "rebound-id", title: "Shown"))
+        ))
+
+        // The connected socket serves it at once, the shown chat's resume
+        // still going.
+        let resolved = try await appState.clientForVoiceRequest(about: .session("rebound-id"))
+        XCTAssertTrue(resolved === client)
+        XCTAssertEqual(appState.turnState, .reconnecting)
+    }
+
     func testCallRequestWithoutCarPlayOffScreenFailsAtOnce() async throws {
         let recorder = ReconnectRecorder()
         let appState = makeAppState(recorder: recorder)
