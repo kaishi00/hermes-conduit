@@ -124,6 +124,12 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.shownChat.turnStateIsStale = true
         XCTAssertEqual(appStatePublications, 2)
         XCTAssertFalse(edgeRead.isSet)
+
+        // The bot on screen's changes publish as AppState's: the held
+        // screens read its projects and jobs.
+        appStatePublications = 0
+        state.shownBot.cronRunsLoaded = true
+        XCTAssertEqual(appStatePublications, 1)
     }
 
     // MARK: - Coalescing

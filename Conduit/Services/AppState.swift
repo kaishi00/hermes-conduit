@@ -992,8 +992,9 @@ final class AppState: ObservableObject {
     /// (`ChatState.edgeChanges`).
     var shownChatEdges: AnyCancellable?
     /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
-    /// the all-live rework). Observed on its own, like the chat on screen.
+    /// the all-live rework). Its changes publish as AppState's.
     let shownBot = BotState()
+    var shownBotChanges: AnyCancellable?
     /// Keeps BotFaceDirectory in step with the bots shown, on screen and on
     /// the other combined dashboards.
     var botFaceDirectoryUpdates: AnyCancellable?
@@ -3567,9 +3568,15 @@ final class AppState: ObservableObject {
         }
         // The chat on screen's turn edges publish as AppState's, so the
         // held screens that read them wait while covered
-        // (`ChatState.edgeChanges`); the rest of the chat, and the bot on
-        // screen, are observed on their own (issue 828).
+        // (`ChatState.edgeChanges`); the rest of the chat is observed on
+        // its own (issue 828).
         shownChatEdges = chatOnScreen.edgeChanges.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        // The bot on screen's too: the held screens read its projects and
+        // scheduled jobs, so they stay behind the hold until it's rebuilt
+        // for observed reads.
+        shownBotChanges = shownBot.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
         // The runtime on screen's changes publish as AppState's, whichever

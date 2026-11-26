@@ -124,8 +124,9 @@ struct ComposerInputs: Equatable {
 }
 
 /// ComposerBar observes this instead of AppState. A change to AppState's
-/// own state comes through its publisher, and one to the chat or bot on
-/// screen, which are observed on their own (issue 828), through
+/// own state comes through its publisher (the bot on screen's and the
+/// chat's turn edges included), and one to the rest of the chat on
+/// screen, which is observed on its own (issue 828), through
 /// Observation. Either comes before the change lands, so the check waits for the main queue's next turn (still before
 /// the frame draws), once for any number of changes.
 @MainActor
@@ -142,6 +143,9 @@ final class ComposerUpdates: ObservableObject {
     /// Observation watches what the last watched read read. It calls once,
     /// so each call is followed by a watched read.
     private var isWatching = false
+    /// The watch that counts: a watch set again before the last one called
+    /// replaces it, and the replaced one's call is dropped.
+    private var watchGeneration = 0
 
     init(_ appState: AppState) {
         self.appState = appState
@@ -161,23 +165,26 @@ final class ComposerUpdates: ObservableObject {
     }
 
     /// The inputs, read so that the first change to any observed property
-    /// they read (the chat's, the bot's) schedules a check.
+    /// they read (the chat's) schedules a check.
     private func watchedInputs() -> ComposerInputs {
         isWatching = true
+        watchGeneration &+= 1
+        let generation = watchGeneration
         return withObservationTracking {
             ComposerInputs(appState)
         } onChange: { [weak self] in
             if Thread.isMainThread {
-                MainActor.assumeIsolated { self?.watchedChange() }
+                MainActor.assumeIsolated { self?.watchedChange(generation) }
             } else {
                 DispatchQueue.main.async { [weak self] in
-                    MainActor.assumeIsolated { self?.watchedChange() }
+                    MainActor.assumeIsolated { self?.watchedChange(generation) }
                 }
             }
         }
     }
 
-    private func watchedChange() {
+    private func watchedChange(_ generation: Int) {
+        guard generation == watchGeneration else { return }
         isWatching = false
         scheduleCheck()
     }
@@ -192,12 +199,13 @@ final class ComposerUpdates: ObservableObject {
 
     private func check() {
         checkPending = false
-        // A watch already set still stands; another read of its own would
-        // only add a second.
+        // A watch already set still stands: an unchanged read needs no
+        // other.
         let wasWatching = isWatching
         var next = wasWatching ? ComposerInputs(appState) : watchedInputs()
         guard next != inputs else { return }
-        // What it shows changed, and with it maybe what it reads.
+        // What it shows changed, and with it maybe what it reads: a new
+        // watch replaces the standing one.
         if wasWatching { next = watchedInputs() }
         objectWillChange.send()
         inputs = next
