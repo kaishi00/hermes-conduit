@@ -200,14 +200,4 @@ struct SessionCatalogCache {
             sessionsByKey[key]?.removeAll(where: shouldRemove)
         }
     }
-
-    mutating func removeSession(withIDs sessionIDs: Set<String>) {
-        mutationGeneration &+= 1
-        for key in sessionsByKey.keys {
-            sessionsByKey[key]?.removeAll { cachedSession in
-                let cachedIDs = Set([cachedSession.id] + cachedSession.alternateIds)
-                return !cachedIDs.isDisjoint(with: sessionIDs)
-            }
-        }
-    }
 }

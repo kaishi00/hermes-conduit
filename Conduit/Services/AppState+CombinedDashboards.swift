@@ -507,6 +507,9 @@ extension AppState {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return nil }
         // Taken up, its sync reads its chats.
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
+        // Kept again later through the same connection, its waits read at
+        // once rather than wait out the gate of its last far read.
+        combinedDashboardWaitsReadAt = combinedDashboardWaitsReadAt.filter { !$0.key.hasPrefix("\(id.uuidString)|") }
         guard isInCombinedGroup(id),
               keptClientIsOpen(kept.client),
               // On another profile, its socket is handed to a client on this

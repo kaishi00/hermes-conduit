@@ -127,15 +127,17 @@ extension AppState {
                 combinedDashboardWaitsReadAt[readKey] = (bridgeID, readAt)
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
-                // A read that failed or timed out doesn't hold the gate: the
-                // next pass asks again, as the chats and profile reads do.
-                if response == nil, combinedDashboardWaitsReadAt[readKey]?.bridge == bridgeID,
+                let listed = response.flatMap { NeedsYouItem.items(listed: $0, profile: profile, installationID: PushNotificationService.shared.installationID) }
+                // A read that failed, timed out or brought no list back
+                // doesn't hold the gate: the next pass asks again, as the
+                // chats and profile reads do.
+                if listed == nil, combinedDashboardWaitsReadAt[readKey]?.bridge == bridgeID,
                    combinedDashboardWaitsReadAt[readKey]?.at == readAt {
                     combinedDashboardWaitsReadAt[readKey] = nil
                 }
                 // Let go, or opened, while the read was out: not this pass's.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id else { break }
-                guard let listed = response.flatMap({ NeedsYouItem.items(listed: $0, profile: profile, installationID: PushNotificationService.shared.installationID) }) else { continue }
+                guard let listed else { continue }
                 // A profile a strip tap found deleted while the read was
                 // out stays gone (issue 2646).
                 guard currentKeptProfiles(id, else: profiles).contains(where: { profilesMatch($0, profile) }) else { continue }

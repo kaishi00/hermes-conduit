@@ -18,7 +18,7 @@ final class SessionCatalogCacheTests: XCTestCase {
             )
         )
 
-        cache.removeSession(withIDs: [deleted.id])
+        cache.removeSessions { $0.id == deleted.id }
 
         XCTAssertFalse(
             cache.commit(
@@ -104,7 +104,7 @@ final class SessionCatalogCacheTests: XCTestCase {
         ))
         XCTAssertEqual(cache.commits, start.1 &+ 1)
 
-        cache.removeSession(withIDs: [listed.id])
+        cache.removeSessions { $0.id == listed.id }
         XCTAssertNotEqual(cache.mutationGeneration, start.0)
 
         XCTAssertFalse(cache.commit(
@@ -157,7 +157,7 @@ final class SessionCatalogCacheTests: XCTestCase {
             )
         )
 
-        cache.removeSession(withIDs: ["stored-id"])
+        cache.removeSessions { ([$0.id] + $0.alternateIds).contains("stored-id") }
 
         XCTAssertTrue(cache.sessions(forKey: "default:exclude").isEmpty)
     }

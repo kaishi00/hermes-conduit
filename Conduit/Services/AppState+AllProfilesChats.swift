@@ -303,6 +303,8 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+            // Its star, from its own dashboard's stars (issue 3252).
+            dropDeletedChatStar(session, profile: profile, in: dashboardID)
             // A call in it (a Bot Chat call's, say) goes on in a new chat (issue 1797).
             noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             guard ownsDashboardRuntime(owner) else { return false }
@@ -315,10 +317,6 @@ extension AppState {
                 setLocalPin(session, pinned: false, profile: profile)
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
-            } else if let dashboardID {
-                // Another combined dashboard's chat, deleted on its own
-                // runtime: its star goes from its own dashboard's.
-                dropFarSessionStar(session, profile: profile, in: dashboardID)
             }
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {
@@ -326,6 +324,8 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
+            // Its star, from its own dashboard's stars (issue 3252).
+            dropDeletedChatStar(session, profile: profile, in: dashboardID)
             // And a call in it goes on in a new chat, as above (issue 1797).
             noteCallChatDeleted(callChatIDs, dashboardID: dashboardID)
             return false
