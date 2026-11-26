@@ -6195,16 +6195,16 @@ names.
 composer · the share extension · Ask Hermes About Screen · a recorded voice
 message · the group room composer · the Settings caption for the limit
 
-**Desktop app:** partly: a file over 16 MB, picked, dropped or pasted, is refused naming the file and the limit, with no setting to point to since the limit is fixed (`desktop/src/renderer/src/state/attachments.ts` tooLargeMessage, desktop#12); a group chat names its own caps (roomUploadProblem). No setting to raise the limit, and the voice message has the phone's gap (no size, no where).
+**Desktop app:** has it: Settings › App › Attachments picks the limit, 8 to 256 MB (16 by default), kept on this computer, with the phone's caption and its warning above 16 MB (`desktop/src/renderer/src/components/AttachmentLimitSetting.tsx`, desktop#640). A file over it, picked, dropped or pasted, is refused naming the file and the limit and saying Settings › Attachments can raise it, left off at 256 MB; a voice message over it says the same (`desktop/src/renderer/src/state/attachments.ts` tooLargeMessage and voiceTooLargeMessage, desktop#12, desktop#640); a group chat names its own caps (roomUploadProblem).
 
 **Code**
-- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
+- The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage, voiceTooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
 - Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path; a picture whose file fails, through stageImageObject, which holds its PNG to the limit before writing it, #1821)
 - Share extension: `Conduit/Services/AppState+ShareDraft.swift`; `Shared/ShareDraft/ShareDraftCollector.swift` (stageFile: a file's size before and after its copy, a picture's bytes before they are decoded or written, #1821)
 - Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
-- Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
+- Voice message: `Conduit/Services/AppState+VoiceMessage.swift` (through AttachmentSizeLimit.voiceTooLargeMessage)
 - Group rooms: `Conduit/Services/GroupRoomFiles.swift` (stagingLimit, tooLargeMessage), `Conduit/Views/Components/GroupRoomComposer.swift`
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (the attachment size limit setting)
 
@@ -6212,11 +6212,10 @@ message · the group room composer · the Settings caption for the limit
 - The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB with the plugin's room files, 14 MB when only Hermes' own room attachments take its files, 16 MB in a room with other people's agents, whose message says that's what such a room can share with them), it names that cap and offers no setting (2026-10-24, from #935's review, #1190; the Hermes cap, #2045; the linked room's cap, Eric 2026-11-12).
 
 **Open gaps**
-- The voice message says "larger than your attachment size limit" without the size or where to change it.
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
 - The Settings caption doesn't say that a group room takes at most 50 MB (14 MB without the plugin, 16 MB with other people's agents) whatever the limit.
 
-**Checked:** 2026-11-12, #2320 (a room hosted here with other people's agents takes 16 MB, checked again on Send, and its message says why); 2026-11-08, #2045 (a room without the plugin's room files caps its files at 14 MB, under Hermes' 15 MB); 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-11-26, #3368 (a voice message over the limit names it and says where to raise it, closing the gap; the desktop gets the setting, desktop#640; the share extension, rooms and Settings caption need no change); 2026-11-12, #2320 (a room hosted here with other people's agents takes 16 MB, checked again on Send, and its message says why); 2026-11-08, #2045 (a room without the plugin's room files caps its files at 14 MB, under Hermes' 15 MB); 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 

@@ -78,7 +78,7 @@ extension AppState {
         case .staged(let staged):
             attachment = staged
         case .tooLarge:
-            recorder.errorMessage = AppLocalization.string("This voice message is larger than your attachment size limit.", table: .voice)
+            recorder.errorMessage = AttachmentSizeLimit.voiceTooLargeMessage(megabytes: limitMegabytes)
             return false
         case .failed:
             recorder.errorMessage = AppLocalization.string("Couldn't prepare the voice message.", table: .voice)

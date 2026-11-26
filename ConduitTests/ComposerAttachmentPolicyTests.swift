@@ -231,6 +231,12 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertTrue(many.contains("a.mov") && many.contains("b.mov"), many)
     }
 
+    func testVoiceTooLargeMessageNamesTheLimitAndWhereToRaiseIt() {
+        let message = AttachmentSizeLimit.voiceTooLargeMessage(megabytes: 32)
+        XCTAssertTrue(message.contains("32 MB"), message)
+        XCTAssertTrue(message.contains("Settings › Chat"), message)
+    }
+
     func testVideoKindRoundTripsThroughDrafts() throws {
         let video = Attachment(id: "v", name: "clip.mov", uri: "file:///tmp/clip.mov", mimeType: "video/quicktime", kind: .video)
         let decoded = try JSONDecoder().decode(Attachment.self, from: JSONEncoder().encode(video))
