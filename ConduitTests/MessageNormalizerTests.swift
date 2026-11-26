@@ -344,6 +344,33 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(sessions.compactMap(\.profile), ["work", "personal"])
     }
 
+    /// Issue 3276: a compressed chat is listed under its newest segment, and
+    /// the gateway resumes it under its owner, which can be a middle one.
+    /// Every segment `_lineage_ids` names is one of the row's ids.
+    func testSessionNormalizationCarriesACompressedChatsSegmentsAsItsIDs() {
+        let sessions = MessageNormalizer.normalizeSessions(
+            .object([
+                "sessions": .array([
+                    .object([
+                        "id": .string("tip"),
+                        "session_id": .null,
+                        "stored_session_id": .null,
+                        "_lineage_root_id": .string("root"),
+                        "_lineage_ids": .array([.string("root"), .string("owner"), .string(" "), .string("tip")]),
+                        "continuation_kind": .string("compression")
+                    ])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        let row = sessions.first
+        XCTAssertEqual(row?.id, "tip")
+        XCTAssertNil(row?.storedSessionId)
+        XCTAssertEqual(row?.lineageRootId, "root")
+        XCTAssertEqual(Set(row?.alternateIds ?? []), ["root", "owner"], "every other segment, the row's own id and blanks left out")
+    }
+
     func testSessionNormalizationKeepsStoredIDSeparateFromRuntimeID() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([
