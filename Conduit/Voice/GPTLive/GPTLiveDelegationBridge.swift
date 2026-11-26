@@ -158,7 +158,9 @@ final class GPTLiveDelegationBridge {
     /// the delegation itself or the user's recent words. `userWords` are the
     /// user's own words since the last delegation: a follow-up to work
     /// Hermes is still doing hands it those (#451).
-    func handleDelegation(id: String, request: String, userWords: String = "") async -> [Outgoing] {
+    /// `answersQuestion` false: work inside a marker ("Call me: check the
+    /// server") that never answers the call's question.
+    func handleDelegation(id: String, request: String, userWords: String = "", answersQuestion: Bool = true) async -> [Outgoing] {
         // "Approve:", "Deny:" or "Answer: …" (#449 step 4): the user's answer
         // to what a call from Hermes waits on. Never reaches Hermes as work.
         // Only in such a call: anywhere else the words are a request.
@@ -213,7 +215,7 @@ final class GPTLiveDelegationBridge {
                 // takes it: a new one, or a running one taking it as a
                 // change. Held for the user's OK, it asks once it goes.
                 let call = callGeneration
-                let sent = await handleDelegation(id: id, request: rest, userWords: userWords)
+                let sent = await handleDelegation(id: id, request: rest, userWords: userWords, answersQuestion: false)
                 guard callGeneration == call, !isEnding else { return sent }
                 let outcome: VoiceCallbackRequestOutcome
                 if marker.scope != .latest {
@@ -279,7 +281,7 @@ final class GPTLiveDelegationBridge {
         // Hermes would refuse while it's paused on the question.
         // A request held for the user's OK settles first, and words asking
         // to hear a reply again are a read-back (below), never the answer.
-        if instructions.isEmpty, !startsNewJob, draft == nil, supervisor.callWaitsOn == .question,
+        if instructions.isEmpty, answersQuestion, !startsNewJob, draft == nil, supervisor.callWaitsOn == .question,
            !VoiceThreadRouting.wantsLastReply(spoken), !VoiceThreadRouting.endsWithLastReplyRequest(spoken) {
             return await answeredCallQuestion(id: id, delegated: "", userWords: spoken, call: call)
         }
@@ -365,10 +367,13 @@ final class GPTLiveDelegationBridge {
             // The call ended meanwhile: nothing is answered.
             return read.isEmpty ? [] : dropped + read
         }
-        // Marked nothing Conduit answers itself: in a call from Hermes about
-        // a question, the user's answer (above). "New job:" and a "Job 9:"
-        // with no job stay separate work.
-        if !startsNewJob, draft == nil, !Self.isSendMarker(instructions), supervisor.callWaitsOn == .question {
+        // Marked nothing at all: in a call from Hermes about a question, the
+        // user's answer (above). A marker keeps its meaning: "New job:", a
+        // "Job 9:" with no job, "Quick:", "Send:", the work in "Call me:"
+        // and a "Deny:" with no approval waiting stay what they say.
+        let marksNothing = answersQuestion && Self.decisionMarker(in: request) == nil
+            && ownWords == routingWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        if marksNothing, !startsNewJob, draft == nil, !Self.isSendMarker(instructions), supervisor.callWaitsOn == .question {
             return await answeredCallQuestion(id: id, delegated: ownWords, userWords: spoken, call: call)
         }
         // The model's own words for the request. Without any, the request

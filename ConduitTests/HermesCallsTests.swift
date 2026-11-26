@@ -1201,6 +1201,10 @@ extension VoiceConversationControllerTests {
         _ = await gpt.handleDelegation(id: "d8", request: "The user says it's a Fire TV", userWords: "it's a Fire TV")
         XCTAssertEqual(decisions.answers.last, "it's a Fire TV", "The user's own words, not the model's summary")
         XCTAssertEqual(supervisor.jobs.count, jobsBeforeUnmarked, "Unmarked answers never reach Hermes as work")
+        let answersBeforeMarked = decisions.answers.count
+        _ = await gpt.handleDelegation(id: "d8b", request: "Quick: check the weather", userWords: "quickly check the weather")
+        _ = await gpt.handleDelegation(id: "d8c", request: "Deny:", userWords: "no")
+        XCTAssertEqual(decisions.answers.count, answersBeforeMarked, "A marker keeps its meaning: never taken as the answer")
         decisions.waitsOn = .approval
         let unmarked = await gpt.handleDelegation(id: "d9", request: "", userWords: "yes")
         XCTAssertEqual(decisions.choices, ["once", "deny", "once"], "An approval is never given without its marker")
