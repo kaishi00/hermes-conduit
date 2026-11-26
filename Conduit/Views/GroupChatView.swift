@@ -2743,6 +2743,10 @@ struct GroupRoomSettingsSheet: View {
                             .settingsCaption()
                         if draft.routing == .auto && draft.newerRouting.isEmpty {
                             GroupRouterModelRow()
+                                // Its router is its room's dashboard's: the
+                                // same room id on another dashboard starts
+                                // the row over (issue 3252).
+                                .id(appState.activeRoomSurface?.dashboardID)
                         }
                     }
                     if draft.routing == .lead {

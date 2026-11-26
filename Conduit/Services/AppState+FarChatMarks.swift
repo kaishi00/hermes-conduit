@@ -195,6 +195,24 @@ extension AppState {
         stars.save(to: defaults, scope: Self.dashboardPreferenceBucket(far))
     }
 
+    /// Hermes deleted a chat of `dashboardID`'s: its star goes from that
+    /// dashboard's stars wherever they're kept now, whether or not the
+    /// delete's answer is still the screen's (taken up to the screen
+    /// meanwhile, or its kept connection let go), so Starred never lists a
+    /// chat that's gone (issue 3252).
+    func dropDeletedChatStar(_ session: SessionSummary, profile: String, in dashboardID: UUID?) {
+        guard let dashboardID else { return }
+        guard dashboardID == dashboardIDOnScreen else {
+            dropFarSessionStar(session, profile: profile, in: dashboardID)
+            return
+        }
+        var row = session
+        row.combinedDashboardID = nil
+        let key = sessionStars.idsByProfile.keys.first { Self.profilesMatch($0, profile) } ?? profile
+        guard sessionStars.isStarred(row, profile: key) else { return }
+        setSessionStarred(row, starred: false, profile: key)
+    }
+
     /// Hermes' read flag as that dashboard's list last gave it, or as it
     /// was set here since.
     func isFarSessionUnread(_ session: SessionSummary, in far: UUID) -> Bool {
