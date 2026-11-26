@@ -1838,15 +1838,9 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
     /// opened again keeps its own count) and on a read that lands.
     func testAFarAgentsChatBackoffStartsOverOnAnotherAgentTheListClosingOrALandedRead() async throws {
         let harness = makeHarness()
-        let screen = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://mac.invalid")
-        let farDashboard = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://vps.invalid")
-        var registry = SavedDashboardRegistry(activeDashboardID: screen.id, dashboards: [screen, farDashboard])
-        registry.dashboards = registry.dashboards.map { dashboard in
-            var dashboard = dashboard
-            dashboard.combined = true
-            return dashboard
-        }
-        harness.appState.savedDashboardRegistry = registry
+        let screen = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://mac.invalid", combined: true)
+        let farDashboard = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://vps.invalid", combined: true)
+        harness.appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: screen.id, dashboards: [screen, farDashboard])
         XCTAssertTrue(harness.appState.isInCombinedGroup(farDashboard.id))
         var farReads = 0
         harness.coordinator.chatCatalogLoader = { _ in }
