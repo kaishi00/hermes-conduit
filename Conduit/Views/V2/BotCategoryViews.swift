@@ -28,6 +28,8 @@ struct BotCategoryHeading: View {
     var onDelete: (() -> Void)?
     /// A bot dropped on the heading (its drag's name or key).
     let onDropBot: (String) -> Bool
+    /// A group chat's tile dropped on the heading (its room id).
+    var onDropRoom: ((String) -> Bool)?
     /// Re-drawn as the bots' waits change.
     @ObservedObject var work: BotWorkStore
     @ObservedObject var needsYou: NeedsYouStore
@@ -84,13 +86,18 @@ struct BotCategoryHeading: View {
         }
         .buttonStyle(.plain)
         .contextMenu { menu }
-        .onDrop(of: [UTType.text], delegate: LiftedBotDrop(
+        .onDrop(of: [UTType.text], delegate: CategoryHeadingDrop(
+            bot: LiftedBotDrop(
+                entered: { isTargeted = true },
+                exited: { isTargeted = false },
+                perform: { dragged in
+                    isTargeted = false
+                    return onDropBot(dragged)
+                }
+            ),
             entered: { isTargeted = true },
             exited: { isTargeted = false },
-            perform: { dragged in
-                isTargeted = false
-                return onDropBot(dragged)
-            }
+            room: onDropRoom
         ))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: title))
@@ -145,6 +152,42 @@ struct BotCategoryHeading: View {
                 Label(AppLocalization.string("Delete Category", table: .bots), systemImage: "trash")
             }
         }
+    }
+}
+
+/// A heading's drop: a bot as LiftedBotDrop takes it, or a group chat's
+/// tile, which LiftedBotDrop refuses, when rooms can be filed here.
+struct CategoryHeadingDrop: DropDelegate {
+    let bot: LiftedBotDrop
+    let entered: () -> Void
+    let exited: () -> Void
+    let room: ((String) -> Bool)?
+
+    private var liftedRoom: String? { room == nil ? nil : RoomDragPayload.lifted }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        liftedRoom != nil || bot.validateDrop(info: info)
+    }
+
+    func dropEntered(info: DropInfo) {
+        if liftedRoom != nil { entered() } else { bot.dropEntered(info: info) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard liftedRoom != nil else { return bot.dropUpdated(info: info) }
+        RoomDragPayload.seen()
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        if liftedRoom != nil { exited() } else { bot.dropExited(info: info) }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let roomID = liftedRoom, let room else { return bot.performDrop(info: info) }
+        RoomDragPayload.lifted = nil
+        exited()
+        return room(roomID)
     }
 }
 

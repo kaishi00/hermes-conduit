@@ -688,7 +688,13 @@ struct BotRosterView: View {
                     if !rooms.isEmpty {
                         // Its group chats after its bots, as Group Chats
                         // draws them.
-                        BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) {
+                        BotRoomGrid(onDropAtEnd: { dragged in
+                            // Past its last room: after it, and filed here.
+                            dropRoom(dragged, onto: nil)
+                            if homeRooms.contains(where: { $0.roomID == dragged }) {
+                                appState.fileGroupRoom(dragged, under: section.name)
+                            }
+                        }) {
                             ForEach(rooms) { room in
                                 GroupRoomPortrait(room: room, actions: roomActions(room))
                             }
@@ -732,18 +738,19 @@ struct BotRosterView: View {
             onMoveLater: onMoveLater,
             onDelete: onDelete,
             onDropBot: { dragged in
-                // A group chat's tile files that room.
-                if let room = homeRooms.first(where: { $0.roomID == dragged }) {
-                    // On Other it goes back to Group Chats.
-                    Haptics.selection()
-                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                        appState.fileGroupRoom(room.roomID, under: section.name)
-                    }
-                    return true
-                }
                 guard canManageBots, let item = appState.botsHomeItem(dragged: dragged) else { return false }
                 Haptics.selection()
                 file(item, under: section.name)
+                return true
+            },
+            onDropRoom: { roomID in
+                // A group chat's tile files that room; on Other it goes back
+                // to Group Chats.
+                guard homeRooms.contains(where: { $0.roomID == roomID }) else { return false }
+                Haptics.selection()
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                    appState.fileGroupRoom(roomID, under: section.name)
+                }
                 return true
             },
             work: appState.botWork,
