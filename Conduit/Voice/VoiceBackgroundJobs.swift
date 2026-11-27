@@ -2011,7 +2011,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 startPollingIfNeeded()
                 return
             }
-            update(jobID) { $0.status = .failed(UserFacingError.message(for: error)) }
+            // A submit that went out and failed without a refusal may have
+            // reached Hermes, as a first job's start (issue 3362): the
+            // Watch keeps its words as sent.
+            let unknown = job(jobID)?.submitted == true && AppState.isAmbiguousPromptDelivery(error)
+            update(jobID) {
+                $0.status = .failed(UserFacingError.message(for: error))
+                $0.requestOutcomeUnknown = unknown
+            }
             noticeMayBePending()
         }
     }

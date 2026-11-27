@@ -75,6 +75,47 @@ enum WatchCallAnswer {
         return nil
     }
 
+    /// Where a GPT-Live delegation on a Watch call goes once it marks no
+    /// job, chat or answer (#3328, issue 3332): "New job:" is separate work,
+    /// never the answer; otherwise the user's spoken words go to answer_call
+    /// first while the grant can run it, and are new work after.
+    enum UnmarkedRoute: Equatable {
+        case newJob(String)
+        case probe(String)
+        case newWork
+    }
+
+    static func unmarkedRoute(ownWords: String, userWords: String, granted: Bool, canRun: Bool) -> UnmarkedRoute {
+        if let rest = WatchBridgeDelegation.newJobMarker(in: ownWords) { return .newJob(rest) }
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        return granted && canRun && !spoken.isEmpty ? .probe(spoken) : .newWork
+    }
+
+    /// What an unmarked delegation's answer_call probe leads to: the
+    /// host's reply, or new work with the grant calls the probe spent
+    /// (`spent`), which the new job's budget leaves out. A host that took
+    /// no answer, or a probe that never left the Watch (too large, seal
+    /// failed, the grant gone), is new work; one that went out and got no
+    /// answer may have been taken, so it isn't.
+    enum ProbeResult: Equatable {
+        case reply(String)
+        case newWork(spent: Int)
+    }
+
+    static func probeResult(_ outcome: WatchToolRelayClient.Outcome) -> ProbeResult {
+        switch outcome {
+        case .answered(let body):
+            return tookAnswer(body: body) ? .reply(delegatedReply(body: body)) : .newWork(spent: 1)
+        case .timedOut:
+            return .reply(timedOutReply)
+        case .unavailable(_, _, let sent):
+            return sent ? .reply(unavailableReply) : .newWork(spent: 0)
+        }
+    }
+
+    static let timedOutReply = "Hermes didn't confirm the answer in time. Tell the user to check the chat in Conduit on their iPhone."
+    static let unavailableReply = "The answer didn't reach Hermes. Tell the user to answer in Conduit on their iPhone."
+
     /// Whether the host took a question's answer: false when nothing
     /// waited on one (an approval, or every question answered already).
     static func tookAnswer(body: [String: Any]) -> Bool {
