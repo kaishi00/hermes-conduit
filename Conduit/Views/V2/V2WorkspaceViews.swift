@@ -1002,6 +1002,12 @@ struct WorkspaceFolderView: View {
     /// A path a reply named: the chat's own folder when it's there, and the
     /// file opens, at its line for a search match.
     private func show(_ reveal: WorkspaceReveal) async {
+        // A folder (its path ends in a separator: a folder link, or one the
+        // plugin's lookup found) opens as a folder (desktop issue 686).
+        if let folder = Self.revealedFolder(reveal.path) {
+            await showFolder(folder)
+            return
+        }
         // The folder holding it, the chat's first: a file in none of them
         // opens to read, outside the tree, with nothing to change.
         let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) })
@@ -1024,6 +1030,44 @@ struct WorkspaceFolderView: View {
         // A later tap replaced this one: that one opens.
         guard !Task.isCancelled else { return }
         open(entry, line: reveal.line)
+    }
+
+    /// A revealed path that names a folder, without its trailing
+    /// separator; nil for a file.
+    static func revealedFolder(_ path: String) -> String? {
+        guard path.hasSuffix("/") || path.hasSuffix("\\") else { return nil }
+        var folder = path
+        while folder.count > 1, folder.hasSuffix("/") || folder.hasSuffix("\\"),
+              folder.range(of: #"^[A-Za-z]:[\\/]$"#, options: .regularExpression) == nil {
+            folder.removeLast()
+        }
+        return folder
+    }
+
+    /// A folder a reply named: shown open in the tree of the chat's or a
+    /// project's folder holding it, else opened as a folder of its own, as
+    /// Open Folder… opens one (kept in its list for this profile).
+    private func showFolder(_ folder: String) async {
+        query = ""
+        let profile = appState.workspaceProfile(far: far)
+        if let holder = roots.first(where: { Self.path(folder, isIn: $0.path) }),
+           AppState.normalizedWorkspacePath(folder) != AppState.normalizedWorkspacePath(holder.path) {
+            if root?.path != holder.path { rootPath = holder.path }
+            await explorer.open(root: holder.path, profile: profile)
+            var entry = await explorer.reveal(folder)
+            guard !Task.isCancelled else { return }
+            entry.isDirectory = true
+            open(entry)
+            return
+        }
+        if let same = roots.first(where: { AppState.normalizedWorkspacePath($0.path) == AppState.normalizedWorkspacePath(folder) }) {
+            rootPath = same.path
+            await explorer.open(root: same.path, profile: profile)
+            return
+        }
+        appState.rememberOpenedWorkspaceFolder(folder, profile: profile, far: far)
+        rootPath = folder
+        await explorer.open(root: folder, profile: profile)
     }
 
     // MARK: - Changing

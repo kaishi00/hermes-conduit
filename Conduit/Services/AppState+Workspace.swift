@@ -246,8 +246,12 @@ extension AppState {
         // Each id the open chat goes by; none in a group room, whose tap
         // opens the projects' folders as before.
         let ids = activeChatArtifactSessionIDs
+        // A folder link (`src/app/`) is asked only of a plugin that finds
+        // folders; an older one would say it isn't there (desktop issue 686).
+        let folderLink = trimmed.hasSuffix("/") || trimmed.hasSuffix("\\")
         guard !Self.isAbsoluteWorkspacePath(trimmed), !ids.isEmpty,
               workspacePlugin(far).reports(WorkspaceFilesClient.resolveCapability),
+              !folderLink || workspacePlugin(far).reports(WorkspaceFilesClient.resolveFoldersCapability),
               let owner = workspaceRuntimeOwner(far) else {
             clearWorkspaceLookupNotice()
             workspaceReveal = WorkspaceReveal(path: absoluteWorkspacePath(trimmed, far: far), line: line)
