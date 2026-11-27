@@ -7977,13 +7977,13 @@ is optional: `conduit://new` alone is the New Chat shortcut.
 **Rulings**
 - `send=1` never sends unseen: the chat opens and a Send / Edit sheet shows the text, and only Send sends it. The sheet shows the whole text, so a link's text past 2,000 characters isn't offered for sending at all and waits in the composer instead, where it can all be read. Any app, web page, QR code or NFC tag can open a link, and Hermes acts on what it reads; an automation that must send without a tap uses Send to Hermes, which the user builds (Eric 2026-11-27, #3392, issue 3389).
 - It is the New Chat shortcut's launch: on the dashboard in use (its profile can name another combined dashboard's, as the shortcut's can), nothing with no dashboard signed in, the keyboard up, and the shortcut's failure words; a launch that fails drops the text (#3392).
-- A link repeating a New Chat launch in flight (a widget's or the shortcut's, for the same profile) rides it and its text lands in the chat that launch opens; a shared draft's launch it doesn't ride, and the link starts nothing, since the draft's text would land over the link's, as a draft doesn't ride a launch in flight either (issue 2870). Opening a link never supersedes the launch in flight first, as the shortcut doesn't (#APP_PR). A newer link's text replaces an earlier link's still waiting on the same launch (#3392).
-- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in that chat's composer and says so there, or, on another chat by now, that it's back in the new chat's draft, naming the chat by the link's title when it gave one (#APP_PR). The title is set as the title menu's Rename sets it, on the chat the launch opened, taken as it ends (#3392).
+- A link repeating a New Chat launch in flight (a widget's or the shortcut's, for the same profile) rides it and its text lands in the chat that launch opens; a shared draft's launch it doesn't ride, and the link starts nothing, since the draft's text would land over the link's, as a draft doesn't ride a launch in flight either (issue 2870). Opening a link never supersedes the launch in flight first, as the shortcut doesn't (#3397). A newer link's text replaces an earlier link's still waiting on the same launch (#3392).
+- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in that chat's composer and says so there, or, on another chat by now, that it's back in the new chat's draft, naming the chat by the link's title when it gave one (#3397). The title is set as the title menu's Rename sets it, on the chat the launch opened, taken as it ends (#3392).
 
 **Open gaps**
 - Not tried on a device yet: a cold launch from another app, and Safari's "Open in Conduit?".
 
-**Checked:** 2026-11-27, #APP_PR (a link no longer cancels a launch in flight before deciding to ride it; the refused notice names the link's title; #3392 added it, issue 3389, with desktop#673).
+**Checked:** 2026-11-27, #3397 (a link no longer cancels a launch in flight before deciding to ride it; the refused notice names the link's title; #3392 added it, issue 3389, with desktop#673).
 
 ## Shortcuts Hermes can run
 
