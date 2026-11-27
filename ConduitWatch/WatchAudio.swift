@@ -6,7 +6,9 @@
 //  the microphone converted to 16 kHz PCM16 (what Gemini and Grok take on
 //  the iPhone) and a player node for the model's speech. The session is
 //  play-and-record with the default route policy, which is what lets the
-//  built-in speaker play (long-form audio would want Bluetooth).
+//  built-in speaker play (long-form audio would want Bluetooth and can't
+//  record), and allows a Bluetooth headset connected to the Watch, so
+//  AirPods carry the call as they do a phone call (issue 1204).
 //
 
 import AVFAudio
@@ -101,7 +103,7 @@ final class WatchAudio {
         startStep = "session"
         if options.activatesSession {
             do {
-                try session.setCategory(.playAndRecord, mode: options.voiceChatMode ? .voiceChat : .default, policy: .default, options: [])
+                try session.setWatchCallCategory(mode: options.voiceChatMode ? .voiceChat : .default)
                 try session.setActive(true)
             } catch {
                 logStartFailure(error)
@@ -405,6 +407,27 @@ final class WatchAudio {
                 }
             },
         ]
+    }
+}
+
+extension AVAudioSession {
+    /// Every Watch call's session (its own, direct or over the bridge, and
+    /// a call from Hermes answered here): play and record with the default
+    /// route policy, so the built-in speaker and microphone work, plus
+    /// Bluetooth hands-free, so a headset connected to the Watch (AirPods)
+    /// takes the call when it's on, as with a phone call. Without that
+    /// option watchOS kept a call on the Watch's speaker with AirPods in
+    /// (issue 1204). watchOS 10 has no such option, and its calls don't
+    /// start anyway.
+    func setWatchCallCategory(mode: AVAudioSession.Mode = .default) throws {
+        try setCategory(.playAndRecord, mode: mode, policy: .default, options: Self.watchCallCategoryOptions)
+    }
+
+    static var watchCallCategoryOptions: AVAudioSession.CategoryOptions {
+        if #available(watchOS 11.0, *) {
+            return [.allowBluetoothHFP]
+        }
+        return []
     }
 }
 

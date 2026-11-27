@@ -1182,12 +1182,13 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     /// Play and record with the default route policy, so the built-in
-    /// speaker plays, activated asynchronously (option E).
+    /// speaker plays, or a headset connected to the Watch
+    /// (setWatchCallCategory), activated asynchronously (option E).
     private func activateAudioSession() async -> Bool {
         let session = AVAudioSession.sharedInstance()
         let startedAt = now
         do {
-            try session.setCategory(.playAndRecord, mode: .default, policy: .default, options: [])
+            try session.setWatchCallCategory()
             let activated = try await session.activate(options: [])
             note("bridgeAudioSession", [
                 "activated": activated,

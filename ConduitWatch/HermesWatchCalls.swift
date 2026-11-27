@@ -292,7 +292,7 @@ final class HermesWatchCalls: NSObject {
         // CallKit activates the audio session as it's set up here: the
         // Watch call's own setup, so its start changes nothing.
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, policy: .default, options: [])
+            try AVAudioSession.sharedInstance().setWatchCallCategory()
         } catch {
             WatchCallLog.shared.note("hermesCallSessionFailed", ["error": error.localizedDescription])
         }
