@@ -218,6 +218,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WorkspaceFolderView.revealedFolder("C:\\dev\\app\\"), "C:\\dev\\app")
         XCTAssertEqual(WorkspaceFolderView.revealedFolder("/"), "/")
         XCTAssertNil(WorkspaceFolderView.revealedFolder("/Users/r/project/a.md"))
+        // A POSIX name ending in a backslash is a name, not a folder (issue 2303).
+        XCTAssertNil(WorkspaceFolderView.revealedFolder("/srv/reports\\"))
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("/srv/reports\\/"), "/srv/reports\\")
+        answer = ["ok": true, "path": "/srv/reports\\", "via": "folder", "isDirectory": true]
+        let named = try await client.resolve(path: "reports\\/", sessionIDs: ["live-1"])
+        XCTAssertEqual(named, "/srv/reports\\/")
     }
 
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {

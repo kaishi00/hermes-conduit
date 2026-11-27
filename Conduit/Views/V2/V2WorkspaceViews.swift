@@ -1035,9 +1035,13 @@ struct WorkspaceFolderView: View {
     /// A revealed path that names a folder, without its trailing
     /// separator; nil for a file.
     static func revealedFolder(_ path: String) -> String? {
-        guard path.hasSuffix("/") || path.hasSuffix("\\") else { return nil }
+        // A POSIX name may end in a backslash (issue 2303): there only a
+        // slash marks a folder.
+        let posix = path.hasPrefix("/") || path.hasPrefix("~")
+        let ends = { (text: String) in text.hasSuffix("/") || (!posix && text.hasSuffix("\\")) }
+        guard ends(path) else { return nil }
         var folder = path
-        while folder.count > 1, folder.hasSuffix("/") || folder.hasSuffix("\\"),
+        while folder.count > 1, ends(folder),
               folder.range(of: #"^[A-Za-z]:[\\/]$"#, options: .regularExpression) == nil {
             folder.removeLast()
         }
@@ -1054,6 +1058,8 @@ struct WorkspaceFolderView: View {
            AppState.normalizedWorkspacePath(folder) != AppState.normalizedWorkspacePath(holder.path) {
             if root?.path != holder.path { rootPath = holder.path }
             await explorer.open(root: holder.path, profile: profile)
+            // Another profile opened meanwhile: this folder isn't its.
+            guard !Task.isCancelled, appState.workspaceProfile(far: far) == profile else { return }
             var entry = await explorer.reveal(folder)
             guard !Task.isCancelled else { return }
             entry.isDirectory = true

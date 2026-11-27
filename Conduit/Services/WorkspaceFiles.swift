@@ -177,8 +177,10 @@ final class WorkspaceFilesClient {
         let found = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !found.isEmpty else { return nil }
         // A folder ends in its separator, so the Folder opens it as one.
-        if response["isDirectory"] as? Bool == true, !found.hasSuffix("/"), !found.hasSuffix("\\") {
-            let windows = found.range(of: #"^[A-Za-z]:\\"#, options: .regularExpression) != nil
+        // A POSIX name may end in a backslash (issue 2303): only a Windows
+        // path's backslash is a separator.
+        let windows = found.range(of: #"^[A-Za-z]:\\"#, options: .regularExpression) != nil
+        if response["isDirectory"] as? Bool == true, !found.hasSuffix("/"), !(windows && found.hasSuffix("\\")) {
             return found + (windows ? "\\" : "/")
         }
         return found
