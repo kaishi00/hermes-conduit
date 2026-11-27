@@ -2219,29 +2219,6 @@ struct UserAttachmentPreviews: View {
     }
 }
 
-/// A long press on a picture from older history shows what Hermes' vision
-/// saw in it (#887), which Hermes used to save in the message itself.
-private struct ImageDescriptionMenu: ViewModifier {
-    let description: String?
-
-    func body(content: Content) -> some View {
-        if let description {
-            content.contextMenu {
-                Section("Description") {
-                    Text(description)
-                }
-                Button {
-                    UIPasteboard.general.string = description
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-            }
-        } else {
-            content
-        }
-    }
-}
-
 /// Offers its content no more width than the content would take
 /// unbounded: a view that fills whatever it's offered, as Markdown text
 /// does, takes only its natural width when that is narrower.
@@ -2368,12 +2345,12 @@ struct UserImageAttachmentPreview: View {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 placeholder
-                    .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                    .modifier(PictureMenu(description: attachment.imageDescription))
                     .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else if localFileURL != nil && !localPreviewFailed {
                 // Local file decoding off-main on a cache miss.
                 placeholder
-                    .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                    .modifier(PictureMenu(description: attachment.imageDescription))
                     .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else {
                 let failed = gatewayLoadFailed || localPreviewFailed
@@ -2393,7 +2370,7 @@ struct UserImageAttachmentPreview: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(chipFill, in: Capsule())
-                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(PictureMenu(description: attachment.imageDescription))
                 .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             }
         }
@@ -2576,7 +2553,7 @@ struct UserImageAttachmentPreview: View {
         if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
             PictureTileImage(image: image, onAccent: onAccent)
                 .opensMediaPreview { openPreview(showing: image) }
-                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(PictureMenu(copy: { copyPicture(showing: image) }, description: attachment.imageDescription))
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
                 .accessibilityAddTraits(.isImage)
         } else {
@@ -2595,7 +2572,7 @@ struct UserImageAttachmentPreview: View {
                         : failed ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("Image attached", table: .chat)
                 )
                 .opensMediaPreview { openPreview(showing: nil) }
-                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(PictureMenu(description: attachment.imageDescription))
                 .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
         }
     }
@@ -2611,7 +2588,7 @@ struct UserImageAttachmentPreview: View {
                         .strokeBorder(onAccent ? Color.white.opacity(0.22) : Color.primary.opacity(0.08), lineWidth: 1)
                 }
                 .opensMediaPreview { openPreview(showing: image) }
-                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(PictureMenu(copy: { copyPicture(showing: image) }, description: attachment.imageDescription))
                 .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
                 .accessibilityAddTraits(.isImage)
     }
@@ -2624,6 +2601,11 @@ struct UserImageAttachmentPreview: View {
     private func openPreview(showing image: UIImage?) {
         guard let item = ImageGalleryItem.attachment(attachment, resolver: gatewayResolver) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
+    }
+
+    /// Copies the original from its long-press menu, else the row's copy.
+    private func copyPicture(showing image: UIImage) {
+        PictureClipboard.copy(ImageGalleryItem.attachment(attachment, resolver: gatewayResolver), shown: image)
     }
 
     private func previewHeight(for size: CGSize) -> CGFloat {

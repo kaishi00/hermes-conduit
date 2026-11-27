@@ -2753,6 +2753,7 @@ private struct RemoteMarkdownImage: View {
             case .image(let image):
                 Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: Self.maxHeight).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     .opensMediaPreview { openImage(showing: image) }
+                    .modifier(PictureMenu(copy: { copyImage(showing: image) }))
                     .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
             case .unavailable:
                 WebFallbackImage(url: url, alt: alt)
@@ -2887,6 +2888,7 @@ private struct RemoteMarkdownImage: View {
         if let image {
             PictureTileImage(image: image)
                 .opensMediaPreview { openImage(showing: image) }
+                .modifier(PictureMenu(copy: { copyImage(showing: image) }))
                 .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
                 .accessibilityAddTraits(.isImage)
         } else {
@@ -2950,6 +2952,7 @@ private struct RemoteMarkdownImage: View {
                 .frame(maxHeight: Self.maxHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .opensMediaPreview { openImage(showing: gatewayImage) }
+                .modifier(PictureMenu(copy: { copyImage(showing: gatewayImage) }))
                 .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
         } else if gatewayLoadFailed {
             Label(alt.isEmpty ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("\(alt) unavailable", table: .chat), systemImage: "photo.badge.exclamationmark")
@@ -3007,6 +3010,15 @@ private struct RemoteMarkdownImage: View {
                                                         dataURL: gatewayMediaDataURL)
             ?? (opensViewerWhenUnavailable ? imageGallery?.items().first : nil) else { return }
         ImageGallery.open(item, in: imageGallery, placeholder: image)
+    }
+
+    /// Copies the original from the picture's long-press menu, fetched as
+    /// the viewer fetches it, else the row's copy.
+    private func copyImage(showing image: UIImage) {
+        PictureClipboard.copy(
+            ImageGalleryItem.markdownImage(url: url, alt: alt, resolver: gatewayMediaFiles, dataURL: gatewayMediaDataURL),
+            shown: image
+        )
     }
 }
 
