@@ -475,6 +475,81 @@ final class NativeOAuthTests: XCTestCase {
         XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), replacement)
     }
 
+    /// A session invalidated while its refresh is out (a reconnect, a
+    /// dashboard switch) still keeps the grant the server rotated: the
+    /// Keychain's copy was spent by that refresh (#3427).
+    @MainActor
+    func testARefreshOutWhenItsSessionIsInvalidatedStillSavesTheRotatedGrant() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        let refreshSent = expectation(description: "refresh sent")
+        let release = DispatchSemaphore(value: 0)
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshSent.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/status":
+                return (401, ["detail": "expired"])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+        let request = Task { @MainActor in try? await session.requestJSON(path: "/api/status") }
+
+        await fulfillment(of: [refreshSent], timeout: 5)
+        session.invalidate()
+        release.signal()
+        _ = await request.value
+
+        for _ in 0..<200 where KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.refreshToken != "new-refresh" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.refreshToken, "new-refresh")
+    }
+
+    /// A sign-out or a new sign-in meanwhile wins over the late grant.
+    @MainActor
+    func testALateRefreshNeverWritesOverAGrantThatMovedOn() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        let refreshSent = expectation(description: "refresh sent")
+        let release = DispatchSemaphore(value: 0)
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshSent.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/status":
+                return (401, ["detail": "expired"])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+        let request = Task { @MainActor in try? await session.requestJSON(path: "/api/status") }
+
+        await fulfillment(of: [refreshSent], timeout: 5)
+        session.invalidate()
+        KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+        release.signal()
+        _ = await request.value
+        try await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID))
+    }
+
     @MainActor
     func testBearerResponseStopsAtConfiguredByteLimitWithoutContentLength() async {
         NativeOAuthURLProtocolStub.handler = { _ in

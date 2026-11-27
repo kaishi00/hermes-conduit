@@ -1374,14 +1374,18 @@ extension AppState {
     }
 
     /// Whether `thread` is the chat on screen now, by any of the shown
-    /// chat's ids but `excluding`.
-    func isOpenChat(_ thread: VoiceThreadTarget, excluding: Set<String> = []) -> Bool {
+    /// chat's ids.
+    func isOpenChat(_ thread: VoiceThreadTarget) -> Bool {
         // A call's chat on another dashboard is never the one on screen,
         // whatever its id (two Hermes can name chats alike).
         guard callDashboardOffScreen == nil, let sessionID = activeSessionId else { return false }
         // Reopened, the chat runs under a new runtime id; its durable id
-        // still names it.
-        let ids = knownSessionIDs(for: sessionID).union(chatOwnSessionIDs(for: sessionID)).subtracting(excluding)
+        // still names it. Never by an id the identity index rebound to
+        // another chat, though a catalog row may still list it here: a
+        // call's request named by it is that chat's, for the wait, the busy
+        // check and the turn alike (#3350, #3401).
+        let ids = knownSessionIDs(for: sessionID).union(chatOwnSessionIDs(for: sessionID))
+            .subtracting(reconciliation?.movedOnSessionIDs ?? [])
         return ids.contains { thread.owns(sessionID: $0) }
     }
 

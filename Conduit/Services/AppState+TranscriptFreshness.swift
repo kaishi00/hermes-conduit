@@ -639,9 +639,27 @@ extension AppState {
         profile: String
     ) {
         var knownIDs = Set(messages.map { $0.id })
-        var merged = messages
-        merged.reserveCapacity(merged.count + newRows.count)
-        for row in newRows where knownIDs.insert(row.id).inserted {
+        var fresh = newRows.filter { knownIDs.insert($0.id).inserted }
+        // A tool call shown on the last read whose result row came on this
+        // one folds into its card by tool-call id, as a backfill boundary
+        // does, instead of becoming a second card for the same run (#3425).
+        let boundary = PersistedTranscriptWindow.reconcilingToolCallsAcrossBoundary(olderPage: messages, held: fresh)
+        var merged = boundary.olderPage
+        fresh.removeFirst(boundary.foldedFromHeld)
+        // A call card shown unanswered whose result the page now holds
+        // (normalized into the same card, by the same id, so never a new
+        // row) takes that result.
+        var answered: [String: ToolActivity] = [:]
+        for row in transcript.messages where row.role == .tool {
+            if let tool = row.tool, !(tool.output?.isEmpty ?? true) { answered[row.id] = tool }
+        }
+        for index in merged.indices where merged[index].role == .tool {
+            guard let shown = merged[index].tool, shown.output?.isEmpty ?? true,
+                  let tool = answered[merged[index].id] else { continue }
+            merged[index].tool = tool
+        }
+        merged.reserveCapacity(merged.count + fresh.count)
+        for row in fresh {
             // The persisted twin of a steer Conduit already confirmed
             // locally takes the local row's place instead of repeating it.
             if row.isSteer,

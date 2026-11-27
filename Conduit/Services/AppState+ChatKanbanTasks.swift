@@ -40,9 +40,11 @@ extension AppState {
     /// dashboard's boards.
     var canOpenChatKanbanTask: Bool { chatOnScreenIsInScope }
 
-    func openChatKanbanTask(taskID: String) {
+    /// `board`: the board the chat's task is on, looked at first, since one
+    /// task id can be on two boards (#3380).
+    func openChatKanbanTask(taskID: String, board: String? = nil) {
         guard canOpenChatKanbanTask else { return }
-        kanbanTaskOpenRequest = KanbanTaskOpenRequest(taskID: taskID, dashboardID: activeDashboardID)
+        kanbanTaskOpenRequest = KanbanTaskOpenRequest(taskID: taskID, dashboardID: activeDashboardID, board: board)
     }
 
     /// One of the chat's tasks, read on its own board for its screen over

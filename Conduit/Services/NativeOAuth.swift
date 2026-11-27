@@ -478,9 +478,19 @@ final class NativeOAuthSession {
 
     func invalidate() {
         isInvalidated = true
-        refreshTask?.cancel()
-        refreshTask = nil
-        client.invalidate()
+        guard let refreshTask else {
+            client.invalidate()
+            return
+        }
+        // A refresh already sent rotates the grant on the server whether or
+        // not its answer is read: it lands first, so the new grant reaches
+        // the Keychain, then the client closes (#3427).
+        self.refreshTask = nil
+        let client = client
+        Task { @MainActor in
+            _ = try? await refreshTask.value
+            client.invalidate()
+        }
     }
 
     func requestJSON(
@@ -674,7 +684,22 @@ final class NativeOAuthSession {
             defer { signposter.endInterval("OAuth refresh", refreshing) }
             do {
                 let refreshed = try await self.client.refresh(current)
-                guard !self.isInvalidated else { throw CancellationError() }
+                guard !self.isInvalidated else {
+                    // The server retired the grant this refresh spent, so
+                    // the Keychain keeps the new one, unless it moved on
+                    // meanwhile (a sign-out, a new sign-in, another
+                    // session's renewal), which wins (#3427). A copy an
+                    // earlier failed save left behind (`unsavedOver`) is
+                    // behind, not moved on: it's written over.
+                    let stored = KeychainHelper.loadNativeOAuthTokens(dashboardID: self.dashboardID)
+                    if let stored, stored == current || stored == self.unsavedOver,
+                       KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID) {
+                        NotificationCenter.default.post(
+                            name: .nativeOAuthTokensRotated, object: nil, userInfo: ["dashboardID": self.dashboardID]
+                        )
+                    }
+                    throw CancellationError()
+                }
                 // The server rotated the grant: the new tokens are the only
                 // live ones whether or not they reach the Keychain.
                 self.tokens = refreshed

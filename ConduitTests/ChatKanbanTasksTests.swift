@@ -21,6 +21,18 @@ final class ChatKanbanTasksTests: XCTestCase {
         XCTAssertFalse(ChatKanbanTasks(response: ["tasks": []]).supported)
     }
 
+    /// Open in Tasks looks on the chat's task's own board first: one task
+    /// id can be on two boards (#3380).
+    func testOpenInTasksLooksOnTheTasksOwnBoardFirst() {
+        XCTAssertEqual(KanbanStore.findOrder(named: "ops", loaded: "default", boards: ["default", "ops", "home"]),
+                       ["ops", "default", "home"])
+        XCTAssertEqual(KanbanStore.findOrder(named: nil, loaded: "home", boards: ["default", "ops", "home"]),
+                       ["home", "default", "ops"])
+        XCTAssertEqual(KanbanStore.findOrder(named: "default", loaded: "default", boards: ["default", "ops"]),
+                       ["default", "ops"])
+        XCTAssertEqual(KanbanTaskOpenRequest(taskID: "t1", dashboardID: nil, board: "ops").board, "ops")
+    }
+
     func testTheRouteNamesTheChat() {
         XCTAssertEqual(ChatKanbanTasks.route(sessionID: "s 1"), "/api/plugins/conduit_push/sessions/kanban-tasks?session_id=s%201")
     }

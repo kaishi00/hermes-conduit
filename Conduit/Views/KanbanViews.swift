@@ -533,7 +533,7 @@ struct KanbanView: View {
                     && shell.isTabActive
             }
             do {
-                let found = try await store.findTask(id: request.taskID)
+                let found = try await store.findTask(id: request.taskID, onBoard: request.board)
                 guard current() else { return }
                 guard let found else {
                     store.showMutationError(KanbanServiceError.invalidResponse(

@@ -3716,6 +3716,19 @@ enum MarkdownParser {
                 index += 1
                 continue
             }
+            // A page the reply wrote is raw content as well: the walker draws
+            // the span `ReplyHTML.page(in:at:)` gives whole, in the page card,
+            // so its lines stay as written here too, a definition-looking line
+            // (`[docs]: https://…`, a `[data-x]:hover{…}` CSS rule) included
+            // (#3398). The same span both passes read, so they agree.
+            if ReplyHTML.startsPage(in: lines, at: index) {
+                let end = ReplyHTML.page(in: lines, at: index).end
+                while index < end {
+                    visibleLines.append(lines[index])
+                    index += 1
+                }
+                continue
+            }
             if isDefinitionIndent(line), let definition = referenceDefinition(trimmed),
                let span = consumedDefinitionSpan(definition, following: lines, at: index) {
                 definitions.append(span.markdown)

@@ -63,9 +63,9 @@ struct ChatKanbanTasksDock: View {
             } while !Task.isCancelled
         }
         .sheet(isPresented: $showsSheet) {
-            ChatKanbanTasksSheet(appState: appState, tasks: tasks, canOpenInTasks: appState.canOpenChatKanbanTask) { taskID in
+            ChatKanbanTasksSheet(appState: appState, tasks: tasks, canOpenInTasks: appState.canOpenChatKanbanTask) { taskID, board in
                 showsSheet = false
-                appState.openChatKanbanTask(taskID: taskID)
+                appState.openChatKanbanTask(taskID: taskID, board: board)
             }
         }
     }
@@ -134,8 +134,9 @@ private struct ChatKanbanTasksSheet: View {
     /// Tasks shows this dashboard's boards: a far chat's tasks open here,
     /// on their own dashboard, but not there.
     let canOpenInTasks: Bool
-    /// The task shown, by its id: a dependency opened from the chat's task too.
-    let openInTasks: (String) -> Void
+    /// The task shown, by its id: a dependency opened from the chat's task
+    /// too, with the board it is on.
+    let openInTasks: (String, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var opened: ChatKanbanTaskSheet?
     @State private var loadingID: String?
@@ -171,7 +172,7 @@ private struct ChatKanbanTasksSheet: View {
         }
         .presentationDetents([.medium, .large])
         .sheet(item: $opened) { sheet in
-            KanbanTaskDetailView(task: sheet.task, openInTasks: canOpenInTasks ? openInTasks : nil)
+            KanbanTaskDetailView(task: sheet.task, openInTasks: canOpenInTasks ? { openInTasks($0, sheet.board) } : nil)
                 .environment(sheet.store)
                 .environmentObject(appState)
                 .presentationDetents([.large])
@@ -190,7 +191,7 @@ private struct ChatKanbanTasksSheet: View {
             do {
                 let found = try await appState.loadChatKanbanTask(task)
                 guard request == asked else { return }
-                opened = ChatKanbanTaskSheet(store: found.store, task: found.task)
+                opened = ChatKanbanTaskSheet(store: found.store, task: found.task, board: task.board)
             } catch is CancellationError {
                 return
             } catch {
@@ -250,4 +251,6 @@ private struct ChatKanbanTaskSheet: Identifiable {
     let id = UUID()
     let store: KanbanStore
     let task: KanbanTask
+    /// The board it was read on: Open in Tasks looks there first (#3380).
+    let board: String
 }

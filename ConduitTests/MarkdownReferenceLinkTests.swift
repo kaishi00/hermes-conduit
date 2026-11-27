@@ -196,6 +196,24 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         XCTAssertTrue(codeSource.contains("[in-code]: https://example.com/not-a-definition"))
     }
 
+    func testParseDocumentLeavesDefinitionsInsideAnHTMLPage() {
+        // #3398: the page card drew the page without the line, and the label took effect for the whole reply.
+        let document = MarkdownParser.parseDocument("<div>\n[docs]: https://example.com/in-page\ntext\n</div>", recognizesGatewayMedia: false)
+        guard case .htmlPage(let html, _) = document.blocks.first else {
+            return XCTFail("Expected a page card, got \(document.blocks)")
+        }
+        XCTAssertTrue(html.contains("[docs]: https://example.com/in-page"))
+        XCTAssertFalse(document.references.containsDefinitions)
+    }
+
+    func testParseDocumentKeepsACSSRuleShapedLikeADefinitionInAPage() {
+        let document = MarkdownParser.parseDocument("<style>\n[data-theme=\"dark\"]:hover{color:red}\n</style>\n\nAfter.", recognizesGatewayMedia: false)
+        guard case .htmlPage(let html, _) = document.blocks.first else {
+            return XCTFail("Expected a page card, got \(document.blocks)")
+        }
+        XCTAssertTrue(html.contains("[data-theme=\"dark\"]:hover{color:red}"))
+    }
+
     func testParseDocumentLeavesDefinitionInsideMathBlocks() {
         let source = """
         Before [x][in-math].

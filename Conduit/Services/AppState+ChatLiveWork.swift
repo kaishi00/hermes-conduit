@@ -80,6 +80,11 @@ extension AppState {
             && !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             holdQueuedSendRow(localUserRow(row.text), admissionID: row.admissionID)
             noteQueuedTurnStarted(sessionID: chatID, admissionID: row.admissionID)
+            // Its unnamed start already came and no held send took it (#3420).
+            if let seen = shownChat.otherAppStartsSeen.firstIndex(of: row.admissionID) {
+                shownChat.otherAppStartsSeen.remove(at: seen)
+                continue
+            }
             shownChat.forwardedSendChats[row.admissionID] = chatID
             shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [row.admissionID]).suffix(8))
         }
@@ -87,9 +92,7 @@ extension AppState {
         // nor running, ran and ended between reads or was withdrawn: the chat's
         // stored rows tell which. Not while a turn runs there: its words drawn in
         // above may not be stored yet, and the turn's end reads the chat anyway.
-        if !work.running, previous?.queued.contains(where: { !waiting.contains($0.admissionID)
-            && !work.startedAdmissions.contains($0.admissionID)
-            && !shownChat.queuedSendOrder.contains($0.admissionID) }) == true {
+        if queuedMessageLeftUnrun(work, previous: previous) {
             settled = true
         }
         // No turn runs there: no unnamed start is still to come.
@@ -98,6 +101,7 @@ extension AppState {
                 shownChat.forwardedSendChats.removeValue(forKey: admissionID)
             }
             shownChat.readStartedAdmissions.removeAll(where: ours)
+            shownChat.otherAppStartsSeen.removeAll()
         }
         let held = authorityQueue.sessionID == chatID
             ? authorityQueue.rows.filter { !waiting.contains($0.admissionID) && shownChat.queuedSendOrder.contains($0.admissionID) }
@@ -107,6 +111,17 @@ extension AppState {
         if (previous?.running == true && !work.running) || settled, !isBusy {
             Task { await refreshActiveSession() }
         }
+    }
+
+    /// A message the last read listed, that nothing here holds, is now
+    /// neither waiting nor running, and no turn runs there: it ran and ended
+    /// between reads or was withdrawn, so the chat is read again (#3415).
+    func queuedMessageLeftUnrun(_ work: ChatLiveWork, previous: ChatLiveWork?) -> Bool {
+        guard !work.running, let previous else { return false }
+        let waiting = Set(work.queued.map(\.admissionID))
+        return previous.queued.contains { !waiting.contains($0.admissionID)
+            && !work.startedAdmissions.contains($0.admissionID)
+            && !shownChat.queuedSendOrder.contains($0.admissionID) }
     }
 
     /// A send `hermes dashboard` handed to the gateway's queue, behind a
@@ -153,8 +168,9 @@ extension AppState {
 
     /// The forwarded send an unnamed `message.start` in `sessionID` begins:
     /// one a read already brought back (its start is its own), else the
-    /// oldest held. Only sends forwarded into that chat: another chat's
-    /// waiting send, or a held row no forward recorded, is never this start.
+    /// oldest held, unless the last read listed another app's message ahead
+    /// of it. Only sends forwarded into that chat: another chat's waiting
+    /// send, or a held row no forward recorded, is never this start.
     func forwardedSendStarting(in sessionID: String?) -> String? {
         guard let sessionID else { return nil }
         // The chat by any of its own ids (a compacted chat's turn may start under
@@ -167,6 +183,19 @@ extension AppState {
             return admissionID
         }
         guard let admissionID = shownChat.queuedSendOrder.first(where: into) else { return nil }
+        // The last read listed a message nothing here holds ahead of it
+        // (another app's): the gateway starts that one first, so this start
+        // is its turn, not this send's. The next read brings its words in
+        // and names this send's start when it comes (#3420).
+        if let queue = authorityQueue.sessionID, known.contains(queue),
+           let mine = authorityQueue.row(admissionID),
+           let ahead = authorityQueue.queued.first(where: { $0.sequence < mine.sequence
+               && !shownChat.queuedSendOrder.contains($0.admissionID)
+               && shownChat.forwardedSendChats[$0.admissionID] == nil
+               && !shownChat.otherAppStartsSeen.contains($0.admissionID) }) {
+            shownChat.otherAppStartsSeen = Array((shownChat.otherAppStartsSeen + [ahead.admissionID]).suffix(8))
+            return nil
+        }
         shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
         shownChat.forwardedSendChats.removeValue(forKey: admissionID)
         return admissionID

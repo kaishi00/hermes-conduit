@@ -1433,7 +1433,10 @@ extension AppState {
     private func sideAgentSessionIsTheChatBeingOpened(_ sessionID: String) -> Bool {
         guard let reconciliation, reconciliation.accepts(sessionID), let activeSessionId else { return false }
         return reconciliation.reboundSessionIDs[sessionID] == activeSessionId
-            || knownSessionIDs(for: activeSessionId).contains(sessionID)
+            // Less an alias another chat owns or carries too: a stale row
+            // listing a handed-off runtime id never holds another chat's
+            // late answer for this open (#3405).
+            || followedSessionIDs(forChatOpenAs: activeSessionId).contains(sessionID)
     }
 
     func appendSlashOutput(

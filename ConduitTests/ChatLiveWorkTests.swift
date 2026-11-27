@@ -162,6 +162,48 @@ final class ChatLiveWorkTests: XCTestCase {
         XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-2")
     }
 
+    func testAStartForAnotherClientsQueuedMessageTakesNoHeldSend() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        let other = QueuedPrompt(admissionID: "adm-1", text: "another app's", status: .queued, sequence: 1)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [other]), previous: nil, for: "api-1")
+        appState.messages = [ChatMessage(id: "local-2", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-2", rowID: "local-2", text: "mine", sessionID: "api-1")
+        XCTAssertEqual(appState.authorityQueue.queued.map(\.admissionID), ["adm-1", "adm-2"])
+        // adm-1's turn starts first: the send behind it isn't claimed.
+        XCTAssertNil(appState.forwardedSendStarting(in: "api-1"))
+        XCTAssertEqual(appState.shownChat.queuedSendOrder, ["adm-2"])
+        XCTAssertEqual(appState.messages.map(\.id), [])
+        // The next read names adm-1 running and adm-2 still waiting: adm-1's
+        // words come in from the queue, adm-2 stays in the dock.
+        let mine = QueuedPrompt(admissionID: "adm-2", text: "mine", status: .queued, sequence: 2)
+        let read = ChatLiveWork(running: true, queued: [mine], startedAdmissions: ["adm-1"])
+        appState.applyChatLiveWork(read, previous: ChatLiveWork(running: true, queued: [other, mine]), for: "api-1")
+        XCTAssertEqual(appState.authorityQueue.queued.map(\.admissionID), ["adm-2"])
+        XCTAssertEqual(appState.shownChat.queuedSendOrder, ["adm-2"])
+        XCTAssertTrue(appState.shownChat.readStartedAdmissions.isEmpty, "adm-1's start already came")
+        // The next unnamed start, with nothing left ahead of it, is adm-2's.
+        XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-2")
+    }
+
+    func testAnUnheldQueuedMessageThatLeftUnrunReadsTheChatAgainOnceNoTurnRuns() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        let other = QueuedPrompt(admissionID: "adm-1", text: "another app's", status: .queued, sequence: 1)
+        let listed = ChatLiveWork(running: true, queued: [other])
+        // Still running there: its words may not be stored yet.
+        XCTAssertFalse(appState.queuedMessageLeftUnrun(ChatLiveWork(running: true), previous: listed))
+        // No turn runs and it's gone: it ran and ended, or was withdrawn.
+        XCTAssertTrue(appState.queuedMessageLeftUnrun(ChatLiveWork(running: false), previous: listed))
+        // Still waiting, or started: not gone.
+        XCTAssertFalse(appState.queuedMessageLeftUnrun(ChatLiveWork(running: false, queued: [other]), previous: listed))
+        XCTAssertFalse(appState.queuedMessageLeftUnrun(ChatLiveWork(running: false, startedAdmissions: ["adm-1"]), previous: listed))
+        XCTAssertFalse(appState.queuedMessageLeftUnrun(ChatLiveWork(running: false), previous: nil))
+        // One the app holds settles through its own row instead.
+        appState.holdQueuedSendRow(ChatMessage(id: "local-1", role: .user, content: "another app's", timestamp: "1"), admissionID: "adm-1")
+        XCTAssertFalse(appState.queuedMessageLeftUnrun(ChatLiveWork(running: false), previous: listed))
+    }
+
     func testAnUnnamedStartInAnotherChatTakesNoneOfThisChatsSends() {
         let appState = makeAppState()
         appState.activeSessionId = "chat-a"

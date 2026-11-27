@@ -339,6 +339,10 @@ final class ChatState {
     /// Forwarded sends a live-work read saw start before their unnamed
     /// `message.start` came: that start is theirs, not the next held one's.
     var readStartedAdmissions: [String] = []
+    /// Another app's queued messages whose unnamed `message.start` came
+    /// while a held send waited behind them (#3420): a read bringing their
+    /// words in later doesn't wait for that start again.
+    var otherAppStartsSeen: [String] = []
     /// The user's sends the authority took as a new turn, by admission id,
     /// with their bubble's id: one Hermes then lists as waiting behind
     /// another client's turn moves to the dock too. Cleared when it starts.
