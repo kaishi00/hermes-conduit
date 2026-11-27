@@ -1642,7 +1642,14 @@ final class SessionPresentationCache {
     /// write. Write queue only.
     private func writeAfterInterval(_ kind: StoreKind, ticket: Int) {
         guard let writeQueue else { return }
-        let due = lastWriteAt[kind].map { $0 + writeInterval } ?? .now()
+        func paced(_ kind: StoreKind) -> DispatchTime { lastWriteAt[kind].map { $0 + writeInterval } ?? .now() }
+        // The pending tools store takes a waiting sessions write with it
+        // (writeLatest), so it waits for that write's turn too.
+        let sessionsWaits = kind == .pendingTools && memoryLock.withLock { () -> Bool in
+            guard let newest = newestWriteTicket[.sessions] else { return false }
+            return (landedWriteTicket[.sessions] ?? -1) < newest
+        }
+        let due = sessionsWaits ? max(paced(kind), paced(.sessions)) : paced(kind)
         guard due > .now() else { return writeLatest(kind, ticket: ticket) }
         writeQueue.asyncAfter(deadline: due) { self.writeLatest(kind, ticket: ticket) }
     }
