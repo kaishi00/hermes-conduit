@@ -10,7 +10,7 @@ final class WorkspaceFilesClient {
     /// `GET /workspace/resolve` (plugin 0.132): where a file a reply names
     /// by its name or a relative path is (issue 1809).
     static let resolveCapability = "workspace-resolve"
-    /// The same lookup finds folders and says so (plugin 0.205.4, desktop
+    /// The same lookup finds folders and says so (plugin 0.205.5, desktop
     /// issue 686): a found folder comes back with its trailing slash.
     static let resolveFoldersCapability = "workspace-resolve-folders"
     /// `POST /workspace/duplicate` with `to` (plugin 0.164.13): Copy, then
