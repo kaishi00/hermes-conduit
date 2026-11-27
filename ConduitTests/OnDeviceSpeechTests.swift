@@ -361,10 +361,13 @@ extension HermesVoiceGatewayTimeoutTests {
         }
         IPhoneVoices.readInstalled = { [] }
         IPhoneVoices.forgetInstalled()
+        let joined = expectation(description: "the second find waits on the first")
+        IPhoneVoices.waiterJoined = { joined.fulfill() }
+        defer { IPhoneVoices.waiterJoined = nil }
         let first = Task { await IPhoneVoices.voice(for: "en-US") }
-        let waiter = Task { await IPhoneVoices.voice(for: "en-US") }
         await fulfillment(of: [started], timeout: 5)
-        for _ in 0..<5 { await Task.yield() }
+        let waiter = Task { await IPhoneVoices.voice(for: "en-US") }
+        await fulfillment(of: [joined], timeout: 5)
         // A voice downloaded while the first find was out.
         IPhoneVoices.forgetInstalled()
         release.signal()

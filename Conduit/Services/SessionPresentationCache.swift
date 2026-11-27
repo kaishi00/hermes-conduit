@@ -700,8 +700,10 @@ final class SessionPresentationCache {
         guard !ids.isEmpty else { return }
         let record = CachedMessage(message)
         var pendingStore = loadPendingTools()
+        var starts: [String: CachedMessage] = [:]
         for id in ids {
             let cacheKey = key(profile: profile, sessionID: id)
+            starts[cacheKey] = record
             var records = pendingStore[cacheKey] ?? []
             if let toolID = stableToolID(record.toolID) {
                 records.removeAll { stableToolID($0.toolID) == toolID }
@@ -709,7 +711,7 @@ final class SessionPresentationCache {
             records.append(record)
             pendingStore[cacheKey] = Array(records.suffix(maxMessagesPerSession))
         }
-        persistPendingTools(pendingStore, atOnce: true)
+        persistPendingTools(pendingStore, starts: starts)
     }
 
     /// A completion event makes the local running projection obsolete. An
@@ -1535,10 +1537,10 @@ final class SessionPresentationCache {
         return decoded
     }
 
-    private func persistPendingTools(_ store: [String: [CachedMessage]], atOnce: Bool = false) {
+    private func persistPendingTools(_ store: [String: [CachedMessage]], starts: [String: CachedMessage]? = nil) {
         guard writeQueue == nil else {
             memoryLock.withLock { memoryPendingTools = store }
-            scheduleWrite(.pendingTools, atOnce: atOnce)
+            scheduleWrite(.pendingTools, starts: starts)
             return
         }
         memoryLock.lock()
@@ -1584,10 +1586,10 @@ final class SessionPresentationCache {
     }
 
     /// Queues a write of `kind`'s current memory copy (asynchronous mode
-    /// only) and returns its ticket. `atOnce`: a running tool's start, which
-    /// doesn't wait out the interval (`writePendingToolStart`).
+    /// only) and returns its ticket. `starts`: a running tool's start, by
+    /// cache key, which doesn't wait out the interval (`writePendingToolStart`).
     @discardableResult
-    private func scheduleWrite(_ kind: StoreKind, atOnce: Bool = false) -> Int {
+    private func scheduleWrite(_ kind: StoreKind, starts: [String: CachedMessage]? = nil) -> Int {
         guard let writeQueue else { return 0 }
         let ticket = memoryLock.withLock { () -> Int in
             writeTicket += 1
@@ -1595,8 +1597,8 @@ final class SessionPresentationCache {
             return writeTicket
         }
         writeQueue.async {
-            if atOnce, kind == .pendingTools {
-                self.writePendingToolStart(ticket: ticket)
+            if let starts, kind == .pendingTools {
+                self.writePendingToolStart(ticket: ticket, starts: starts)
             } else {
                 self.writeAfterInterval(kind, ticket: ticket)
             }
@@ -1611,26 +1613,43 @@ final class SessionPresentationCache {
     /// disk holds, never dropping a record, and the exact memory copy
     /// follows with the sessions write. The megabyte sessions store keeps
     /// its pacing. Write queue only.
-    private func writePendingToolStart(ticket: Int) {
-        let sessionsWaits = memoryLock.withLock { () -> Bool in
-            guard let newest = newestWriteTicket[.sessions] else { return false }
-            return (landedWriteTicket[.sessions] ?? -1) < newest
+    ///
+    /// A save that folded the start in before this ran has superseded its
+    /// ticket; the start still goes out while either store holds it
+    /// running, and the save's own write follows paced.
+    private func writePendingToolStart(ticket: Int, starts: [String: CachedMessage]) {
+        let (sessionsWaits, superseded) = memoryLock.withLock { () -> (Bool, Bool) in
+            let waits = newestWriteTicket[.sessions].map { (landedWriteTicket[.sessions] ?? -1) < $0 } ?? false
+            return (waits, newestWriteTicket[.pendingTools] != ticket)
         }
-        guard writeInterval > 0, sessionsWaits else { return writeLatest(.pendingTools, ticket: ticket) }
-        guard let snapshot = memoryLock.withLock({ newestWriteTicket[.pendingTools] == ticket ? memoryPendingTools : nil }) else { return }
-        var merged = snapshot
+        guard writeInterval > 0, sessionsWaits || superseded else { return writeLatest(.pendingTools, ticket: ticket) }
+        guard var merged = memoryLock.withLock({ () -> [String: [CachedMessage]]? in
+            guard var store = memoryPendingTools else { return nil }
+            for (key, record) in starts where !(store[key]?.contains { $0.id == record.id } ?? false) {
+                guard memoryStore?[key]?.messages.contains(where: { $0.id == record.id && $0.toolStatus == .running }) == true else { continue }
+                store[key, default: []].append(record)
+            }
+            return store
+        }) else { return }
         let onDisk = storage.data(forKey: pendingToolsStorageKey)
             .flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
         for (key, records) in onDisk {
             var kept = merged[key] ?? []
             let ids = Set(kept.map(\.id))
-            kept.insert(contentsOf: records.filter { !ids.contains($0.id) }, at: 0)
+            let toolIDs = Set(kept.compactMap { stableToolID($0.toolID) })
+            // A record memory replaced (the same call re-issued) stays gone.
+            kept.insert(contentsOf: records.filter { record in
+                !ids.contains(record.id) && !(stableToolID(record.toolID).map(toolIDs.contains) ?? false)
+            }, at: 0)
             merged[key] = Array(kept.suffix(maxMessagesPerSession))
         }
         if !merged.isEmpty, let data = try? Self.encodePendingTools(merged),
            storage.storeData(data, forKey: pendingToolsStorageKey) {
             lastWrittenDigest[.pendingTools] = SHA256.hash(data: data)
+            lastWriteAt[.pendingTools] = .now()
         }
+        // A newer ticket's own write follows.
+        guard !superseded else { return }
         // Not landed: the exact copy goes when the sessions write does.
         let paced = { (kind: StoreKind) in self.lastWriteAt[kind].map { $0 + self.writeInterval } ?? .now() }
         writeQueue?.asyncAfter(deadline: max(paced(.pendingTools), paced(.sessions))) {
