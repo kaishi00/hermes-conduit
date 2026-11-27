@@ -57,6 +57,12 @@ enum AttachmentSizeLimit {
         return AppLocalization.string("These files are larger than the \(limit) MB attachment limit: \(list). You can raise the limit in Settings › Chat.", table: .chat)
     }
 
+    /// A recorded voice message over the limit: its size and where to raise it.
+    static func voiceTooLargeMessage(megabytes: Int) -> String {
+        let limit = String(clampedMegabytes(megabytes))
+        return AppLocalization.string("This voice message is larger than the \(limit) MB attachment limit. You can raise the limit in Settings › Chat.", table: .chat)
+    }
+
     static func fileSize(at url: URL) -> Int64? {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         if let size = values?.fileSize { return Int64(size) }
@@ -126,9 +132,35 @@ enum AttachmentTypePolicy {
         return "\(numbered).\(preferredExtension)"
     }
 
+    /// A picture's name with an extension that says what its bytes are.
+    /// Hermes stages a picture under its name's extension, so a page title
+    /// like "Event 8.30", a screenshot's dotted time, or "flyer.jpg" holding
+    /// a PNG reached the model as an unknown format and never drew in the
+    /// sent message (issue 3331). A wrong picture extension is replaced; any
+    /// other ending ("30", "com") stays part of the name, and the type's
+    /// extension is added. Only pictures: they are the files Hermes types
+    /// by their name.
+    static func pictureFilename(_ name: String, type: UTType?) -> String {
+        guard let type, type.conforms(to: .image), let preferred = type.preferredFilenameExtension else { return name }
+        let ext = (name as NSString).pathExtension.lowercased()
+        if !ext.isEmpty, UTType(filenameExtension: ext)?.conforms(to: type) == true { return name }
+        return pictureFilename(name, withExtension: preferred)
+    }
+
+    /// `name` with the picture extension `ext`: a picture extension it has
+    /// is replaced, any other ending ("30", "com") stays part of the name,
+    /// and trailing dots go (issue 3331).
+    static func pictureFilename(_ name: String, withExtension ext: String) -> String {
+        var trimmed = Substring(name)
+        while trimmed.last == "." { trimmed.removeLast() }
+        let current = (String(trimmed) as NSString).pathExtension.lowercased()
+        let isPicture = !current.isEmpty && UTType(filenameExtension: current)?.conforms(to: .image) == true
+        let stem = isPicture ? (String(trimmed) as NSString).deletingPathExtension : String(trimmed)
+        return "\(stem.isEmpty ? "photo" : stem).\(ext)"
+    }
+
     static func jpegFilename(for name: String) -> String {
-        let stem = (name as NSString).deletingPathExtension
-        return "\(stem.isEmpty ? "photo" : stem).jpg"
+        pictureFilename(name, withExtension: "jpg")
     }
 
     /// Short label under the name in the composer strip, e.g. "MP4 · 21 MB".
@@ -230,8 +262,9 @@ enum AttachmentStaging {
     }
 
     /// The composer's rules for a file already copied into the staging
-    /// folder: the size limit, checked before anything is decoded, and a
-    /// JPEG re-encode for image formats providers can't read.
+    /// folder: the size limit, checked before anything is decoded, a JPEG
+    /// re-encode for image formats providers can't read, a picture's name
+    /// typed by its bytes, and a "picture" nothing can read sent as a file.
     static func finishStaging(fileAt url: URL, name: String, type: UTType?, limitMegabytes: Int) -> StagedImport {
         var url = url
         var name = name
@@ -245,7 +278,7 @@ enum AttachmentStaging {
         }
         // The bytes decide, not the extension: a HEIC named .png still
         // gets re-encoded. Only formats ImageIO reads are re-encoded; an
-        // SVG keeps attaching as before.
+        // SVG goes as a file (below).
         var sniffed: UTType?
         if type == nil || type?.conforms(to: .image) == true {
             sniffed = imageType(at: url)
@@ -263,6 +296,23 @@ enum AttachmentStaging {
             name = jpegName
             type = .jpeg
         }
+        var kind = AttachmentTypePolicy.kind(for: type)
+        if kind == .image, sniffed == nil {
+            // A picture no format reader takes (an SVG, bytes that aren't a
+            // picture at all) goes as a file: sent as an image, a provider
+            // refuses the whole message (issue 3331).
+            kind = .document
+        } else if kind == .image {
+            let typedName = AttachmentTypePolicy.pictureFilename(name, type: type)
+            if typedName != name {
+                name = typedName
+                // The staged copy's path says its type too.
+                if let renamed = try? destination(for: typedName),
+                   (try? FileManager.default.moveItem(at: url, to: renamed)) != nil {
+                    url = renamed
+                }
+            }
+        }
         let size = AttachmentSizeLimit.fileSize(at: url)
         if size == 0 {
             try? FileManager.default.removeItem(at: url)
@@ -277,7 +327,7 @@ enum AttachmentStaging {
             name: name,
             uri: url.absoluteString,
             mimeType: AttachmentTypePolicy.mimeType(for: type),
-            kind: AttachmentTypePolicy.kind(for: type)
+            kind: kind
         ))
     }
 

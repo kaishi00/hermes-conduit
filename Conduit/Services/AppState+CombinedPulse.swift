@@ -236,6 +236,10 @@ extension AppState {
         if hasChat {
             let reveal = card.messageID.map { ArtifactReveal(messageID: $0, opening: card.chatID) }
             pendingArtifactReveal = reveal
+            // At the tap, kept on purpose though the opens below supersede
+            // too: the notification route's own reaches its supersede only
+            // after awaits, and a widget launch landing meanwhile must not
+            // take the screen (#3265's review).
             widgetLaunchCoordinator.supersede()
             var opened = false
             if let workstreamProfile = runtime.botWork.workstreamProfile(forSession: [card.chatID]) {
@@ -276,8 +280,13 @@ extension AppState {
             }
         }
         // Only into that dashboard's chat: another chat opened meanwhile
-        // gets nothing.
-        guard farChat?.dashboardID == id, activeSessionId != nil else { return .failed(nil) }
+        // gets nothing, the card's own chat checked by its ids (#3265's
+        // review).
+        guard farChat?.dashboardID == id, let shown = activeSessionId else { return .failed(nil) }
+        if hasChat, shown != card.chatID,
+           !act(onRuntime: runtime, { chatOwnSessionIDs(for: shown) }).contains(card.chatID) {
+            return .failed(nil)
+        }
         prefillComposer(words ?? card.actionMessage)
         return .opened(PulseDoItOpened(chat: chat))
     }

@@ -363,6 +363,66 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(BotRosterView.probesGroupsOnShow(shown: true, connected: true, phase: .loading))
     }
 
+    /// The probe a show starts is held (issue 3227, #3259's review): it
+    /// waits for the list to settle, a second show cancels the first, the
+    /// list covered or gone cancels it, and one cancelled reads nothing.
+    @MainActor
+    func testBotsHomesGroupProbeIsOneAtATimeAndReadsNothingOnceCancelled() async {
+        final class Waits {
+            var settles: [CheckedContinuation<Void, Never>] = []
+            var probes = 0
+        }
+        let waits = Waits()
+        let probe = BotsGroupProbe()
+        func show(_ shown: Bool, phase: AppState.GroupChatPhase = .idle) {
+            probe.show(shown, connected: true, phase: phase,
+                       settled: { await withCheckedContinuation { waits.settles.append($0) } },
+                       probe: { waits.probes += 1 })
+        }
+        func settleAll() async {
+            let held = waits.settles
+            waits.settles = []
+            held.forEach { $0.resume() }
+            for _ in 0..<20 { await Task.yield() }
+        }
+        func untilWaiting(_ count: Int) async {
+            for _ in 0..<200 where waits.settles.count < count { await Task.yield() }
+        }
+
+        // Shown: it waits for the list, then reads.
+        show(true)
+        await untilWaiting(1)
+        XCTAssertEqual(waits.probes, 0, "nothing read while the list settles")
+        await settleAll()
+        XCTAssertEqual(waits.probes, 1)
+
+        // Covered while it waits: cancelled, it reads nothing.
+        show(true)
+        await untilWaiting(1)
+        show(false)
+        XCTAssertNil(probe.task, "covered: no probe held")
+        await settleAll()
+        XCTAssertEqual(waits.probes, 1, "a probe cancelled while it waited reads nothing")
+
+        // A second show cancels the first: one read.
+        show(true)
+        await untilWaiting(1)
+        show(true)
+        await untilWaiting(2)
+        await settleAll()
+        XCTAssertEqual(waits.probes, 2, "the second show's probe alone reads")
+
+        // Gone (onDisappear) while it waits.
+        show(true)
+        await untilWaiting(1)
+        probe.cancel()
+        await settleAll()
+        XCTAssertEqual(waits.probes, 2)
+        // Nothing to probe: none held.
+        show(true, phase: .available)
+        XCTAssertNil(probe.task)
+    }
+
     /// Pulse holds AppState's publishes while another tab is up or a chat
     /// is pushed over it (its own disappearance), and draws them once when
     /// it shows again (audit 1722).

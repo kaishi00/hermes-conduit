@@ -315,6 +315,9 @@ extension AppState {
             // screen's (issue 3147).
             if actingOnRuntimeOnScreen {
                 setLocalPin(session, pinned: false, profile: profile)
+                // dropDeletedChatStar above cleared it when the delete knew
+                // its dashboard; this covers one with no dashboard id (a
+                // registry without one), and is a no-op otherwise.
                 setSessionStarred(session, starred: false, profile: profile)
                 updateChatReadState { $0.forget(session, profile: profile) }
             }

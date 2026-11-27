@@ -497,6 +497,24 @@ extension SidebarLayoutTests {
         appState.refreshFarChatMarks(far, profiles: ["default"], force: true)
         try await farHeld.waitForRequests(5)
         XCTAssertEqual(farHeld.sent.suffix(2).map(\.method), ["GET", "GET"])
+        try await farHeld.answer(["done": [["ids": ["chat-1"], "at": 1, "by": "user"]]], toPathEnding: "/chats/done")
+        try await farHeld.answer(["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]],
+                                 toPathEnding: "/muted-chats")
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty && appState.chatMutesReads.isEmpty }, "both read")
+        // The poll's pass inside their interval reads neither; past it, both
+        // again (#3322's review, issue 3324).
+        let readAt = Date()
+        appState.refreshFarChatMarks(far, profiles: ["default"], now: readAt.addingTimeInterval(20))
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(farHeld.sent.count, 5, "a pass inside the interval reads nothing")
+        appState.refreshFarChatMarks(far, profiles: ["default"],
+                                     now: readAt.addingTimeInterval(AppState.farChatMarksReadInterval + 1))
+        try await farHeld.waitForRequests(7)
+        XCTAssertEqual(farHeld.sent.suffix(2).map(\.method), ["GET", "GET"], "past it, both are read again")
+        try await farHeld.answer(["done": [["ids": ["chat-1"], "at": 1, "by": "user"]]], toPathEnding: "/chats/done")
+        try await farHeld.answer(["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]],
+                                 toPathEnding: "/muted-chats")
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty && appState.chatMutesReads.isEmpty }, "read again")
 
         // The filters follow the list's rows: this dashboard's plugin, or a
         // combined one's whose rows it shows.
@@ -508,15 +526,92 @@ extension SidebarLayoutTests {
         XCTAssertTrue(appState.canMarkSessionDone(chat))
 
         // Dropped: its row keeps the marks read last, and offers no change.
-        appState.keptDashboardRuntimes[far] = nil
+        // Through the drop itself, which lets its profiles list go: a row
+        // spelling its profile in another case still finds the marks read
+        // under the list's spelling (#3230's review, issue 3252).
+        var spelled = chat
+        spelled.profile = "Default"
+        appState.dropKeptDashboardRuntime(far)
+        XCTAssertNil(appState.keptDashboardRuntimes[far])
         XCTAssertFalse(appState.canMarkSessionDone(chat))
         XCTAssertFalse(appState.canMuteSession(chat))
         XCTAssertTrue(appState.isSessionDone(chat))
         XCTAssertNotNil(appState.sessionMute(chat))
+        XCTAssertTrue(appState.isSessionDone(spelled), "its Done dim stays whatever case the row spells")
+        XCTAssertNotNil(appState.sessionMute(spelled), "and so does its bell")
         // Out of the group: its marks go.
         appState.dropFarChatMarksOutsideTheGroup()
         XCTAssertTrue(appState.farChatDoneMarks.isEmpty)
         XCTAssertTrue(appState.farChatMutes.isEmpty)
+
+        // Kept again, then its bridge swapped while a mute write is out
+        // (#3230's review, issue 3252): the write's answer isn't the new
+        // connection's, so the mutes are read again through it.
+        let firstHeld = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { firstHeld.shutdown() }
+        let swapHeld = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { swapHeld.shutdown() }
+        let capabilities = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [ChatDoneMarks.capability, ChatMutes.capability]))
+        let keptAgain = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                             bridge: firstHeld.bridge, connection: connection, keptAt: Date())
+        keptAgain.runtime.notifierPlugin = capabilities
+        appState.keptDashboardRuntimes[far] = keptAgain
+        XCTAssertTrue(appState.canMuteSession(chat))
+        appState.setSessionMute(chat, duration: .oneHour)
+        try await firstHeld.waitForRequests(1)
+        XCTAssertEqual(firstHeld.sent.last?.method, "PUT")
+        let swapped = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                           bridge: swapHeld.bridge, connection: connection, keptAt: Date())
+        swapped.runtime.notifierPlugin = capabilities
+        appState.keptDashboardRuntimes[far] = swapped
+        try await firstHeld.answer(["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]])
+        try await swapHeld.waitForRequests(1)
+        XCTAssertEqual(swapHeld.sent.first?.method, "GET", "read again through the connection kept now")
+        try await swapHeld.answer(["chats": [Any]()])
+        try await untilChatDone({ appState.sessionMute(chat) == nil }, "what the host keeps now shows")
+        XCTAssertTrue(held.sent.isEmpty, "nothing went to the dashboard on screen")
+    }
+
+    /// #3230's review (issue 3252): the Done filters follow rows that can
+    /// carry a mark. A combined dashboard kept with Done marks offers them
+    /// while All lists its rows; All off, or its connection let go,
+    /// withholds them when the screen's own plugin has none.
+    @MainActor
+    func testTheDoneFilterFollowsAFarDashboardOnlyWhileAllListsItsRows() async throws {
+        let (appState, held) = try chatDoneAppState()
+        defer { held.shutdown() }
+        let screen = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "http://127.0.0.1:1")
+        let farDashboard = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "http://127.0.0.1:2")
+        var registry = SavedDashboardRegistry(activeDashboardID: screen.id, dashboards: [screen, farDashboard])
+        registry.dashboards = registry.dashboards.map { dashboard in
+            var dashboard = dashboard
+            dashboard.combined = true
+            return dashboard
+        }
+        appState.savedDashboardRegistry = registry
+        XCTAssertTrue(appState.isInCombinedGroup(screen.id))
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: []))
+        XCTAssertFalse(appState.chatDoneAvailable)
+        let farHeld = HeldDashboardRequests(baseURL: "http://127.0.0.1:2")
+        defer { farHeld.shutdown() }
+        let connection = HermesConnection(baseUrl: "http://127.0.0.1:2", ticket: "held")
+        let kept = KeptDashboardRuntime(client: HermesClient(connection: connection, profile: "default"),
+                                        bridge: farHeld.bridge, connection: connection, keptAt: Date())
+        kept.runtime.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [ChatDoneMarks.capability]))
+        appState.keptDashboardRuntimes[farDashboard.id] = kept
+
+        appState.setAllProfilesChatsOn(true)
+        XCTAssertTrue(appState.isAllProfilesChatsOn)
+        XCTAssertTrue(appState.chatDoneFilterAvailable, "All lists its rows, which carry its marks")
+        appState.setAllProfilesChatsOn(false)
+        XCTAssertFalse(appState.chatDoneFilterAvailable, "All off lists none of its rows")
+        appState.setAllProfilesChatsOn(true)
+        XCTAssertTrue(appState.chatDoneFilterAvailable)
+        appState.dropKeptDashboardRuntime(farDashboard.id)
+        XCTAssertFalse(appState.chatDoneFilterAvailable, "no connection kept that keeps Done marks")
     }
 
     /// Another combined dashboard's chat is starred under its own
@@ -568,6 +663,18 @@ extension SidebarLayoutTests {
         XCTAssertFalse(appState.isSessionStarred(chat))
         XCTAssertEqual(SessionStars(defaults: appState.defaults, scope: farScope), SessionStars())
         XCTAssertEqual(appState.sessionStars, SessionStars())
+        // Out of the group (issue 3252): only the copy read for its rows
+        // goes; its stars stay on this phone for when it's back.
+        appState.toggleSessionStarred(chat)
+        XCTAssertNotNil(appState.farSessionStarsByDashboard[far])
+        XCTAssertFalse(appState.isInCombinedGroup(far))
+        appState.dropFarChatMarksOutsideTheGroup()
+        XCTAssertNil(appState.farSessionStarsByDashboard[far], "the copy read for its rows goes")
+        XCTAssertTrue(SessionStars(defaults: appState.defaults, scope: farScope).isStarred(screenChat, profile: "default"),
+                      "its stars stay in its own dashboard's defaults")
+        XCTAssertTrue(appState.isSessionStarred(chat), "read again from them")
+        appState.toggleSessionStarred(chat)
+        XCTAssertFalse(appState.isSessionStarred(chat))
 
         // Its read flag: shown at once, written on its own dashboard.
         XCTAssertFalse(appState.isSessionUnread(chat))
@@ -614,6 +721,11 @@ extension SidebarLayoutTests {
         try await farHeld.waitForRequests(7)
         try await farHeld.answer()
         try await farHeld.waitForRequests(8)
+        // Issue 3252: the second change's requests wait for the first
+        // write's answer, so the two never cross on the way.
+        XCTAssertNotNil(appState.farReadFlagWriteTail[far], "the first write is on its way")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(farHeld.sent.count, 8, "the second change waits for the first's answer")
         try await farHeld.answer()
         try await farHeld.waitForRequests(9)
         XCTAssertFalse(appState.isSessionUnread(chat), "the earlier answer doesn't put its flag back over the later change")

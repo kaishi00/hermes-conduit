@@ -128,6 +128,12 @@ struct SidebarView: View {
                         }
                     }
                     .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
+                    // As V2's top bars: the header row clear of what iOS
+                    // stands in the window's top corners (iPadOS's window
+                    // controls beside the persistent column, a Duo's
+                    // clock). Read inside the column's 14 pt, so only a
+                    // corner reaching past it pads the row.
+                    .cornerClearingHorizontalPadding(0)
 
                     ConduitGlassGroup(spacing: 8) {
                         // Every tab drops to its icon together once the
@@ -220,6 +226,11 @@ struct SessionList: View {
     /// are kept for the profile's lifetime, so a row that returns keeps
     /// its expansion.
     @State private var expandedNestIDs: Set<String> = []
+    /// The list scrolling, the last nest toggle and the list's rebuilds,
+    /// as V2's Chats list keeps them (issue 1583).
+    @State private var listMoving = false
+    @State private var toggleClock = ChatListSectionToggleClock()
+    @State private var listGeneration = 0
     /// The last activation the reveal served and the ancestor path it
     /// revealed (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
@@ -467,6 +478,8 @@ struct SessionList: View {
             .searchable(text: $searchText, prompt: showingProjects ? AppLocalization.string("Search projects and pinned chats", table: .chat) : AppLocalization.string("Search sessions", table: .chat))
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
+            .modifier(V2SectionListRecovery(moving: $listMoving, generation: $listGeneration))
+            .id(listGeneration)
             .refreshable {
                 await appState.refreshSessionCatalog()
             }
@@ -978,7 +991,7 @@ struct SessionList: View {
                     }
                     .tint(.conduitAccent)
 
-                    ReadStateToggleButton(session: session, nest: nest)
+                    ReadStateToggleButton(session: session, nest: nest, inSwipe: true)
                         .tint(.blue)
                 }
             }
@@ -1078,9 +1091,22 @@ struct SessionList: View {
             rowIsListed: nest.rowIsListed,
             hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
-        // The reveal moves rows the same way the expander does.
-        withAnimation(ConduitMotion.response) {
+        // A reveal isn't a tap on the expander: it lands at once (issue 1583).
+        withNestToggle(rows: .max) {
             expandedNestIDs.formUnion(toExpand)
+        }
+    }
+
+    /// A nest's rows slide only on a list at rest, for a short nest, once
+    /// the last slide is over; otherwise they land at once, as V2's Chats
+    /// list sections do (issue 1583).
+    private func withNestToggle(rows: Int, _ change: () -> Void) {
+        if toggleClock.animates(listMoving: listMoving, rows: rows) {
+            withAnimation(ConduitMotion.response, change)
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, change)
         }
     }
 
@@ -1104,7 +1130,8 @@ struct SessionList: View {
     private func nestExpander(node: SessionNesting.Node, isExpanded: Bool) -> some View {
         Button {
             Haptics.light()
-            withAnimation(ConduitMotion.response) {
+            // At most every descendant opens or closes.
+            withNestToggle(rows: node.sessionsInNest.count - 1) {
                 if isExpanded {
                     expandedNestIDs.remove(nestKey(node.session))
                 } else {
@@ -1614,6 +1641,8 @@ struct DoneToggleButton: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
+    /// A row swipe's short label (see `ReadStateToggleButton.inSwipe`).
+    var inSwipe = false
 
     var body: some View {
         let done = appState.isSessionDone(session)
@@ -1622,10 +1651,17 @@ struct DoneToggleButton: View {
             appState.setSessionDone(session, done: !done)
         } label: {
             Label(
-                done ? AppLocalization.string("Mark as Not Done", table: .chat) : AppLocalization.string("Mark as Done", table: .chat),
+                title(done: done),
                 systemImage: done ? "arrow.uturn.backward.circle" : "checkmark.circle"
             )
         }
+    }
+
+    private func title(done: Bool) -> String {
+        if inSwipe {
+            return done ? AppLocalization.string("Mark Not Done", table: .chat) : AppLocalization.string("Mark Done", table: .chat)
+        }
+        return done ? AppLocalization.string("Mark as Not Done", table: .chat) : AppLocalization.string("Mark as Done", table: .chat)
     }
 }
 
@@ -1639,6 +1675,11 @@ struct ReadStateToggleButton: View {
     /// activity, and its "Mark as read" clears the whole nest — non-nil
     /// IS the lit dot. Nil reads the row's own state, as every flat row.
     var nest: NestReadToggle? = nil
+    /// A row swipe's short label (Mark Read, Mark Unread): iOS lays a swipe's
+    /// buttons out at their labels' full width and never wraps or shrinks
+    /// them, so "Mark as …" in Russian or German pushed the last buttons
+    /// off the screen. The touch-and-hold menu keeps the full wording.
+    var inSwipe = false
 
     var body: some View {
         // A nest rides along only with its lit dot: non-nil is the
@@ -1657,7 +1698,7 @@ struct ReadStateToggleButton: View {
             }
         } label: {
             Label(
-                isUnread ? AppLocalization.string("Mark as read", table: .chat) : AppLocalization.string("Mark as unread", table: .chat),
+                title(isUnread: isUnread),
                 systemImage: isUnread ? "envelope.open" : "envelope.badge"
             )
         }
@@ -1668,6 +1709,13 @@ struct ReadStateToggleButton: View {
         } else {
             button
         }
+    }
+
+    private func title(isUnread: Bool) -> String {
+        if inSwipe {
+            return isUnread ? AppLocalization.string("Mark Read", table: .chat) : AppLocalization.string("Mark Unread", table: .chat)
+        }
+        return isUnread ? AppLocalization.string("Mark as read", table: .chat) : AppLocalization.string("Mark as unread", table: .chat)
     }
 }
 

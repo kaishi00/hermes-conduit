@@ -1779,6 +1779,9 @@ struct V2PulsePage: View {
             case .opened(let far):
                 // Its chat is up over the page, which shows the one on
                 // screen's Pulse again: Pulse is told on its own dashboard.
+                // Cleared now, not by the defer after acted: the page shows
+                // the one on screen's Pulse, where a card of the same id
+                // would show this one's step (#3265's review).
                 if actingCard == card.id { actingCard = nil }
                 if tells {
                     do {

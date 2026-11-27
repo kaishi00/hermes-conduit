@@ -48,7 +48,14 @@ extension AppState {
         let owner = session.profile.flatMap { $0.isEmpty ? nil : $0 }
             ?? keptDashboardRuntimes[far]?.runtime.activeProfile
             ?? rememberedActiveProfile(for: far) ?? "default"
-        let profile = keptDashboardProfiles[far]?.profiles.first { Self.profilesMatch($0, owner) } ?? owner
+        // A dashboard that dropped keeps no profiles list: the spellings
+        // its marks were read under stand in, so its rows keep their dim
+        // and bell whatever case its rows spell their profile in (#3230's
+        // review, issue 3252).
+        var spellings = keptDashboardProfiles[far]?.profiles ?? []
+        if let marks = farChatDoneMarks[far] { spellings += marks.marksByProfile.keys }
+        if let mutes = farChatMutes[far] { spellings += mutes.mutesByProfile.keys }
+        let profile = spellings.first { Self.profilesMatch($0, owner) } ?? owner
         return (row, profile)
     }
 

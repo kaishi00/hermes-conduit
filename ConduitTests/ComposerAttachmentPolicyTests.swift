@@ -99,6 +99,105 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertEqual(AttachmentTypePolicy.symbolName(for: video), "film")
     }
 
+    // MARK: - A picture's name says its type (issue 3331)
+
+    func testAPictureNameWithAnotherEndingGetsItsTypesExtension() {
+        // A Safari page title, a screenshot's dotted time, a domain.
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("Event 8.30", type: .png), "Event 8.30.png")
+        XCTAssertEqual(
+            AttachmentTypePolicy.pictureFilename("Screenshot 2026-11-26 at 10.00.37", type: .png),
+            "Screenshot 2026-11-26 at 10.00.37.png"
+        )
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("tickets.example.com", type: .jpeg), "tickets.example.com.jpeg")
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("flyer", type: .webP), "flyer.webp")
+    }
+
+    func testAWrongPictureExtensionIsReplacedAndARightOneKept() {
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("flyer.jpg", type: .png), "flyer.png")
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("IMG_0001.JPG", type: .jpeg), "IMG_0001.JPG")
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("photo.jpeg", type: .jpeg), "photo.jpeg")
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("Report v1.2", type: .pdf), "Report v1.2", "Only pictures")
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("Event 8.30", type: nil), "Event 8.30")
+    }
+
+    func testPictureNamesDropTrailingDotsAndKeepOtherEndingsWhenReencoded() {
+        XCTAssertEqual(AttachmentTypePolicy.pictureFilename("Apple.", type: .png), "Apple.png")
+        // A HEIC or a resized picture keeps the ending a page title had.
+        XCTAssertEqual(AttachmentTypePolicy.jpegFilename(for: "Event 8.30"), "Event 8.30.jpg")
+        XCTAssertEqual(AttachmentTypePolicy.jpegFilename(for: "tickets.example.com"), "tickets.example.com.jpg")
+        XCTAssertEqual(AttachmentTypePolicy.jpegFilename(for: ""), "photo.jpg")
+    }
+
+    func testAResizedPictureKeepsItsNamesOtherEnding() throws {
+        let prepared = try XCTUnwrap(PictureUpload.resized(try pngData(width: 2600, height: 1950), filename: "Event 8.30.png"))
+        XCTAssertEqual(prepared.filename, "Event 8.30.jpg")
+    }
+
+    private func stagedFile(_ data: Data, named name: String) throws -> URL {
+        let url = try AttachmentStaging.destination(for: name)
+        try data.write(to: url)
+        return url
+    }
+
+    func testAStagedPictureNamedWithADottedTitleGoesAsItsType() throws {
+        let png = try pngData(width: 40, height: 30)
+        let outcome = AttachmentStaging.finishStaging(
+            fileAt: try stagedFile(png, named: "Event 8.30"), name: "Event 8.30", type: .png, limitMegabytes: 16
+        )
+        guard case .staged(let attachment) = outcome else { return XCTFail("Expected it staged, got \(outcome)") }
+        let url = try XCTUnwrap(URL(string: attachment.uri))
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(attachment.name, "Event 8.30.png", "Hermes types a picture by its name")
+        XCTAssertEqual(attachment.kind, .image)
+        XCTAssertEqual(attachment.mimeType, "image/png")
+        XCTAssertEqual(url.pathExtension, "png", "The staged copy's path says its type too")
+        XCTAssertEqual(try Data(contentsOf: url), png)
+    }
+
+    func testAStagedPictureWhoseExtensionLiesIsNamedByItsBytes() throws {
+        let png = try pngData(width: 40, height: 30)
+        let outcome = AttachmentStaging.finishStaging(
+            fileAt: try stagedFile(png, named: "flyer.jpg"), name: "flyer.jpg", type: .jpeg, limitMegabytes: 16
+        )
+        guard case .staged(let attachment) = outcome else { return XCTFail("Expected it staged, got \(outcome)") }
+        defer { URL(string: attachment.uri).map { try? FileManager.default.removeItem(at: $0) } }
+        XCTAssertEqual(attachment.name, "flyer.png")
+        XCTAssertEqual(attachment.mimeType, "image/png")
+    }
+
+    func testAPictureNothingCanReadGoesAsAFile() throws {
+        let svg = Data(#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>"#.utf8)
+        let outcome = AttachmentStaging.finishStaging(
+            fileAt: try stagedFile(svg, named: "logo.svg"), name: "logo.svg", type: .svg, limitMegabytes: 16
+        )
+        guard case .staged(let attachment) = outcome else { return XCTFail("Expected it staged, got \(outcome)") }
+        defer { URL(string: attachment.uri).map { try? FileManager.default.removeItem(at: $0) } }
+        XCTAssertEqual(attachment.kind, .document, "A provider refuses a picture it can't read, and the message with it")
+        XCTAssertEqual(attachment.name, "logo.svg")
+        XCTAssertEqual(attachment.mimeType, "image/svg+xml")
+
+        let broken = AttachmentStaging.finishStaging(
+            fileAt: try stagedFile(Data("not a picture".utf8), named: "photo.jpg"), name: "photo.jpg", type: .jpeg, limitMegabytes: 16
+        )
+        guard case .staged(let file) = broken else { return XCTFail("Expected it staged, got \(broken)") }
+        defer { URL(string: file.uri).map { try? FileManager.default.removeItem(at: $0) } }
+        XCTAssertEqual(file.kind, .document)
+    }
+
+    func testAScreenshotNamedWithADottedTimeKeepsItsPNGExtension() throws {
+        // Issue 3351: "Screenshot … at 10.00.37.png" lost its .png.
+        let outcome = AttachmentStaging.stageScreenshot(
+            data: try pngData(width: 40, height: 30),
+            filename: "Screenshot 2026-11-26 at 10.00.37.png",
+            limitMegabytes: 16
+        )
+        guard case .staged(let attachment) = outcome else { return XCTFail("Expected it staged, got \(outcome)") }
+        let url = try XCTUnwrap(URL(string: attachment.uri))
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(attachment.name, "Screenshot 2026-11-26 at 10.00.37.png")
+        XCTAssertEqual(url.pathExtension, "png")
+    }
+
     // MARK: - Size limit
 
     func testDefaultLimitMatchesHermesDesktop() {
@@ -130,6 +229,23 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertTrue(one.contains("16"), one)
         let many = AttachmentSizeLimit.tooLargeMessage(names: ["a.mov", "b.mov"], megabytes: 16)
         XCTAssertTrue(many.contains("a.mov") && many.contains("b.mov"), many)
+    }
+
+    func testVoiceTooLargeMessageNamesTheLimitAndWhereToRaiseIt() {
+        // The words checked are English: pin the app's language for them.
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: AppLanguageStore.defaultsKey)
+        defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                defaults.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+        let message = AttachmentSizeLimit.voiceTooLargeMessage(megabytes: 32)
+        XCTAssertTrue(message.contains("32 MB"), message)
+        XCTAssertTrue(message.contains("Settings › Chat"), message)
     }
 
     func testVideoKindRoundTripsThroughDrafts() throws {

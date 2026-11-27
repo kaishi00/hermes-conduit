@@ -282,6 +282,10 @@ struct TranscriptModel {
         /// The live chat is on its way from Hermes (an open, or a read
         /// back), so a chat with no rows isn't known to be empty yet.
         var chatIsOpening = false
+        /// The live chat's open failed (its error is up) and nothing opens
+        /// it again yet: with no rows, it neither says it's opening nor
+        /// welcomes an empty chat.
+        var chatOpenFailed = false
     }
 
     private(set) var rows: [TranscriptRow] = []
@@ -418,7 +422,10 @@ struct TranscriptModel {
                 // on a slow link it read as an empty chat (issue 3148). A
                 // send waiting in it shows under the line, as under a
                 // saved copy's.
-                if input.chatIsOpening {
+                if input.chatOpenFailed {
+                    // The error under it says what happened; a spinner
+                    // beside it read as an open still going.
+                } else if input.chatIsOpening {
                     add(TranscriptRow(id: TranscriptRow.openingID, kind: .opening))
                 } else if input.pendingSend == nil {
                     add(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty))

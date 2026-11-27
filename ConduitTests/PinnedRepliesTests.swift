@@ -358,6 +358,15 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertFalse(appState.isShowingChat(for: reveal))
         appState.activeSessionId = "chat-1"
         XCTAssertTrue(appState.isShowingChat(for: reveal))
+
+        // Its own chat whose open failed (#3355): the tap opens it again,
+        // so the reveal waits for that open.
+        appState.messages = []
+        appState.shownChat.chatErrorShown = ChatErrorShown(
+            message: "Failed to restore this conversation: session not found", isRestoreFailure: true)
+        XCTAssertTrue(appState.openChatOpenFailed)
+        appState.showPinnedReply(pinned)
+        XCTAssertEqual(appState.pendingPinnedReplyReveal?.opening, pinned.sessionID, "not taken as the chat already open")
     }
 
     /// A reveal made in the open chat that is still waiting when another

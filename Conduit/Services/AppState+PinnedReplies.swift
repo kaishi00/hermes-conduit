@@ -252,7 +252,8 @@ extension AppState {
     /// Opens the pin's chat (unless it's the open one) and scrolls to the
     /// reply.
     func showPinnedReply(_ pin: PinnedReply) {
-        let chatIsOpen = isOpenChatsPin(pin)
+        // A chat whose open failed isn't open: the tap opens it again.
+        let chatIsOpen = isOpenChatsPin(pin) && !openChatOpenFailed
         pendingPinnedReplyReveal = PinnedReplyReveal(pin: pin, opening: chatIsOpen ? nil : pin.sessionID)
         guard !chatIsOpen else { return }
         dismissSidebarDrawer()

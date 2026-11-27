@@ -823,7 +823,8 @@ struct PhonePersonRow: View {
                   systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
-            if #available(iOS 18.0, *) {
+            // The iPad app on a Mac has no limited access picker to open.
+            if #available(iOS 18.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
                 Button("Let Conduit see them", action: allowAccess)
                     .scaledFont(.caption.weight(.semibold))
                     .buttonStyle(.borderless)
@@ -844,16 +845,26 @@ struct PhonePersonRow: View {
 
 /// Limited Contacts access's own picker (iOS 18 and later), where the user
 /// adds people Conduit may see.
+///
+/// The iPad app on a Mac has no limited access, and its ContactsUI lacks the
+/// picker's type: resolving it there aborts the app as Settings draws (ASC
+/// crash logs, builds 277 and 280). So the picker's type lives only behind
+/// `picker(_:)`, behind AnyView, and is never touched on a Mac.
 private struct PhoneContactAccessPicker: ViewModifier {
     @Binding var isPresented: Bool
+    var onMac = ProcessInfo.processInfo.isiOSAppOnMac
     let done: () -> Void
 
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.contactAccessPicker(isPresented: $isPresented) { _ in done() }
-        } else {
-            content
+    func body(content: Content) -> AnyView {
+        if #available(iOS 18.0, *), !onMac {
+            return picker(content)
         }
+        return AnyView(content)
+    }
+
+    @available(iOS 18.0, *)
+    private func picker(_ content: Content) -> AnyView {
+        AnyView(content.contactAccessPicker(isPresented: $isPresented) { _ in done() })
     }
 }
 

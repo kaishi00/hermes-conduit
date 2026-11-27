@@ -381,7 +381,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
 @MainActor
 final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpeechSynthesizerDelegate {
     private let synthesizer = AVSpeechSynthesizer()
-    private var utterance = 0
+    /// The sentence speaking; a buffer for another one is dropped.
+    private(set) var utterance = 0
     private var onDone: (@MainActor () -> Void)?
     private var request: AVSpeechUtterance?
     private var watchdog: Task<Void, Never>?
@@ -415,10 +416,28 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         sentenceAudio = 0
         self.onDone = onDone
         let request = AVSpeechUtterance(string: text)
-        request.voice = voice(for: language)
         self.request = request
-        LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: request.voice))", run: traceRun)
+        // The watchdog runs from here, so a voice iOS's speech service never
+        // hands back ends the sentence as silent audio would.
         armWatchdog(id)
+        let wanted = language ?? AVSpeechSynthesisVoice.currentLanguageCode()
+        Task { @MainActor [weak self] in
+            // Found off the main thread (IPhoneVoices.voice(for:)).
+            let voice = await IPhoneVoices.voice(for: wanted)
+            guard let self, self.utterance == id else { return }
+            if voice == nil { onDeviceSpeechLog.notice("No iPhone voice for \(wanted, privacy: .public)") }
+            request.voice = voice
+            LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: voice))", run: self.traceRun)
+            self.write(request, id: id, number: number, onAudio: onAudio)
+        }
+    }
+
+    private func write(
+        _ request: AVSpeechUtterance,
+        id: Int,
+        number: Int,
+        onAudio: @escaping @MainActor (Data, Double) -> Void
+    ) {
         synthesizer.write(request) { [weak self] buffer in
             // Called off the main thread, in order; the main queue keeps it.
             guard let pcm = buffer as? AVAudioPCMBuffer else { return }
@@ -427,25 +446,38 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
             let isEnd = pcm.frameLength == 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self else { return }
-                    guard self.utterance == id else {
-                        // Audio for a sentence already ended is dropped:
-                        // the trace says so once (issue 1641).
-                        if !data.isEmpty, !self.lateAudioNoted.contains(number) {
-                            self.lateAudioNoted.insert(number)
-                            LiveCallTrace.readAloud.note("Sentence \(number): audio after its end, dropped", run: self.traceRun)
-                        }
-                        return
-                    }
-                    if isEnd {
-                        self.finish(id, how: "end of speech")
-                    } else {
-                        self.lastAudio = .now
-                        if rate > 0 { self.sentenceAudio += Double(data.count / 2) / rate }
-                        if !data.isEmpty { onAudio(data, rate) }
-                    }
+                    self?.received(data, rate: rate, isEnd: isEnd, id: id, number: number, onAudio: onAudio)
                 }
             }
+        }
+    }
+
+    /// One buffer of a sentence, on the main thread: its audio goes to
+    /// onAudio while the sentence is current, the empty one ends it, and a
+    /// buffer for a sentence already ended is dropped.
+    func received(
+        _ data: Data,
+        rate: Double,
+        isEnd: Bool,
+        id: Int,
+        number: Int,
+        onAudio: @MainActor (Data, Double) -> Void
+    ) {
+        guard utterance == id else {
+            // Audio for a sentence already ended is dropped: the trace says
+            // so once (issue 1641).
+            if !data.isEmpty, !lateAudioNoted.contains(number) {
+                lateAudioNoted.insert(number)
+                LiveCallTrace.readAloud.note("Sentence \(number): audio after its end, dropped", run: traceRun)
+            }
+            return
+        }
+        if isEnd {
+            finish(id, how: "end of speech")
+        } else {
+            lastAudio = .now
+            if rate > 0 { sentenceAudio += Double(data.count / 2) / rate }
+            if !data.isEmpty { onAudio(data, rate) }
         }
     }
 
@@ -511,15 +543,6 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         default: "Default"
         }
         return "\(quality) voice \(voice.identifier)"
-    }
-
-    /// The voice picked for `language` in Settings, or else the best one
-    /// installed (IPhoneVoices).
-    private func voice(for language: String?) -> AVSpeechSynthesisVoice? {
-        let wanted = language ?? AVSpeechSynthesisVoice.currentLanguageCode()
-        let chosen = IPhoneVoices.voice(for: wanted)
-        if chosen == nil { onDeviceSpeechLog.notice("No iPhone voice for \(wanted, privacy: .public)") }
-        return chosen
     }
 
     nonisolated static func int16Data(_ buffer: AVAudioPCMBuffer) -> Data {

@@ -317,6 +317,11 @@ extension DashboardTicketBridge {
         if let webKit {
             cookies += webKit
         }
+        // The native jar after WebKit's answer, never before: a silent
+        // re-sign-in landing while WebKit's store was asked is in this
+        // request (issue 3262). The mirror, read first, copies WebKit's own
+        // store, so a cookie the page changed meanwhile comes with WebKit's
+        // answer.
         cookies += await Task.detached(priority: .userInitiated) {
             DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []
         }.value
@@ -354,6 +359,7 @@ extension DashboardTicketBridge {
     /// WebKit's cookie store, or nil when it doesn't answer within
     /// `timeout` (its process may be suspended too).
     private func webKitCookies(timeout: Duration) async -> [HTTPCookie]? {
+        if let webKitCookiesForTesting { return await webKitCookiesForTesting(timeout) }
         let store = webView.configuration.websiteDataStore.httpCookieStore
         let once = DashboardCookieAnswer()
         return await withCheckedContinuation { continuation in

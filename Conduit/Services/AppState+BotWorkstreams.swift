@@ -563,6 +563,19 @@ extension AppState {
 
     /// An action whose request may have reached the plugin though no answer
     /// came back (#3337's review).
+    /// What a Work-panel row says after an action that didn't come back
+    /// done. One that may have gone in (a timeout, a gateway's 504) says
+    /// so before any detail, so the row doesn't urge the retry the call is
+    /// told to hold back (#3337's and #3346's reviews); a refusal shows the
+    /// plugin's own words.
+    nonisolated static func workstreamActRefusal(_ error: Error) -> String {
+        if workstreamActMayHaveLanded(error) {
+            return AppLocalization.string("No answer from this bot's work. Its chat shows whether it went in.")
+        }
+        if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty { return detail }
+        return AppLocalization.string("Couldn't reach this bot's work. Try again in a moment.")
+    }
+
     nonisolated static func workstreamActMayHaveLanded(_ error: Error) -> Bool {
         switch error {
         case DashboardTicketBridgeError.answeredAfterSwitch, is CancellationError:
@@ -613,12 +626,7 @@ extension AppState {
             outcome = Self.workstreamActMayHaveLanded(error) ? .unknown : .refused
             // After a server change the refusal isn't this server's either.
             guard botWork.mark(profile).epoch == mark.epoch else { return outcome }
-            if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty {
-                botWork.setRefusal(detail, profile: profile, ref: item.ref)
-            } else {
-                botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
-                                   profile: profile, ref: item.ref)
-            }
+            botWork.setRefusal(Self.workstreamActRefusal(error), profile: profile, ref: item.ref)
         }
         Haptics.warning()
         // The refusal shows now; the row is read again behind it.

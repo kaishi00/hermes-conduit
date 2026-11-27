@@ -673,4 +673,40 @@ extension AppStateVoiceCapabilityTests {
         let examples = "```\n\(line)\n```\n> \(line)\n\n| a | b |\n| --- | --- |\n| \(line) | x |"
         XCTAssertEqual(TranscriptDirectives.pieces(in: examples, placing: [id]), [.text(examples)])
     }
+
+    /// The chat kept beside the one on screen reads nothing from the host
+    /// (issue 3266): a reply's line whose board a row of its own turn drew
+    /// takes it, and one whose board only the host keeps places nothing, so
+    /// the line shows no empty space.
+    @MainActor
+    func testTheChatBesideDrawsOnlyTheBoardsItsOwnRowsHold() throws {
+        let suite = "BesideBoardsTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let shownID = "cb-0000000000e1"
+        let hostID = "cb-0000000000e2"
+        let ask = ChatMessage(id: "u1", role: .user, content: "Compare them", timestamp: "2026-11-26T09:00:00Z")
+        let row = ChatMessage(id: "t1", role: .tool, content: "", timestamp: "2026-11-26T09:00:01Z", tool: try boardTool(
+            ["ok": true, "directive": "::conduit-board{id=\"\(shownID)\"}",
+             "cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]]], id: "t1"))
+        let reply = ChatMessage(id: "a1", role: .assistant,
+                                content: "::conduit-board{id=\"\(shownID)\"}\n\nAnd:\n\n::conduit-board{id=\"\(hostID)\"}",
+                                timestamp: "2026-11-26T09:00:02Z")
+        let placement = LineBoards.placement(in: [ask, row, reply])
+        XCTAssertEqual(placement.placed, ["a1": [shownID, hostID]])
+        XCTAssertEqual(placement.waiting, ["a1": [hostID]])
+
+        let beside = ChatRowState.beside(appState, profile: "default", isBusy: false, boards: placement)
+        XCTAssertEqual(beside.placedBoardIDs, ["a1": [shownID]], "only the board its own row holds")
+        XCTAssertEqual(beside.shownBoardRows, [shownID: "t1"])
+        XCTAssertEqual(beside.placedBoards(in: "a1"), [shownID])
+        XCTAssertEqual(beside.placedBoard(shownID, reply: "a1")?.rowID, "t1")
+        XCTAssertNil(beside.placedBoard(hostID, reply: "a1"))
+        XCTAssertTrue(beside.lineBoards.isEmpty, "nothing read from the host beside")
+
+        // A reply whose lines name only host boards places nothing at all.
+        let hostOnly = LineBoards.Placement(placed: ["a1": [hostID]], waiting: ["a1": [hostID]])
+        XCTAssertEqual(ChatRowState.beside(appState, profile: "default", isBusy: false, boards: hostOnly).placedBoardIDs, [:])
+    }
 }

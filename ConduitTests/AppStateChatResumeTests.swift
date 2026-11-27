@@ -2142,6 +2142,54 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
+    /// A question's tap that lands on a chat Hermes didn't resume this time
+    /// ("session not found") left it on "Opening conversation…" beside the
+    /// error, and tapping the question again only took the error down: the
+    /// chat counted as open. The line goes with the failure, and the tap
+    /// opens the chat again.
+    func testATapOnTheChatWhoseOpenFailedOpensItAgain() async {
+        final class Resumes { var count = 0 }
+        let resumes = Resumes()
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    resumes.count += 1
+                    if resumes.count == 1 { throw RpcError(code: 4001, message: "session not found") }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(id: "m1", role: .assistant, content: "Which branch?", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let appState = harness.appState
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"), profile: "default")
+        appState.isConnected = true
+        appState.sessions = [session("chat-a")]
+
+        _ = await appState.openSession("chat-a")
+        XCTAssertEqual(appState.activeSessionId, "chat-a")
+        XCTAssertTrue(appState.openChatOpenFailed, "its open failed")
+        XCTAssertTrue(appState.isOpenChat(NeedsYouItem(waitID: "w1", profile: "default", kind: .question, sessionIDs: ["chat-a"])))
+        let model = TranscriptModel.Input(chatIsOpening: appState.liveChatIsOnItsWay, chatOpenFailed: appState.openChatOpenFailed)
+        var transcript = TranscriptModel()
+        _ = transcript.update(model, targets: [], disclosure: ChatRowDisclosure())
+        XCTAssertTrue(transcript.rows.isEmpty, "no Opening conversation… beside the error, nor the welcome")
+
+        appState.openNeedsYou(NeedsYouItem(waitID: "w1", profile: "default", kind: .question, sessionIDs: ["chat-a"]))
+        let deadline = Date().addingTimeInterval(5)
+        while appState.messages.isEmpty, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(resumes.count, 2, "the tap opened it again")
+        XCTAssertEqual(appState.messages.map(\.id), ["m1"])
+        XCTAssertFalse(appState.openChatOpenFailed)
+    }
+
     func testAChatSyncErrorWaitsBehindAnOpenRoom() async {
         // A room's banner shows the shared error: the chat under it failing
         // to sync (a return to the app) must not read as the room failing

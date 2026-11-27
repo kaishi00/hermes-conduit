@@ -68,7 +68,8 @@ struct V2BotsView: View {
                 // shortcuts under the title rather than cards among the bots.
                 BotsHomeShortcuts()
             }
-            .padding(.horizontal, 16)
+            // As the tabs' top bars: clear of a window corner's panel.
+            .cornerClearingHorizontalPadding(16)
             .padding(.top, 4)
             .padding(.bottom, 8)
             .frame(minHeight: 52)
