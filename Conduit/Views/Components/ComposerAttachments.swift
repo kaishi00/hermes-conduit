@@ -307,9 +307,11 @@ enum AttachmentStaging {
             kind = .document
         } else if kind == .image {
             let typedName = AttachmentTypePolicy.pictureFilename(name, type: type)
-            if typedName != name {
+            // The staged copy's path says its type too, also when the name
+            // already did and the copy was written under another ("10.00.37").
+            let typedExtension = (typedName as NSString).pathExtension
+            if typedName != name || url.pathExtension.caseInsensitiveCompare(typedExtension) != .orderedSame {
                 name = typedName
-                // The staged copy's path says its type too.
                 if let renamed = try? destination(for: typedName),
                    (try? FileManager.default.moveItem(at: url, to: renamed)) != nil {
                     url = renamed
