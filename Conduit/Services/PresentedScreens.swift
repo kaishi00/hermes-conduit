@@ -73,6 +73,8 @@ struct PresentedRoom: Equatable {
 /// computer asks too; the first answer counts.
 struct PresentedComputer: Equatable {
     let id: String
+    /// The computer's name. The prompt's title already says it ("Allow
+    /// Atlas to control Asuka?"); kept from the payload with `bot`.
     let name: String
     /// The bot asking, as the Bots list names it; empty for the main one.
     let bot: String

@@ -79,6 +79,13 @@ struct ChatView: View {
 
     private var viewportInputs: ChatScrollRenderInputs { scroller.renderInputs }
 
+    /// The docks above the composer show: the app is active, the tab and the
+    /// chat are on screen, and the chat isn't a saved copy of another one.
+    private var docksShowing: Bool {
+        scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
+            && (!appState.showSidebar || shell.hasChatBeside)
+    }
+
     /// The saved copy is the chat on screen, drawn as its rows: in place of
     /// an empty transcript, or of any transcript for a chat picked in the
     /// saved list.
@@ -335,8 +342,7 @@ struct ChatView: View {
                 appState: appState,
                 openChatID: appState.activeSessionId,
                 isBusy: appState.isBusy,
-                isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
-                    && (!appState.showSidebar || shell.hasChatBeside)
+                isShowing: docksShowing
             )
             // Show reply speed: each reply's tokens per second, read for its row.
             // It draws nothing; it hangs off the Kanban dock only for a place in
@@ -346,8 +352,7 @@ struct ChatView: View {
                     appState: appState,
                     openChatID: appState.activeSessionId,
                     isBusy: appState.chatOnScreenIsBusy,
-                    isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
-                        && (!appState.showSidebar || shell.hasChatBeside)
+                    isShowing: docksShowing
                 )
             }
             // The chat's bot controlling one of the user's computers, with Stop
@@ -356,8 +361,7 @@ struct ChatView: View {
                 appState: appState,
                 openChatID: appState.activeSessionId,
                 isBusy: appState.isBusy,
-                isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
-                    && (!appState.showSidebar || shell.hasChatBeside)
+                isShowing: docksShowing
             )
             // The chat's standing goal, loop and heartbeat (issue 821).
             SessionControlDock(store: appState.sessionControl, appState: appState, openChatID: appState.activeSessionId)
@@ -369,8 +373,7 @@ struct ChatView: View {
                 queue: appState.authorityQueue,
                 openChatID: appState.activeSessionId,
                 isBusy: appState.isBusy,
-                isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
-                    && (!appState.showSidebar || shell.hasChatBeside)
+                isShowing: docksShowing
             )
             // The chat's queue on the Webapp's listener: messages waiting
             // their turn, and a turn a gateway restart cut off; on hermes
