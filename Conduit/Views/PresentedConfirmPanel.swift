@@ -188,7 +188,7 @@ struct PresentedConfirmPanel: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
         .onAppear {
-            if prompt.isAsk {
+            if prompt.isAsk || prompt.computer != nil {
                 AccessibilityNotification.Announcement("\(asker). \(prompt.title)").post()
             } else {
                 AccessibilityNotification.Announcement(AppLocalization.string("Hermes asks: \(prompt.title)")).post()
