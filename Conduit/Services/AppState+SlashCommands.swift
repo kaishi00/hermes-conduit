@@ -322,7 +322,8 @@ extension AppState {
             let kind: SideAgentKind = command.name == "btw" ? .btw : .background
             cancelChatResumeRestoration()
             // Recorded before the start returns: its answer can come first.
-            let earlierSideAgentProfile = sideAgentProfilesBySession[sessionId]
+            // Kept when the start fails: no answer comes for it, and another
+            // start on the session may own the entry by then.
             sideAgentProfilesBySession[sessionId] = submissionContext.profile
             do {
                 if let startSideAgent = chatResumeLifecycleOperations.startSideAgent {
@@ -338,10 +339,8 @@ extension AppState {
                 )
                 return
             } catch where HermesClient.isMissingRPCMethod(error) {
-                sideAgentProfilesBySession[sessionId] = earlierSideAgentProfile
                 break
             } catch {
-                sideAgentProfilesBySession[sessionId] = earlierSideAgentProfile
                 // Saved for its chat when that left the screen meanwhile.
                 if error is CancellationError, !isCurrentComposerSubmission(submissionContext) { return }
                 appendSlashOutput(
