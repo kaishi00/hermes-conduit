@@ -231,13 +231,13 @@ enum ReplyHTML {
         for index in lines.indices.reversed() {
             closedAfter[index] = closes > 0
             guard !inCode[index] else { continue }
-            let line = withoutCode(lines[index])
             // Only a `</details>` ending its line closes a fold, as fold(in:at:) reads it (one per line, nothing after
             // it, not even a comment or a code span); one in prose doesn't. The line as written, as the pass below
             // reads it, so a fold this counts as closed is closed there too (#3349). A `</details>` ending the line
             // can't be inside a code span, which would end after it.
             if matches(foldClosingEnd, lines[index]) { closes += 1 }
-            if matches(foldOpeningStart, line) { closes = max(0, closes - 1) }
+            // An opening read as written too: one joined across a code span (`<det` and `ails>`) isn't one there.
+            if matches(foldOpeningStart, lines[index]) { closes = max(0, closes - 1) }
         }
         for (index, line) in lines.enumerated() {
             if fence.isCode(line) {
@@ -280,16 +280,19 @@ enum ReplyHTML {
     private static let foldClosingTag = compiled(#"</details\s*>"#, [.caseInsensitive])
     private static let tagStart = compiled(#"<[a-zA-Z/!]"#)
     private static let comment = compiled(#"<!--.*?-->"#)
+    private static let unfinishedComment = compiled(#"<!--.*$"#)
 
-    /// `line` without its code spans and comments: a `</details>` in one closes nothing.
-    /// `line` without its code spans and comments, each replaced by
-    /// `filler`: a tag search passes a character no tag holds, so the text
-    /// either side never joins into one (`</det` and `ails>` around a span).
-    private static func withoutCode(_ line: String, filler: String = "") -> String {
-        replacing(comment, in: withoutCodeSpans(line, filler: filler), with: filler)
+    /// `line` without its code spans and comments, an unfinished comment
+    /// running to the end of the line included: a `</details>` in one closes
+    /// nothing. Each is replaced by a character no tag holds, so the text
+    /// either side never joins into a tag (`</det` and `ails>` around a span).
+    private static func withoutCode(_ line: String) -> String {
+        let filler = "\u{1}"
+        let closed = replacing(comment, in: withoutCodeSpans(line, filler: filler), with: filler)
+        return replacing(unfinishedComment, in: closed, with: filler)
     }
 
-    private static func withoutCodeSpans(_ line: String, filler: String = "") -> String {
+    private static func withoutCodeSpans(_ line: String, filler: String) -> String {
         let ns = NSMutableString(string: line)
         for span in codeSpans(in: line).reversed() { ns.replaceCharacters(in: span, with: filler) }
         return ns as String
@@ -309,7 +312,7 @@ enum ReplyHTML {
         if matches(foldClosingEnd, after) { return true }
         // A close with words after it on the line stays as written: folded, they'd hide the rest of the reply.
         // One in a code span or a comment closes nothing, so it doesn't count (#3349).
-        if matches(foldClosingTag, withoutCode(after, filler: "\u{1}")) { return false }
+        if matches(foldClosingTag, withoutCode(after)) { return false }
         if withSummary { return true }
         return closedLater && !matches(tagStart, after)
     }
