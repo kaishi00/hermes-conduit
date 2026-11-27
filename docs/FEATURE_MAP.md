@@ -3099,14 +3099,15 @@ CarPlay and widgets (not needed: no bots list by category)
 - A category exists while a bot or group chat is in it; there are no empty categories. Deleting one moves its bots to Other and its group chats back to Group Chats, and changes nothing else.
 - A group chat is filed by its room id, kept per dashboard and synced as `groups.categories` (room id to name): Hermes has no field for it on a room, and Hermes Desktop keeps a room's section on that computer only. Only the dashboard's own hosted rooms are filed; other dashboards' rooms, rooms others host and Hermes Desktop's legacy groups stay under Group Chats (Eric asked for every sibling in this change, 2026-11-27).
 - Other is always last and has no menu; a category named Other is a category, not Other.
-- The headings' order is kept per dashboard and synced as `bots.categories`; on the phone it's the dashboard on screen's. Folded headings stay on the device.
+- The headings' order is kept per dashboard and synced as `bots.categories`; on the phone it's the dashboard on screen's. Folded headings stay on the device, and a folded heading stays folded under its new name once a rename took.
 - Every write reads the bot's ui_meta fresh, merges the change and writes with its revision, reading again once when another client wrote first. A rename or delete re-files every bot the category holds on every dashboard shown; a bot whose dashboard is offline keeps the old name until it's filed again.
 
 **Open gaps**
 - Hermes Desktop's sections for group chats are on that computer, so a room it filed shows under Group Chats in Conduit, and one Conduit filed shows unfiled there.
 - Hermes Desktop's order of sections and its empty sections are its own local storage, so its order and Conduit's can differ.
+- A rename or delete from a combined grid re-files other dashboards' bots, but not those dashboards' own `bots.categories` order or `groups.categories` filings (phone and desktop): there, a renamed heading drops out of the saved order, and a deleted one can come back holding only that dashboard's filed rooms.
 
-**Checked:** 2026-11-27, #3430 (a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
+**Checked:** 2026-11-27, #3432 (a merged rename's fold keys deduplicated, the far-prefs gap recorded; #3430: a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
 
 ## Bots: create and edit
 
