@@ -48,6 +48,10 @@ struct ChatRowState: Equatable {
     /// The open chat's messages that have a Pulse card, by Hermes' message
     /// id (PulseFeed.swift): they show a Pulse mark that opens it.
     var pulseCards: [Int: Int] = [:]
+    /// Each reply's speed while Show reply speed is on (ReplySpeeds), by
+    /// Hermes' message id, and the newest turn's while its reply isn't saved.
+    var replySpeeds: [Int: Double] = [:]
+    var unsavedReplySpeed: Double?
     /// Replies can be pinned here (#918), and the rows that are.
     var canPinReplies = false
     var pinnedMessageIDs: Set<String> = []
@@ -82,6 +86,15 @@ struct ChatRowState: Equatable {
 
     init() {}
 
+    /// The speed a reply's row shows: its saved row's, else, for the newest
+    /// reply still drawn from the stream once its turn is done, the newest
+    /// turn's.
+    func replySpeed(for message: ChatMessage) -> Double? {
+        if let row = message.rowId { return replySpeeds[row] }
+        guard !isBusy, message.id == latestAssistantMessageID else { return nil }
+        return unsavedReplySpeed
+    }
+
     /// `facts`: the transcript's own (ChatView's TranscriptModel), worked out
     /// once per change of its rows; else from AppState's rows on screen.
     @MainActor
@@ -107,6 +120,10 @@ struct ChatRowState: Equatable {
         followUpBoardRowID = cardsCanSend ? facts.followUpBoardRowID : nil
         cardTaps = appState.notifierPlugin.reports(RichCardActionContext.capability)
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
+        if let speeds = appState.replySpeedsOnScreen {
+            replySpeeds = speeds.byRow
+            unsavedReplySpeed = speeds.unsaved
+        }
         canPinReplies = appState.canPinReplies
         pinnedMessageIDs = appState.openChatPinnedMessageIDs
         teammateReplies = facts.teammateReplies

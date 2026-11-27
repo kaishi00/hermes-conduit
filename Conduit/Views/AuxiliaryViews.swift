@@ -1955,6 +1955,7 @@ struct ChatSettingsDetail: View {
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
                     StepSummarySettings()
+                    ReplySpeedSettings()
                     PredictiveSettingsSection()
                     DeviceHapticsSettings()
                 }
@@ -2244,6 +2245,28 @@ private struct StepSummarySettings: View {
                 Text(AppLocalization.string("Skip runs over \(String(ChatStepSummaries.clampedMaxSteps(maxSteps))) steps", table: .settings))
             }
             .disabled(!enabled)
+        }
+    }
+}
+
+/// Show reply speed (Reply speed in the feature map): each reply's tokens
+/// per second at the start of its row, as the plugin measured it. Kept on
+/// this device, off by default.
+private struct ReplySpeedSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ReplySpeeds.preferenceKey) private var enabled = false
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Reply speed", table: .settings),
+            symbol: "gauge.with.dots.needle.67percent",
+            tint: .conduitAura
+        ) {
+            Text(AppLocalization.string("Shows how fast each reply was written, in tokens per second, at the start of its row. The Conduit plugin measures it from your provider's token counts and the time the model spent writing, so replies from before plugin 0.204.0 show none.", table: .settings))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle(AppLocalization.string("Show reply speed", table: .settings), isOn: $enabled)
+                .tint(.conduitAccent)
         }
     }
 }

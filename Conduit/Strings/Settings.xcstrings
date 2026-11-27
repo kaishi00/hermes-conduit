@@ -43026,6 +43026,252 @@
           }
         }
       }
+    },
+    "Reply speed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwortgeschwindigkeit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidad de respuesta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vitesse des réponses"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kecepatan balasan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocità delle risposte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信の速度"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답장 속도"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szybkość odpowiedzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidade da resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скорость ответа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıt hızı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复速度"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回覆速度"
+          }
+        }
+      }
+    },
+    "Show reply speed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwortgeschwindigkeit anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar velocidad de respuesta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher la vitesse des réponses"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan kecepatan balasan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra la velocità delle risposte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信の速度を表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답장 속도 표시"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokazuj szybkość odpowiedzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar velocidade da resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывать скорость ответа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıt hızını göster"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示回复速度"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示回覆速度"
+          }
+        }
+      }
+    },
+    "Shows how fast each reply was written, in tokens per second, at the start of its row. The Conduit plugin measures it from your provider's token counts and the time the model spent writing, so replies from before plugin 0.204.0 show none." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt am Anfang der Zeile jeder Antwort, wie schnell sie geschrieben wurde, in Token pro Sekunde. Das Conduit-Plugin misst das anhand der Token-Zahlen deines Anbieters und der Zeit, die das Modell mit Schreiben verbracht hat. Antworten von vor Plugin 0.204.0 zeigen daher keinen Wert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra al inicio de la fila de cada respuesta lo rápido que se escribió, en tokens por segundo. El plugin de Conduit lo mide con los recuentos de tokens de tu proveedor y el tiempo que el modelo pasó escribiendo, así que las respuestas anteriores al plugin 0.204.0 no muestran ninguna."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche au début de la ligne de chaque réponse la vitesse à laquelle elle a été écrite, en jetons par seconde. Le plugin Conduit la mesure à partir des décomptes de jetons de votre fournisseur et du temps passé par le modèle à écrire : les réponses antérieures au plugin 0.204.0 n'en affichent pas."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menampilkan seberapa cepat setiap balasan ditulis, dalam token per detik, di awal barisnya. Plugin Conduit mengukurnya dari jumlah token penyedia Anda dan waktu yang dihabiskan model untuk menulis, jadi balasan dari sebelum plugin 0.204.0 tidak menampilkannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra all'inizio della riga di ogni risposta quanto velocemente è stata scritta, in token al secondo. Il plugin Conduit la misura dai conteggi di token del tuo provider e dal tempo che il modello ha impiegato a scrivere, quindi le risposte precedenti al plugin 0.204.0 non la mostrano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各返信の行の先頭に、書かれた速さを毎秒トークン数で表示します。Conduit プラグインがプロバイダーのトークン数とモデルが書くのにかかった時間から測るため、プラグイン 0.204.0 より前の返信には表示されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "각 답장 줄의 앞에 작성 속도를 초당 토큰 수로 표시합니다. Conduit 플러그인이 제공자의 토큰 수와 모델이 작성하는 데 걸린 시간으로 측정하므로, 플러그인 0.204.0 이전의 답장에는 표시되지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokazuje na początku wiersza każdej odpowiedzi, jak szybko została napisana, w tokenach na sekundę. Wtyczka Conduit mierzy to na podstawie liczby tokenów od Twojego dostawcy i czasu, jaki model spędził na pisaniu, więc odpowiedzi sprzed wtyczki 0.204.0 jej nie pokazują."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra no início da linha de cada resposta a rapidez com que ela foi escrita, em tokens por segundo. O plugin do Conduit mede isso com as contagens de tokens do seu provedor e o tempo que o modelo levou escrevendo, então respostas de antes do plugin 0.204.0 não mostram nenhuma."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывает в начале строки каждого ответа, как быстро он был написан, в токенах в секунду. Плагин Conduit измеряет это по количеству токенов от вашего провайдера и времени, которое модель потратила на написание, поэтому у ответов до плагина 0.204.0 скорости нет."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her yanıtın satırının başında, yanıtın ne kadar hızlı yazıldığını saniyedeki token sayısıyla gösterir. Conduit eklentisi bunu sağlayıcınızın token sayılarından ve modelin yazmaya harcadığı süreden ölçer; bu yüzden eklenti 0.204.0 öncesindeki yanıtlarda gösterilmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在每条回复所在行的开头显示它的写作速度，单位为每秒 token 数。Conduit 插件根据你的服务商提供的 token 数和模型写作所用的时间来测量，因此插件 0.204.0 之前的回复不会显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在每則回覆所在列的開頭顯示它的撰寫速度，單位為每秒 token 數。Conduit 外掛根據你的服務商提供的 token 數和模型撰寫所花的時間來測量，因此外掛 0.204.0 之前的回覆不會顯示。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

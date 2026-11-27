@@ -338,6 +338,16 @@ struct ChatView: View {
                 isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
                     && (!appState.showSidebar || shell.hasChatBeside)
             )
+            // Show reply speed: each reply's tokens per second, read for its row.
+            .background {
+                ReplySpeedReader(
+                    appState: appState,
+                    openChatID: appState.activeSessionId,
+                    isBusy: appState.chatOnScreenIsBusy,
+                    isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
+                        && (!appState.showSidebar || shell.hasChatBeside)
+                )
+            }
             // The chat's standing goal, loop and heartbeat (issue 821).
             SessionControlDock(store: appState.sessionControl, appState: appState, openChatID: appState.activeSessionId)
             // A turn of the chat running in the gateway, on hermes dashboard
@@ -3264,6 +3274,16 @@ struct AssistantBubble: View {
                 // Pulse follows up on what Hermes promised here: opens its card.
                 if let rowID = message.rowId, let card = rowState.pulseCards[rowID] {
                     PulseMessageMark { appState.openPulse(card: card) }
+                }
+                // Show reply speed: how fast Hermes wrote it (ReplySpeeds).
+                if message.role == .assistant, let rate = rowState.replySpeed(for: message) {
+                    Text(verbatim: ReplySpeeds.label(rate))
+                        .scaledFont(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.leading, 4)
+                        .accessibilityLabel(Text(verbatim: ReplySpeeds.spokenLabel(rate)))
                 }
                 Spacer(minLength: 0)
                 if message.role == .assistant {
