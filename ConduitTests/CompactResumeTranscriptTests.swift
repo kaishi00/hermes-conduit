@@ -3131,6 +3131,30 @@ final class CompactResumeTranscriptTests: XCTestCase {
                        "The unconfirmed send's stored twin isn't added beside it")
     }
 
+    func testABotChatShowingOnlyToolCardsStillTakesTheNextStoredReply() async throws {
+        var tail: [[String: Any]] = []
+        let clock = TestClock()
+        let app = try await openBotChat(expecting: []) { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        tail = [[
+            "id": 1, "role": "assistant", "content": "", "timestamp": "2026-09-01T10:00:01Z",
+            "tool_calls": [["id": "call_1", "type": "function",
+                            "function": ["name": "read_file", "arguments": "{\"path\": \"/tmp/job.log\"}"]]]
+        ]]
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.map(\.role), [.tool], "The first page is one tool step")
+
+        clock.now += 60
+        tail.append(transcriptRow(2, role: "assistant", content: "The example job is complete."))
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.count, 2, "The tool card isn't added twice")
+        XCTAssertEqual(app.messages.last?.content, "The example job is complete.")
+    }
+
     func testABotChatTailPageEchoingNoSessionIDStillMerges() async throws {
         var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
         let app = try await openBotChat { _ in

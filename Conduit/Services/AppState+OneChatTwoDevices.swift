@@ -456,13 +456,15 @@ extension AppState {
             case .unchanged:
                 appState.botChatTailRead.noteRead(generation: generation)
                 return
-            case .inconclusive where anchor == nil && wasEmpty && !transcript.messages.isEmpty:
+            case .inconclusive where anchor == nil && (wasEmpty || !frontier.isEmpty) && !transcript.messages.isEmpty:
                 // A chat proven empty (local display rows aside) has nothing to
                 // anchor on and every row of the newest page is new: all of
                 // them merge, tool cards and reasoning rows (derived ids)
                 // included. A full page leaves Load earlier for the rest (the
-                // window takes the page's canLoadEarlier). A page of hidden
-                // rows only is asked again like any unproven one.
+                // window takes the page's canLoadEarlier). So does a chat whose
+                // shown rows all came from stored rows by derived ids (a page
+                // of tool steps only): the rows it already shows are held back.
+                // A page of hidden rows only is asked again like any unproven one.
                 rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
             default:
                 // No ordering proof yet (the tail not anchored, or the
