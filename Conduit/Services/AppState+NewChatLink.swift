@@ -74,7 +74,10 @@ extension AppState {
         let request = launch.request
         let key = composerDraftKeyOnScreen
         if let title = request.title {
-            Task { @MainActor [weak self] in await self?.nameNewChatFromLink(title) }
+            // The chat the launch opened, taken now: another that opens
+            // before the rename runs keeps its own title.
+            let session = chatOnScreenSessionSummary
+            Task { @MainActor [weak self] in await self?.nameNewChatFromLink(title, session: session) }
         }
         guard !request.text.isEmpty else { return }
         if request.sends, NewChatLinkConfirmation.canAsk(request.text) {
@@ -92,6 +95,7 @@ extension AppState {
         guard activeDashboardID == confirmation.dashboardID,
               composerDraftKeysAreSameChat(confirmation.key, composerDraftKeyOnScreen) else {
             putNewChatLinkText(confirmation.text, dashboardID: confirmation.dashboardID, key: confirmation.key)
+            showNewChatLinkTextNotice(confirmation)
             return
         }
         Task { @MainActor [weak self] in
@@ -105,16 +109,7 @@ extension AppState {
             }
             guard !sent else { return }
             self.putNewChatLinkText(confirmation.text, dashboardID: confirmation.dashboardID, key: confirmation.key)
-            // Said in the chat that holds the text; on another one by now,
-            // that chat says where it went, as a refused message's does.
-            guard self.activeDashboardID == confirmation.dashboardID else { return }
-            if self.composerDraftKeysAreSameChat(confirmation.key, self.composerDraftKeyOnScreen) {
-                self.composerNotice = AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat)
-            } else {
-                let named = AppLocalization.string("New chat")
-                self.composerNotice = AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat)
-            }
-            self.composerNoticeSystemImage = "exclamationmark.circle"
+            self.showNewChatLinkTextNotice(confirmation)
         }
     }
 
@@ -129,6 +124,20 @@ extension AppState {
         if newChatLinkConfirmation?.id == confirmation.id { newChatLinkConfirmation = nil }
     }
 
+    /// Says where an unsent link's text went: in the chat that holds it,
+    /// that it's in the composer; on another one, that it's back in the new
+    /// chat's draft, as a refused message's notice does.
+    private func showNewChatLinkTextNotice(_ confirmation: NewChatLinkConfirmation) {
+        guard activeDashboardID == confirmation.dashboardID else { return }
+        if composerDraftKeysAreSameChat(confirmation.key, composerDraftKeyOnScreen) {
+            composerNotice = AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat)
+        } else {
+            let named = AppLocalization.string("New chat")
+            composerNotice = AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat)
+        }
+        composerNoticeSystemImage = "exclamationmark.circle"
+    }
+
     private func putNewChatLinkText(_ text: String, dashboardID: UUID, key: ComposerDraftKey) {
         composerRestoreRequests.append(ComposerRestoreRequest(
             dashboardID: key.dashboard ?? dashboardID,
@@ -140,12 +149,12 @@ extension AppState {
     }
 
     /// Names the chat the link opened, as its title menu's Rename does.
-    private func nameNewChatFromLink(_ title: String) async {
+    private func nameNewChatFromLink(_ title: String, session: SessionSummary?) async {
         if let override = newChatLinkTitleOverride {
             await override(title)
             return
         }
-        guard let session = chatOnScreenSessionSummary else { return }
+        guard let session else { return }
         await renameSession(session, to: title)
     }
 }

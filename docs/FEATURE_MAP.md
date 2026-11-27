@@ -7962,6 +7962,7 @@ is optional: `conduit://new` alone is the New Chat shortcut.
 
 **Code**
 - Reading it: `Conduit/Services/ConduitAppLink.swift` (newChat, NewChatLink, init?(externalURL:)), from outside in `Conduit/ConduitApp.swift` (onOpenURL, at once rather than held for the connection, since the launch waits itself)
+- An in-app tap: `Conduit/Services/AppState+AppLinks.swift` (openAppLink)
 - The launch and its text: `Conduit/Services/AppState+NewChatLink.swift` (startNewChatFromLink, newChatLinkLaunchEnded, sendNewChatLinkText, editNewChatLinkText), `Conduit/Services/AppState+WidgetLaunch.swift` (newChatShortcutLaunchLink), `Conduit/Services/AppState.swift` (the coordinator's ended)
 - The Send sheet: `Conduit/Views/RootView.swift` (newChatLinkConfirmation's alert)
 - Tests: `ConduitTests/ConduitExternalLinkTests.swift` (testNewChatLinkReadsItsParts, testNewChatLinkRefusesAnOddProfileOrPath), `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatLinkPutsItsTextInTheNewChatsComposer, testNewChatLinkThatSendsAsksFirst, testNewChatLinkEditAndCancel, testNewChatLinkWithNoDashboardStartsNothing)
@@ -7970,7 +7971,7 @@ is optional: `conduit://new` alone is the New Chat shortcut.
 - `send=1` never sends unseen: the chat opens and a Send / Edit sheet shows the text, and only Send sends it. The sheet shows the whole text, so a link's text past 2,000 characters isn't offered for sending at all and waits in the composer instead, where it can all be read. Any app, web page, QR code or NFC tag can open a link, and Hermes acts on what it reads; an automation that must send without a tap uses Send to Hermes, which the user builds (Eric 2026-11-27, #3392, issue 3389).
 - It is the New Chat shortcut's launch: on the dashboard in use (its profile can name another combined dashboard's, as the shortcut's can), nothing with no dashboard signed in, the keyboard up, and the shortcut's failure words; a launch that fails drops the text (#3392).
 - A link repeating a New Chat launch in flight (a widget's or the shortcut's, for the same profile) rides it and its text lands in the chat that launch opens; a shared draft's launch it doesn't ride, and the link starts nothing, since the draft's text would land over the link's, as a draft doesn't ride a launch in flight either (issue 2870). A newer link's text replaces an earlier link's still waiting on the same launch (#3392).
-- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in that chat's composer and says so there, or, on another chat by now, that it's back in the new chat's draft. The title is set as the title menu's Rename sets it, once the chat opens (#3392).
+- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in that chat's composer and says so there, or, on another chat by now, that it's back in the new chat's draft. The title is set as the title menu's Rename sets it, on the chat the launch opened, taken as it ends (#3392).
 
 **Open gaps**
 - Not tried on a device yet: a cold launch from another app, and Safari's "Open in Conduit?".
