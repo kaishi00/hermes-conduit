@@ -152,8 +152,25 @@ final class ChatTextSelectionTests: XCTestCase {
         textView.selectedRange = NSRange(location: 6, length: 10)
         bridgeCoordinator.textViewDidChangeSelection(textView)
         XCTAssertEqual(textView.selectedRange, NSRange(location: 6, length: 10))
+        XCTAssertNotNil(textView.textLayoutManager, "the word and touch reads keep TextKit 2, so the view stays reusable")
     }
 
+    /// Reading the character under a touch keeps the view on TextKit 2, so
+    /// an ordinary touch doesn't take it out of the pool.
+    @MainActor
+    func testTheCharacterUnderATouchIsReadWithoutTextKit1() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "touch-down-textkit-v1")
+        let view = SelectableTextView(text: "alpha beta gamma", selectionCoordinator: selectionCoordinator, selectionSegment: descriptor)
+        let host = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        host.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
+        host.layoutIfNeeded()
+        _ = host.characterIndexForTesting(at: CGPoint(x: 8, y: 10))
+        XCTAssertNotNil(host.mountedTextView.textLayoutManager)
+    }
+
+    @MainActor
     func testOnlyAOneWordSelectionGivesWayToTheTouchedWord() {
         let text = "alpha beta gamma" as NSString
         func word(_ index: Int) -> NSRange? {

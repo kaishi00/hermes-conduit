@@ -1208,14 +1208,16 @@ private final class MarkdownSelectionTextView: UITextView {
     }
 
     /// The character drawn under `localPoint`, or nil between lines, past
-    /// a line's end or off the text.
+    /// a line's end or off the text. Through UITextInput's geometry, never
+    /// the layoutManager: asking for that moves the view to TextKit 1, and
+    /// the pool no longer reuses it (every touch would cost a view).
     func characterIndex(at localPoint: CGPoint) -> Int? {
-        guard textStorage.length > 0 else { return nil }
-        let point = CGPoint(x: localPoint.x - textContainerInset.left, y: localPoint.y - textContainerInset.top)
-        let glyph = layoutManager.glyphIndex(for: point, in: textContainer, fractionOfDistanceThroughGlyph: nil)
-        let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
-        guard glyphRect.contains(point) else { return nil }
-        return layoutManager.characterIndexForGlyph(at: glyph)
+        guard textStorage.length > 0,
+              let range = characterRange(at: localPoint),
+              !range.isEmpty,
+              firstRect(for: range).contains(localPoint)
+        else { return nil }
+        return offset(from: beginningOfDocument, to: range.start)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
