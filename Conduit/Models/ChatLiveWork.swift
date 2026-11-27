@@ -43,6 +43,8 @@ struct ChatLiveWork: Equatable {
     /// The admissions whose turn runs now: a message that left the queue
     /// for one started; any other was withdrawn or its turn already ended.
     var startedAdmissions: Set<String> = []
+    /// When the read was asked: a send held after it isn't in it yet.
+    var askedAt = Date.distantFuture
 
     /// Something still to follow: a turn running there, or a message waiting.
     var isActive: Bool { running || !queued.isEmpty }
@@ -63,7 +65,8 @@ struct ChatLiveWork: Equatable {
         self.startedAdmissions = startedAdmissions
     }
 
-    init(response: [String: Any]) {
+    init(response: [String: Any], askedAt: Date = .distantFuture) {
+        self.askedAt = askedAt
         running = (response["running"] as? Bool) == true
         step = (response["step"] as? [String: Any]).flatMap(Self.step(from:))
         agents = (response["agents"] as? [[String: Any]] ?? []).compactMap { row in

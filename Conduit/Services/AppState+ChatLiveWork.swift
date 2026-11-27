@@ -31,8 +31,9 @@ extension AppState {
         guard case .reported(_, let capabilities) = notifierPlugin.state,
               capabilities.contains(ChatLiveWork.capability) else { return nil }
         let path = DashboardPath.withProfile(route, profile: conversationIdentityProfile)
+        let askedAt = Date()
         guard let response = try? await owner.bridge.requestJSON(path: path), ownsDashboardRuntime(owner) else { return nil }
-        return ChatLiveWork(response: response)
+        return ChatLiveWork(response: response, askedAt: askedAt)
     }
 
     /// A read of the open chat's turn in the gateway: its queue into the
@@ -41,33 +42,31 @@ extension AppState {
     /// the turn it followed there has ended.
     func applyChatLiveWork(_ work: ChatLiveWork, previous: ChatLiveWork?, for chatID: String) {
         guard activeSessionId == chatID, client?.speaksSessionAuthority != true else { return }
-        // Only a message an earlier read listed can have left the queue: a read
-        // asked before a send was forwarded doesn't know it yet.
-        let listed = Set(previous?.queued.map(\.admissionID) ?? [])
         let waiting = Set(work.queued.map(\.admissionID))
-        var ended = false
-        for admissionID in shownChat.queuedSendOrder where listed.contains(admissionID) && !waiting.contains(admissionID) {
-            if work.startedAdmissions.contains(admissionID) || !work.running {
-                // Its turn runs now, or ran and ended (the chat's rows tell which).
+        // A send held after the read was asked isn't in it yet: it keeps its row.
+        let newer = { (admissionID: String) in
+            (self.shownChat.forwardedSendTimes[admissionID] ?? .distantPast) > work.askedAt
+        }
+        var settled = false
+        for admissionID in shownChat.queuedSendOrder where !waiting.contains(admissionID) && !newer(admissionID) {
+            shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
+            if work.startedAdmissions.contains(admissionID) {
+                // Its turn runs there now.
                 noteQueuedTurnStarted(sessionID: chatID, admissionID: admissionID)
-                ended = ended || !work.startedAdmissions.contains(admissionID)
             } else {
-                // Withdrawn in the Webapp or Hermes Desktop behind a turn still
-                // running: it never runs, so it doesn't come back.
+                // It ran and ended between reads, or was withdrawn in the Webapp
+                // or Hermes Desktop: the chat's stored rows tell which.
                 _ = takeQueuedSendRow(admissionID: admissionID)
                 authorityQueue.drop(admissionID)
+                settled = true
             }
         }
-        // A send this app holds that no read has listed yet keeps its row.
         let held = authorityQueue.sessionID == chatID
-            ? authorityQueue.rows.filter {
-                !waiting.contains($0.admissionID) && !listed.contains($0.admissionID)
-                    && shownChat.queuedSendOrder.contains($0.admissionID)
-            }
+            ? authorityQueue.rows.filter { !waiting.contains($0.admissionID) && shownChat.queuedSendOrder.contains($0.admissionID) }
             : []
         authorityQueue.apply(work.queued + held, for: chatID, readOnly: true)
         // Its rows are stored now: the chat shows what the turn did.
-        if (previous?.running == true && !work.running) || ended, !isBusy {
+        if (previous?.running == true && !work.running) || settled, !isBusy {
             Task { await refreshActiveSession() }
         }
     }
@@ -85,6 +84,8 @@ extension AppState {
         guard let chatID = activeSessionId,
               chatID == sessionID || knownSessionIDs(for: sessionID).contains(chatID),
               !shownChat.startedAdmissionIDs.contains(admissionID) else { return }
+        if shownChat.forwardedSendTimes.count >= 32 { shownChat.forwardedSendTimes.removeAll() }
+        shownChat.forwardedSendTimes[admissionID] = Date()
         if let index = messages.firstIndex(where: { $0.id == rowID }) {
             holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
             cacheMessagePresentation()
