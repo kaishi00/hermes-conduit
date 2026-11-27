@@ -166,7 +166,10 @@ final class ChatTextSelectionTests: XCTestCase {
         let host = view.makeUIViewForTests(coordinator: view.makeCoordinator())
         host.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
         host.layoutIfNeeded()
-        _ = host.characterIndexForTesting(at: CGPoint(x: 8, y: 10))
+        let index = host.characterIndexForTesting(at: CGPoint(x: 8, y: 10))
+        XCTAssertNotNil(index, "a point on the first word's letters")
+        XCTAssertLessThan(index ?? .max, 5, "in \"alpha\"")
+        XCTAssertNil(host.characterIndexForTesting(at: CGPoint(x: 310, y: 10)), "past the line's end")
         XCTAssertNotNil(host.mountedTextView.textLayoutManager)
     }
 
