@@ -386,7 +386,7 @@ struct HermesCallSettingsSection: View {
             Text(AppLocalization.string("Answer automatically", table: .voice)).foregroundStyle(.secondary)
         }
         .accessibilityIdentifier("hermesCalls.autoAnswer")
-        Text(AppLocalization.string("Calls from \(model.botName) connect on their own after the wait, on the speaker unless headphones or a car are connected. Decline while it rings to stop it. A call a Focus silences doesn't answer.", table: .voice))
+        Text(AppLocalization.string("Calls from \(model.botName) connect on their own after the wait, on the speaker unless headphones or a car are connected. Decline while it rings to stop it. A call never answers while you're on another call, or when a Focus silences it.", table: .voice))
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
     }

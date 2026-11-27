@@ -46,9 +46,12 @@ struct HermesAutoAnswerStore {
 
     /// A bot is its profile's address, as for its contact and its ringtone:
     /// the same bot on two dashboards answers alike. The main profile has
-    /// one too, so its calls can answer on their own as well.
+    /// one too, so its calls can answer on their own as well: Settings
+    /// names it "default" and a call may name no profile, so both read the
+    /// same key.
     static func bot(_ profile: String?) -> String {
-        HermesCallerName.contactAddress(profile: profile)
+        let id = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return HermesCallerName.contactAddress(profile: id.isEmpty ? "default" : id)
     }
 
     private var bots: [String: Int] {

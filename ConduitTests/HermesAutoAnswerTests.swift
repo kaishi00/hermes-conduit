@@ -35,6 +35,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(store.choice(profile: "nova"), .off, "Other bots still ring until answered")
         store.set(.after3, profile: nil)
         XCTAssertEqual(store.choice(profile: nil), .after3, "The main profile has its own")
+        XCTAssertEqual(store.choice(profile: "default"), .after3, "Settings names the main profile; its call may name none")
+        XCTAssertEqual(store.choice(profile: " "), .after3)
         XCTAssertEqual(store.choice(profile: "furina"), .after5)
         store.set(.off, profile: "furina")
         store.set(.off, profile: nil)
