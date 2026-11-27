@@ -172,6 +172,30 @@ final class ChatLiveWorkTests: XCTestCase {
         XCTAssertEqual(appState.forwardedSendStarting(in: "chat-a"), "adm-1")
     }
 
+    func testAnUnnamedStartUnderTheChatsOtherIdTakesItsSend() {
+        let appState = makeAppState()
+        appState.activeSessionId = "chat-a"
+        appState.sessions = [row("chat-a", alternateIds: ["runtime-a"])]
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "mine", sessionID: "chat-a")
+        XCTAssertEqual(appState.forwardedSendStarting(in: "runtime-a"), "adm-1")
+    }
+
+    func testAnUnnamedStartUnderABorrowedIdTakesNoneOfThatChatsSends() {
+        let appState = makeAppState()
+        appState.activeSessionId = "shared-runtime"
+        appState.sessions = [row("bot-b", alternateIds: ["shared-runtime"]), row("shared-runtime", alternateIds: [])]
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "mine", sessionID: "shared-runtime")
+        XCTAssertNil(appState.forwardedSendStarting(in: "bot-b"), "bot-b only carries the other chat's id")
+        XCTAssertEqual(appState.forwardedSendStarting(in: "shared-runtime"), "adm-1")
+    }
+
+    private func row(_ id: String, alternateIds: [String]) -> SessionSummary {
+        SessionSummary(id: id, alternateIds: alternateIds, title: id, model: "Hermes", updatedLabel: "now",
+                       profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+    }
+
     func testTheStampCapKeepsHeldSendsStamps() {
         let appState = makeAppState()
         appState.activeSessionId = "api-1"
