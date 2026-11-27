@@ -33,6 +33,14 @@
 //  paths in replies tappable with it, and it opens the file in the Folder
 //  tab (#1389). Only inside the app: from outside it opens nothing.
 //
+//  `conduit://new?text=…&profile=…&title=…&send=1` opens Conduit on a new
+//  chat with text ready (issue 3389), inside the app and from outside: the
+//  New Chat shortcut's launch, with the text in its composer and the
+//  keyboard up. `send=1` asks once before sending, with the text shown:
+//  any app, web page or tag can open a link, and Hermes acts on what it
+//  reads (Eric 2026-11-27). Every part is optional; `conduit://new` alone
+//  is the New Chat shortcut.
+//
 //  `conduit://connect?url=…` is a dashboard sign-in code, read by
 //  DashboardConnectLink before these, inside the app and from outside.
 //  `conduit://link/…` is a Link invite (RoomLinkURL), read by
@@ -55,6 +63,8 @@ enum ConduitAppLink: Equatable {
     /// A file on the Hermes host, by the path a reply named: absolute, or
     /// relative to the open chat's working folder.
     case file(path: String)
+    /// A new chat with text ready (`conduit://new`).
+    case newChat(NewChatLink)
 
     enum SettingsLink: String, Equatable {
         /// Calls from Hermes.
@@ -83,6 +93,11 @@ enum ConduitAppLink: Equatable {
             self = .file(path: path)
             return
         }
+        if components.host?.lowercased() == "new" {
+            guard components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty else { return nil }
+            self = .newChat(NewChatLink(components: components))
+            return
+        }
         let id = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !id.isEmpty, !id.contains("/") else { return nil }
         switch components.host?.lowercased() {
@@ -95,13 +110,21 @@ enum ConduitAppLink: Equatable {
         }
     }
 
-    /// A link another app opened Conduit with: only a chat link, and only
-    /// one whose id, profile and dashboard are plain tokens.
+    /// A link another app opened Conduit with: a chat link whose id,
+    /// profile and dashboard are plain tokens, or a new chat link whose
+    /// profile is one.
     init?(externalURL url: URL) {
-        guard let link = ConduitAppLink(url: url), case .session(let id, let profile, let dashboard) = link,
-              Self.isPlainToken(id), profile.map(Self.isPlainToken) ?? true,
-              dashboard.map(Self.isPlainToken) ?? true else { return nil }
-        self = link
+        switch ConduitAppLink(url: url) {
+        case .session(let id, let profile, let dashboard)?:
+            guard Self.isPlainToken(id), profile.map(Self.isPlainToken) ?? true,
+                  dashboard.map(Self.isPlainToken) ?? true else { return nil }
+            self = .session(id: id, profile: profile, dashboard: dashboard)
+        case .newChat(let request)?:
+            guard request.profile.map(Self.isPlainToken) ?? true else { return nil }
+            self = .newChat(request)
+        default:
+            return nil
+        }
     }
 
     /// The link's first `profile` query item; nil when it has none or a
@@ -149,6 +172,15 @@ enum ConduitAppLink: Equatable {
         case .file(let path):
             components.host = "file"
             components.queryItems = [URLQueryItem(name: "path", value: path)]
+        case .newChat(let request):
+            components.host = "new"
+            let items = [
+                request.text.isEmpty ? nil : URLQueryItem(name: "text", value: request.text),
+                request.profile.map { URLQueryItem(name: "profile", value: $0) },
+                request.title.map { URLQueryItem(name: "title", value: $0) },
+                request.sends ? URLQueryItem(name: "send", value: "1") : nil,
+            ].compactMap { $0 }
+            if !items.isEmpty { components.queryItems = items }
         }
         // A session id or profile name is a plain token; a URL that can't
         // be built is a programming error, never user input.
@@ -174,5 +206,52 @@ enum ConduitAppLink: Equatable {
             options: [.regularExpression, .caseInsensitive]
         )
         return stripped == text ? text : stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// What a `conduit://new` link asks for (issue 3389).
+struct NewChatLink: Equatable {
+    /// Longest title kept, as Send to Hermes keeps one.
+    static let maximumTitleCharacters = 80
+
+    /// The composer's text; empty for none. Cut to what a shared draft
+    /// carries at most.
+    var text: String
+    /// The profile to start in, as the New Chat shortcut's Profile names
+    /// one; nil for the profile on screen.
+    var profile: String?
+    /// The chat's title; nil leaves it to Hermes.
+    var title: String?
+    /// Sends the text once the user says so (`send=1`).
+    var sends: Bool
+
+    init(text: String = "", profile: String? = nil, title: String? = nil, sends: Bool = false) {
+        let kept = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : text
+        self.text = ShareDraftLimits.truncated(kept, characters: ShareDraftLimits.maximumTextCharacters)
+        self.profile = Self.cleaned(profile)
+        self.title = Self.cleaned(title).map { String($0.prefix(Self.maximumTitleCharacters)) }
+        self.sends = sends
+    }
+
+    init(components: URLComponents) {
+        // Names exactly as written, as a session link's `profile` is read.
+        func value(_ name: String) -> String? {
+            components.queryItems?.first { $0.name == name }?.value
+        }
+        self.init(
+            text: value("text") ?? "",
+            profile: value("profile"),
+            title: value("title"),
+            sends: value("send")?.trimmingCharacters(in: .whitespaces) == "1"
+        )
+    }
+
+    /// Only a profile: the New Chat shortcut's launch as it is.
+    var isPlainNewChat: Bool { text.isEmpty && title == nil }
+
+    private static func cleaned(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }

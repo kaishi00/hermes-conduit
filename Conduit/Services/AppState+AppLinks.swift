@@ -78,6 +78,8 @@ extension AppState {
             settingsLinkRequest = page
         case .file(let path):
             revealWorkspaceFile(path)
+        case .newChat(let request):
+            startNewChatFromLink(request)
         }
     }
 

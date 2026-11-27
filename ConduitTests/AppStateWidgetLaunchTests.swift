@@ -1154,6 +1154,160 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNil(appState.composerFocusRequest, "a widget's New Chat keeps the keyboard down")
     }
 
+    /// A `conduit://new` link (issue 3389) is the New Chat shortcut's
+    /// launch: the chat opens with the keyboard up, takes the link's title,
+    /// and its text waits in the composer, unsent.
+    func testNewChatLinkPutsItsTextInTheNewChatsComposer() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d1")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-new")
+        var titles: [String] = []
+        appState.newChatLinkTitleOverride = { titles.append($0) }
+        appState.newChatLinkSendOverride = { _ in
+            XCTFail("a link without send=1 sends nothing")
+            return true
+        }
+
+        appState.openAppLink(.newChat(NewChatLink(text: "Plan the Lisbon trip", title: "Lisbon")))
+        guard await waitForLaunchCompletion(appState) else { return }
+        for _ in 0..<1_000 where titles.isEmpty { await Task.yield() }
+
+        XCTAssertEqual(appState.activeSessionId, "link-new")
+        XCTAssertEqual(appState.composerFocusRequest?.sessionID, "link-new", "the keyboard comes up, as for the shortcut")
+        let restore = try XCTUnwrap(appState.composerRestoreRequests.last)
+        XCTAssertEqual(restore.draft.text, "Plan the Lisbon trip")
+        XCTAssertTrue(restore.focuses)
+        XCTAssertNil(appState.newChatLinkConfirmation)
+        XCTAssertEqual(titles, ["Lisbon"])
+        XCTAssertNil(appState.newChatLinkLaunch)
+    }
+
+    /// `send=1` never sends unseen: the chat opens with its text in a
+    /// Send / Edit alert, and only Send sends it (Eric 2026-11-27).
+    func testNewChatLinkThatSendsAsksFirst() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-send.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d2")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-send")
+        var sent: [String] = []
+        appState.newChatLinkSendOverride = { sent.append($0); return true }
+
+        appState.openAppLink(.newChat(NewChatLink(text: "Summarize my day", sends: true)))
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "link-send")
+        XCTAssertTrue(sent.isEmpty, "nothing is sent before the user says so")
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        let confirmation = try XCTUnwrap(appState.newChatLinkConfirmation)
+        XCTAssertEqual(confirmation.text, "Summarize my day")
+
+        appState.sendNewChatLinkText(confirmation)
+        for _ in 0..<1_000 where sent.isEmpty { await Task.yield() }
+        XCTAssertEqual(sent, ["Summarize my day"])
+        XCTAssertNil(appState.newChatLinkConfirmation)
+    }
+
+    /// A send Hermes refuses puts the text back in the chat's composer and
+    /// says so there.
+    func testNewChatLinkSendThatFailsLandsInTheComposer() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-refused.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d5")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-refused")
+        var tries = 0
+        appState.newChatLinkSendOverride = { _ in tries += 1; return false }
+
+        appState.openAppLink(.newChat(NewChatLink(text: "Book a table", sends: true)))
+        guard await waitForLaunchCompletion(appState) else { return }
+        let confirmation = try XCTUnwrap(appState.newChatLinkConfirmation)
+        appState.sendNewChatLinkText(confirmation)
+        for _ in 0..<1_000 where appState.composerRestoreRequests.isEmpty { await Task.yield() }
+
+        XCTAssertEqual(tries, 1)
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, "Book a table")
+        XCTAssertEqual(appState.composerNotice, AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat))
+    }
+
+    /// Text too long for the sheet to show whole is never sent from it: it
+    /// waits in the composer, where it can all be read.
+    func testNewChatLinkTooLongToShowWaitsInTheComposer() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-long.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d6")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-long")
+        appState.newChatLinkSendOverride = { _ in
+            XCTFail("text the sheet can't show whole is never sent")
+            return true
+        }
+        let long = String(repeating: "a", count: NewChatLinkConfirmation.maximumCharacters + 1)
+
+        appState.openAppLink(.newChat(NewChatLink(text: long, sends: true)))
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertNil(appState.newChatLinkConfirmation)
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, long)
+    }
+
+    /// Edit puts the text in the composer instead; Cancel drops it.
+    func testNewChatLinkEditAndCancel() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-edit.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d3")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-edit")
+        appState.newChatLinkSendOverride = { _ in
+            XCTFail("Edit and Cancel send nothing")
+            return true
+        }
+
+        appState.openAppLink(.newChat(NewChatLink(text: "Draft this", sends: true)))
+        guard await waitForLaunchCompletion(appState) else { return }
+        let confirmation = try XCTUnwrap(appState.newChatLinkConfirmation)
+        appState.editNewChatLinkText(confirmation)
+        XCTAssertNil(appState.newChatLinkConfirmation)
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, "Draft this")
+        XCTAssertEqual(appState.composerRestoreRequests.last?.focuses, true)
+
+        appState.composerRestoreRequests.removeAll()
+        appState.newChatLinkConfirmation = confirmation
+        appState.discardNewChatLinkText(confirmation)
+        XCTAssertNil(appState.newChatLinkConfirmation)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+    }
+
+    /// A link with no dashboard signed in starts nothing, as the shortcut.
+    func testNewChatLinkWithNoDashboardStartsNothing() throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-none.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d4")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.savedDashboardRegistry.activeDashboardID = nil
+
+        appState.startNewChatFromLink(NewChatLink(text: "Hello"))
+        XCTAssertFalse(appState.widgetLaunchCoordinator.hasPendingRequest)
+        XCTAssertNil(appState.newChatLinkLaunch)
+    }
+
+    private func connectedLinkAppState(defaults: UserDefaults, current: SavedDashboard, created: String) throws -> AppState {
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.newChatFocusesComposer = false
+        appState.widgetSessionCreatorOverride = { _, _ in (created, created, "default") }
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.isConnected = true
+        return appState
+    }
+
     /// With no dashboard signed in there's nothing to start it on; Conduit
     /// opens on its sign-in.
     func testNewChatShortcutWithNoDashboardStartsNothing() throws {

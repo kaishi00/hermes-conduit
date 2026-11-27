@@ -4148,7 +4148,8 @@ meanwhile.
 **Siblings:** the composer's send from the empty canvas · Ask Hermes About
 Screen (the voice sheet's screenshot and a screen question) · Settings' Hermes
 test call and watch prompts · a Classic voice conversation's fresh chat ·
-New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
+New Chat and its focus · a widget's or Shortcut's New Chat · a `conduit://new`
+link's text and title (done, see A new chat from a link) · the /new command
 · Pulse's Do it on an item from no chat or from a Kanban task's worker, and
 its Ask (0.150.0), which leaves the pick's words instead
 · the fresh chat that stands in for an empty one Hermes lost, which takes
@@ -4161,6 +4162,7 @@ what waited (An empty new chat Hermes lost)
 - Screenshots: `Conduit/Services/AppState+ScreenQuestion.swift` (startChatForScreenshot, openScreenQuestion)
 - Hermes calls: `Conduit/Services/AppState+HermesCalls.swift` (startHermesCallsChat)
 - Widget and Shortcut launches: `Conduit/Services/AppState+WidgetLaunch.swift`
+- A `conduit://new` link: `Conduit/Services/AppState+NewChatLink.swift` (newChatLinkLaunchEnded, at the launch's end while its chat is the one on screen)
 - Pulse's Do it and Ask: `Conduit/Services/AppState+Pulse.swift` (startPulseNewChat), `Conduit/Services/PulseFeed.swift` (actOnPulseCard and doPulseCard, its words: Ask's)
 - Tests: `ConduitTests/SessionRenameTests.swift`, `ConduitTests/PulseFeedTests.swift`
 
@@ -4168,13 +4170,14 @@ what waited (An empty new chat Hermes lost)
 - What waits on a new chat goes in only when the chat createNewSession returned is still the one open. Another chat opened or created meanwhile (a voice action, a screen question, a notification) gets nothing. The message stays in the composer, the screenshot goes back or waits, and the user is told (2026-10-24, #941's review, #1191).
 - New Chat focuses the composer only on the chat it made: the app's own on a Mac, the New Chat shortcut on every device (#2863), a widget's never. (On a Mac every chat that opens now focuses its own composer, see Composer focus after a send, #2270.) A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
 - Pulse's Do it on an item from no chat (and, since #1473, on one from a Kanban task's worker, which Hermes won't reopen as a chat) starts a chat only when New Chat can start one at once, and puts the reminder only in the chat its own create returned, while that one is still open. The Pulse screen stays up until then, so a chat that didn't start leaves it there to say why (2026-10-25, #1240 on the `pulse` branch).
+- A `conduit://new` link's text goes in the composer, and its title on the chat, only when its launch ends having opened its chat, which is then the one on screen; a launch another chat superseded gets nothing, and a Send the user taps after moving to another chat puts the text back in the new chat's draft instead of sending (2026-11-27, #3392, issue 3389).
 - Pulse's Ask (#2058, with notifier 0.150.0) goes the same way: on a card from no chat it starts a chat only as Do it does and puts the pick's words in the composer of the chat its own create returned, to edit before sending; it never sends them.
 - When Settings > Pulse or Do it's long press picks a bot (#2211, with notifier 0.164.0), Do it and Ask on a card from no chat open that bot's Bot Chat instead of starting a chat, as its Bots row opens it, and leave their words only while that open still owns the screen; none of this entry's new-chat rules apply to it (see Pulse).
 
 **Open gaps**
-- A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
+- A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed (a `conduit://new` link with text does put it in, by the ruling above).
 
-**Checked:** 2026-11-20, #2928 (#2867 moved startNewChat's launch into receiveLaunch, which now says whether it started one; a shared draft's launch uses that, issue 2870); 2026-11-19, #2863 (the New Chat shortcut's New Chat focuses its own chat's composer on every device; see New Chat from Siri, Shortcuts and the Action Button); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2270 (on a Mac every chat that opens focuses its composer, so New Chat's is one case of it); 2026-11-12, #2243 (a voice photo moved to a new chat keeps its photo kind); 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
+**Checked:** 2026-11-27, #3392 (a `conduit://new` link's text and title go only into the chat its launch opened, issue 3389); 2026-11-20, #2928 (#2867 moved startNewChat's launch into receiveLaunch, which now says whether it started one; a shared draft's launch uses that, issue 2870); 2026-11-19, #2863 (the New Chat shortcut's New Chat focuses its own chat's composer on every device; see New Chat from Siri, Shortcuts and the Action Button); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2270 (on a Mac every chat that opens focuses its composer, so New Chat's is one case of it); 2026-11-12, #2243 (a voice photo moved to a new chat keeps its photo kind); 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## Chat usage and Compress Now
 
@@ -7924,7 +7927,7 @@ waits for the connection and says when it can't; done) · the app's own New
 Chat and its focus (done: one launch origin now says whose launch it is, see
 A new chat that something waits on) · Talk to Conduit (the same Profile
 parameter and its Siri phrases; not needed) · Open Chat and Send to Hermes
-(other App Shortcuts; not needed) · a shared draft's launch (done: one repeating the shortcut's New Chat waits in the inbox, issue 2870) · Which dashboard a launch signs in to
+(other App Shortcuts; not needed) · a shared draft's launch (done: one repeating the shortcut's New Chat waits in the inbox, issue 2870) · a `conduit://new` link (the same launch, with text ready; done, see A new chat from a link) · Which dashboard a launch signs in to
 (done: the launch's own switch, see there) · the New Chat control in Control Center,
 the Lock Screen and the Action Button (done) · the Watch's shortcuts (not needed: the Watch has no composer) ·
 CarPlay (not needed: no keyboard) · Conduit/AppShortcuts.xcstrings and the
@@ -7935,7 +7938,7 @@ intent's title and description · docs/WIDGETS.md · README.md
 **Code**
 - Intent: `Conduit/Intents/NewChatIntent.swift` (NewChatIntent), listed in `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), phrases in `Conduit/AppShortcuts.xcstrings`
 - Control: `ConduitWidgets/LauncherWidgets.swift` (NewChatControl, in the widget bundle on iOS 18; its kind is `Shared/Widgets/WidgetSnapshot.swift`'s ConduitWidgetKind.newChatControl), `Shared/Widgets/NewChatControlIntent.swift` (OpenNewChatIntent, built into the app and the extension; NewChatControlRequests), its handler set in `Conduit/ConduitApp.swift` (didFinishLaunching)
-- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut, routeWidgetLaunchURL's origin, receiveLaunch, false when it went on as the launch already in flight), `Conduit/Services/AppState+ShareDraft.swift` (launchSharedDraft: a shared draft's launch, recorded only when receiveLaunch started it), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
+- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut and newChatShortcutLaunchLink, which a `conduit://new` link starts too, routeWidgetLaunchURL's origin, receiveLaunch, false when it went on as the launch already in flight), `Conduit/Services/AppState+ShareDraft.swift` (launchSharedDraft: a shared draft's launch, recorded only when receiveLaunch started it), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
 - Tests: `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatShortcutFocusesItsComposerOnEveryDevice, testNewChatShortcutWithNoDashboardStartsNothing, testNewChatShortcutStartsInTheProfileItNames, testNewChatShortcutDuringACallSaysToEndTheCall, testNewChatShortcutRepeatingAWidgetsLaunchKeepsTheWidgetsOrigin, testAWidgetRepeatingAShortcutsNewChatKeepsTheShortcutsOrigin), `ConduitTests/ShareDraftTests+AppState.swift` (testADraftRepeatingAShortcutsNewChatLeavesItsFinishAlone)
 
 **Rulings**
@@ -7948,7 +7951,39 @@ intent's title and description · docs/WIDGETS.md · README.md
 **Open gaps**
 - Not tried on a device yet: the Action Button, the control, a cold launch and Siri's phrases.
 
-**Checked:** 2026-11-22, #3135 (issue 2932: the ruling says only a launch being carried out keeps a repeat out, as the code does; no change otherwise); 2026-11-22, #3078 (its Profile can name another combined dashboard's profile, which switches there); 2026-11-20, #2928 (issue 2870: a shared draft repeating a launch in flight stays in the inbox instead of taking its finish; the widget-repeats-shortcut mirror and the call refusal's V2 notice tested); 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+**Checked:** 2026-11-27, #3392 (issue 3389: a `conduit://new` link starts the same launch, see A new chat from a link); 2026-11-22, #3135 (issue 2932: the ruling says only a launch being carried out keeps a repeat out, as the code does; no change otherwise); 2026-11-22, #3078 (its Profile can name another combined dashboard's profile, which switches there); 2026-11-20, #2928 (issue 2870: a shared draft repeating a launch in flight stays in the inbox instead of taking its finish; the widget-repeats-shortcut mirror and the call refusal's V2 notice tested); 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+
+## A new chat from a link
+
+`conduit://new?text=…&profile=…&title=…&send=0|1` (issue 3389) opens
+Conduit on a new chat with text ready, from another app, a widget or an
+automation (Shortcuts, an NFC tag, a Focus change), or from a link in a
+reply. The text waits in the composer with the keyboard up; `send=1` shows
+it in a Send / Edit sheet and sends it only on Send. `profile` and `title`
+work as the New Chat and Send to Hermes shortcuts take them, and every part
+is optional: `conduit://new` alone is the New Chat shortcut.
+
+**Siblings:** the New Chat shortcut (the same launch, origin and failures; done, see New Chat from Siri, Shortcuts and the Action Button) · Send to Hermes (sends in the background without opening Conduit; not needed: it stays the way an automation the user built sends unasked) · a shared draft's launch (composer delivery the same way; not needed: its inbox is the share sheet's) · `conduit://session/` links from other apps (the scheme's other outside link; not needed) · links in replies (an in-app tap opens it the same way, the Send sheet included; done) · the Watch and CarPlay (not needed: no composer) · the notifier (not needed: no tool writes these links) · text: README.md, docs/WIDGETS.md, Conduit/Localizable.xcstrings and Conduit/Strings/Chat.xcstrings (the sheet's title and the composer's notice when a send is refused)
+
+**Desktop app:** has it: `desktop/src/shared/linkUrls.ts` (newChatLink) reads it from the command line or the Mac's open-url, and `desktop/src/renderer/src/App.tsx` (openNewChatLink) opens a new chat with its title and the text in the composer; `send=1` asks first in Conduit's dialog, showing the whole text (past 2,000 characters it goes to the composer instead), where Cancel leaves the text in the composer (its dialog has two buttons) and a chat opened while it's up gets nothing, desktop#673.
+
+**Code**
+- Reading it: `Conduit/Services/ConduitAppLink.swift` (newChat, NewChatLink, init?(externalURL:)), from outside in `Conduit/ConduitApp.swift` (onOpenURL, at once rather than held for the connection, since the launch waits itself)
+- An in-app tap: `Conduit/Services/AppState+AppLinks.swift` (openAppLink)
+- The launch and its text: `Conduit/Services/AppState+NewChatLink.swift` (startNewChatFromLink, newChatLinkLaunchEnded, sendNewChatLinkText, editNewChatLinkText), `Conduit/Services/AppState+WidgetLaunch.swift` (newChatShortcutLaunchLink), `Conduit/Services/AppState.swift` (the coordinator's ended)
+- The Send sheet: `Conduit/Views/RootView.swift` (newChatLinkConfirmation's alert)
+- Tests: `ConduitTests/ConduitExternalLinkTests.swift` (testNewChatLinkReadsItsParts, testNewChatLinkRefusesAnOddProfileOrPath), `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatLinkPutsItsTextInTheNewChatsComposer, testNewChatLinkThatSendsAsksFirst, testNewChatLinkEditAndCancel, testNewChatLinkWithNoDashboardStartsNothing)
+
+**Rulings**
+- `send=1` never sends unseen: the chat opens and a Send / Edit sheet shows the text, and only Send sends it. The sheet shows the whole text, so a link's text past 2,000 characters isn't offered for sending at all and waits in the composer instead, where it can all be read. Any app, web page, QR code or NFC tag can open a link, and Hermes acts on what it reads; an automation that must send without a tap uses Send to Hermes, which the user builds (Eric 2026-11-27, #3392, issue 3389).
+- It is the New Chat shortcut's launch: on the dashboard in use (its profile can name another combined dashboard's, as the shortcut's can), nothing with no dashboard signed in, the keyboard up, and the shortcut's failure words; a launch that fails drops the text (#3392).
+- A link repeating a New Chat launch in flight (a widget's or the shortcut's, for the same profile) rides it and its text lands in the chat that launch opens; a shared draft's launch it doesn't ride, and the link starts nothing, since the draft's text would land over the link's, as a draft doesn't ride a launch in flight either (issue 2870). A newer link's text replaces an earlier link's still waiting on the same launch (#3392).
+- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in that chat's composer and says so there, or, on another chat by now, that it's back in the new chat's draft. The title is set as the title menu's Rename sets it, on the chat the launch opened, taken as it ends (#3392).
+
+**Open gaps**
+- Not tried on a device yet: a cold launch from another app, and Safari's "Open in Conduit?".
+
+**Checked:** 2026-11-27, #3392 (added, issue 3389, with desktop#673).
 
 ## Shortcuts Hermes can run
 
