@@ -3804,6 +3804,41 @@ extension SessionPresentationCacheTests {
         XCTAssertFalse(onDisk().contains("row-streaming"))
     }
 
+    /// The pending tools store never reaches disk ahead of a sessions
+    /// write still waiting out its interval: a tool's side record goes once
+    /// the sessions store holds it (#3374's review).
+    func testThePendingToolsStoreWaitsForAWaitingSessionsWrite() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true, writeInterval: 60)
+        let key = "conduit.sessionPresentation.v1"
+        func save(_ id: String) {
+            cache.save(
+                [ChatMessage(id: id, role: .assistant, content: "Reply", timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            )
+        }
+        save("row-first")
+        cache.waitForQueuedWrites()
+        save("row-folded")
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(key), 1, "The sessions write waits out its interval")
+        // The pending tools store's first write goes at once, and takes the
+        // waiting sessions write with it, first.
+        cache.recordPendingToolStart(
+            ChatMessage(
+                id: "pending", role: .tool, content: "", timestamp: "now",
+                tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+            ),
+            profile: "default",
+            sessionIDs: ["session-b"]
+        )
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount("conduit.sessionPresentation.pendingTools.v1"), 1)
+        XCTAssertEqual(storage.writeCount(key), 2)
+        XCTAssertTrue(storage.data(forKey: key).flatMap { String(data: $0, encoding: .utf8) }?.contains("row-folded") == true)
+    }
+
     /// A store whose bytes haven't changed since its last write isn't
     /// written again.
     func testAStoreWithTheSameBytesIsntWrittenAgain() throws {
@@ -3865,18 +3900,22 @@ extension SessionPresentationCacheTests {
             profile: "default",
             sessionIDs: ["session-c"]
         )
-        // Another chat's running tool keeps the pending tools store from
+        // The deleted chat's running tool changes the pending tools store
+        // on removal (bytes unchanged since the last write aren't written
+        // again, and count as landed), and another chat's keeps it from
         // emptying, so the removal's write to it needs the disk too (an
         // empty store is removed, which always lands) and stays unlanded
         // after the save below lands the sessions store.
-        cache.recordPendingToolStart(
-            ChatMessage(
-                id: "pending", role: .tool, content: "", timestamp: "now",
-                tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
-            ),
-            profile: "default",
-            sessionIDs: ["session-b"]
-        )
+        for (call, session) in [("call-1", "session-b"), ("call-2", "session-c")] {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "pending-\(call)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: call, name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [session]
+            )
+        }
         cache.waitForPendingWrites()
         storage.failsStoreWrites = true
         storage.failsTombstoneWrites = true

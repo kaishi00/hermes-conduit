@@ -1625,6 +1625,17 @@ final class SessionPresentationCache {
         // already, without waiting (writeWaitingStores).
         func isNewest() -> Bool { newestWriteTicket[kind] == ticket && (landedWriteTicket[kind] ?? -1) < ticket }
         guard memoryLock.withLock({ isNewest() }) else { return }
+        // The sessions store first when a write of it waits: a running
+        // tool's side record is dropped once the sessions store holds it,
+        // so the pending tools store never reaches disk ahead of the
+        // sessions write that folded it in (#3374's review).
+        if kind == .pendingTools,
+           let waiting = memoryLock.withLock({ () -> Int? in
+               guard let newest = newestWriteTicket[.sessions], (landedWriteTicket[.sessions] ?? -1) < newest else { return nil }
+               return newest
+           }) {
+            writeLatest(.sessions, ticket: waiting)
+        }
         let signposter = ResponsivenessSignposts.signposter
         let writing = signposter.beginInterval("Write presentation store", id: signposter.makeSignpostID())
         defer { signposter.endInterval("Write presentation store", writing) }
