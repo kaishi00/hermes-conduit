@@ -22,7 +22,6 @@ struct SidebarView: View {
     }
     @State private var showProfilePicker = false
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func tabBar(iconOnly: Bool) -> some View {
         EqualWidthHStack(spacing: 6) {
@@ -201,6 +200,7 @@ private struct SidebarKanbanView: View {
 // MARK: - Session List
 
 struct SessionList: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
