@@ -50,9 +50,12 @@ extension AppState {
         // for the shortcut.
         guard let link = newChatShortcutLaunchLink(profile: request.profile) else { return }
         cancelChatResumeRestoration()
-        // The same New Chat already on its way goes on as that launch; the
-        // link's text lands in the chat it opens all the same.
-        receiveLaunch(link, origin: .shortcut)
+        // The same New Chat already on its way goes on as that launch, and
+        // the link's text lands in the chat it opens all the same. Not a
+        // shared draft's: that launch's own text would land on top of the
+        // link's, so the link starts nothing, as a draft doesn't ride a
+        // launch in flight either (issue 2870).
+        if !receiveLaunch(link, origin: .shortcut), sharedDraftLaunch?.link == link { return }
         newChatLinkLaunch = NewChatLinkLaunch(link: link, request: request)
         if showsPendingNewChat { revealChatForWidgetLaunch() }
     }
@@ -98,7 +101,15 @@ extension AppState {
             }
             guard !sent else { return }
             self.putNewChatLinkText(confirmation.text, dashboardID: confirmation.dashboardID, key: confirmation.key)
-            self.composerNotice = AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat)
+            // Said in the chat that holds the text; on another one by now,
+            // that chat says where it went, as a refused message's does.
+            guard self.activeDashboardID == confirmation.dashboardID else { return }
+            if self.composerDraftKeysAreSameChat(confirmation.key, self.composerDraftKeyOnScreen) {
+                self.composerNotice = AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat)
+            } else {
+                let named = AppLocalization.string("New chat")
+                self.composerNotice = AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat)
+            }
             self.composerNoticeSystemImage = "exclamationmark.circle"
         }
     }

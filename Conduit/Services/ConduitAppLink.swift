@@ -234,15 +234,15 @@ struct NewChatLink: Equatable {
     }
 
     init(components: URLComponents) {
+        // Names exactly as written, as a session link's `profile` is read.
         func value(_ name: String) -> String? {
-            components.queryItems?.first { $0.name.lowercased() == name }?.value
+            components.queryItems?.first { $0.name == name }?.value
         }
-        let send = value("send")?.trimmingCharacters(in: .whitespaces).lowercased()
         self.init(
             text: value("text") ?? "",
             profile: value("profile"),
             title: value("title"),
-            sends: ["1", "true", "yes"].contains(send ?? "")
+            sends: value("send")?.trimmingCharacters(in: .whitespaces) == "1"
         )
     }
 

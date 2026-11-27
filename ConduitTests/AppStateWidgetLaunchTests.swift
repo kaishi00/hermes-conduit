@@ -1210,6 +1210,28 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNil(appState.newChatLinkConfirmation)
     }
 
+    /// A send Hermes refuses puts the text back in the chat's composer and
+    /// says so there.
+    func testNewChatLinkSendThatFailsLandsInTheComposer() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-refused.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d5")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-refused")
+        var tries = 0
+        appState.newChatLinkSendOverride = { _ in tries += 1; return false }
+
+        appState.openAppLink(.newChat(NewChatLink(text: "Book a table", sends: true)))
+        guard await waitForLaunchCompletion(appState) else { return }
+        let confirmation = try XCTUnwrap(appState.newChatLinkConfirmation)
+        appState.sendNewChatLinkText(confirmation)
+        for _ in 0..<1_000 where appState.composerRestoreRequests.isEmpty { await Task.yield() }
+
+        XCTAssertEqual(tries, 1)
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, "Book a table")
+        XCTAssertEqual(appState.composerNotice, AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat))
+    }
+
     /// Edit puts the text in the composer instead; Cancel drops it.
     func testNewChatLinkEditAndCancel() async throws {
         let suite = "AppStateWidgetLaunchTests.new-chat-link-edit.\(UUID().uuidString)"

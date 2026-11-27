@@ -63,6 +63,9 @@ extension HermesVoiceGatewayTimeoutTests {
         let quiet = try XCTUnwrap(URL(string: "conduit://new?text=hi&send=0"))
         guard case .newChat(let unsent)? = ConduitAppLink(externalURL: quiet) else { return XCTFail() }
         XCTAssertFalse(unsent.sends, "send=0 is the default")
+        let spelled = try XCTUnwrap(URL(string: "conduit://new?text=hi&send=true"))
+        guard case .newChat(let notOne)? = ConduitAppLink(externalURL: spelled) else { return XCTFail() }
+        XCTAssertFalse(notOne.sends, "only send=1 sends, as the docs say")
         let blank = try XCTUnwrap(URL(string: "conduit://new?text=%20%20&title=&profile="))
         guard case .newChat(let empty)? = ConduitAppLink(externalURL: blank) else { return XCTFail() }
         XCTAssertEqual(empty, NewChatLink(), "blank parts are left out")
