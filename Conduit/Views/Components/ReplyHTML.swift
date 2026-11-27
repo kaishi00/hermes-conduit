@@ -282,13 +282,16 @@ enum ReplyHTML {
     private static let comment = compiled(#"<!--.*?-->"#)
 
     /// `line` without its code spans and comments: a `</details>` in one closes nothing.
-    private static func withoutCode(_ line: String) -> String {
-        replacing(comment, in: withoutCodeSpans(line), with: "")
+    /// `line` without its code spans and comments, each replaced by
+    /// `filler`: a tag search passes a character no tag holds, so the text
+    /// either side never joins into one (`</det` and `ails>` around a span).
+    private static func withoutCode(_ line: String, filler: String = "") -> String {
+        replacing(comment, in: withoutCodeSpans(line, filler: filler), with: filler)
     }
 
-    private static func withoutCodeSpans(_ line: String) -> String {
+    private static func withoutCodeSpans(_ line: String, filler: String = "") -> String {
         let ns = NSMutableString(string: line)
-        for span in codeSpans(in: line).reversed() { ns.replaceCharacters(in: span, with: "") }
+        for span in codeSpans(in: line).reversed() { ns.replaceCharacters(in: span, with: filler) }
         return ns as String
     }
 
@@ -306,7 +309,7 @@ enum ReplyHTML {
         if matches(foldClosingEnd, after) { return true }
         // A close with words after it on the line stays as written: folded, they'd hide the rest of the reply.
         // One in a code span or a comment closes nothing, so it doesn't count (#3349).
-        if matches(foldClosingTag, withoutCode(after)) { return false }
+        if matches(foldClosingTag, withoutCode(after, filler: "\u{1}")) { return false }
         if withSummary { return true }
         return closedLater && !matches(tagStart, after)
     }

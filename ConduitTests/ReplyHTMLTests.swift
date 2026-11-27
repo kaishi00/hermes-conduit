@@ -142,6 +142,14 @@ final class ReplyHTMLTests: XCTestCase {
         )
     }
 
+    func testTextEitherSideOfACodeSpanNeverJoinsIntoAClose() {
+        // #3379's review: dropping the span left "</det" + "ails>", a close the line never had.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary>Use </det`x`ails> as text.", "More.", "</details>"]),
+            ["<details><summary>S</summary>", "Use </det`x`ails> as text.", "More.", "</details>"]
+        )
+    }
+
     func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body so far"]), ["<details><summary>S</summary>", "Body so far"])
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Click <b>here</b>"]), ["<details><summary>S</summary>", "Click <b>here</b>"])

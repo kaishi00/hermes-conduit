@@ -1643,7 +1643,10 @@ final class SessionPresentationCache {
             }, at: 0)
             merged[key] = Array(kept.suffix(maxMessagesPerSession))
         }
+        // Bytes already on disk (a burst of starts merging the same store)
+        // aren't written again.
         if !merged.isEmpty, let data = try? Self.encodePendingTools(merged),
+           lastWrittenDigest[.pendingTools] != SHA256.hash(data: data),
            storage.storeData(data, forKey: pendingToolsStorageKey) {
             lastWrittenDigest[.pendingTools] = SHA256.hash(data: data)
             lastWriteAt[.pendingTools] = .now()
