@@ -26,6 +26,9 @@ struct NewChatLinkConfirmation: Identifiable, Equatable {
     let text: String
     let dashboardID: UUID
     let key: ComposerDraftKey
+    /// The title the link gave its chat, for the notice when the text
+    /// waits in that chat's draft instead.
+    var title: String? = nil
 
     /// Longest text a link may send. The sheet shows it whole, since the
     /// user is agreeing to all of it; longer text waits in the composer,
@@ -81,7 +84,7 @@ extension AppState {
         }
         guard !request.text.isEmpty else { return }
         if request.sends, NewChatLinkConfirmation.canAsk(request.text) {
-            newChatLinkConfirmation = NewChatLinkConfirmation(text: request.text, dashboardID: dashboardID, key: key)
+            newChatLinkConfirmation = NewChatLinkConfirmation(text: request.text, dashboardID: dashboardID, key: key, title: request.title)
         } else {
             putNewChatLinkText(request.text, dashboardID: dashboardID, key: key)
         }
@@ -132,7 +135,7 @@ extension AppState {
         if composerDraftKeysAreSameChat(confirmation.key, composerDraftKeyOnScreen) {
             composerNotice = AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat)
         } else {
-            let named = AppLocalization.string("New chat")
+            let named = confirmation.title ?? AppLocalization.string("New chat")
             composerNotice = AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat)
         }
         composerNoticeSystemImage = "exclamationmark.circle"

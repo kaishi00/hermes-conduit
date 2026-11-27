@@ -20,6 +20,13 @@ extension AppState {
     /// Opens a link Conduit wrote into a chat (a voice call's job link), or
     /// one another app opened Conduit with.
     func openAppLink(_ link: ConduitAppLink) {
+        // A new chat link is the New Chat shortcut's launch, which decides
+        // for itself whether a launch in flight goes on (one it repeats
+        // rides on, a shared draft's is left alone), as the shortcut does.
+        if case .newChat(let request) = link {
+            startNewChatFromLink(request)
+            return
+        }
         widgetLaunchCoordinator.supersede()
         switch link {
         case .session(let id, let profile, let dashboard):
@@ -78,8 +85,8 @@ extension AppState {
             settingsLinkRequest = page
         case .file(let path):
             revealWorkspaceFile(path)
-        case .newChat(let request):
-            startNewChatFromLink(request)
+        case .newChat:
+            return // started above
         }
     }
 
