@@ -3228,8 +3228,9 @@ extension VoiceConversationControllerTests {
         let timedOutJob = try XCTUnwrap(timedOutSupervisor.jobs.first)
         timedOutFake.steerError = URLError(.timedOut)
 
-        guard case .failed = await timedOutSupervisor.followUp(jobID: timedOutJob.id, words: "also make it quiet", kind: "add") else {
-            return XCTFail("a transport failure must be reported")
+        // A timed-out steer may have landed (#3361): reported as maybe sent, never dispatched again.
+        guard case .mayHaveGone = await timedOutSupervisor.followUp(jobID: timedOutJob.id, words: "also make it quiet", kind: "add") else {
+            return XCTFail("a timed-out steer must be reported as one that may have gone")
         }
         XCTAssertEqual(timedOutFake.steers.count, 1)
         XCTAssertTrue(timedOutFake.redirects.isEmpty, "an ambiguous steer must not dispatch again")
@@ -3361,6 +3362,8 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.cannotConnectToHost)))
         XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(HermesError.notConnected))
         XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(CancellationError()))
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.secureConnectionFailed)))
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.serverCertificateUntrusted)))
         XCTAssertTrue(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.timedOut)))
         XCTAssertTrue(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.networkConnectionLost)))
         XCTAssertTrue(VoiceBackgroundJobSupervisor.followUpMayHaveGone(HermesError.connectionClosed))

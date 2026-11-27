@@ -688,8 +688,11 @@ final class NativeOAuthSession {
                     // The server retired the grant this refresh spent, so
                     // the Keychain keeps the new one, unless it moved on
                     // meanwhile (a sign-out, a new sign-in, another
-                    // session's renewal), which wins (#3427).
-                    if KeychainHelper.loadNativeOAuthTokens(dashboardID: self.dashboardID) == current,
+                    // session's renewal), which wins (#3427). A copy an
+                    // earlier failed save left behind (`unsavedOver`) is
+                    // behind, not moved on: it's written over.
+                    let stored = KeychainHelper.loadNativeOAuthTokens(dashboardID: self.dashboardID)
+                    if let stored, stored == current || stored == self.unsavedOver,
                        KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID) {
                         NotificationCenter.default.post(
                             name: .nativeOAuthTokensRotated, object: nil, userInfo: ["dashboardID": self.dashboardID]

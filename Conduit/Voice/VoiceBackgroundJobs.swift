@@ -2173,8 +2173,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A redirect that failed after its words may have left (#3361): the
     /// send's own ambiguity rule, less the failures that stop a request
-    /// before it goes (no network, no host, a bad address) and a cancelled
-    /// follow-up, whose call is over.
+    /// before it goes (no network, no host, a bad address, a TLS handshake
+    /// that failed) and a cancelled follow-up, whose call is over.
     static func followUpMayHaveGone(_ error: Error) -> Bool {
         if error is CancellationError { return false }
         if case HermesError.invalidUrl = error { return false }
@@ -2182,7 +2182,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             switch urlError.code {
             case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
                  .internationalRoamingOff, .dataNotAllowed, .callIsActive, .badURL, .unsupportedURL,
-                 .appTransportSecurityRequiresSecureConnection, .cancelled:
+                 .appTransportSecurityRequiresSecureConnection, .cancelled,
+                 .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+                 .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid, .clientCertificateRejected,
+                 .clientCertificateRequired:
                 return false
             default:
                 return true
