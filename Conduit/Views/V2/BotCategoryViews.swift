@@ -187,7 +187,15 @@ struct CategoryHeadingDrop: DropDelegate {
         guard let roomID = liftedRoom, let room else { return bot.performDrop(info: info) }
         RoomDragPayload.lifted = nil
         exited()
-        return room(roomID)
+        if RoomDragPayload.isLive { return room(roomID) }
+        // Past its item, the tile in hand is only a guess: read the drop's
+        // own text, so a foreign drop never borrows the room (RoomTileDrop).
+        guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String, let dropped = RoomDragPayload.roomID(from: text) else { return }
+            DispatchQueue.main.async { _ = room(dropped) }
+        }
+        return true
     }
 }
 

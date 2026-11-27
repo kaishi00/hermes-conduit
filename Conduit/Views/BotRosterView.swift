@@ -824,6 +824,10 @@ struct BotRosterView: View {
         case .newForRoom(let roomID):
             appState.fileGroupRoom(roomID, under: name)
         case .rename(let old):
+            // A folded heading stays folded under its new name.
+            foldedCategories = foldedCategories.split(separator: "\n").map {
+                String($0) == BotCategories.key(old) ? BotCategories.key(name) : String($0)
+            }.joined(separator: "\n")
             let items = categoryItems
             Task { managementNotice = await appState.renameBotCategory(old, to: name, items: items) }
         }
