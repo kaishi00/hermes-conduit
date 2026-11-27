@@ -472,7 +472,8 @@ extension AppState {
             guard let self, let client, let kept = self.keptDashboardRuntimes[id], kept.client === client else { return }
             self.act(onRuntime: kept.runtime) {
                 self.handleStreamEvent(event, turnGeneration: turnGeneration)
-                if case .messageStart(let sessionID) = event, let admissionID {
+                if case .messageStart(let sessionID) = event,
+                   let admissionID = self.admissionStarting(named: admissionID, by: client) {
                     self.noteQueuedTurnStarted(sessionID: sessionID, admissionID: admissionID)
                 }
             }

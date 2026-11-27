@@ -263,6 +263,9 @@ extension AppState {
         sessionControl.clear()
         shownChat.queuedSendRows = [:]
         shownChat.queuedSendOrder = []
+        shownChat.forwardedSendTimes = [:]
+        shownChat.forwardedSendChats = [:]
+        shownChat.readStartedAdmissions = []
         shownChat.ownSendRowIDs = [:]
         shownChat.startedAdmissionIDs = []
         shownChat.startedAdmissionAnchors = [:]

@@ -340,8 +340,20 @@ struct ChatView: View {
             )
             // The chat's standing goal, loop and heartbeat (issue 821).
             SessionControlDock(store: appState.sessionControl, appState: appState, openChatID: appState.activeSessionId)
+            // A turn of the chat running in the gateway, on hermes dashboard
+            // (an API chat's, another app's), with its subagents' own steps;
+            // its reads fill the queue dock below (Eric, 2026-11-27).
+            ChatLiveWorkDock(
+                appState: appState,
+                queue: appState.authorityQueue,
+                openChatID: appState.activeSessionId,
+                isBusy: appState.isBusy,
+                isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
+                    && (!appState.showSidebar || shell.hasChatBeside)
+            )
             // The chat's queue on the Webapp's listener: messages waiting
-            // their turn, and a turn a gateway restart cut off.
+            // their turn, and a turn a gateway restart cut off; on hermes
+            // dashboard, the gateway's queue as the plugin reads it.
             AuthorityQueueDock(store: appState.authorityQueue, appState: appState, openChatID: appState.activeSessionId)
             // Composer + control bar. Equatable: it redraws for what it
             // shows, not for every redraw of this view.
