@@ -8943,7 +8943,7 @@ room message is the room's own text, not a Hermes row) · Hermes Desktop
 greyed, out of the model's context: done, #2353; Pulse needs nothing, as it
 reads only active rows) · text that describes it (none)
 
-**Desktop app:** has it: a sent message's text, pictures and "Replying to" card (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16).
+**Desktop app:** has it: a sent message's text, pictures and "Replying to" card (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16); a picture turn's recalled memory and plugin notes are dropped as the phone drops them (`desktop/src/renderer/src/state/text.ts` removeTurnContext, desktop#710).
 
 **Code**
 - A refused turn's message: `Conduit/Services/HermesClient.swift` (normalizeMessages' isRefusedRow), `Conduit/Models/Models.swift` (ChatMessage.contentRefusedDisplayKind, isContentRefused), `Conduit/Views/ChatView.swift` (ContentRefusedBubble, ContentRefusedMessageContent, and UserAttachmentPreviews, shared with the sent bubble)
@@ -8973,23 +8973,23 @@ writes in its place.
 **Siblings:** chats, project chats and Bot Chat (done) · iPad and Mac (the
 same transcript) · the saved copy of a chat and voice's reads of it
 (VoiceHistory reads through the same normalizer) · the desktop transcript
-(done, desktop#674) · Pulse reading chats, work coordination's "the user
-wrote" and the files list (done, notifier #1117) · rewind turns (not
+(done, desktop#674; Hermes' own handoff on replies and user rows, desktop#710) · Pulse reading chats, work coordination's "the user
+wrote" and the files list (done, notifier #1117; a summary kept as a reply, notifier #1132) · rewind turns (not
 needed: they follow Hermes' own turn count, which counts the row) · the chat
 list's preview and title (not needed: Hermes reads them from the session) ·
 the Watch, CarPlay and group rooms (not needed: they draw no saved rows) ·
 Hermes' Compress Now result and progress (see Chat usage and Compress Now) ·
 text that describes it (none)
 
-**Desktop app:** has it: `desktop/src/renderer/src/state/transcript.ts` (isContextEngineSummary in userRow; Hermes' own handoff is already left out by its projection), desktop#674.
+**Desktop app:** has it: `desktop/src/renderer/src/state/transcript.ts` (withoutCompaction on user rows and replies, isContextEngineSummary in userRow), desktop#674 and desktop#710.
 
 **Code**
 - App: `Conduit/Services/HermesClient.swift` (MessageNormalizer.visibleContentRemovingCompaction, hasCompactionSummaryPrefix and contextEngineSummaryHeader)
-- Notifier: `notifier/pulse_hermes.py` (_not_summary, in _person_rows, chat_messages, user_row_before and user_text_after), `notifier/work_coord.py` (hermes_own, LCM_SUMMARY_HEADER), `notifier/artifacts_index.py` (_own_text, LCM_SUMMARY_HEADER)
-- Tests: `ConduitTests/MessageNormalizerTests.swift` (testCompactionPrefixHelperClassifiesFromABoundedHead, testEveryContextEngineSummaryDepthIsOmitted and the Recent Summary cases), `desktop/test/transcript.test.ts` ("a context engine's summary"), `notifier/tests/test_pulse.py` (test_a_chats_summary_is_not_the_users_words), `notifier/tests/test_work_coord.py`, `notifier/tests/test_artifacts.py` (test_a_context_engines_summary_names_nobodys_files, test_the_summary_header_is_one_pattern_everywhere)
+- Notifier: `notifier/pulse_hermes.py` (_not_summary and _shown, in _person_rows, chat_messages, user_row_before, user_text_after, later_messages and chain_messages), `notifier/work_coord.py` (hermes_own, LCM_SUMMARY_HEADER), `notifier/artifacts_index.py` (_own_text for user rows and replies, HERMES_SUMMARY_HEADS, LCM_SUMMARY_HEADER)
+- Tests: `ConduitTests/MessageNormalizerTests.swift` (testCompactionPrefixHelperClassifiesFromABoundedHead, testEveryContextEngineSummaryDepthIsOmitted and the Recent Summary cases), `desktop/test/transcript.test.ts` ("a context engine's summary", "Hermes' own summary after a compaction"), `notifier/tests/test_pulse.py` (test_a_chats_summary_is_not_the_users_words, test_a_summary_folded_into_a_reply_is_not_the_bots_words), `notifier/tests/test_work_coord.py`, `notifier/tests/test_artifacts.py` (test_a_context_engines_summary_names_nobodys_files, test_hermes_summary_in_a_reply_delivers_nothing, test_the_summary_header_is_one_pattern_everywhere)
 
 **Rulings**
-- Hermes' handoff is told by its `_compressed_summary` flag or its `[CONTEXT COMPACTION` / `[CONTEXT SUMMARY]:` opening; a row it merged into keeps the user's words (before its delimiter, or after its end marker) and shows them.
+- Hermes' handoff is told by its `_compressed_summary` flag or its `[CONTEXT COMPACTION` / `[CONTEXT SUMMARY]:` opening, as a user row or a reply; a row it merged into keeps its own words, the user's or the bot's (before its delimiter, or after its end marker), and shows them. Hermes' projection doesn't unwrap a reply it merged into, so the desktop drew one in full (Nahida's chat, 2026-11-27; #PR).
 - A context engine's summary is told by LCM-X's own part header, `[Recent|Session Arc|Durable|Depth-N Summary (dN, node M)]` at the row's start (its `_LCM_SUMMARY_PART_HEADER_RE`). Hermes doesn't recognize it, so it reaches the apps as a plain user row, and a compaction carries the same summary forward as a fresh row. The whole row is hidden: a row LCM-X merged behind it keeps its own copy in the store. A message that only quotes a header mid-text is the user's (Furina's Bot Chat on .52, 2026-11-26: an 88,341-character Session Arc summary drawn as Eric's message; #3395).
 - The summary is hidden, not shown as a marker: the chat reads as the conversation it was.
 - Hermes' own detector isn't patched from the plugin: it also feeds what the model sees after a compaction, which is the engine's business.
@@ -8997,7 +8997,7 @@ text that describes it (none)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-27, #3395 (new entry: every depth of LCM-X's summary hidden on the phone and the desktop, and left out of Pulse, work coordination and the files list, notifier #1117, desktop#674).
+**Checked:** 2026-11-27, #PR (Hermes' handoff kept as a reply or folded into one: hidden on the desktop and left out of Pulse and the files list, desktop#710, notifier #1132; the phone already did); 2026-11-27, #3395 (new entry: every depth of LCM-X's summary hidden on the phone and the desktop, and left out of Pulse, work coordination and the files list, notifier #1117, desktop#674).
 
 ## Pictures in messages
 
