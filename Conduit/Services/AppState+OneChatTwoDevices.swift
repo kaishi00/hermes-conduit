@@ -359,7 +359,8 @@ extension AppState {
             refreshCatalogAfterLeavingChat(reportingFailure: false, readingChange: true)
             // The Bot Chat on screen is owed one read of its stored tail,
             // kept until it lands (BotChatTailRead).
-            if chatOnScreenIsInScope, activeBotChatProfile != nil, let sessionID = chatShownOnScreen {
+            // The open one, even covered by the list: it's read once it shows again.
+            if chatOnScreenIsInScope, activeBotChatProfile != nil, let sessionID = activeSessionId, !sessionID.isEmpty {
                 botChatTailRead.noteChanged(sessionID: sessionID)
                 readOpenBotChatTail()
             }
@@ -394,7 +395,8 @@ extension AppState {
         let dashboardID = activeDashboardID
         let storedID = window.resolvedSessionID ?? window.requestedSessionID
         let generation = botChatTailRead.generation
-        startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false) { appState in
+        // Its retry is BotChatTailRead's, never the ordinary chat's check.
+        startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false, callsOffCheck: false) { appState in
             @MainActor func isCurrent() -> Bool {
                 appState.chatOnScreenIsInScope && appState.activeDashboardID == dashboardID && appState.client === client
                     && appState.dashboardTicketBridge === bridge && appState.chatShownOnScreen == sessionID
@@ -426,10 +428,12 @@ extension AppState {
             guard isCurrent(), appState.messages.last?.id == last,
                   appState.shownChat.durablePersistedRowIDs == frontier,
                   case let .hydrated(transcript) = outcome else { return }
-            appState.botChatTailRead.noteRead(generation: generation)
             // A page echoing a session id must echo this chat's; one echoing
             // none answers the request's own identity, as opens and backfill take it.
-            if let resolvedID = transcript.resolvedSessionId, !window.trustedSessionIDs.contains(resolvedID) { return }
+            if let resolvedID = transcript.resolvedSessionId, !window.trustedSessionIDs.contains(resolvedID) {
+                appState.botChatTailRead.noteRead(generation: generation)
+                return
+            }
             let rows: [ChatMessage]
             switch appState.foregroundFreshnessVerdict(
                 outcome, localFrontier: frontier, localMessageIDs: messageIDs, lastLocalMessageID: last,
@@ -437,15 +441,25 @@ extension AppState {
             ) {
             case let .advanced(_, newRows):
                 rows = newRows
+            case .unchanged:
+                appState.botChatTailRead.noteRead(generation: generation)
+                return
             case .inconclusive where last == nil && wasEmpty:
-                // A previously validated empty chat can take a complete first page.
                 // Every normalized row comes from the page, tool cards and
                 // reasoning rows (derived ids) included.
-                guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else { return }
+                guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else {
+                    appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
+                    return
+                }
                 rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
             default:
+                // No ordering proof yet (the tail not anchored, or the
+                // anchor past the newest page): asked again like a failed
+                // read, and given up with it.
+                appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
                 return
             }
+            appState.botChatTailRead.noteRead(generation: generation)
             guard !rows.isEmpty else { return }
             appState.applyPersistedForegroundAdvancement(
                 requestedSessionID: storedID, transcript: transcript, newRows: rows,
@@ -522,6 +536,7 @@ extension AppState {
     private func startOpenChatSyncRead(
         sessionID: String,
         expectsRunning: Bool,
+        callsOffCheck: Bool = true,
         _ read: @escaping @MainActor (AppState) async -> Void
     ) {
         let readID = UUID()
@@ -541,7 +556,7 @@ extension AppState {
             guard self.activeSessionId == sessionID, self.chatOnScreenIsInScope, self.reconciliation == nil,
                   self.turnState == (expectsRunning ? .running : .idle) else {
                 // New rows still unread: the next check asks again.
-                if !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }
+                if callsOffCheck, !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }
                 return
             }
             await read(self)

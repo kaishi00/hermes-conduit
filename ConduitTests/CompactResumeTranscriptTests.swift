@@ -3019,6 +3019,22 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
     }
 
+    func testAChangeWhileTheListCoversTheBotChatIsReadWhenItShows() async throws {
+        var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
+        let app = try await openBotChat { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.showSidebar = true
+        tail.append(transcriptRow(2, role: "assistant", content: "The example job is complete."))
+        app.handleStreamEvent(.sessionsChanged)
+        XCTAssertNil(app.openChatSyncRead, "No tail read while the list covers the chat")
+
+        app.showSidebar = false
+        await app.openChatSyncTick()
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
+    }
+
     func testABotChatTailPageEchoingNoSessionIDStillMerges() async throws {
         var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
         let app = try await openBotChat { _ in

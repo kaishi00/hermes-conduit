@@ -222,8 +222,9 @@ struct CatalogChangeSignal {
 /// The open Bot Chat's stored tail read a `sessions.changed` asks for.
 /// Bot Chats are outside the workspace registry, so the change is owed to
 /// the chat on screen until one read of its tail lands: kept through a
-/// read or turn under way, an older page loading, or a transient failure
-/// (retried 5 s after it, three times at most).
+/// read or turn under way, the list covering the chat, an older page
+/// loading, or a read that failed or proved nothing (read again 5 s later,
+/// three reads at most).
 struct BotChatTailRead {
     static let retryInterval: TimeInterval = 5
     static let maximumFailures = 3
