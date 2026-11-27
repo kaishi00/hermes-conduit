@@ -85,8 +85,9 @@ extension AppState {
         }
         // One the last read listed, that nothing holds and is now neither waiting
         // nor running, ran and ended between reads or was withdrawn: the chat's
-        // stored rows tell which.
-        if previous?.queued.contains(where: { !waiting.contains($0.admissionID)
+        // stored rows tell which. Not while a turn runs there: its words drawn in
+        // above may not be stored yet, and the turn's end reads the chat anyway.
+        if !work.running, previous?.queued.contains(where: { !waiting.contains($0.admissionID)
             && !work.startedAdmissions.contains($0.admissionID)
             && !shownChat.queuedSendOrder.contains($0.admissionID) }) == true {
             settled = true
