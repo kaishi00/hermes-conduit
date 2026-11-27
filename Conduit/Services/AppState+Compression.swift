@@ -100,8 +100,12 @@ extension AppState {
                 errorForReporting = error
                 reportingContext = context
             }
-            guard isCurrentComposerSubmission(reportingContext) else { return }
+            let current = isCurrentComposerSubmission(reportingContext)
+            // A cancelled call after its chat left has nothing to say.
+            if !current, errorForReporting is CancellationError { return }
             if HermesClient.isMissingRPCMethod(errorForReporting) {
+                // The fallback runs only for the chat on screen.
+                guard current else { return }
                 await runLegacyCompressionFallback(
                     legacyCommand: legacyCommand,
                     aliasArgument: focusTopic,
@@ -110,6 +114,8 @@ extension AppState {
                     context: reportingContext
                 )
             } else {
+                // Saved for its chat when that chat has left the screen
+                // (appendSlashOutput's stale-context branch, issue 3394).
                 appendSlashOutput(
                     AppLocalization.string(
                         "⚠️ Compression failed: \(UserFacingError.message(for: errorForReporting))"
@@ -347,7 +353,14 @@ extension AppState {
                 command: legacyCommand,
                 context: context
             )
-            guard isCurrentComposerSubmission(context) else { return }
+            guard isCurrentComposerSubmission(context) else {
+                // Its chat left the screen meanwhile: what it printed is
+                // saved for that chat (issue 3394).
+                if let output = Self.printedSlashOutput(legacyResult) {
+                    appendSlashOutput(output, context: context)
+                }
+                return
+            }
             await handleSlashResult(
                 legacyResult,
                 depth: 0,
@@ -357,7 +370,7 @@ extension AppState {
                 context: context
             )
         } catch {
-            guard isCurrentComposerSubmission(context) else { return }
+            if error is CancellationError, !isCurrentComposerSubmission(context) { return }
             appendSlashOutput(
                 AppLocalization.string(
                     "⚠️ Compression failed: \(UserFacingError.message(for: error))"
