@@ -22,6 +22,8 @@ extension AppState {
     func handleStreamEvent(_ event: StreamEvent, turnGeneration: Int? = nil) {
         // A step summary's answer is never a /btw reply, in any chat.
         if takeStepSummaryAnswer(event) { return }
+        // A /btw or /background answer for a chat that left the screen is saved for it.
+        if keepLeftChatSideAgentAnswer(event) { return }
         // Voice background jobs are not the active conversation, so they
         // observe every event before the active-session filter below.
         voiceBackgroundJobSupervisor.observe(event)

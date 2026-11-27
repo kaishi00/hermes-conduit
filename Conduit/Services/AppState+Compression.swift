@@ -59,7 +59,13 @@ extension AppState {
                     compressingSessionIDs.insert(activeClaimID)
                 }
             )
-            guard isCurrentComposerSubmission(outcome.context) else { return }
+            guard isCurrentComposerSubmission(outcome.context) else {
+                // Another chat (or this one opened again) took the screen
+                // while Hermes compressed: the note is saved for this chat,
+                // and shows when it's opened (issue 3394).
+                appendSlashOutput(Self.lateCompressionNote(for: outcome.result), context: outcome.context)
+                return
+            }
             let disposition = applySessionCompressionResult(
                 outcome.result,
                 sessionID: outcome.sessionID,
@@ -94,8 +100,12 @@ extension AppState {
                 errorForReporting = error
                 reportingContext = context
             }
-            guard isCurrentComposerSubmission(reportingContext) else { return }
+            let current = isCurrentComposerSubmission(reportingContext)
+            // A cancelled call after its chat left has nothing to say.
+            if !current, errorForReporting is CancellationError { return }
             if HermesClient.isMissingRPCMethod(errorForReporting) {
+                // The fallback runs only for the chat on screen.
+                guard current else { return }
                 await runLegacyCompressionFallback(
                     legacyCommand: legacyCommand,
                     aliasArgument: focusTopic,
@@ -104,6 +114,8 @@ extension AppState {
                     context: reportingContext
                 )
             } else {
+                // Saved for its chat when that chat has left the screen
+                // (appendSlashOutput's stale-context branch, issue 3394).
                 appendSlashOutput(
                     AppLocalization.string(
                         "⚠️ Compression failed: \(UserFacingError.message(for: errorForReporting))"
@@ -341,7 +353,14 @@ extension AppState {
                 command: legacyCommand,
                 context: context
             )
-            guard isCurrentComposerSubmission(context) else { return }
+            guard isCurrentComposerSubmission(context) else {
+                // Its chat left the screen meanwhile: what it printed is
+                // saved for that chat (issue 3394).
+                if let output = Self.printedSlashOutput(legacyResult) {
+                    appendSlashOutput(output, context: context)
+                }
+                return
+            }
             await handleSlashResult(
                 legacyResult,
                 depth: 0,
@@ -351,7 +370,7 @@ extension AppState {
                 context: context
             )
         } catch {
-            guard isCurrentComposerSubmission(context) else { return }
+            if error is CancellationError, !isCurrentComposerSubmission(context) { return }
             appendSlashOutput(
                 AppLocalization.string(
                     "⚠️ Compression failed: \(UserFacingError.message(for: error))"
@@ -452,6 +471,18 @@ extension AppState {
         return .adopted
     }
 
+    /// The note a compression that ended after its chat left the screen
+    /// leaves for that chat: what the chat would have shown.
+    private static func lateCompressionNote(for result: SessionCompressResult) -> String {
+        if result.lockHeld {
+            return result.message ?? AppLocalization.string("Compression is already in progress.")
+        }
+        if result.isPending {
+            return result.message ?? AppLocalization.string("Compression continues in the background; the transcript will refresh when it finishes.")
+        }
+        return compressionRecord(for: result)
+    }
+
     /// The chat record a finished compression leaves behind: summary lines on
     /// success; a warning note instead when the compression aborted (upstream
     /// Desktop keeps an aborted run out of the success path); the host's own
@@ -522,7 +553,7 @@ extension AppState {
             includePendingApprovals: false
         )
         // The chat's own notes aren't among the compressed rows; keep them.
-        let kept = Self.keepingLocalNotes(from: messages, in: merged)
+        let kept = mergeLocalNotes(into: Self.keepingLocalNotes(from: messages, in: merged), sessionId: sessionID)
         // The window describes the history from before the compression
         // (it goes just below), so it bounds no call card here.
         messages = mergeVoiceCallMarkers(

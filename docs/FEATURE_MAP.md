@@ -4704,22 +4704,27 @@ queue, stop, undo, retry, compress (also the Context sheet's Compress Now, done,
 (see Two Hermes servers; the reload verbs probed on both, notifier #598) ·
 /goal, /subgoal, /loop, /heartbeat and their aliases (Hermes runs them; the dock reads the chat's controls after each, done, #2364, see Goal, loop and heartbeat) · the suggestions after `/reload-skills` (done, #1938: the catalog is read
 again) · the subcommand words (`/fast u`, `/reload-mcp now`) · a hardware
-keyboard on the list (done, #1938: see Composer Return key) · the room
+keyboard on the list (done, #1938: see Composer Return key) · the
+chat's own notes (slash output, the compression summary, /btw and
+/background answers), which Hermes never stores: kept through a refresh of
+the open chat, a chat opened again and a command that ends after its chat
+was left (done, #3402, issue 3394; Desktop desktop#683) · the room
 composer (not needed: rooms take no slash commands) · voice modes, Watch and
 CarPlay (not needed: no slash commands) · Settings' "Confirm connector
 reloads" caption (not needed: it already says Hermes asks first, which
 `/reload-mcp always` turns off on `hermes dashboard`) · README's "slash
 commands" (not needed, still true)
 
-**Desktop app:** has it: slash commands (`desktop/src/renderer/src/state/slash.ts`, desktop#17).
+**Desktop app:** has it: slash commands (`desktop/src/renderer/src/state/slash.ts`, desktop#17); a chat's own notes kept per chat through re-reads and opens, a late one kept for its chat, a late `/btw` or `/background` answer too (`desktop/src/renderer/src/state/chatNotes.ts`, desktop#683, desktop#684).
 
 **Code**
 - Catalog, hidden list, routes: `Conduit/Services/AppState+SlashCommands.swift` (normalizedSlashCatalog, slashCommandsWithoutConduitRoute, builtInSlashCommands, conduitSlashSubcommands, executeSlashCommand, reloadMCPServers, mcpReloadNote, reloadSkills, runRollback, checkpointList, restoreNote, undoRollbackHint)
 - Verbs: `Conduit/Services/HermesClient.swift` (commandsCatalog, executeSlash, reloadMCP, reloadSkills, MCPReloadOutcome, rollback, RollbackRequest, SessionRewindSnapshot.Turn's timestamp)
 - Suggestions: `Conduit/Views/Components/ComposerBar.swift` (filteredSlashCommands, slashArgumentSuggestions, SlashSuggestionsOverlay)
+- The chat's own notes: `Conduit/Services/AppState+SlashCommands.swift` (appendSlashOutput saves each note, a late one for the chat it was typed in; printedSlashOutput), `Conduit/Services/AppState+Persistence.swift` (persistLocalNote, trimmedLocalNotes, mergeLocalNotes), `Conduit/Models/Models.swift` (LocalChatNoteRecord), `Conduit/Services/AppState+Reconciliation.swift` (keepingLocalNotes and mergeLocalNotes in applyChatResume), `Conduit/Services/AppState+Compression.swift` (the compressed transcript's notes; lateCompressionNote)
 - Drift check: `scripts/check-hermes-slash-parity.py`, `.github/workflows/hermes-parity.yml`
 - Contract: `notifier/upstream/test_gateway_listener.py` (the reload tests)
-- Tests: `ConduitTests/SlashCommandParityTests.swift`, `ConduitTests/AppStateSessionCompressTests.swift` (the slash tests)
+- Tests: `ConduitTests/SlashCommandParityTests.swift`, `ConduitTests/AppStateSessionCompressTests.swift` (the slash tests), `ConduitTests/AppStateChatResumeTests.swift` (testLocalNotesComeBackWhenTheChatOpensAgain, testALateNoteIsSavedForTheChatItWasTypedIn, testOnlyAPrintedSlashResultIsKeptWhenItsChatHasLeft, testSavedLocalNotesKeepTheNewest)
 
 **Rulings**
 - A command Hermes refuses for app chats is hidden, not shown as unavailable, unless Conduit has a route of its own; typed anyway it goes to Hermes, whose refusal says what to use (2026-10-21, #1082).
@@ -4727,11 +4732,12 @@ commands" (not needed, still true)
 - A Hermes without `reload.mcp` or `skills.reload` gets the command through `slash.exec`, as before (2026-11-07, #1938).
 - `/rollback` is Hermes Desktop's: `[list]` numbers the chat folder's file checkpoints newest first, `diff <n|hash>` shows one's changes as a diff block, `<n|hash> [file] [--all]` restores the folder (or one file) through `rollback.list|diff|restore`, which `slash.exec` refuses. A whole restore waits for the reply to finish, as Hermes refuses one mid-turn, and when Hermes took turns back with it the chat opens again. A Hermes without the verbs gets the command through `slash.exec`. `/undo` adds Hermes' own line naming the files the undone turns changed and the `/rollback` that restores them (`rollback.list`'s `undo_hint`, read with the undone turn's time and row; on `hermes dashboard` the line its own `/undo` answered with, `rollback.list` only when it named none (2026-11-13, #2376); nothing when checkpoints are off or Hermes is older) (Eric picked file checkpoints from the upstream parity list, 2026-11-13, #2353).
 - `/agents` (and `/tasks`) opens the chat's Agents sheet, its agents and background processes, rather than sending Hermes a command it refuses for app chats; it is listed among Conduit's own commands (2026-11-13, #2364, Eric's go on the upstream parity list).
+- A chat's own notes (what a command printed, `/btw` and `/background` answers) stay with the chat: Hermes never stores them, so each is saved on the device under the chat's ids (newest 200, 256 KB) and put back whenever the transcript is rebuilt from Hermes' rows, an open after leaving the chat included. A note whose command ended after its chat left the screen (a `/compress` that returned while another chat was open, a command's printed output or its failure on every slash route, `/rollback`, `/reload-mcp`, `/reload-skills` and an alias's target included, a compression's failure, on the legacy `slash.exec` route too, and a `/btw` or `/background` answer that came after) is saved for that chat, never drawn in the one shown; a late result that would send, fill the composer, run another command or reopen the chat (a restore that took turns back) still doesn't, though what it printed is kept (2026-11-27, #3402, issue 3394, Claude's call on the reporter's suggested fix).
 
 **Open gaps**
-- None known.
+- A note put back when the chat opens again goes among Hermes' rows by time, as a saved review does, so a host clock that is off moves it by as much; while the chat stays open it stays after the row it followed.
 
-**Checked:** 2026-11-18, #2703 (Compress Now in the Context sheet runs `/compress`); 2026-11-13, #2379 (`/undo` on `hermes dashboard` names the files line its own `/undo` answered with); 2026-11-13, #2364 (/agents and /tasks open the Agents sheet; the session-control commands refresh the dock after Hermes runs them; voice, Watch, CarPlay and rooms take no slash commands); 2026-11-13, #2353 (`/rollback` and `/undo`'s files line; Hermes' second server serves the same verbs (gateway/session_tui_ops.py), voice, Watch, CarPlay and rooms take no slash commands; the parity check clean against Hermes main 0dbd8470); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
+**Checked:** 2026-11-27, #3402 (issue 3394: notes saved per chat and merged on every rebuild, a late compression's note saved for its chat, every route's late output and failure and a late side-agent answer too; voice modes, the Watch, CarPlay and rooms take no slash commands; the notifier stores no notes, not needed; Desktop desktop#683); 2026-11-18, #2703 (Compress Now in the Context sheet runs `/compress`); 2026-11-13, #2379 (`/undo` on `hermes dashboard` names the files line its own `/undo` answered with); 2026-11-13, #2364 (/agents and /tasks open the Agents sheet; the session-control commands refresh the dock after Hermes runs them; voice, Watch, CarPlay and rooms take no slash commands); 2026-11-13, #2353 (`/rollback` and `/undo`'s files line; Hermes' second server serves the same verbs (gateway/session_tui_ops.py), voice, Watch, CarPlay and rooms take no slash commands; the parity check clean against Hermes main 0dbd8470); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
 
 ## Goal, loop and heartbeat
 

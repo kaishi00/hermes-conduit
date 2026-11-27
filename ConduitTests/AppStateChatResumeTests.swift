@@ -1065,6 +1065,120 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.content), ["Hi"])
     }
 
+    /// A chat opened again (from the list, or after another chat) starts
+    /// from no rows on screen, so `keepingLocalNotes` has nothing to carry:
+    /// its notes come back from where they were saved, placed among Hermes'
+    /// rows by time, and aren't doubled by a refresh (issue 3394).
+    func testLocalNotesComeBackWhenTheChatOpensAgain() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-a"
+        let earlier = ChatMessage(id: "row-1", role: .user, content: "Hi", timestamp: "1700000000")
+        appState.messages = [earlier]
+        appState.appendSlashOutput("Compressed: 20 → 12 messages")
+        XCTAssertEqual(appState.messages.map(\.content), ["Hi", "Compressed: 20 → 12 messages"])
+
+        // Another chat: the note stays behind.
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: "chat-b",
+            messages: [ChatMessage(id: "row-9", role: .user, content: "Other", timestamp: "1700000000")],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertEqual(appState.messages.map(\.content), ["Other"])
+
+        // Back to the first chat, opened again from no rows on screen; a row
+        // Hermes timed after the note stays below it.
+        appState.messages = []
+        let later = ChatMessage(id: "row-2", role: .assistant, content: "Later", timestamp: "4102444800")
+        let reopened = SessionResumeResult(
+            sessionId: "chat-a",
+            messages: [earlier, later],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )
+        XCTAssertTrue(appState.applyChatResume(reopened))
+        let expected = ["Hi", "Compressed: 20 → 12 messages", "Later"]
+        XCTAssertEqual(appState.messages.map(\.content), expected)
+        XCTAssertTrue(appState.applyChatResume(reopened))
+        XCTAssertEqual(appState.messages.map(\.content), expected, "a refresh doesn't double the note")
+    }
+
+    /// A note whose command ended after its chat left the screen (a
+    /// `/compress` that returned while another chat was open) isn't drawn in
+    /// the chat on screen: it's saved for its own chat, which shows it when
+    /// it opens (issue 3394).
+    func testALateNoteIsSavedForTheChatItWasTypedIn() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-a"
+        let context = appState.composerSubmissionContext()
+        appState.activeSessionId = "chat-b"
+        appState.messages = []
+
+        appState.appendSlashOutput("Compressed: 20 → 12 messages", context: context)
+        XCTAssertEqual(appState.messages, [], "the chat on screen doesn't show another chat's note")
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-a").map(\.content), ["Compressed: 20 → 12 messages"])
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-b"), [])
+    }
+
+    /// A late slash result keeps only what it prints for its chat: one that
+    /// would send, fill the composer or run another command isn't a note.
+    func testOnlyAPrintedSlashResultIsKeptWhenItsChatHasLeft() {
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("exec"), "output": .string("Done.")])), "Done.")
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("plugin"), "message": .string("Hi")])), "Hi")
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("other"), "notice": .string("Note")])), "Note")
+        XCTAssertNil(AppState.printedSlashOutput(.object(["type": .string("exec"), "output": .string("")])))
+        for type in ["send", "skill", "prefill"] {
+            XCTAssertNil(AppState.printedSlashOutput(.object(["type": .string(type), "message": .string("words")])), type)
+        }
+        // What those print is kept: a prefill's notice, a targetless alias's output.
+        XCTAssertEqual(AppState.printedSlashOutput(.object([
+            "type": .string("prefill"), "message": .string("words"), "notice": .string("Filled in.")
+        ])), "Filled in.")
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("alias"), "output": .string("No target.")])), "No target.")
+        XCTAssertNil(AppState.printedSlashOutput(.object([
+            "type": .string("alias"), "target": .string("compress"), "output": .string("Running…")
+        ])))
+    }
+
+    /// A /btw answer that comes after its chat left the screen is saved for
+    /// that chat, not drawn in the one shown.
+    func testALateSideAgentAnswerIsSavedForItsChat() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-b"
+        appState.messages = []
+        appState.sideAgentProfilesBySession["chat-a"] = appState.activeProfile
+
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "chat-a", kind: .btw, taskId: "btw_1", text: "Ship on Friday.", question: "When do we ship?"
+        ))
+        XCTAssertEqual(appState.messages, [], "the chat on screen doesn't show another chat's answer")
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-a").count, 1)
+        XCTAssertTrue(appState.cachedLocalNoteRowsForTesting("chat-a").first?.content.contains("Ship on Friday.") == true)
+    }
+
+    /// Saved notes are kept to the newest within a count and a size, and
+    /// the newest one always stays.
+    func testSavedLocalNotesKeepTheNewest() {
+        func note(_ index: Int, bytes: Int = 1) -> LocalChatNoteRecord {
+            LocalChatNoteRecord(
+                id: "slash-\(index)", profile: "default", sessionId: "chat-a",
+                timestamp: "2026-11-27T12:00:00.000Z", content: String(repeating: "x", count: bytes)
+            )
+        }
+        let many = (0..<(AppState.maximumRememberedLocalNotes + 5)).map { note($0) }
+        let kept = AppState.trimmedLocalNotes(many)
+        XCTAssertEqual(kept.count, AppState.maximumRememberedLocalNotes)
+        XCTAssertEqual(kept.last?.id, many.last?.id)
+
+        let huge = AppState.maximumRememberedLocalNoteBytes
+        XCTAssertEqual(AppState.trimmedLocalNotes([note(1, bytes: 10), note(2, bytes: huge)]).map(\.id), ["slash-2"])
+        XCTAssertEqual(AppState.trimmedLocalNotes([note(3, bytes: huge + 1)]).map(\.id), ["slash-3"])
+    }
+
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {
         let suite = "AppStateChatResumeTests.inFlightTool.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
