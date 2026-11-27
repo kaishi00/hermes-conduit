@@ -333,6 +333,9 @@ final class ChatState {
     /// When each send `hermes dashboard` forwarded to the gateway's queue was
     /// held: a live-work read asked before then can't know it yet.
     var forwardedSendTimes: [String: Date] = [:]
+    /// The chat each forwarded send waits in: a read of another chat
+    /// never settles it.
+    var forwardedSendChats: [String: String] = [:]
     /// Forwarded sends a live-work read saw start before their unnamed
     /// `message.start` came: that start is theirs, not the next held one's.
     var readStartedAdmissions: [String] = []

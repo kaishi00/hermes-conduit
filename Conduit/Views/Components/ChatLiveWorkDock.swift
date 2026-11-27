@@ -47,6 +47,7 @@ struct ChatLiveWorkDock: View {
         .onChange(of: openChatID) { work = nil }
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)|\(waits)") {
             guard let chatID = openChatID, isShowing else { return }
+            var failedFirst = 0
             repeat {
                 let previous = work
                 let answer = await appState.loadOpenChatLiveWork()
@@ -54,10 +55,13 @@ struct ChatLiveWorkDock: View {
                 if let answer {
                     work = answer
                     appState.applyChatLiveWork(answer, previous: previous, for: chatID)
+                } else if work == nil {
+                    failedFirst += 1
                 }
                 // A failed read (a blip, the plugin restarting) tries again while
-                // the last one still had something to follow, as the Kanban dock does.
-                guard work?.isActive == true || waits else { return }
+                // the last one still had something to follow, as the Kanban dock does,
+                // and a first read that failed (the socket not back yet) for a minute.
+                guard work?.isActive == true || waits || (work == nil && failedFirst < 12) else { return }
                 try? await Task.sleep(for: ChatLiveWork.refreshInterval)
             } while !Task.isCancelled
         }

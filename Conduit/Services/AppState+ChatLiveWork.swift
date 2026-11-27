@@ -41,15 +41,23 @@ extension AppState {
     /// the chat once their turn has started, and the chat read again when
     /// the turn it followed there has ended.
     func applyChatLiveWork(_ work: ChatLiveWork, previous: ChatLiveWork?, for chatID: String) {
-        guard activeSessionId == chatID, client?.speaksSessionAuthority != true else { return }
+        // The chat's own runtime says which listener it is on: a far combined
+        // dashboard's chat may differ from the one on screen.
+        guard activeSessionId == chatID,
+              !onChatRuntimeValue(unreachable: true, { client?.speaksSessionAuthority == true }) else { return }
         let waiting = Set(work.queued.map(\.admissionID))
+        // Only this chat's sends: another chat's wait in their own chat's reads.
+        let ours = { (admissionID: String) in
+            (self.shownChat.forwardedSendChats[admissionID] ?? chatID) == chatID
+        }
         // A send held after the read was asked isn't in it yet: it keeps its row.
         let newer = { (admissionID: String) in
             (self.shownChat.forwardedSendTimes[admissionID] ?? .distantPast) > work.askedAt
         }
         var settled = false
-        for admissionID in shownChat.queuedSendOrder where !waiting.contains(admissionID) && !newer(admissionID) {
+        for admissionID in shownChat.queuedSendOrder where ours(admissionID) && !waiting.contains(admissionID) && !newer(admissionID) {
             shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
+            shownChat.forwardedSendChats.removeValue(forKey: admissionID)
             if work.startedAdmissions.contains(admissionID) {
                 // Its turn runs there now; the unnamed start still to come is its own.
                 noteQueuedTurnStarted(sessionID: chatID, admissionID: admissionID)
@@ -71,10 +79,11 @@ extension AppState {
             && !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             holdQueuedSendRow(localUserRow(row.text), admissionID: row.admissionID)
             noteQueuedTurnStarted(sessionID: chatID, admissionID: row.admissionID)
+            shownChat.forwardedSendChats[row.admissionID] = chatID
             shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [row.admissionID]).suffix(8))
         }
         // No turn runs there: no unnamed start is still to come.
-        if !work.running { shownChat.readStartedAdmissions = [] }
+        if !work.running { shownChat.readStartedAdmissions.removeAll(where: ours) }
         let held = authorityQueue.sessionID == chatID
             ? authorityQueue.rows.filter { !waiting.contains($0.admissionID) && shownChat.queuedSendOrder.contains($0.admissionID) }
             : []
@@ -102,8 +111,10 @@ extension AppState {
             // Only sends no longer held let go of their stamps.
             let held = Set(shownChat.queuedSendOrder)
             shownChat.forwardedSendTimes = shownChat.forwardedSendTimes.filter { held.contains($0.key) }
+            shownChat.forwardedSendChats = shownChat.forwardedSendChats.filter { held.contains($0.key) }
         }
         shownChat.forwardedSendTimes[admissionID] = Date()
+        shownChat.forwardedSendChats[admissionID] = chatID
         if let index = messages.firstIndex(where: { $0.id == rowID }) {
             holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
             cacheMessagePresentation()

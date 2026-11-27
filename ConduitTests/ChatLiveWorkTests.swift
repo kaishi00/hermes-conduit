@@ -130,6 +130,16 @@ final class ChatLiveWorkTests: XCTestCase {
         XCTAssertTrue(appState.authorityQueue.isEmpty)
     }
 
+    func testAReadOfAnotherChatLeavesThisChatsForwardedSendHeld() {
+        let appState = makeAppState()
+        appState.activeSessionId = "chat-a"
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "mine", sessionID: "chat-a")
+        appState.activeSessionId = "chat-b"
+        appState.applyChatLiveWork(ChatLiveWork(running: false), previous: nil, for: "chat-b")
+        XCTAssertEqual(appState.shownChat.queuedSendOrder, ["adm-1"], "chat-a's send waits for chat-a's reads")
+    }
+
     func testADashboardTurnStartNamesTheOldestForwardedMessage() {
         let appState = makeAppState()
         appState.activeSessionId = "api-1"
