@@ -221,6 +221,9 @@ extension HermesVoiceGatewayTimeoutTests {
         // A POSIX name ending in a backslash is a name, not a folder (issue 2303).
         XCTAssertNil(WorkspaceFolderView.revealedFolder("/srv/reports\\"))
         XCTAssertEqual(WorkspaceFolderView.revealedFolder("/srv/reports\\/"), "/srv/reports\\")
+        // A relative name isn't a Windows path: its backslash is its own.
+        XCTAssertNil(WorkspaceFolderView.revealedFolder("reports\\"))
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("\\\\nas\\share\\"), "\\\\nas\\share")
         answer = ["ok": true, "path": "/srv/reports\\", "via": "folder", "isDirectory": true]
         let named = try await client.resolve(path: "reports\\/", sessionIDs: ["live-1"])
         XCTAssertEqual(named, "/srv/reports\\/")
