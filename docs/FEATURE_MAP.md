@@ -4573,6 +4573,52 @@ needed: driving a desktop needs a screen to see it on)
 
 **Checked:** 2026-11-23, #3167 (#3162's review leftovers: a far bot's screen is titled with its roster's `displayLabel`, from its Bots Home roster or else its kept connection's, its main bot by its dashboard's saved name; the menu re-checks on the support store's bit pattern rather than its hash; tested); 2026-11-23, #3162 (a far chat's ⋯ menu opens its own dashboard's bot's screen through that dashboard's kept connection, its support read there, its owed hand back and viewer id kept under its dashboard too (`BotScreenModel.stateKey`); who drives it isn't said there; tested in testAFarChatsArtifactsChecklistsAndCardsAreItsOwnDashboards; the notifier, README and desktop unchanged); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2235 (the Code line names the stream tests in HermesClientTests.swift; from GLM and DeepSeek on #2231); 2026-11-11, #2229 (turning the iPhone sideways in Full Screen closed it and the sheet back to the Bot Chat: the tabs split and the Work panel moved beside the chat; the screens under it now keep their portrait width; the notifier, the Watch and CarPlay needed no change); 2026-11-11, #2231 (issue 2216: the stream batched and encoded off the main actor, for the sheet's page and the full screen's alike; the page, the type bar's batches, the notifier, the READMEs, the Watch and CarPlay needed no change); 2026-11-11, #2221 (the Info.plist test expects the iPhone's landscape entries the gate allows; Nightly unit shard 1 failed on it); 2026-11-11, #2172 (pinch zoom and Full Screen, sideways on an iPhone; the notifier, its README, the Watch and CarPlay needed no change, the app's README says so); 2026-11-11, #2176 (the menu's profile pick and the who-uses line moved into `BotScreenUse` and tested; no behavior change); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (the hold's renewals and the waiting watch's reads, notifier issues 607 and 608; Rulings; nothing the app shows changed); 2026-11-07, #1956 (the Screen button's own check runs while it's hidden, on a `ModifierHost`, so a Bot Overview opened before any chat checked shows it); 2026-11-06, #1872 (no stream opens in the background, issue 1870; Rulings); 2026-11-06, #1857 (with notifier #578: a screen ask and the card's controller across a compaction, the waiting list's per-bot cap and retry pause, a failed hand back sent again, stream messages tagged; no gaps left); 2026-11-05, #1832 (with notifier #559: the screen in the app, one chat driving it at a time, install from the phone)
 
+## Control from Hermes
+
+A bot drives the user's own computer, the one where they run Conduit for
+desktop, from wherever its Hermes runs: it sees the screen, opens apps, clicks
+and types (Eric 2026-11-27). Hermes' own `computer_use` drives the host it runs
+on (see Bot Screen); this is a separate tool, `conduit_user_computer`, whose
+actions the plugin queues for the computer and the desktop app runs with
+trycua's cua-driver.
+
+**Siblings:** the plugin's tool and its description (`conduit_user_computer`:
+computer_use's actions plus launch_app and a computer name; type and key bring
+the window to the front) and its results (a screenshot with numbered elements,
+and errors that tell the bot what to say: offline, which computer, denied,
+stopped, off) · the plugin's routes the desktop polls (`GET /pc/next`,
+`POST /pc/result`, `POST /pc/stop`, `DELETE /pc/computer`) and the
+`pc-control` capability · the desktop's Settings › Control from Hermes (the
+toggle, which downloads the driver, the download's progress and Try Again,
+Delete It once off, the computer's name, the bots allowed) · the ask, once per
+chat, on the computer (Allow / Don't Allow), a new chat taking over · the bar on
+top of the screen while a bot is in control, kept out of screenshots, with Stop
+and its hotkey · Stop in Settings · the Lock Screen's step (`tool`, not "your
+iPhone") · the notifier's README and CHANGELOG · the phone (gap: see Open gaps)
+· the Watch and CarPlay (not needed: the computer is the user's own, controlled
+from the desktop it runs on)
+
+**Desktop app:** has it: Settings › Control from Hermes, the driver download, the ask, the bar and Stop (`desktop/src/main/pcControl.ts`, desktop#692, #693, #694).
+
+**Code**
+- Notifier: `notifier/pc_control_tool.py` (the tool, its checks and waits), `notifier/pc_control_store.py` (the file queue under `<HERMES_HOME>/conduit-pc/`: computers, grants, requests, results, a log that never holds what was typed or seen), `notifier/dashboard/api/pc_control.py` (the routes), `notifier/live_activity.py` (its Lock Screen category), `notifier/tests/test_pc_control.py`
+- Desktop: `desktop/src/main/pcControl.ts` (state, the ask, the bar, Stop), `desktop/src/main/pcDriver.ts` (the pinned driver: download, SHA-256 check, unpack, its MCP client), `desktop/src/main/pcExecutor.ts` (computer_use's actions on the driver's tools), `desktop/src/renderer/src/state/pcControl.ts` (the poll per allowed bot), `desktop/src/renderer/src/components/PcControlSetting.tsx`, `desktop/test/pcExecutor.test.ts`
+
+**Rulings**
+- Each chat asks once, on the computer, and keeps it until Stop or another chat takes over; one chat drives a computer at a time (Eric 2026-11-27, picked "Ask once per chat, on PC or phone"; the phone half is a gap).
+- Off until the user turns it on, and only the bots ticked there can ask. Turning it on downloads the driver, since not everyone wants it; it isn't bundled (Eric 2026-11-27, notifier #1123, desktop#692).
+- A separate tool, not a `computer_use` backend: Hermes takes one backend per profile, and swapping it would take Bot Screen away (notifier #1123, the plugin's choice).
+- The plugin queues computer_use-level actions and the desktop maps them to its pinned driver, so the driver and its mapping move together (desktop#692, the desktop's choice).
+- Keys go to the window in front: type and key bring the window to the front first and type nothing if it can't come, since the driver's background delivery put typing into a Notepad tab the user wasn't on (Asuka test 2026-11-27, desktop#692). Combos go through press_key, which a modern Notepad takes and hotkey doesn't.
+- Only the desktop's main window can hand over actions or change the setting; a docked chat shows another dashboard's pages (desktop#692 review).
+- Stop takes waiting actions off the queue and answers them stopped; one the computer already answered keeps its answer, and an answered request is never claimed, so a stopped action can't run (notifier #1123, #1125 reviews).
+
+**Open gaps**
+- The phone: answering the ask from the phone, and a line saying a bot is controlling a computer, with Stop (Eric's consent pick names the phone; stage 2). The app's own `HermesToolCategory` map still reads `conduit_user_computer` as "Using your iPhone" (`Shared/Widgets/HermesTurnActivity.swift`).
+- The desktop polls only the current dashboard's bots, not another combined dashboard's.
+
+**Checked:** 2026-11-27, #PRNUM (new entry: notifier #1123, desktop#692, #693, #694)
+
 ## Composer Return key
 
 The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
