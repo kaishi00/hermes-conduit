@@ -1394,7 +1394,9 @@ extension AppState {
         // Its starter face, so every phone shows the same one, and the
         // face's color for Desktop's initial when no color was picked.
         meta[StarterFaces.metaKey] = face
-        if let filed = BotCategories.editPatch(current: nil, to: draft.category, among: botRoster) {
+        // Settled on a fresh read, so it reuses an id another client just made.
+        let among = draft.category == nil ? botRoster : ((try? await client.botRoster())?.bots ?? botRoster)
+        if let filed = BotCategories.editPatch(current: nil, to: draft.category, among: among) {
             for case let (key, value?) in filed { meta[key] = value }
         }
         if draft.color == nil { meta["color"] = StarterFaces.face(face).hex }

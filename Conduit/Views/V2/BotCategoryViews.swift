@@ -185,9 +185,11 @@ struct CategoryHeadingDrop: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let roomID = liftedRoom, let room else { return bot.performDrop(info: info) }
+        // Read before clearing: clearing the payload ends its live drag.
+        let live = RoomDragPayload.isLive
         RoomDragPayload.lifted = nil
         exited()
-        if RoomDragPayload.isLive { return room(roomID) }
+        if live { return room(roomID) }
         // Past its item, the tile in hand is only a guess: read the drop's
         // own text, so a foreign drop never borrows the room (RoomTileDrop).
         guard let provider = info.itemProviders(for: [UTType.text]).first else { return false }
