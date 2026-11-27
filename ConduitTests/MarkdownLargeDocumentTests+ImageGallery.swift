@@ -364,4 +364,62 @@ extension MarkdownLargeDocumentTests {
 
         XCTAssertNil(PictureClipboard.pasteboardItem(for: Data("not a picture".utf8)))
     }
+
+    /// An animated GIF goes on the clipboard as its own bytes, so it keeps
+    /// its frames.
+    func testCopyKeepsAnAnimatedGIFsBytes() throws {
+        let frame = { (color: UIColor) in
+            UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+                color.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+            }.cgImage
+        }
+        let gif = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(gif, UTType.gif.identifier as CFString, 2, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(frame(.red)), nil)
+        CGImageDestinationAddImage(destination, try XCTUnwrap(frame(.blue)), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let item = try XCTUnwrap(PictureClipboard.pasteboardItem(for: gif as Data))
+        XCTAssertEqual(Array(item.keys), [UTType.gif.identifier])
+        XCTAssertEqual(item[UTType.gif.identifier] as? Data, gif as Data)
+    }
+
+    /// Of two copies one after another, the later one stays on the
+    /// clipboard, a picture's or its description's, even when the earlier
+    /// picture's fetch finishes last.
+    @MainActor
+    func testALaterCopyWinsOverAnEarlierPictureStillFetching() async throws {
+        let picture = { (side: CGFloat) in
+            UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { context in
+                UIColor.green.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            }
+        }
+        final class Gate: @unchecked Sendable { var release: CheckedContinuation<Void, Never>? }
+        func slowItem(_ gate: Gate) -> ImageGalleryItem {
+            ImageGalleryItem(id: "slow", title: "slow") {
+                await withCheckedContinuation { gate.release = $0 }
+                return .unavailable
+            }
+        }
+
+        // A description copied while a picture is still fetching stays.
+        let first = Gate()
+        let slow = PictureClipboard.copy(slowItem(first), shown: picture(2))
+        while first.release == nil { await Task.yield() }
+        PictureClipboard.copyDescription("A dog on a beach")
+        first.release?.resume()
+        await slow.value
+        XCTAssertEqual(UIPasteboard.general.string, "A dog on a beach")
+
+        // A later picture stays over an earlier one whose fetch ends last.
+        let second = Gate()
+        let earlier = PictureClipboard.copy(slowItem(second), shown: picture(2))
+        while second.release == nil { await Task.yield() }
+        await PictureClipboard.copy(nil, shown: picture(3)).value
+        second.release?.resume()
+        await earlier.value
+        let pasted = try XCTUnwrap(UIPasteboard.general.image)
+        XCTAssertEqual(pasted.size.width * pasted.scale, picture(3).size.width * picture(3).scale, accuracy: 0.5)
+    }
 }

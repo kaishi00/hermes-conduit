@@ -55,7 +55,8 @@ extension AppState {
             Task { @MainActor [weak self] in
                 guard let self, self.activeClientEpoch == epoch else { return }
                 self.handleStreamEvent(event, turnGeneration: turnGeneration)
-                if case .messageStart(let sessionID) = event, let admissionID {
+                if case .messageStart(let sessionID) = event,
+                   let admissionID = self.admissionStarting(named: admissionID, by: client) {
                     self.noteQueuedTurnStarted(sessionID: sessionID, admissionID: admissionID)
                 }
             }

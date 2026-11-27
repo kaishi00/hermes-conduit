@@ -413,6 +413,10 @@ extension AppState {
                     // where the dock above the composer shows it.
                     if client.speaksSessionAuthority {
                         moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)
+                    } else if HermesClient.admittedAdmissionID(for: sessionId) != nil {
+                        // `hermes dashboard` forwarded it behind a turn the
+                        // gateway runs: it waits in the dock (Eric, 2026-11-27).
+                        holdForwardedSend(rowID: userMessage.id, text: userMessage.content, sessionID: sessionId)
                     }
                 case .redirected:
                     // Hermes replaces/corrects the current live model request;

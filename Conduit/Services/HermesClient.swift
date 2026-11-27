@@ -3881,9 +3881,15 @@ final class HermesClient: ObservableObject {
         if !hidden, Self.unansweredSubmissions[sessionId]?.id == submissionID {
             Self.unansweredSubmissions.removeValue(forKey: sessionId)
         }
-        if !hidden, sentToAuthority || speaksSessionAuthority,
+        // `hermes dashboard` hands a send into a turn the gateway runs to
+        // the gateway's queue and names the admission (`forwarded`); its
+        // other sends start here, with none (Eric, 2026-11-27).
+        let forwarded = result.objectValue?["forwarded"]?.boolValue == true
+        if !hidden, sentToAuthority || speaksSessionAuthority || forwarded,
            let admission = result.objectValue?["admission_id"]?.stringValue, !admission.isEmpty {
             Self.admittedAdmissions[sessionId] = admission
+        } else if !hidden, !(sentToAuthority || speaksSessionAuthority) {
+            Self.admittedAdmissions.removeValue(forKey: sessionId)
         }
         // Read by the server that answered: a send built before the ready was
         // read but taken by the authority is still its admission receipt.
