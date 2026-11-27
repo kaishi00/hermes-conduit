@@ -83,6 +83,14 @@ extension AppState {
             shownChat.forwardedSendChats[row.admissionID] = chatID
             shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [row.admissionID]).suffix(8))
         }
+        // One the last read listed, that nothing holds and is now neither waiting
+        // nor running, ran and ended between reads or was withdrawn: the chat's
+        // stored rows tell which.
+        if previous?.queued.contains(where: { !waiting.contains($0.admissionID)
+            && !work.startedAdmissions.contains($0.admissionID)
+            && !shownChat.queuedSendOrder.contains($0.admissionID) }) == true {
+            settled = true
+        }
         // No turn runs there: no unnamed start is still to come.
         if !work.running {
             for admissionID in shownChat.readStartedAdmissions where ours(admissionID) {
