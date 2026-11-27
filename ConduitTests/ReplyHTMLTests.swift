@@ -148,6 +148,25 @@ final class ReplyHTMLTests: XCTestCase {
             ReplyHTML.foldsApart(["<details><summary>S</summary>Use </det`x`ails> as text.", "More.", "</details>"]),
             ["<details><summary>S</summary>", "Use </det`x`ails> as text.", "More.", "</details>"]
         )
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary>Use </det<!-- x -->ails> as text.", "More.", "</details>"]),
+            ["<details><summary>S</summary>", "Use </det<!-- x -->ails> as text.", "More.", "</details>"]
+        )
+    }
+
+    func testAnOpeningJoinedAcrossACodeSpanTakesNoClose() {
+        // #3385's review: the look-ahead read "<det`x`ails>" as an opening and gave it the close.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details> Tap for details.", "<det`x`ails> is the tag.", "</details>"]),
+            ["<details>", " Tap for details.", "<det`x`ails> is the tag.", "</details>"]
+        )
+    }
+
+    func testACloseInACommentStillBeingWrittenClosesNothing() {
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary><!-- </details> still being written"]),
+            ["<details><summary>S</summary>", "<!-- </details> still being written"]
+        )
     }
 
     func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {

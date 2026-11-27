@@ -3900,6 +3900,42 @@ extension SessionPresentationCacheTests {
         XCTAssertFalse(onDisk().contains("pending-old"), "The re-issued call's old record is gone from disk too")
     }
 
+    /// The same start twice while a sessions write waits merges to the
+    /// bytes already on disk, so the second isn't written (#3385's review).
+    func testTheSameToolStartTwiceIsWrittenOnce() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true, writeInterval: 60)
+        let toolsKey = "conduit.sessionPresentation.pendingTools.v1"
+        func save(_ id: String) {
+            cache.save(
+                [ChatMessage(id: id, role: .assistant, content: "Reply", timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            )
+        }
+        func start() {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "pending-1", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: ["session-b"]
+            )
+        }
+        save("row-first")
+        cache.waitForQueuedWrites()
+        save("row-waiting")
+        start()
+        cache.waitForQueuedWrites()
+        let writes = storage.writeCount(toolsKey)
+        XCTAssertGreaterThan(writes, 0, "The first start went at once")
+        start()
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(toolsKey), writes, "The same bytes weren't written again")
+        XCTAssertTrue(storage.data(forKey: toolsKey).flatMap { String(data: $0, encoding: .utf8) }?.contains("pending-1") ?? false)
+    }
+
     /// A store whose bytes haven't changed since its last write isn't
     /// written again.
     func testAStoreWithTheSameBytesIsntWrittenAgain() throws {

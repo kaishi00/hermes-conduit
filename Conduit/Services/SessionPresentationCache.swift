@@ -1645,11 +1645,12 @@ final class SessionPresentationCache {
         }
         // Bytes already on disk (a burst of starts merging the same store)
         // aren't written again.
-        if !merged.isEmpty, let data = try? Self.encodePendingTools(merged),
-           lastWrittenDigest[.pendingTools] != SHA256.hash(data: data),
-           storage.storeData(data, forKey: pendingToolsStorageKey) {
-            lastWrittenDigest[.pendingTools] = SHA256.hash(data: data)
-            lastWriteAt[.pendingTools] = .now()
+        if !merged.isEmpty, let data = try? Self.encodePendingTools(merged) {
+            let digest = SHA256.hash(data: data)
+            if lastWrittenDigest[.pendingTools] != digest, storage.storeData(data, forKey: pendingToolsStorageKey) {
+                lastWrittenDigest[.pendingTools] = digest
+                lastWriteAt[.pendingTools] = .now()
+            }
         }
         // A newer ticket's own write follows.
         guard !superseded else { return }
