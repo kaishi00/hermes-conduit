@@ -11,7 +11,8 @@
 //  and Share, Say instead typed right here. A Link's ask (a linked person's
 //  Hermes asks yours) names them the same way, with Share only when there's
 //  an answer to share. Run work's ask (your agent starts work for a room)
-//  offers Change it, Don't start and Start.
+//  offers Change it, Don't start and Start. A computer's ask (Control from
+//  Hermes: may a bot control your computer?) offers Don't Allow and Allow.
 //
 
 import SwiftUI
@@ -37,7 +38,7 @@ struct PresentedConfirmOverlay: View {
                     onAnswer: { onAnswer(prompt, $0) },
                     // Directions have nothing to edit; a room's or a Link's ask says what to say instead here,
                     // never in a hidden chat.
-                    onEdit: prompt.maps == nil && !prompt.isAsk
+                    onEdit: prompt.maps == nil && !prompt.isAsk && prompt.computer == nil
                         ? onEdit.map { edit in { () -> Void in edit(prompt) } } : nil,
                     onSayInstead: prompt.isAsk ? onSayInstead.map { say in { text in say(prompt, text) } } : nil
                 )
@@ -87,6 +88,7 @@ struct PresentedConfirmPanel: View {
 
     /// Who asks: a room's agent, a linked person's Hermes, or Hermes.
     private var asker: String {
+        if prompt.computer != nil { return AppLocalization.string("Control from Hermes", table: .chat) }
         if let name = prompt.room?.name, !name.isEmpty {
             return AppLocalization.string("Asked in \(name)", table: .chat)
         }
@@ -100,6 +102,7 @@ struct PresentedConfirmPanel: View {
     /// A Link's question has nothing to share: it's not answered.
     private var declineLabel: String {
         if !prompt.canConfirm { return AppLocalization.string("Don't answer") }
+        if prompt.computer != nil { return AppLocalization.string("Don't Allow", table: .chat) }
         // A send to running work isn't a start.
         if prompt.room?.work == true {
             return prompt.actionLabel == "Send" ? AppLocalization.string("Not now") : AppLocalization.string("Don't start", table: .chat)
@@ -108,6 +111,7 @@ struct PresentedConfirmPanel: View {
     }
 
     private var askerSymbol: String {
+        if prompt.computer != nil { return "desktopcomputer" }
         if prompt.link != nil { return "link" }
         return prompt.room == nil ? "checkmark.shield" : "person.2"
     }

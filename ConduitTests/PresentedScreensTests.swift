@@ -645,4 +645,25 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(written.markdown, "| a |", "what Hermes wrote shows beside the cards")
         XCTAssertNotEqual(drawn, PresentedCard(id: "dinner", title: "Dinner", markdown: ""), "the cards count")
     }
+
+    func testAComputersAskParsesAndThePhoneSaysItShowsThem() throws {
+        let prompt = try XCTUnwrap(PresentedConfirm(json: [
+            "id": "ask-1", "title": "Allow Atlas to control Asuka?", "preview": "Chat: Tidy", "action_label": "Allow",
+            "pc": ["computer": "asuka-1", "name": "Asuka", "bot": "Atlas"],
+        ]))
+        XCTAssertEqual(prompt.computer, PresentedComputer(id: "asuka-1", name: "Asuka", bot: "Atlas"))
+        XCTAssertFalse(prompt.isAsk, "no Say instead")
+        XCTAssertNil(PresentedConfirm(json: ["id": "p", "title": "T"])?.computer)
+        XCTAssertTrue(PresentedScreensSync.features.contains("pc-asks"))
+    }
+
+    func testTheOpenChatsComputerIsFoundByAnyIdItGoesBy() {
+        let list = PcControlling.all(response: ["controlling": [
+            ["computer": "asuka-1", "name": "Asuka", "session": "durable-1", "chat": "Tidy", "used": 1],
+            ["computer": "", "session": "x"],
+        ]])
+        XCTAssertEqual(list.map(\.computer), ["asuka-1"])
+        XCTAssertEqual(PcControlling.forChat(list, sessionIDs: ["runtime-1", "durable-1"])?.name, "Asuka")
+        XCTAssertNil(PcControlling.forChat(list, sessionIDs: ["other"]))
+    }
 }

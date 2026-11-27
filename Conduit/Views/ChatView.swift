@@ -338,6 +338,15 @@ struct ChatView: View {
                 isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
                     && (!appState.showSidebar || shell.hasChatBeside)
             )
+            // The chat's bot controlling one of the user's computers, with Stop
+            // (Control from Hermes, plugin 0.204+).
+            ChatPcControlDock(
+                appState: appState,
+                openChatID: appState.activeSessionId,
+                isBusy: appState.isBusy,
+                isShowing: scenePhase == .active && shell.isTabActive && appState.savedCopyScrollSessionKey == nil
+                    && (!appState.showSidebar || shell.hasChatBeside)
+            )
             // The chat's standing goal, loop and heartbeat (issue 821).
             SessionControlDock(store: appState.sessionControl, appState: appState, openChatID: appState.activeSessionId)
             // A turn of the chat running in the gateway, on hermes dashboard
