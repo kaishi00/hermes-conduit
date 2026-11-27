@@ -877,8 +877,11 @@ struct WorkspaceFolderView: View {
         if entry.isDirectory {
             // A folder from search or Recently Changed: shown open in the tree.
             query = ""
+            let scope = explorer.scope
             Task {
                 _ = await explorer.reveal(entry.path)
+                // The open folder changed meanwhile: this folder isn't its.
+                guard explorer.scope == scope else { return }
                 if !explorer.expanded.contains(entry.path), let message = await explorer.toggle(entry) {
                     failure = message
                 }
