@@ -339,6 +339,8 @@ struct ChatView: View {
                     && (!appState.showSidebar || shell.hasChatBeside)
             )
             // Show reply speed: each reply's tokens per second, read for its row.
+            // It draws nothing; it hangs off the Kanban dock only for a place in
+            // this stack, so moving that dock takes the reader with it.
             .background {
                 ReplySpeedReader(
                     appState: appState,
