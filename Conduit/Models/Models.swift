@@ -1452,16 +1452,44 @@ struct CronRun: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
-        lastActive = try container.decodeIfPresent(Int.self, forKey: .lastActive)
-        model = try container.decodeIfPresent(String.self, forKey: .model)
-        preview = try container.decodeIfPresent(String.self, forKey: .preview)
-        profile = try container.decodeIfPresent(String.self, forKey: .profile)
-        startedAt = try container.decodeIfPresent(Int.self, forKey: .startedAt)
-        title = try container.decodeIfPresent(String.self, forKey: .title)
+        // Lenient past the id: Hermes writes its epochs as floats
+        // (1795700095.023133), and one odd field shouldn't cost the run its
+        // decode (#3373).
+        lastActive = Self.epoch(container, .lastActive)
+        model = try? container.decodeIfPresent(String.self, forKey: .model)
+        preview = try? container.decodeIfPresent(String.self, forKey: .preview)
+        profile = try? container.decodeIfPresent(String.self, forKey: .profile)
+        startedAt = Self.epoch(container, .startedAt)
+        title = try? container.decodeIfPresent(String.self, forKey: .title)
         // The first that names a job: an empty or non-string one doesn't.
         jobID = [CodingKeys.jobID, .cronJobID].lazy
             .compactMap { try? container.decodeIfPresent(String.self, forKey: $0) }
             .first { !$0.isEmpty }
+    }
+
+    /// An epoch in whole seconds: an integer, or a float truncated.
+    private static func epoch(_ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Int? {
+        if let whole = try? container.decodeIfPresent(Int.self, forKey: key) { return whole }
+        return (try? container.decodeIfPresent(Double.self, forKey: key))
+            .flatMap { Int(exactly: $0.rounded(.towardZero)) }
+    }
+
+    /// When the run happened, for its Run history row: the last activity, or
+    /// the start when that's all there is, as a local date and time. Empty
+    /// when neither is known. A millisecond epoch is read as one.
+    func timeLabel(locale: Locale = AppLocalization.formattingLocale) -> String {
+        guard let raw = lastActive ?? startedAt, raw > 0 else { return "" }
+        let seconds = raw > 10_000_000_000 ? raw / 1000 : raw
+        return Date(timeIntervalSince1970: TimeInterval(seconds))
+            .formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))
+    }
+
+    /// The run's name: its title, else its preview, else its id. A blank one
+    /// is no name.
+    var displayName: String {
+        [title, preview].lazy
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? id
     }
 
     func encode(to encoder: Encoder) throws {

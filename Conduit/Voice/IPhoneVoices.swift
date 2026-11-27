@@ -162,6 +162,10 @@ enum IPhoneVoices {
     /// The voice found for a language and its pick, so a reply's sentences
     /// don't each ask iOS's speech service again. Forgotten with the list.
     @MainActor private static var foundVoices: [String: FoundVoice] = [:]
+    /// Finds still running, by the same key: a second sentence or Read
+    /// Aloud asking meanwhile waits on the first instead of asking iOS's
+    /// speech service again.
+    @MainActor private static var findingVoices: [String: Task<FoundVoice, Never>] = [:]
     /// Counts forgets, so a voice found from a forgotten list isn't kept.
     @MainActor private static var generation = 0
 
@@ -207,6 +211,7 @@ enum IPhoneVoices {
         cachedInstalled = nil
         reading = nil
         foundVoices = [:]
+        findingVoices = [:]
         generation += 1
     }
 
@@ -249,16 +254,32 @@ enum IPhoneVoices {
         let region = Locale.current.region?.identifier
         let key = "\(language)|\(chosen ?? "")|\(region ?? "")"
         if let found = foundVoices[key] { return found.voice }
+        if let finding = findingVoices[key] {
+            let waitedFrom = generation
+            let found = await finding.value
+            // The voices changed while it waited: the next find reads the
+            // list after the change (#3374's review).
+            return generation == waitedFrom ? found.voice : await voice(for: language)
+        }
         let started = generation
-        let installed = await installed()
         nonisolated(unsafe) let ask = systemVoice
-        let found = await Task.detached(priority: .userInitiated) { () -> FoundVoice in
-            let system = ask(language)
-            let option = pick(installed, wanted: language, chosen: chosen, region: region, systemDefault: system?.identifier)
-            if let option, let voice = AVSpeechSynthesisVoice(identifier: option.id) { return FoundVoice(voice: voice) }
-            return FoundVoice(voice: system)
-        }.value
-        if generation == started { foundVoices[key] = found }
+        let finding = Task { @MainActor () -> FoundVoice in
+            let installed = await installed()
+            return await Task.detached(priority: .userInitiated) { () -> FoundVoice in
+                let system = ask(language)
+                let option = pick(installed, wanted: language, chosen: chosen, region: region, systemDefault: system?.identifier)
+                if let option, let voice = AVSpeechSynthesisVoice(identifier: option.id) { return FoundVoice(voice: voice) }
+                return FoundVoice(voice: system)
+            }.value
+        }
+        findingVoices[key] = finding
+        let found = await finding.value
+        // A find forgotten meanwhile is neither kept nor cleared here: the
+        // forget already dropped it, and a newer find may hold its key.
+        if generation == started {
+            findingVoices[key] = nil
+            foundVoices[key] = found
+        }
         return found.voice
     }
 

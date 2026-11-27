@@ -114,11 +114,14 @@ enum AttachmentTypePolicy {
     /// The real file name when the system gave one, with an extension that
     /// matches the content; otherwise "photo"/"video"/"file" plus one.
     static func filename(suggested: String?, type: UTType?, ordinal: Int = 1) -> String {
-        let trimmed = (suggested ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = Substring((suggested ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+        // "Apple." has no extension, and would become "Apple..png" (#3366).
+        while trimmed.last == "." { trimmed.removeLast() }
         let preferredExtension = type?.preferredFilenameExtension
         if !trimmed.isEmpty {
-            let currentExtension = (trimmed as NSString).pathExtension
-            guard currentExtension.isEmpty, let preferredExtension else { return trimmed }
+            let trimmed = String(trimmed)
+            // "Event 8.30" ends in no extension a type is known by.
+            guard !ShareDraftNames.hasKnownExtension(trimmed, for: type), let preferredExtension else { return trimmed }
             return "\(trimmed).\(preferredExtension)"
         }
         let stem: String
@@ -304,9 +307,11 @@ enum AttachmentStaging {
             kind = .document
         } else if kind == .image {
             let typedName = AttachmentTypePolicy.pictureFilename(name, type: type)
-            if typedName != name {
+            // The staged copy's path says its type too, also when the name
+            // already did and the copy was written under another ("10.00.37").
+            let typedExtension = (typedName as NSString).pathExtension
+            if typedName != name || url.pathExtension.caseInsensitiveCompare(typedExtension) != .orderedSame {
                 name = typedName
-                // The staged copy's path says its type too.
                 if let renamed = try? destination(for: typedName),
                    (try? FileManager.default.moveItem(at: url, to: renamed)) != nil {
                     url = renamed

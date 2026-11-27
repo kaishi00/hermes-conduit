@@ -154,6 +154,32 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), png)
     }
 
+    func testANameEndingInADotStagesWithOneDot() throws {
+        // Most ways in name the file through filename(suggested:type:)
+        // first, which saw "Apple." as having no extension (#3366).
+        let name = AttachmentTypePolicy.filename(suggested: "Apple.", type: .png)
+        XCTAssertEqual(name, "Apple.png")
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "...", type: .png), "photo.png")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Apple.", type: .png, ordinal: 1), "Apple.png")
+        // A dotted stem ending in a dot keeps no false extension: "8.30"
+        // is none (#3374's reviews); a real one stays as it was.
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "Event 8.30.", type: .png), "Event 8.30.png")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Event 8.30.", type: .png, ordinal: 1), "Event 8.30.png")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Event 8.30", type: .png, ordinal: 1), "Event 8.30.png")
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "Scan.PNG", type: .png), "Scan.PNG")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "flyer.jpeg", type: .png, ordinal: 1), "flyer.jpeg")
+        // A document keeps an ending no type is known by.
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "terraform.tfvars", type: .plainText), "terraform.tfvars")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "terraform.tfvars", type: .plainText, ordinal: 1), "terraform.tfvars")
+        let png = try pngData(width: 40, height: 30)
+        let outcome = AttachmentStaging.finishStaging(
+            fileAt: try stagedFile(png, named: name), name: name, type: .png, limitMegabytes: 16
+        )
+        guard case .staged(let attachment) = outcome else { return XCTFail("Expected it staged, got \(outcome)") }
+        defer { URL(string: attachment.uri).map { try? FileManager.default.removeItem(at: $0) } }
+        XCTAssertEqual(attachment.name, "Apple.png")
+    }
+
     func testAStagedPictureWhoseExtensionLiesIsNamedByItsBytes() throws {
         let png = try pngData(width: 40, height: 30)
         let outcome = AttachmentStaging.finishStaging(

@@ -9,6 +9,7 @@
 //  transcript itself.
 //
 
+import CryptoKit
 import Foundation
 import os
 
@@ -24,8 +25,21 @@ final class SessionPresentationCache {
     /// on the thread that first reads `shared`.
     private static func makeShared() -> SessionPresentationCache {
         let files = SessionPresentationFiles(directory: SessionPresentationFiles.defaultDirectory())
-        return SessionPresentationCache(storage: storage(movingFrom: .standard, to: files), writesAsynchronously: true)
+        return SessionPresentationCache(
+            storage: storage(movingFrom: .standard, to: files),
+            writesAsynchronously: true,
+            writeInterval: shownWriteInterval
+        )
     }
+
+    /// The app's stores reach disk at most this often while chats change:
+    /// memory is what every read uses, and disk only matters across a kill,
+    /// when the chat reads again from Hermes anyway. Written every few
+    /// seconds while a reply streamed, the sessions store (megabytes with
+    /// long agent chats) came to 2 to 4 GB a day (App Store Connect's disk
+    /// writes report, crash triage 2026-11-26). Leaving for the background
+    /// writes at once (`notifyWhenPendingWritesLand`).
+    static let shownWriteInterval: TimeInterval = 30
 
     private static let storeKey = "conduit.sessionPresentation.v1"
     private static let pendingToolsKey = "conduit.sessionPresentation.pendingTools.v1"
@@ -302,26 +316,38 @@ final class SessionPresentationCache {
     /// through suspension until the queue drains (see AppState's background
     /// handling); nothing on the main thread may block on this queue.
     private let writeQueue: DispatchQueue?
+    /// The shortest time between two writes of one store (asynchronous mode;
+    /// 0 writes each as soon as the queue reaches it). A write asked for
+    /// sooner waits out the rest, and the newest memory copy is what lands.
+    private let writeInterval: TimeInterval
+    /// When each store last reached disk, and a digest of the bytes it got
+    /// (not the bytes: the sessions store runs to megabytes). Write queue
+    /// only.
+    private var lastWriteAt: [StoreKind: DispatchTime] = [:]
+    private var lastWrittenDigest: [StoreKind: SHA256.Digest] = [:]
 
     /// A cache whose stores are kept in `defaults`, as tests do.
     convenience init(
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = { Date() },
-        writesAsynchronously: Bool = false
+        writesAsynchronously: Bool = false,
+        writeInterval: TimeInterval = 0
     ) {
-        self.init(storage: defaults, now: now, writesAsynchronously: writesAsynchronously)
+        self.init(storage: defaults, now: now, writesAsynchronously: writesAsynchronously, writeInterval: writeInterval)
     }
 
     init(
         storage: SessionPresentationStorage,
         now: @escaping () -> Date = { Date() },
-        writesAsynchronously: Bool = false
+        writesAsynchronously: Bool = false,
+        writeInterval: TimeInterval = 0
     ) {
         self.storage = storage
         self.now = now
         self.writeQueue = writesAsynchronously
             ? DispatchQueue(label: "conduit.sessionPresentationCache.write", qos: .utility)
             : nil
+        self.writeInterval = writesAsynchronously ? max(0, writeInterval) : 0
     }
 
     /// Blocks until every queued disk write has landed. No-op in
@@ -332,6 +358,12 @@ final class SessionPresentationCache {
     /// deadlocks until the watchdog kills the app.
     #if DEBUG
     func waitForPendingWrites() {
+        writeQueue?.sync { writeWaitingStores() }
+    }
+
+    /// Blocks until the writes queued so far have run, leaving any that wait
+    /// out `writeInterval` waiting. Test-only, as `waitForPendingWrites`.
+    func waitForQueuedWrites() {
         writeQueue?.sync {}
     }
     #endif
@@ -345,6 +377,9 @@ final class SessionPresentationCache {
             return
         }
         writeQueue.async {
+            // Writes waiting out the interval go now: the app may be
+            // suspended once this lands.
+            self.writeWaitingStores()
             DispatchQueue.main.async { completion() }
         }
     }
@@ -651,9 +686,10 @@ final class SessionPresentationCache {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Records the crash-recovery marker synchronously, without decoding and
-    /// rewriting the much larger presentation store. The next ordinary,
-    /// debounced `save` folds this bounded side record into the full snapshot.
+    /// Records the crash-recovery marker without decoding and rewriting the
+    /// much larger presentation store, and writes it at once, outside the
+    /// store pacing (`writePendingToolStart`). The next ordinary, debounced
+    /// `save` folds this bounded side record into the full snapshot.
     func recordPendingToolStart(
         _ message: ChatMessage,
         profile: String,
@@ -673,7 +709,7 @@ final class SessionPresentationCache {
             records.append(record)
             pendingStore[cacheKey] = Array(records.suffix(maxMessagesPerSession))
         }
-        persistPendingTools(pendingStore)
+        persistPendingTools(pendingStore, atOnce: true)
     }
 
     /// A completion event makes the local running projection obsolete. An
@@ -1499,10 +1535,10 @@ final class SessionPresentationCache {
         return decoded
     }
 
-    private func persistPendingTools(_ store: [String: [CachedMessage]]) {
+    private func persistPendingTools(_ store: [String: [CachedMessage]], atOnce: Bool = false) {
         guard writeQueue == nil else {
             memoryLock.withLock { memoryPendingTools = store }
-            scheduleWrite(.pendingTools)
+            scheduleWrite(.pendingTools, atOnce: atOnce)
             return
         }
         memoryLock.lock()
@@ -1548,17 +1584,83 @@ final class SessionPresentationCache {
     }
 
     /// Queues a write of `kind`'s current memory copy (asynchronous mode
-    /// only) and returns its ticket.
+    /// only) and returns its ticket. `atOnce`: a running tool's start, which
+    /// doesn't wait out the interval (`writePendingToolStart`).
     @discardableResult
-    private func scheduleWrite(_ kind: StoreKind) -> Int {
+    private func scheduleWrite(_ kind: StoreKind, atOnce: Bool = false) -> Int {
         guard let writeQueue else { return 0 }
         let ticket = memoryLock.withLock { () -> Int in
             writeTicket += 1
             newestWriteTicket[kind] = writeTicket
             return writeTicket
         }
-        writeQueue.async { self.writeLatest(kind, ticket: ticket) }
+        writeQueue.async {
+            if atOnce, kind == .pendingTools {
+                self.writePendingToolStart(ticket: ticket)
+            } else {
+                self.writeAfterInterval(kind, ticket: ticket)
+            }
+        }
         return ticket
+    }
+
+    /// A running tool's start reaches disk at once, as the crash-recovery
+    /// marker it is (#3374's review). With a sessions write waiting, the
+    /// pending tools store on disk may still hold a record only that
+    /// waiting write has folded in, so the start goes out added to what
+    /// disk holds, never dropping a record, and the exact memory copy
+    /// follows with the sessions write. The megabyte sessions store keeps
+    /// its pacing. Write queue only.
+    private func writePendingToolStart(ticket: Int) {
+        let sessionsWaits = memoryLock.withLock { () -> Bool in
+            guard let newest = newestWriteTicket[.sessions] else { return false }
+            return (landedWriteTicket[.sessions] ?? -1) < newest
+        }
+        guard writeInterval > 0, sessionsWaits else { return writeLatest(.pendingTools, ticket: ticket) }
+        guard let snapshot = memoryLock.withLock({ newestWriteTicket[.pendingTools] == ticket ? memoryPendingTools : nil }) else { return }
+        var merged = snapshot
+        let onDisk = storage.data(forKey: pendingToolsStorageKey)
+            .flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
+        for (key, records) in onDisk {
+            var kept = merged[key] ?? []
+            let ids = Set(kept.map(\.id))
+            kept.insert(contentsOf: records.filter { !ids.contains($0.id) }, at: 0)
+            merged[key] = Array(kept.suffix(maxMessagesPerSession))
+        }
+        if !merged.isEmpty, let data = try? Self.encodePendingTools(merged),
+           storage.storeData(data, forKey: pendingToolsStorageKey) {
+            lastWrittenDigest[.pendingTools] = SHA256.hash(data: data)
+        }
+        // Not landed: the exact copy goes when the sessions write does.
+        let paced = { (kind: StoreKind) in self.lastWriteAt[kind].map { $0 + self.writeInterval } ?? .now() }
+        writeQueue?.asyncAfter(deadline: max(paced(.pendingTools), paced(.sessions))) {
+            self.writeLatest(.pendingTools, ticket: ticket)
+        }
+    }
+
+    /// Writes `kind` now, or once `writeInterval` has passed since its last
+    /// write. Write queue only.
+    private func writeAfterInterval(_ kind: StoreKind, ticket: Int) {
+        guard let writeQueue else { return }
+        func paced(_ kind: StoreKind) -> DispatchTime { lastWriteAt[kind].map { $0 + writeInterval } ?? .now() }
+        // The pending tools store takes a waiting sessions write with it
+        // (writeLatest), so it waits for that write's turn too.
+        let sessionsWaits = kind == .pendingTools && memoryLock.withLock { () -> Bool in
+            guard let newest = newestWriteTicket[.sessions] else { return false }
+            return (landedWriteTicket[.sessions] ?? -1) < newest
+        }
+        let due = sessionsWaits ? max(paced(kind), paced(.sessions)) : paced(kind)
+        guard due > .now() else { return writeLatest(kind, ticket: ticket) }
+        writeQueue.asyncAfter(deadline: due) { self.writeLatest(kind, ticket: ticket) }
+    }
+
+    /// Writes each store whose newest write hasn't landed yet, without
+    /// waiting out the interval. Write queue only.
+    private func writeWaitingStores() {
+        for kind in [StoreKind.sessions, .pendingTools] {
+            guard let ticket = memoryLock.withLock({ newestWriteTicket[kind] }) else { continue }
+            writeLatest(kind, ticket: ticket)
+        }
     }
 
     /// Encodes and stores `kind`'s memory copy as it is now, unless a newer
@@ -1568,8 +1670,21 @@ final class SessionPresentationCache {
     /// encoding and the storage write happen outside it, so a UserDefaults
     /// store's change notification can never re-enter the lock.
     private func writeLatest(_ kind: StoreKind, ticket: Int) {
-        func isNewest() -> Bool { newestWriteTicket[kind] == ticket }
+        // Not newest: a later write stores newer state. Landed: written
+        // already, without waiting (writeWaitingStores).
+        func isNewest() -> Bool { newestWriteTicket[kind] == ticket && (landedWriteTicket[kind] ?? -1) < ticket }
         guard memoryLock.withLock({ isNewest() }) else { return }
+        // The sessions store first when a write of it waits: a running
+        // tool's side record is dropped once the sessions store holds it,
+        // so the pending tools store never reaches disk ahead of the
+        // sessions write that folded it in (#3374's review).
+        if kind == .pendingTools,
+           let waiting = memoryLock.withLock({ () -> Int? in
+               guard let newest = newestWriteTicket[.sessions], (landedWriteTicket[.sessions] ?? -1) < newest else { return nil }
+               return newest
+           }) {
+            writeLatest(.sessions, ticket: waiting)
+        }
         let signposter = ResponsivenessSignposts.signposter
         let writing = signposter.beginInterval("Write presentation store", id: signposter.makeSignpostID())
         defer { signposter.endInterval("Write presentation store", writing) }
@@ -1590,11 +1705,19 @@ final class SessionPresentationCache {
         }
         guard let encoded, memoryLock.withLock({ isNewest() }) else { return }
         if let data = encoded {
-            // One that didn't land (a full disk) leaves the store on disk as
-            // it was, so its tombstones stay until a later write lands.
-            guard storage.storeData(data, forKey: key) else { return }
+            // The same bytes as the last write: disk has them already.
+            let digest = SHA256.hash(data: data)
+            if lastWrittenDigest[kind] != digest {
+                // One that didn't land (a full disk) leaves the store on disk
+                // as it was, so its tombstones stay until a later write lands.
+                guard storage.storeData(data, forKey: key) else { return }
+                lastWrittenDigest[kind] = digest
+                lastWriteAt[kind] = .now()
+            }
         } else {
             storage.removeObject(forKey: key)
+            lastWrittenDigest[kind] = nil
+            lastWriteAt[kind] = .now()
         }
         let canRetireTombstones = memoryLock.withLock { () -> Bool in
             landedWriteTicket[kind] = max(landedWriteTicket[kind] ?? 0, ticket)

@@ -3771,6 +3771,105 @@ extension SessionPresentationCacheTests {
         )
     }
 
+    /// The app's sessions store reaches disk at most once per interval while
+    /// chats change, the newest memory copy landing (App Store Connect's
+    /// disk writes report: 2 to 4 GB a day while replies streamed), and
+    /// leaving for the background writes what waits at once.
+    func testStoreWritesWaitOutTheIntervalAndTheNewestLands() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true, writeInterval: 60)
+        let key = "conduit.sessionPresentation.v1"
+        func save(_ id: String) {
+            cache.save(
+                [ChatMessage(id: id, role: .assistant, content: "Reply", timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: ["session-a"]
+            )
+        }
+        func onDisk() -> String { storage.data(forKey: key).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+        save("row-first")
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(key), 1, "The first write goes at once")
+        save("row-streaming")
+        save("row-streamed")
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(key), 1, "Later ones wait out the interval")
+        XCTAssertTrue(onDisk().contains("row-first"))
+
+        let landed = expectation(description: "writes landed")
+        cache.notifyWhenPendingWritesLand { landed.fulfill() }
+        wait(for: [landed], timeout: 5)
+        XCTAssertEqual(storage.writeCount(key), 2, "Leaving for the background writes what waits, once")
+        XCTAssertTrue(onDisk().contains("row-streamed"), "The newest memory copy lands")
+        XCTAssertFalse(onDisk().contains("row-streaming"))
+    }
+
+    /// A running tool's start reaches disk at once, as the crash-recovery
+    /// marker it is, while the sessions store keeps waiting out its
+    /// interval; a record only the waiting sessions write has folded in
+    /// stays on disk until that write lands (#3374's review).
+    func testAToolStartGoesAtOnceAndKeepsWhatTheWaitingSessionsWriteFolded() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true, writeInterval: 60)
+        let key = "conduit.sessionPresentation.v1"
+        let toolsKey = "conduit.sessionPresentation.pendingTools.v1"
+        func onDisk(_ key: String) -> String { storage.data(forKey: key).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+        func save(_ id: String, _ session: String) {
+            cache.save(
+                [ChatMessage(id: id, role: .assistant, content: "Reply", timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: [session]
+            )
+        }
+        func start(_ call: String) {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "pending-\(call)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: call, name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: ["session-b"]
+            )
+        }
+        save("row-first", "session-a")
+        cache.waitForQueuedWrites()
+        save("row-waiting", "session-a")
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(key), 1, "The sessions write waits out its interval")
+
+        start("call-1")
+        cache.waitForQueuedWrites()
+        XCTAssertTrue(onDisk(toolsKey).contains("call-1"), "A start goes at once")
+        // The save folds call-1 into the sessions store, whose write waits.
+        save("row-b", "session-b")
+        start("call-2")
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(key), 1, "The sessions store keeps its pacing")
+        XCTAssertTrue(onDisk(toolsKey).contains("call-2"), "A second start goes at once too")
+        XCTAssertTrue(onDisk(toolsKey).contains("call-1"), "Kept until the sessions write holding it lands")
+
+        let landed = expectation(description: "writes landed")
+        cache.notifyWhenPendingWritesLand { landed.fulfill() }
+        wait(for: [landed], timeout: 5)
+        XCTAssertTrue(onDisk(key).contains("row-b"))
+        XCTAssertTrue(onDisk(key).contains("call-1"), "The sessions store holds the folded tool")
+        XCTAssertFalse(onDisk(toolsKey).contains("call-1"), "Then the side record goes")
+    }
+
+    /// A store whose bytes haven't changed since its last write isn't
+    /// written again.
+    func testAStoreWithTheSameBytesIsntWrittenAgain() throws {
+        let storage = FailingPresentationStorage()
+        // A fixed clock, so the second save stamps the same time.
+        let cache = SessionPresentationCache(storage: storage, now: { Date(timeIntervalSince1970: 1_000) }, writesAsynchronously: true)
+        let rows = [ChatMessage(id: "row-1", role: .assistant, content: "Same", timestamp: "2024-01-01T10:00:00Z")]
+        cache.save(rows, profile: "default", sessionIDs: ["session-a"])
+        cache.waitForPendingWrites()
+        cache.save(rows, profile: "default", sessionIDs: ["session-a"])
+        cache.waitForPendingWrites()
+        XCTAssertEqual(storage.writeCount("conduit.sessionPresentation.v1"), 1)
+    }
+
     /// A store write that doesn't land (a full disk) keeps a delete's
     /// tombstone: the store on disk still holds the deleted chat, and the
     /// tombstone keeps it from coming back on the next launch.
@@ -3818,18 +3917,21 @@ extension SessionPresentationCacheTests {
             profile: "default",
             sessionIDs: ["session-c"]
         )
-        // Another chat's running tool keeps the pending tools store from
+        // The deleted chat's running tool changes the pending tools store
+        // on removal (bytes unchanged since the last write aren't written
+        // again, and count as landed), and another chat's keeps it from
         // emptying, so the removal's write to it needs the disk too (an
-        // empty store is removed, which always lands) and stays unlanded
-        // after the save below lands the sessions store.
-        cache.recordPendingToolStart(
-            ChatMessage(
-                id: "pending", role: .tool, content: "", timestamp: "now",
-                tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
-            ),
-            profile: "default",
-            sessionIDs: ["session-b"]
-        )
+        // empty store is removed, which always lands).
+        for (call, session) in [("call-1", "session-b"), ("call-2", "session-c")] {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "pending-\(call)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: call, name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [session]
+            )
+        }
         cache.waitForPendingWrites()
         storage.failsStoreWrites = true
         storage.failsTombstoneWrites = true
@@ -3840,6 +3942,9 @@ extension SessionPresentationCacheTests {
         wait(for: [failed], timeout: 5)
         XCTAssertNil(storage.data(forKey: FailingPresentationStorage.tombstonesKey), "Nothing landed")
 
+        // The pending tools store still can't be written, so its removal
+        // stays unlanded when the flush below retries it.
+        storage.failsPendingToolsWrites = true
         storage.failsStoreWrites = false
         storage.failsTombstoneWrites = false
         cache.save(
@@ -4085,6 +4190,12 @@ private final class FailingPresentationStorage: SessionPresentationStorage {
     private var stored: [String: Data] = [:]
     private var failing = false
     private var failingTombstones = false
+    private var failingPendingTools = false
+
+    var failsPendingToolsWrites: Bool {
+        get { lock.withLock { failingPendingTools } }
+        set { lock.withLock { failingPendingTools = newValue } }
+    }
 
     var failsStoreWrites: Bool {
         get { lock.withLock { failing } }
@@ -4100,10 +4211,19 @@ private final class FailingPresentationStorage: SessionPresentationStorage {
         lock.withLock { stored[key] }
     }
 
+    private var writes: [String: Int] = [:]
+
+    /// How many times `key` was written.
+    func writeCount(_ key: String) -> Int {
+        lock.withLock { writes[key] ?? 0 }
+    }
+
     func storeData(_ data: Data, forKey key: String) -> Bool {
         lock.withLock {
             guard key == Self.tombstonesKey ? !failingTombstones : !failing else { return false }
+            guard key != "conduit.sessionPresentation.pendingTools.v1" || !failingPendingTools else { return false }
             stored[key] = data
+            writes[key, default: 0] += 1
             return true
         }
     }

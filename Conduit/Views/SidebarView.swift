@@ -200,6 +200,7 @@ private struct SidebarKanbanView: View {
 // MARK: - Session List
 
 struct SessionList: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
@@ -1101,13 +1102,11 @@ struct SessionList: View {
     /// the last slide is over; otherwise they land at once, as V2's Chats
     /// list sections do (issue 1583).
     private func withNestToggle(rows: Int, _ change: () -> Void) {
-        if toggleClock.animates(listMoving: listMoving, rows: rows) {
-            withAnimation(ConduitMotion.response, change)
-        } else {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction, change)
-        }
+        withListToggle(
+            animates: toggleClock.animates(listMoving: listMoving, rows: rows),
+            reduceMotion: reduceMotion,
+            change
+        )
     }
 
     /// The ancestors of the open conversation within the nested list, and
@@ -2865,7 +2864,7 @@ struct CronJobDetailSheet: View {
                             }
                             ForEach(appState.cronRunsJobID == job.id ? appState.cronRuns : []) { run in
                                 Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
-                                    HStack { VStack(alignment: .leading) { Text(run.title ?? run.preview ?? run.id).lineLimit(1); Text(run.model ?? "Hermes").scaledFont(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.lastActive.map(String.init) ?? "").scaledFont(.caption2).foregroundStyle(.conduitTertiary) }
+                                    HStack { VStack(alignment: .leading) { Text(run.displayName).lineLimit(1); Text(run.model ?? "Hermes").scaledFont(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.timeLabel()).scaledFont(.caption2).foregroundStyle(.conduitTertiary) }
                                 }
                                 .buttonStyle(.plain)
                             }

@@ -319,23 +319,31 @@ extension AppState {
         return try? JSONDecoder().decode(CronJob.self, from: data)
     }
 
+    /// Read from the row itself, every alias the gateway and the dashboard
+    /// use (`name`, `summary`, `lastActive`, a string or float epoch) and
+    /// `session`'s nesting, whatever its other fields hold: a strict decode
+    /// first would take a row it can read without them (#3374's reviews).
     private func decodeCronRun(_ value: Any) -> CronRun? {
-        guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value) else { return nil }
-        if let decoded = try? JSONDecoder().decode(CronRun.self, from: data) { return decoded }
         guard let rawObject = value as? [String: Any] else { return nil }
         let object = rawObject["session"] as? [String: Any] ?? rawObject
         guard
               let id = stringValue(object["id"] ?? object["session_id"] ?? object["run_id"]), !id.isEmpty else { return nil }
+        // A name is a non-blank string: a number isn't one, so the next
+        // name stands in for it.
+        func text(_ value: Any?) -> String? {
+            (value as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        }
         return CronRun(
             id: id,
             lastActive: Self.integerValue(object["last_active"] ?? object["lastActive"]),
             model: stringValue(object["model"]),
-            preview: stringValue(object["preview"] ?? object["summary"]),
+            preview: text(object["preview"]) ?? text(object["summary"]),
             profile: stringValue(object["profile"]),
             startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
-            title: stringValue(object["title"] ?? object["name"]),
-            jobID: stringValue(object["job_id"] ?? object["cron_job_id"])
+            title: text(object["title"]) ?? text(object["name"]),
+            // The first that names a job, as the strict decode reads it: an
+            // empty or non-string one doesn't.
+            jobID: ["job_id", "cron_job_id"].lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty }
         )
     }
 
@@ -375,7 +383,9 @@ extension AppState {
     }
 
     private func stringValue(_ value: Any?) -> String? {
-        guard let value else { return nil }
+        // JSON null comes back as NSNull, which would describe itself as
+        // "<null>" (#3373).
+        guard let value, !(value is NSNull) else { return nil }
         let string = String(describing: value).trimmingCharacters(in: .whitespacesAndNewlines)
         return string.isEmpty ? nil : string
     }

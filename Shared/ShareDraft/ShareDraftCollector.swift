@@ -429,10 +429,12 @@ struct ShareDraftCollector {
     /// safe, with an extension that matches its type; otherwise "photo",
     /// "video" or "file" plus one, numbered past the first.
     static func displayName(suggested: String?, type: UTType?, ordinal: Int) -> String {
-        let safe = ShareDraftNames.sanitizedDisplayName(suggested ?? "")
+        var safe = ShareDraftNames.sanitizedDisplayName(suggested ?? "")
+        // "Apple." has no extension, and would become "Apple..png" (#3366).
+        while safe.last == "." { safe.removeLast() }
         let preferred = type?.preferredFilenameExtension
         if !safe.isEmpty {
-            guard (safe as NSString).pathExtension.isEmpty, let preferred else { return safe }
+            guard !ShareDraftNames.hasKnownExtension(safe, for: type), let preferred else { return safe }
             return ShareDraftNames.sanitizedDisplayName("\(safe).\(preferred)")
         }
         let stem: String
