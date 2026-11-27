@@ -90,6 +90,10 @@ struct BotProfile: Identifiable, Equatable, Codable {
     /// ui_meta's `face`, else the first free one, set on the whole roster
     /// as it's read. Kept with the kept copy, which has no ui_meta.
     var starterFace: Int?
+    /// Its category (BotCategories): Hermes Desktop's section, from
+    /// ui_meta's `sectionId` and `sectionName`. Kept with the kept copy, so
+    /// Bots Home draws its headings before Hermes answers.
+    var category: BotCategoryTag?
 
     var id: String { name }
 
@@ -106,7 +110,7 @@ struct BotProfile: Identifiable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case name, botTitle, displayName, profileDescription, model, provider, hasAvatar, isPinned
         case isHiddenByMeta, appearanceColor, canonicalSession, lastActive, lastPreview, previousNames
-        case isDefault, conduitName, starterFace
+        case isDefault, conduitName, starterFace, category
     }
 
     /// Removable from Conduit: never the gateway's primary profile.
@@ -232,6 +236,7 @@ enum BotRosterDecoder {
             .filter { !$0.isEmpty }
         bot.isDefault = object["is_default"]?.boolValue ?? false
         bot.botMeta = meta ?? [:]
+        bot.category = BotCategories.tag(in: bot.botMeta)
         if let revisions = object["ui_meta_revisions"]?.objectValue {
             // Present-but-missing key is revision 0: the gateway feature-
             // detects CAS with an always-present (possibly empty) object.

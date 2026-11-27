@@ -166,6 +166,7 @@ extension AppState {
         slots.append(pinnedChatOrderSlot)
         slots.append(botOrderSlot)
         slots.append(groupRoomOrderSlot)
+        slots.append(botCategoryOrderSlot)
         return slots
     }
 

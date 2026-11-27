@@ -77,6 +77,13 @@ struct BotRosterView: View {
     /// A picture asked for from a room's tile, and the room it's for.
     @State private var roomPictureRequest: GroupRoomPictureRequest?
     @State private var pictureRoom: GroupRoom?
+    /// New Category… or Rename… waiting on its name, and the name typed.
+    @State private var categoryPrompt: BotCategoryPrompt?
+    @State private var categoryName = ""
+    /// A category whose Delete waits for its confirmation.
+    @State private var pendingCategoryDelete: String?
+    /// Folded category headings, by key, one per line (this device only).
+    @AppStorage(BotCategories.foldedKey) private var foldedCategories = ""
     /// Bots Home's one tip on its gestures (BotsHomeGesturesTip).
     private let gesturesTip = BotsHomeGesturesTip()
     @Environment(\.v2Shell) private var shell
@@ -347,6 +354,38 @@ struct BotRosterView: View {
         } message: { _ in
             Text(AppLocalization.string("This permanently removes the bot's profile, chats, memory and skills from the gateway.", table: .bots))
         }
+        .alert(
+            categoryPrompt?.title ?? "",
+            isPresented: Binding(
+                get: { categoryPrompt != nil },
+                set: { if !$0 { categoryPrompt = nil } }
+            ),
+            presenting: categoryPrompt
+        ) { prompt in
+            TextField(AppLocalization.string("Category name", table: .bots), text: $categoryName)
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            Button(prompt.initialName.isEmpty ? AppLocalization.string("Create") : AppLocalization.string("Save")) {
+                commitCategoryPrompt(prompt)
+            }
+            .disabled(BotCategories.clean(categoryName) == nil)
+        }
+        .confirmationDialog(
+            pendingCategoryDelete.map { AppLocalization.string("Delete \($0)?") } ?? "",
+            isPresented: Binding(
+                get: { pendingCategoryDelete != nil },
+                set: { if !$0 { pendingCategoryDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingCategoryDelete
+        ) { name in
+            Button(AppLocalization.string("Delete Category", table: .bots), role: .destructive) {
+                let items = categoryItems
+                Task { managementNotice = await appState.deleteBotCategory(name, items: items) }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+        } message: { _ in
+            Text(AppLocalization.string("Its bots move to Other.", table: .bots))
+        }
         .task(id: rosterRefreshKey) {
             // Not during a pop's slide (`V2ShownUpdates.settled`).
             await updates.settled()
@@ -511,8 +550,23 @@ struct BotRosterView: View {
 
     @ViewBuilder
     private var botRows: some View {
-        ForEach(visibleBots) { bot in
-            botRow(bot)
+        // The list's bots under the same headings as Bots Home's.
+        let items = visibleBots.map(ownItem)
+        if let sections = appState.botCategorySections(items) {
+            let names = sections.compactMap(\.name)
+            ForEach(sections) { section in
+                categoryHeading(section, names: names)
+                    .rosterListRow(divider: false)
+                if !isFolded(section) {
+                    ForEach(section.items.map(\.bot)) { bot in
+                        botRow(bot)
+                    }
+                }
+            }
+        } else {
+            ForEach(visibleBots) { bot in
+                botRow(bot)
+            }
         }
         if !hiddenBots.isEmpty {
             hiddenDisclosure
@@ -561,7 +615,8 @@ struct BotRosterView: View {
             canDelete: appState.canDeleteBot(bot),
             rooms: botRooms(bot),
             canStartGroup: canStartGroups && !bot.isHiddenByMeta,
-            actions: actions(for: bot)
+            actions: actions(for: bot),
+            categoryMenu: categoryMenu(ownItem(bot))
         )
     }
 
@@ -578,17 +633,22 @@ struct BotRosterView: View {
         let othersShown = items.contains {
             if case .other = $0.kind { return true } else { return false }
         }
+        // Headings when any bot is in a category; the lone and paired
+        // layouts give way to them, as to the other dashboards' bots.
+        let sections = appState.botCategorySections(items)
         switch BotsHomeLayout.of(
             visibleBots: visibleBots.count,
             accessibilitySize: typeSize.isAccessibilitySize,
-            othersShown: othersShown
+            othersShown: othersShown || sections != nil
         ) {
         case .solo:
             if let bot = visibleBots.first { soloHome(bot) }
         case .pair:
             pairHome
         case .grid:
-            if !othersShown {
+            if let sections {
+                categorizedGrid(sections, mixed: othersShown, shown: items.map(\.id))
+            } else if !othersShown {
                 BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
             } else {
                 mixedGrid(items)
@@ -596,11 +656,161 @@ struct BotRosterView: View {
         }
     }
 
+    // MARK: - Categories
+
+    /// Bots Home with categories: a heading over each one's bots, Other
+    /// last. The bots keep the one order (this dashboard's, or the group's
+    /// mixed one), each heading showing its own in it.
+    @ViewBuilder
+    private func categorizedGrid(
+        _ sections: [BotCategorySection<CombinedBotsHomeItem>],
+        mixed: Bool,
+        shown: [String]
+    ) -> some View {
+        let names = sections.compactMap(\.name)
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(sections) { section in
+                categoryHeading(section, names: names)
+                if !isFolded(section) {
+                    if mixed {
+                        mixedGrid(section.items, shown: shown)
+                    } else {
+                        BotPortraitGrid(bots: section.items.map(\.bot), onDropAtEnd: { dragged in
+                            dropAfterCategory(dragged, section: section)
+                        }, sizedFor: shown.count) { portrait($0) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func categoryHeading(_ section: BotCategorySection<CombinedBotsHomeItem>, names: [String]) -> some View {
+        var onRename: (() -> Void)?
+        var onDelete: (() -> Void)?
+        var onMoveEarlier: (() -> Void)?
+        var onMoveLater: (() -> Void)?
+        if let name = section.name {
+            if canManageBots {
+                onRename = {
+                    categoryName = name
+                    categoryPrompt = .rename(name)
+                }
+                onDelete = { pendingCategoryDelete = name }
+            }
+            if let index = names.firstIndex(where: { BotCategories.same($0, name) }) {
+                if index > 0 { onMoveEarlier = { moveCategory(name, by: -1, names: names) } }
+                if index < names.count - 1 { onMoveLater = { moveCategory(name, by: 1, names: names) } }
+            }
+        }
+        return BotCategoryHeading(
+            section: section,
+            folded: isFolded(section),
+            onToggle: {
+                Haptics.selection()
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { toggleFold(section) }
+            },
+            onRename: onRename,
+            onMoveEarlier: onMoveEarlier,
+            onMoveLater: onMoveLater,
+            onDelete: onDelete,
+            onDropBot: { dragged in
+                guard canManageBots, let item = appState.botsHomeItem(dragged: dragged) else { return false }
+                Haptics.selection()
+                file(item, under: section.name)
+                return true
+            },
+            work: appState.botWork,
+            needsYou: appState.needsYou
+        )
+        .padding(.horizontal, 10)
+    }
+
+    private func isFolded(_ section: BotCategorySection<CombinedBotsHomeItem>) -> Bool {
+        foldedCategories.split(separator: "\n").contains { String($0) == section.id }
+    }
+
+    private func toggleFold(_ section: BotCategorySection<CombinedBotsHomeItem>) {
+        var keys = foldedCategories.split(separator: "\n").map(String.init)
+        if let index = keys.firstIndex(of: section.id) {
+            keys.remove(at: index)
+        } else {
+            keys.append(section.id)
+        }
+        foldedCategories = keys.joined(separator: "\n")
+    }
+
+    private func moveCategory(_ name: String, by step: Int, names: [String]) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveBotCategory(name, by: step, shown: names)
+        }
+    }
+
+    /// A portrait dropped past a heading's last one: after that bot in the
+    /// order, and filed under the heading when it came from another.
+    private func dropAfterCategory(_ dragged: String, section: BotCategorySection<CombinedBotsHomeItem>) {
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
+        Haptics.selection()
+        let shown = appState.shownBotRoster.map(\.name)
+        let last = section.items.last?.bot.name
+        let next = last.flatMap { last in
+            shown.firstIndex { $0.caseInsensitiveCompare(last) == .orderedSame }
+        }.flatMap { shown.indices.contains($0 + 1) ? shown[$0 + 1] : nil }
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveBot(dragged, before: next, shown: shown)
+        }
+        if canManageBots, let item = appState.botsHomeItem(dragged: dragged),
+           !BotCategories.same(item.bot.category?.name, section.name) {
+            file(item, under: section.name)
+        }
+    }
+
+    /// Every bot a category can hold here: this dashboard's (hidden ones
+    /// too) and the other combined dashboards'.
+    private var categoryItems: [CombinedBotsHomeItem] {
+        appState.combinedBotsHomeItems(own: visibleBots)
+            + hiddenBots.map { CombinedBotsHomeItem(dashboardID: appState.activeDashboardID, kind: .own($0)) }
+    }
+
+    private func file(_ item: CombinedBotsHomeItem, under name: String?) {
+        Task { managementNotice = await appState.fileBot(item, under: name) }
+    }
+
+    private func commitCategoryPrompt(_ prompt: BotCategoryPrompt) {
+        guard let name = BotCategories.clean(categoryName) else { return }
+        switch prompt {
+        case .new(let item):
+            file(item, under: name)
+        case .rename(let old):
+            let items = categoryItems
+            Task { managementNotice = await appState.renameBotCategory(old, to: name, items: items) }
+        }
+    }
+
+    /// A bot's Category submenu, when bots can be managed here.
+    private func categoryMenu(_ item: CombinedBotsHomeItem) -> BotCategoryMenu? {
+        guard canManageBots, !item.bot.isKeptCopy else { return nil }
+        return BotCategoryMenu(
+            current: item.bot.category?.name,
+            names: appState.shownBotCategoryNames(),
+            onFile: { file(item, under: $0) },
+            onNew: {
+                categoryName = ""
+                categoryPrompt = .new(item)
+            }
+        )
+    }
+
+    private func ownItem(_ bot: BotProfile) -> CombinedBotsHomeItem {
+        CombinedBotsHomeItem(dashboardID: appState.activeDashboardID, kind: .own(bot))
+    }
+
     /// The group's grid: every combined dashboard's bots in one order the
     /// person arranges, each with its dashboard's badge.
-    private func mixedGrid(_ items: [CombinedBotsHomeItem]) -> some View {
-        let shown = items.map(\.id)
-        return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }) { item in
+    /// `shown`: the whole group's order, when `items` are one category's.
+    private func mixedGrid(_ items: [CombinedBotsHomeItem], shown: [String]? = nil) -> some View {
+        let shown = shown ?? items.map(\.id)
+        return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }, sizedFor: shown.count) { item in
             switch item.kind {
             case .own(let bot):
                 portrait(bot, mixedKey: item.id, shown: shown)
@@ -631,7 +841,8 @@ struct BotRosterView: View {
                     },
                     needsYou: appState.needsYou,
                     onMoveEarlier: mixedStep(item.id, by: -1, shown: shown),
-                    onMoveLater: mixedStep(item.id, by: 1, shown: shown)
+                    onMoveLater: mixedStep(item.id, by: 1, shown: shown),
+                    categoryMenu: categoryMenu(item)
                 )
             }
         }
@@ -717,7 +928,8 @@ struct BotRosterView: View {
                 canStartGroup: canStartGroups && !bot.isHiddenByMeta,
                 // Reorder Bots arranges this dashboard's order, which the
                 // group's mixed grid doesn't follow: there a drag does it.
-                actions: actions(for: bot, reorders: mixedKey == nil)
+                actions: actions(for: bot, reorders: mixedKey == nil),
+                categoryMenu: categoryMenu(ownItem(bot))
             ),
             onOverview: { showOverview(bot) },
             // A hidden bot can't join a room, so its tap still opens its chat.
@@ -1920,6 +2132,8 @@ private struct BotRosterRow: View {
     let rooms: [GroupRoom]
     let canStartGroup: Bool
     let actions: Actions
+    /// Its menu's Category submenu.
+    var categoryMenu: BotCategoryMenu?
     /// Bots Home's held updates (`V2ShownUpdates`): hidden or covered,
     /// it doesn't redraw on AppState's publishes (audit 1722).
     @EnvironmentObject private var updates: V2ShownUpdates
@@ -1993,7 +2207,7 @@ private struct BotRosterRow: View {
         .v2SelectedTrait(selection)
         .contextMenu {
             BotRosterMenu(bot: bot, canManage: canManage, canDelete: canDelete, rooms: rooms,
-                          canStartGroup: canStartGroup, actions: actions)
+                          canStartGroup: canStartGroup, actions: actions, categoryMenu: categoryMenu)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canManage {
@@ -2069,6 +2283,9 @@ private struct BotRosterMenu: View {
     let rooms: [GroupRoom]
     let canStartGroup: Bool
     let actions: BotRosterRow.Actions
+    /// Its Category submenu (BotCategories); nil where bots can't be
+    /// managed.
+    var categoryMenu: BotCategoryMenu?
 
     var body: some View {
         Button(action: actions.newChat) {
@@ -2116,6 +2333,7 @@ private struct BotRosterMenu: View {
                     systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
                 )
             }
+            if let categoryMenu { categoryMenu }
             Divider()
             Button(action: actions.edit) {
                 Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
