@@ -3029,6 +3029,26 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertTrue(messages.isEmpty)
     }
 
+    func testEveryContextEngineSummaryDepthIsOmitted() {
+        // LCM-X's frontier as Furina's Bot Chat stored it on 2026-11-26: a
+        // user row with no flag or display kind, parts of every depth
+        // label, a compaction carrying it forward as a fresh row, and a row
+        // it merged with after it (that row keeps its own copy).
+        let carrier = "[Session Arc Summary (d1, node 22)]\n# Summary: Homelab Infra Ops\n"
+            + "[Expand for details: about: mail pipeline]\n\n---\n\n"
+            + "[Recent Summary (d0, node 40)]\nThe user asked about j1.\n[Expand for details: about: j1]"
+            + "\n\nWork update from another bot"
+        let messages = MessageNormalizer.normalizeMessages([
+            .object(["id": .number(107), "role": .string("user"), "content": .string(carrier)]),
+            .object(["id": .number(108), "role": .string("user"), "content": .string("[Durable Summary (d2, node 7)]\nOld.")]),
+            .object(["id": .number(109), "role": .string("user"), "content": .string("[Depth-4 Summary (d4, node 1234567)]\nOlder.")]),
+            .object(["id": .number(110), "role": .string("user"), "content": .string("so the model is just too dumb to do it lol")])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), ["so the model is just too dumb to do it lol"])
+        XCTAssertFalse(MessageNormalizer.hasCompactionSummaryPrefix("[Session Arc Summary of the trip]\nOurs."))
+    }
+
     func testRecentSummaryHeaderIsCaseInsensitive() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
