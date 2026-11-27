@@ -5,7 +5,9 @@
 //  Above the composer, on the gateway's own listener (the Webapp): the
 //  chat's messages waiting their turn, each with Send now, Edit and Remove,
 //  and a turn a gateway restart cut off, with Resend and Discard, since
-//  nothing after it runs until one is chosen. AuthorityQueue.swift holds
+//  nothing after it runs until one is chosen. On `hermes dashboard` the
+//  same rows come from the notifier plugin (ChatLiveWork) and show without
+//  buttons, since the dashboard serves none of the queue's verbs. AuthorityQueue.swift holds
 //  the queue, AppState+AuthorityQueue.swift what the buttons do.
 //
 
@@ -104,12 +106,13 @@ struct AuthorityQueueDock: View {
                 ProgressView()
                     .controlSize(.small)
                     .frame(width: 44, height: 44)
-            } else {
+            } else if !store.readOnly {
                 queuedMenu(row)
             }
         }
         .padding(.leading, 12)
-        .padding(.trailing, 2)
+        .padding(.trailing, store.readOnly ? 12 : 2)
+        .frame(minHeight: store.readOnly ? 44 : nil)
         .padding(.vertical, 2)
         .conduitGlassControl(cornerRadius: 20, interactive: false)
     }
@@ -165,15 +168,22 @@ struct AuthorityQueueDock: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
-            Text("Messages after it wait until you choose.")
-                .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
-            if hasWordsToResend(row) {
+            if store.readOnly {
+                // `hermes dashboard` can't discard it: the gateway's own apps can.
+                Text(AppLocalization.string("Messages after it wait until it’s discarded in the Webapp or Hermes Desktop.", table: .chat))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Messages after it wait until you choose.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            if hasWordsToResend(row), !store.readOnly {
                 Text("Resend sends the words only, without any files.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-            HStack(spacing: 10) {
+            if !store.readOnly { HStack(spacing: 10) {
                 if store.working.contains(row.admissionID) {
                     ProgressView()
                         .controlSize(.small)
@@ -204,7 +214,7 @@ struct AuthorityQueueDock: View {
                     .conduitGlassControl(cornerRadius: 22)
                     .accessibilityHint(Text("Lets the messages waiting behind it go on."))
                 }
-            }
+            } }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

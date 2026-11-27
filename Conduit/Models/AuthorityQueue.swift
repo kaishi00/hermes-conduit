@@ -115,6 +115,10 @@ final class AuthorityQueueStore: ObservableObject {
     @Published private(set) var working: Set<String> = []
     /// Why the last action didn't go, until the next action or another chat.
     @Published var notice: String?
+    /// The rows come from the notifier plugin's read of the gateway's queue
+    /// on `hermes dashboard` (ChatLiveWork), which serves none of the
+    /// queue's verbs: they show, with nothing to do on them (Eric, 2026-11-27).
+    @Published private(set) var readOnly = false
 
     /// Messages waiting their turn.
     var queued: [QueuedPrompt] { rows.filter { $0.status == .queued && !$0.steering } }
@@ -122,12 +126,13 @@ final class AuthorityQueueStore: ObservableObject {
     var lost: [QueuedPrompt] { rows.filter { $0.status == .unknown } }
     var isEmpty: Bool { queued.isEmpty && lost.isEmpty }
 
-    func apply(_ rows: [QueuedPrompt], for sessionID: String) {
+    func apply(_ rows: [QueuedPrompt], for sessionID: String, readOnly: Bool = false) {
         if self.sessionID != sessionID {
             self.sessionID = sessionID
             working = []
             notice = nil
         }
+        if self.readOnly != readOnly { self.readOnly = readOnly }
         guard self.rows != rows else { return }
         self.rows = rows
         // A row Hermes no longer lists has nothing left to wait for.
@@ -136,11 +141,12 @@ final class AuthorityQueueStore: ObservableObject {
 
     /// Another chat opened, or the socket isn't the authority's.
     func clear() {
-        guard sessionID != nil || !rows.isEmpty || notice != nil else { return }
+        guard sessionID != nil || !rows.isEmpty || notice != nil || readOnly else { return }
         sessionID = nil
         rows = []
         working = []
         notice = nil
+        readOnly = false
     }
 
     func row(_ admissionID: String) -> QueuedPrompt? {
