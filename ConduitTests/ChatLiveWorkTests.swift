@@ -108,6 +108,10 @@ final class ChatLiveWorkTests: XCTestCase {
         appState.applyChatLiveWork(ChatLiveWork(running: true, startedAdmissions: ["adm-2"]), previous: nil, for: "api-1")
         XCTAssertEqual(appState.messages.map(\.id), ["local-2"])
         XCTAssertTrue(appState.authorityQueue.isEmpty)
+        // Its unnamed start, still to come, is its own: it never brings back the next held send.
+        XCTAssertEqual(appState.shownChat.readStartedAdmissions, ["adm-2"])
+        appState.applyChatLiveWork(ChatLiveWork(running: false), previous: nil, for: "api-1")
+        XCTAssertTrue(appState.shownChat.readStartedAdmissions.isEmpty, "No turn runs: no start is still to come")
     }
 
     func testADashboardTurnStartNamesTheOldestForwardedMessage() {

@@ -333,6 +333,9 @@ final class ChatState {
     /// When each send `hermes dashboard` forwarded to the gateway's queue was
     /// held: a live-work read asked before then can't know it yet.
     var forwardedSendTimes: [String: Date] = [:]
+    /// Forwarded sends a live-work read saw start before their unnamed
+    /// `message.start` came: that start is theirs, not the next held one's.
+    var readStartedAdmissions: [String] = []
     /// The user's sends the authority took as a new turn, by admission id,
     /// with their bubble's id: one Hermes then lists as waiting behind
     /// another client's turn moves to the dock too. Cleared when it starts.

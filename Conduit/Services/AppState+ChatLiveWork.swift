@@ -51,8 +51,9 @@ extension AppState {
         for admissionID in shownChat.queuedSendOrder where !waiting.contains(admissionID) && !newer(admissionID) {
             shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
             if work.startedAdmissions.contains(admissionID) {
-                // Its turn runs there now.
+                // Its turn runs there now; the unnamed start still to come is its own.
                 noteQueuedTurnStarted(sessionID: chatID, admissionID: admissionID)
+                shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [admissionID]).suffix(8))
             } else {
                 // It ran and ended between reads, or was withdrawn in the Webapp
                 // or Hermes Desktop: the chat's stored rows tell which.
@@ -61,6 +62,8 @@ extension AppState {
                 settled = true
             }
         }
+        // No turn runs there: no unnamed start is still to come.
+        if !work.running { shownChat.readStartedAdmissions = [] }
         let held = authorityQueue.sessionID == chatID
             ? authorityQueue.rows.filter { !waiting.contains($0.admissionID) && shownChat.queuedSendOrder.contains($0.admissionID) }
             : []
@@ -104,6 +107,8 @@ extension AppState {
     func admissionStarting(named admissionID: String?, by client: HermesClient?) -> String? {
         if let admissionID { return admissionID }
         guard let client, !client.speaksSessionAuthority, authorityQueue.readOnly else { return nil }
+        // A read already brought back the send this start is for.
+        if !shownChat.readStartedAdmissions.isEmpty { return shownChat.readStartedAdmissions.removeFirst() }
         return shownChat.queuedSendOrder.first
     }
 }
