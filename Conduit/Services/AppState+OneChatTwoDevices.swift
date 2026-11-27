@@ -447,12 +447,11 @@ extension AppState {
                 appState.botChatTailRead.noteRead(generation: generation)
                 return
             case .inconclusive where last == nil && wasEmpty:
-                // Every normalized row comes from the page, tool cards and
-                // reasoning rows (derived ids) included.
-                guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else {
-                    appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
-                    return
-                }
+                // A chat proven empty has nothing to anchor on and every row
+                // of the newest page is new: all of them merge, tool cards and
+                // reasoning rows (derived ids) included. A full page leaves
+                // Load earlier for the rest (the window takes the page's
+                // canLoadEarlier).
                 rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
             default:
                 // No ordering proof yet (the tail not anchored, or the
