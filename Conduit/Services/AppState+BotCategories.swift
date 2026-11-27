@@ -28,6 +28,47 @@ extension AppState {
         )
     }
 
+    /// The group chats' categories for Sync across devices.
+    var groupRoomCategoriesSlot: SyncedPreferenceSlot {
+        SyncedPreferenceSlot(
+            key: BotCategories.roomSyncKey,
+            read: { [weak self] in
+                guard let self, !self.groupRoomCategories.isEmpty else { return nil }
+                return self.groupRoomCategories
+            },
+            write: { [weak self] value in
+                self?.setGroupRoomCategories(BotCategories.roomCategories(value))
+            }
+        )
+    }
+
+    /// Saves the group chats' categories, set here or from Sync across
+    /// devices.
+    func setGroupRoomCategories(_ rooms: [String: String]) {
+        guard rooms != groupRoomCategories else { return }
+        groupRoomCategories = rooms
+        let key = BotCategories.roomStorageKey(scope: dashboardListsScope)
+        if rooms.isEmpty { defaults.removeObject(forKey: key) } else { defaults.set(rooms, forKey: key) }
+    }
+
+    /// Files one of this dashboard's group chats under `name` (nil: takes
+    /// it out).
+    func fileGroupRoom(_ roomID: String, under name: String?) {
+        var rooms = groupRoomCategories
+        rooms[roomID] = BotCategories.clean(name)
+        setGroupRoomCategories(rooms)
+    }
+
+    /// The category a group chat on Bots Home is filed under.
+    func groupRoomCategory(_ roomID: String) -> String? {
+        groupRoomCategories[roomID]
+    }
+
+    /// The categories this dashboard's shown group chats are in.
+    var shownGroupRoomCategoryNames: [String] {
+        shownGroupRooms.compactMap { groupRoomCategories[$0.roomID] }
+    }
+
     /// Saves the categories' order, set here or from Sync across devices.
     func setBotCategoryOrder(_ order: BotOrder) {
         guard order != botCategoryOrder else { return }
@@ -43,7 +84,7 @@ extension AppState {
     /// The headings of Bots Home's bots (this dashboard's and the other
     /// combined dashboards'), nil when none is in a category.
     func botCategorySections(_ items: [CombinedBotsHomeItem]) -> [BotCategorySection<CombinedBotsHomeItem>]? {
-        BotCategories.sections(items, order: botCategoryOrder) { $0.bot.category?.name }
+        BotCategories.sections(items, order: botCategoryOrder, alsoNamed: shownGroupRoomCategoryNames) { $0.bot.category?.name }
     }
 
     /// Every category a bot shown on Bots Home is in, in the headings'
@@ -93,13 +134,16 @@ extension AppState {
     func renameBotCategory(_ old: String, to new: String, items: [CombinedBotsHomeItem]) async -> String? {
         guard let new = BotCategories.clean(new), new != old else { return nil }
         setBotCategoryOrder(BotCategories.renaming(botCategoryOrder, old, to: new))
+        setGroupRoomCategories(BotCategories.refiling(groupRoomCategories, old, to: new))
         return await refile(items.filter { BotCategories.same($0.bot.category?.name, old) }, under: new)
     }
 
-    /// Deletes a category: its bots go back to Other, nothing else changes.
+    /// Deletes a category: its bots go back to Other and its group chats to
+    /// Group Chats; nothing else changes.
     @discardableResult
     func deleteBotCategory(_ name: String, items: [CombinedBotsHomeItem]) async -> String? {
-        await refile(items.filter { BotCategories.same($0.bot.category?.name, name) }, under: nil)
+        setGroupRoomCategories(BotCategories.refiling(groupRoomCategories, name, to: nil))
+        return await refile(items.filter { BotCategories.same($0.bot.category?.name, name) }, under: nil)
     }
 
     /// One write per bot, in turn, then one read of each roster that

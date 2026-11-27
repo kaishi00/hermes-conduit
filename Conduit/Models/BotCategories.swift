@@ -60,6 +60,35 @@ enum BotCategories {
         scope.map { "\(storageKey).\($0)" } ?? storageKey
     }
 
+    /// Group chats filed under a category, room id to name. Hermes keeps
+    /// no field for it on a room (Hermes Desktop keeps a room's section on
+    /// that computer only), so it's kept per dashboard and synced as
+    /// `groups.categories`, which Conduit for desktop reads too.
+    static let roomStorageKey = "conduit.groupRoomCategories.v1"
+    static let roomSyncKey = "groups.categories"
+
+    static func roomStorageKey(scope: String?) -> String {
+        scope.map { "\(roomStorageKey).\($0)" } ?? roomStorageKey
+    }
+
+    /// The rooms' categories from a synced or saved value: names cleaned,
+    /// blank ones dropped.
+    static func roomCategories(_ value: Any?) -> [String: String] {
+        guard let object = value as? [String: Any] else { return [:] }
+        var rooms: [String: String] = [:]
+        for (roomID, name) in object where !roomID.isEmpty {
+            if let name = clean(name as? String) { rooms[roomID] = name }
+        }
+        return rooms
+    }
+
+    /// The rooms' categories after a rename (`to`) or delete (nil) of `old`.
+    static func refiling(_ rooms: [String: String], _ old: String, to new: String?) -> [String: String] {
+        var rooms = rooms
+        for (roomID, name) in rooms where same(name, old) { rooms[roomID] = clean(new) }
+        return rooms
+    }
+
     /// The name a category goes by, trimmed; nil when blank.
     static func clean(_ name: String?) -> String? {
         let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,6 +124,17 @@ enum BotCategories {
         [idField: tag?.id, nameField: tag?.name]
     }
 
+    /// The patch Edit Bot and New Bot write for the Category the person
+    /// left: nil when it's the bot's own already; the bot's id kept for a
+    /// name it already has in another case, else the host's id for it.
+    static func editPatch(current: BotCategoryTag?, to name: String?, among bots: [BotProfile]) -> [String: Any?]? {
+        let name = clean(name)
+        guard current?.name != name else { return nil }
+        guard let name else { return patch(nil) }
+        if let current, same(current.name, name) { return patch(BotCategoryTag(id: current.id, name: name)) }
+        return patch(tag(named: name, among: bots))
+    }
+
     /// The tag a bot on one host takes for `name`: the id another of that
     /// host's bots already files that name under, else a new one in Hermes
     /// Desktop's shape.
@@ -114,11 +154,13 @@ enum BotCategories {
 
     /// The headings for `items`, in `order` (names it doesn't hold yet
     /// in the order their first bot shows), each with its bots in the order
-    /// they came, Other last. Nil when no bot is in a category: Bots Home
-    /// then draws no headings at all.
+    /// they came, Other last; `alsoNamed` adds the categories the group
+    /// chats are in. Nil when nothing is in a category: Bots Home then
+    /// draws no headings at all.
     static func sections<Item>(
         _ items: [Item],
         order: BotOrder,
+        alsoNamed extra: [String] = [],
         category: (Item) -> String?
     ) -> [BotCategorySection<Item>]? {
         var names: [String] = []
@@ -132,6 +174,11 @@ enum BotCategories {
             let key = key(name)
             if buckets[key] == nil { names.append(name) }
             buckets[key, default: []].append(item)
+        }
+        // Categories only group chats are in still draw their heading.
+        for name in extra.compactMap(clean) where buckets[key(name)] == nil {
+            names.append(name)
+            buckets[key(name)] = []
         }
         guard !names.isEmpty else { return nil }
         var sections = order.arrange(names) { $0 }.map { name in

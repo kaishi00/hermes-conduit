@@ -53155,6 +53155,88 @@
         }
       }
     },
+    "Bots Home shows the bot under this heading." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf „Bots“ steht der Bot unter dieser Überschrift."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicio de bots muestra el bot bajo este encabezado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’accueil des bots affiche le bot sous ce titre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beranda Bot menampilkan bot di bawah judul ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La Home dei bot mostra il bot sotto questa intestazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットホームでこの見出しの下に表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 홈에서 이 제목 아래에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ekran botów pokazuje bota pod tym nagłówkiem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O início dos bots mostra o bot sob este título."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На экране ботов бот будет под этим заголовком."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botlar ana ekranı botu bu başlığın altında gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器人主页会把它显示在这个标题下。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器人主頁會把它顯示在這個標題下。"
+          }
+        }
+      }
+    },
     "Its bots move to Other." : {
       "localizations" : {
         "de" : {

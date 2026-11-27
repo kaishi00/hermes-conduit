@@ -3069,20 +3069,26 @@ faces small and the count of what its bots wait on you for) · its long press
 (Rename…, Move Earlier, Move Later, Delete Category) · a bot dropped on a
 heading (files it) · a bot's menu, its Category submenu (the categories, New
 Category…, Remove from Category), on other combined dashboards' bots too ·
+Edit Bot's and New Bot's Category (None, a category shown, New Category…) ·
+group chats (a room's tile menu has the same Category submenu, a room's
+tile dropped on a heading files it, and a filed room shows under its heading
+after its bots, in the grid and the list, not under Group Chats) ·
 other combined dashboards (one heading per name across them; each bot
 written on its own host, through the kept connection) · Hermes Desktop's
 sections (the same ui_meta fields) · Sync across devices (`bots.categories`,
+dashboard-scoped; group chats' filing as `groups.categories`, also
 dashboard-scoped) · VoiceOver (a heading is a header with its menu as
-actions, its value Collapsed or Expanded and Needs you) · Edit Bot (gap,
-below) · group chats (gap, below) · README.md's Bots Home line · Watch,
+actions, its value Collapsed or Expanded and Needs you) · README.md's Bots Home line · Watch,
 CarPlay and widgets (not needed: no bots list by category)
 
-**Desktop app:** has it: the Bots sidebar draws the same headings, folds them, files a bot from its right-click menu or by dropping it on a heading, renames, moves and deletes from a heading's right-click menu, other combined dashboards' bots included, the order synced as `bots.categories` (desktop#708: its state in botCategories.ts, the headings in BotsHome.tsx).
+**Desktop app:** has it: the Bots sidebar draws the same headings, folds them, files a bot from its right-click menu or by dropping it on a heading, renames, moves and deletes from a heading's right-click menu, other combined dashboards' bots included, the order synced as `bots.categories`; Edit Bot has the Category field, and this host's group chats are filed from their right-click menu or a drop on a heading, synced as `groups.categories` (desktop#708: its state in botCategories.ts, the headings in BotsHome.tsx).
 
 **Code**
 - Model: `Conduit/Models/BotCategories.swift` (BotCategoryTag, BotCategorySection, BotCategories: tag, patch, tag(named:among:), sections, moving, renaming), `Conduit/Services/BotModeModels.swift` (BotProfile.category, read in decodeRow and kept in the roster copy)
 - State and writes: `Conduit/Services/AppState+BotCategories.swift` (botCategoryOrderSlot, setBotCategoryOrder, moveBotCategory, botCategorySections, shownBotCategoryNames, fileBot, renameBotCategory, deleteBotCategory, writeBotCategory, botsHomeItem(dragged:)), `Conduit/Services/AppState+PinnedChatOrder.swift` (loadDashboardLists, forgetDashboardLists, dashboardScopedSyncKeys), `Conduit/Services/AppState+SyncedPreferences.swift`
-- Views: `Conduit/Views/V2/BotCategoryViews.swift` (BotCategoryHeading, BotCategoryMenu, BotCategoryPrompt), `Conduit/Views/BotRosterView.swift` (categorizedGrid, botRows' headings, the name prompt and the delete confirmation), `Conduit/Views/V2/V2BotsHome.swift` (BotPortraitGrid's sizedFor), `Conduit/Views/V2/CombinedDashboardBotsView.swift` (categoryMenu)
+- Views: `Conduit/Views/V2/BotCategoryViews.swift` (BotCategoryHeading, BotCategoryMenu, BotCategoryPrompt), `Conduit/Views/BotRosterView.swift` (categorizedGrid, filedRooms, botRows' headings, groupRows and homeRoomTiles leaving filed rooms out, roomActions' category, the name prompt and the delete confirmation), `Conduit/Views/V2/V2BotsHome.swift` (BotPortraitGrid's sizedFor, GroupRoomTileActions' category), `Conduit/Views/V2/CombinedDashboardBotsView.swift` (categoryMenu)
+- Edit Bot and New Bot: `Conduit/Views/BotEditorSheet.swift` (categorySection), `Conduit/Services/BotManagement.swift` (BotEditorDraft.category), `Conduit/Services/AppState+BotMode.swift` (createBot and updateBot write BotCategories.editPatch)
+- Group chats: `Conduit/Services/AppState+BotCategories.swift` (groupRoomCategoriesSlot, setGroupRoomCategories, fileGroupRoom, groupRoomCategory, shownGroupRoomCategoryNames)
 - Docs: `README.md` (Bots Home)
 - Tests: `ConduitTests/BotCategoriesTests.swift`
 
@@ -3090,17 +3096,17 @@ CarPlay and widgets (not needed: no bots list by category)
 - Headings on Bots Home, not a filter or a page per category (Eric, 2026-11-27, option A of three mockups).
 - A bot's category lives on the bot, in its profile's `ui_meta['hermes-bots']` as `sectionId` and `sectionName`, as Hermes Desktop writes it, so all three apps show the same filing. A bot with an id and no name (an old Hermes Desktop) shows under Other.
 - A category is its name: headings group by name in any case, across combined dashboards whose ids differ. Filing into a name a host already uses reuses that host's id; a new one gets Hermes Desktop's shape of id (`sec-…`).
-- A category exists while a bot is in it; there are no empty categories. Deleting one moves its bots to Other and changes nothing else.
+- A category exists while a bot or group chat is in it; there are no empty categories. Deleting one moves its bots to Other and its group chats back to Group Chats, and changes nothing else.
+- A group chat is filed by its room id, kept per dashboard and synced as `groups.categories` (room id to name): Hermes has no field for it on a room, and Hermes Desktop keeps a room's section on that computer only. Only the dashboard's own hosted rooms are filed; other dashboards' rooms, rooms others host and Hermes Desktop's legacy groups stay under Group Chats (Eric asked for every sibling in this change, 2026-11-27).
 - Other is always last and has no menu; a category named Other is a category, not Other.
 - The headings' order is kept per dashboard and synced as `bots.categories`; on the phone it's the dashboard on screen's. Folded headings stay on the device.
 - Every write reads the bot's ui_meta fresh, merges the change and writes with its revision, reading again once when another client wrote first. A rename or delete re-files every bot the category holds on every dashboard shown; a bot whose dashboard is offline keeps the old name until it's filed again.
 
 **Open gaps**
-- Edit Bot has no Category field; a bot is filed from its menu or by a drop.
-- Group chats aren't filed: Hermes Desktop keeps a room's section on its own room record, which Conduit doesn't read.
+- Hermes Desktop's sections for group chats are on that computer, so a room it filed shows under Group Chats in Conduit, and one Conduit filed shows unfiled there.
 - Hermes Desktop's order of sections and its empty sections are its own local storage, so its order and Conduit's can differ.
 
-**Checked:** 2026-11-27, #3426 (added, with desktop#708).
+**Checked:** 2026-11-27, #3426 (added, with desktop#708; Edit Bot's Category and group chats filed, in the same PRs).
 
 ## Bots: create and edit
 

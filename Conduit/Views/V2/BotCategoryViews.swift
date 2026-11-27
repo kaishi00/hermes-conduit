@@ -7,7 +7,8 @@
 //  it, and a folded one shows its faces small and the count of what its
 //  bots wait on you for, so no question hides behind a fold. Its long press
 //  renames, moves or deletes it; a bot dropped on it files there. A bot's
-//  menu files it from its Category submenu.
+//  menu files it from its Category submenu, and so does a group chat's,
+//  which then shows under the heading after its bots.
 //
 
 import SwiftUI
@@ -17,6 +18,8 @@ import UniformTypeIdentifiers
 struct BotCategoryHeading: View {
     let section: BotCategorySection<CombinedBotsHomeItem>
     let folded: Bool
+    /// Its group chats, counted with its bots.
+    var roomCount = 0
     let onToggle: () -> Void
     /// Nil for Other, which has no menu.
     var onRename: (() -> Void)?
@@ -53,7 +56,7 @@ struct BotCategoryHeading: View {
                     .accessibilityHidden(true)
                 Text(verbatim: title)
                     .lineLimit(1)
-                Text(verbatim: String(section.items.count))
+                Text(verbatim: String(section.items.count + roomCount))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 8)
                 if folded {
@@ -186,18 +189,21 @@ struct BotCategoryMenu: View {
 enum BotCategoryPrompt: Identifiable {
     /// A new category, filing the bot whose menu asked.
     case new(CombinedBotsHomeItem)
+    /// A new category, filing the group chat whose menu asked.
+    case newForRoom(String)
     case rename(String)
 
     var id: String {
         switch self {
         case .new(let item): return "new|\(item.id)"
+        case .newForRoom(let roomID): return "room|\(roomID)"
         case .rename(let name): return "rename|\(name)"
         }
     }
 
     var title: String {
         switch self {
-        case .new: return AppLocalization.string("New Category", table: .bots)
+        case .new, .newForRoom: return AppLocalization.string("New Category", table: .bots)
         case .rename: return AppLocalization.string("Rename Category", table: .bots)
         }
     }

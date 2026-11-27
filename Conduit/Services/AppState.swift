@@ -754,6 +754,8 @@ final class AppState: ObservableObject {
     /// Bots Home's categories' order, by name (BotCategories), per
     /// dashboard, synced as `bots.categories`.
     @Published var botCategoryOrder = BotOrder()
+    /// Group chats filed under a category, room id to name (BotCategories).
+    @Published var groupRoomCategories: [String: String] = [:]
     /// The group chats' order on Bots Home and every list of rooms, by room
     /// id (AppState+BotOrder).
     @Published var groupRoomOrder = BotOrder.rooms

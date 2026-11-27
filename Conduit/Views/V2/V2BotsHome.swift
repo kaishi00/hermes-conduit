@@ -182,6 +182,8 @@ struct GroupRoomTileActions {
     /// pictures.
     var picture: ((GroupRoomPictureRequest) -> Void)?
     let reorder: () -> Void
+    /// Its Category submenu (BotCategories), where rooms can be filed.
+    var category: BotCategoryMenu?
     /// Asks first (the dialog is Bots Home's, not the menu's).
     var disband: (() -> Void)?
     /// Another room's tile held over this one, or dropped on it: it takes
@@ -325,6 +327,9 @@ struct GroupRoomPortrait: View {
                     Label(AppLocalization.string("Remove Group Picture"), systemImage: "photo.badge.minus")
                 }
             }
+        }
+        if let category = actions.category {
+            category
         }
         Button(action: actions.reorder) {
             Label(AppLocalization.string("Reorder Group Chats", table: .bots), systemImage: "arrow.up.arrow.down")

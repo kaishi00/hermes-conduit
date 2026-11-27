@@ -72,6 +72,22 @@ final class BotCategoriesTests: XCTestCase {
         XCTAssertNotEqual(fresh.id, "sec-home")
     }
 
+    /// Edit Bot's Category: unchanged writes nothing, None takes it out, a
+    /// new case keeps the bot's id, another name takes the host's id.
+    func testEditBotsCategoryPatch() {
+        let home = BotCategoryTag(id: "sec-home", name: "Home")
+        let bots = [bot("a", category: home), bot("b", category: BotCategoryTag(id: "sec-biz", name: "Business"))]
+        XCTAssertNil(BotCategories.editPatch(current: home, to: " Home ", among: bots))
+        XCTAssertNil(BotCategories.editPatch(current: nil, to: "  ", among: bots))
+        let removed = BotCategories.editPatch(current: home, to: nil, among: bots)
+        XCTAssertEqual(removed?.keys.sorted(), ["sectionId", "sectionName"])
+        XCTAssertNil(removed?["sectionId"] ?? nil)
+        XCTAssertEqual(BotCategories.editPatch(current: home, to: "HOME", among: bots)?["sectionId"] as? String, "sec-home")
+        let moved = BotCategories.editPatch(current: home, to: "business", among: bots)
+        XCTAssertEqual(moved?["sectionId"] as? String, "sec-biz")
+        XCTAssertEqual(moved?["sectionName"] as? String, "business")
+    }
+
     /// Headings group by name in any case (one category across dashboards
     /// whose ids differ), follow the order, then first appearance, with
     /// Other last; no category at all is no headings.
@@ -100,6 +116,36 @@ final class BotCategoriesTests: XCTestCase {
         XCTAssertEqual(BotCategories.moving(BotOrder(), "Home", by: 1, shown: shown).names, ["Business", "Home", "Clients"])
         XCTAssertEqual(BotCategories.moving(BotOrder(), "Home", by: -1, shown: shown), BotOrder(), "nothing before the first")
         XCTAssertEqual(BotCategories.renaming(BotOrder(names: shown), "business", to: "Work").names, ["Home", "Work", "Clients"])
+    }
+
+    /// Group chats are filed by room id, kept per dashboard and synced as
+    /// `groups.categories`; a category only rooms are in still has its
+    /// heading, and a rename or delete re-files its rooms.
+    func testGroupChatsAreFiledAndSynced() throws {
+        XCTAssertEqual(BotCategories.roomCategories(["r1": " Home ", "r2": "  ", "": "x", "r3": 4] as [String: Any]), ["r1": "Home"])
+        let rooms = ["r1": "Home", "r2": "business"]
+        XCTAssertEqual(BotCategories.refiling(rooms, "HOME", to: "House"), ["r1": "House", "r2": "business"])
+        XCTAssertEqual(BotCategories.refiling(rooms, "Business", to: nil), ["r1": "Home"])
+        let sections = try XCTUnwrap(BotCategories.sections([bot("a")], order: BotOrder(), alsoNamed: ["Clients"]) { $0.category?.name })
+        XCTAssertEqual(sections.map(\.name), ["Clients", nil])
+        XCTAssertTrue(sections[0].items.isEmpty)
+
+        let suite = "BotCategoriesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let slot = appState.groupRoomCategoriesSlot
+        XCTAssertEqual(slot.key, "groups.categories")
+        XCTAssertNil(slot.read())
+        appState.fileGroupRoom("room-1", under: "Home")
+        XCTAssertEqual(slot.read() as? [String: String], ["room-1": "Home"])
+        XCTAssertTrue(AppState.dashboardScopedSyncKeys.contains("groups.categories"))
+        slot.write(["room-2": "Business"])
+        XCTAssertEqual(appState.groupRoomCategory("room-2"), "Business")
+        XCTAssertNil(appState.groupRoomCategory("room-1"))
+        appState.fileGroupRoom("room-2", under: nil)
+        XCTAssertTrue(appState.groupRoomCategories.isEmpty)
+        XCTAssertNil(defaults.dictionary(forKey: BotCategories.roomStorageKey(scope: appState.dashboardListsScope)))
     }
 
     /// The order is kept per dashboard and synced as `bots.categories`.

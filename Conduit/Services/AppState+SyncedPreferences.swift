@@ -167,6 +167,7 @@ extension AppState {
         slots.append(botOrderSlot)
         slots.append(groupRoomOrderSlot)
         slots.append(botCategoryOrderSlot)
+        slots.append(groupRoomCategoriesSlot)
         return slots
     }
 

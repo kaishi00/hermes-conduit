@@ -561,6 +561,9 @@ struct BotRosterView: View {
                     ForEach(section.items.map(\.bot)) { bot in
                         botRow(bot)
                     }
+                    ForEach(filedRooms(section)) { room in
+                        GroupRosterRow(room: room)
+                    }
                 }
             }
         } else {
@@ -672,12 +675,26 @@ struct BotRosterView: View {
             ForEach(sections) { section in
                 categoryHeading(section, names: names)
                 if !isFolded(section) {
-                    if mixed {
-                        mixedGrid(section.items, shown: shown)
-                    } else {
-                        BotPortraitGrid(bots: section.items.map(\.bot), onDropAtEnd: { dragged in
-                            dropAfterCategory(dragged, section: section)
-                        }, sizedFor: shown.count) { portrait($0) }
+                    if !section.items.isEmpty {
+                        if mixed {
+                            mixedGrid(section.items, shown: shown)
+                        } else {
+                            BotPortraitGrid(bots: section.items.map(\.bot), onDropAtEnd: { dragged in
+                                dropAfterCategory(dragged, section: section)
+                            }, sizedFor: shown.count) { portrait($0) }
+                        }
+                    }
+                    let rooms = filedRooms(section)
+                    if !rooms.isEmpty {
+                        // Its group chats after its bots, as Group Chats
+                        // draws them.
+                        BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) {
+                            ForEach(rooms) { room in
+                                GroupRoomPortrait(room: room, actions: roomActions(room))
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
                     }
                 }
             }
@@ -705,6 +722,7 @@ struct BotRosterView: View {
         return BotCategoryHeading(
             section: section,
             folded: isFolded(section),
+            roomCount: filedRooms(section).count,
             onToggle: {
                 Haptics.selection()
                 withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { toggleFold(section) }
@@ -714,6 +732,15 @@ struct BotRosterView: View {
             onMoveLater: onMoveLater,
             onDelete: onDelete,
             onDropBot: { dragged in
+                // A group chat's tile files that room.
+                if let room = homeRooms.first(where: { $0.roomID == dragged }) {
+                    // On Other it goes back to Group Chats.
+                    Haptics.selection()
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                        appState.fileGroupRoom(room.roomID, under: section.name)
+                    }
+                    return true
+                }
                 guard canManageBots, let item = appState.botsHomeItem(dragged: dragged) else { return false }
                 Haptics.selection()
                 file(item, under: section.name)
@@ -723,6 +750,12 @@ struct BotRosterView: View {
             needsYou: appState.needsYou
         )
         .padding(.horizontal, 10)
+    }
+
+    /// This dashboard's group chats filed under `section` (none under Other).
+    private func filedRooms(_ section: BotCategorySection<CombinedBotsHomeItem>) -> [GroupRoom] {
+        guard let name = section.name else { return [] }
+        return homeRooms.filter { BotCategories.same(appState.groupRoomCategory($0.roomID), name) }
     }
 
     private func isFolded(_ section: BotCategorySection<CombinedBotsHomeItem>) -> Bool {
@@ -781,6 +814,8 @@ struct BotRosterView: View {
         switch prompt {
         case .new(let item):
             file(item, under: name)
+        case .newForRoom(let roomID):
+            appState.fileGroupRoom(roomID, under: name)
         case .rename(let old):
             let items = categoryItems
             Task { managementNotice = await appState.renameBotCategory(old, to: name, items: items) }
@@ -1705,7 +1740,9 @@ struct BotRosterView: View {
         ForEach(combinedRooms.before) { tile in
             CombinedRoomRosterRow(tile: tile)
         }
-        ForEach(appState.shownGroupRooms) { room in
+        // Those filed under a category show under its heading instead
+        // (botRows), while that's where the bots are listed.
+        ForEach(appState.shownGroupRooms.filter { appState.shownBotRoster.isEmpty || appState.groupRoomCategory($0.roomID) == nil }) { room in
             GroupRosterRow(room: room)
         }
         linkedRoomRows
@@ -1897,7 +1934,7 @@ struct BotRosterView: View {
         ForEach(combinedRooms.before) { tile in
             CombinedRoomPortrait(tile: tile, onDisband: { pendingDisbandFarRoom = $0 })
         }
-        ForEach(homeRooms) { room in
+        ForEach(homeRooms.filter { appState.groupRoomCategory($0.roomID) == nil }) { room in
             GroupRoomPortrait(room: room, actions: roomActions(room))
                 .matchedGeometryEffect(id: room.roomID == landingRoomID ? BotsHomeAnchorKey.newRoom : room.roomID,
                                        in: roomTiles)
@@ -1956,6 +1993,20 @@ struct BotRosterView: View {
                 roomPictureRequest = request
             } : nil,
             reorder: { showingRoomReorder = true },
+            category: BotCategoryMenu(
+                current: appState.groupRoomCategory(room.roomID),
+                names: appState.shownBotCategoryNames(),
+                onFile: { name in
+                    Haptics.selection()
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                        appState.fileGroupRoom(room.roomID, under: name)
+                    }
+                },
+                onNew: {
+                    categoryName = ""
+                    categoryPrompt = .newForRoom(room.roomID)
+                }
+            ),
             disband: capabilities?.supports("groups.disband") == true ? { pendingDisbandRoom = room } : nil,
             onDrop: { dropRoom($0, onto: room.roomID) }
         )
