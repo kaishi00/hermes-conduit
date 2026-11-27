@@ -162,8 +162,21 @@ struct CatalogChangeSignal {
         min(Self.maximumInterval, Self.minimumInterval * pow(2, Double(min(quietReads, 8))))
     }
 
+    /// Hermes signaled since the last `takeSignal`: a read retried after a
+    /// failure carries no new signal of its own.
+    private(set) var signaledSinceTake = false
+
     mutating func noteChanged() {
         isPending = true
+        signaledSinceTake = true
+    }
+
+    /// Whether a signal came since the last call, clearing it: the open Bot
+    /// Chat's tail is owed a read once per signal read, never again for the
+    /// catalog's own retries.
+    mutating func takeSignal() -> Bool {
+        defer { signaledSinceTake = false }
+        return signaledSinceTake
     }
 
     /// Whether the pending change is read now. Taking it clears it.

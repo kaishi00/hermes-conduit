@@ -3067,6 +3067,15 @@ final class CompactResumeTranscriptTests: XCTestCase {
         read.noteFailed(generation: current, at: start + 5)
         read.noteFailed(generation: current, at: start + 10)
         XCTAssertFalse(read.isDue(sessionID: "a", now: start + 60), "Three failures give the change up")
+
+        // The catalog's retry of a failed read carries no new signal.
+        var signal = CatalogChangeSignal()
+        signal.noteChanged()
+        XCTAssertTrue(signal.takeRead(now: start, turnRunningHere: false))
+        XCTAssertTrue(signal.takeSignal())
+        signal.noteReadFailed(at: start)
+        XCTAssertTrue(signal.takeRead(now: start + 5, turnRunningHere: false))
+        XCTAssertFalse(signal.takeSignal(), "A retried read owes the Bot Chat no second tail read")
     }
 
     /// An open Bot Chat ("stored-a" in profile "default", runtime

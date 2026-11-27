@@ -356,11 +356,13 @@ extension AppState {
         guard isSceneActive, isConnected else { return }
         let now = chatSyncNow()
         if catalogChangeSignal.takeRead(now: now, turnRunningHere: turnState.isRunning) {
+            let signaled = catalogChangeSignal.takeSignal()
             refreshCatalogAfterLeavingChat(reportingFailure: false, readingChange: true)
-            // The Bot Chat on screen is owed one read of its stored tail,
-            // kept until it lands (BotChatTailRead).
-            // The open one, even covered by the list: it's read once it shows again.
-            if chatOnScreenIsInScope, activeBotChatProfile != nil, let sessionID = activeSessionId, !sessionID.isEmpty {
+            // The open Bot Chat, even covered by the list, is owed one read of
+            // its stored tail per signal, kept until it lands (BotChatTailRead);
+            // the catalog's retry of a failed read owes it none.
+            if signaled, chatOnScreenIsInScope, activeBotChatProfile != nil,
+               let sessionID = activeSessionId, !sessionID.isEmpty {
                 botChatTailRead.noteChanged(sessionID: sessionID)
                 readOpenBotChatTail()
             }
