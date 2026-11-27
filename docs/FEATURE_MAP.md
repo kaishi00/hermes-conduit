@@ -4724,7 +4724,7 @@ reaches the phone's notification, and the Watch shows it as one)
 - The phone's line shows in the chat that's controlling; there's no line elsewhere (the chats list, another chat) while a bot controls a computer.
 - One chat controlling two computers at once shows only the first on the phone's line, and Stop stops that one.
 
-**Checked:** 2026-11-27, #NNNN (the per-turn line naming the user's computer, notifier #1133; before: #3422, #3416, notifier #1128, desktop#699, desktop#702)
+**Checked:** 2026-11-27, #3432 (the per-turn line naming the user's computer, notifier #1133; before: #3422, #3416, notifier #1128, desktop#699, desktop#702)
 
 ## Composer Return key
 
