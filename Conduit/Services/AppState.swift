@@ -1793,6 +1793,9 @@ final class AppState: ObservableObject {
         set { shownRuntime.pulseSources = newValue }
     }
     @Published var pulseOpenRequest: PulseOpenRequest?
+    /// The open chat's reply speeds while Show reply speed is on
+    /// (AppState+ReplySpeeds.swift, read by ReplySpeedReader).
+    @Published var openChatReplySpeeds: ReplySpeeds?
     var pulseHomeChatID: String? {
         get { shownRuntime.pulseHomeChatID }
         set { shownRuntime.pulseHomeChatID = newValue }

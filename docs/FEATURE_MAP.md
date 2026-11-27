@@ -4227,6 +4227,46 @@ README's "context meter" (done)
 
 **Checked:** 2026-11-22, #3075 (a chat opened in place from another combined dashboard shows and reads its own context use and its tokens-and-cost card on its runtime, and Compress Now runs there); 2026-11-18, #2757 (#2751 review: a shared id's card says why instead of "Couldn't load", the Bot Chat's id trimmed through canonicalSessionID); 2026-11-18, #2751 (issues 2739 and 2740: the open chat's card asks for its stored id, a read's failure fenced like its answer, Usage Details taken down with the chat it covered; the notifier route needed no change, it reads by the stored id); 2026-11-18, #2704 (added in #2703: issue 2699).
 
+## Reply speed
+
+Settings > Chat > Show reply speed (off by default, kept on each device) puts
+each reply's speed, "42 tok/s", at the start of its row on the phone and
+beside its time on the desktop. The notifier measures it: Hermes'
+`post_api_request` hook reports every model call of a turn with the
+provider's token counts and its times, the plugin adds up the turn's output
+tokens over the time the model spent writing, and its route ties each turn to
+the reply it ended on (asked about by xilian82, 2026-11-27).
+
+**Siblings:** the phone's reply row (done) · the desktop's reply head (done:
+its row shows only on hover) · the Settings switch on each, with its caption
+(done) · another combined dashboard's chat opened in place (done: read on its
+own runtime) · a Bot Chat (done: read by its stored id) · the notifier's hook,
+route, capability, CHANGELOG and contract notes (done) · the Context sheet and
+Usage Details (not needed: the chat's tokens and cost, unchanged; Eric picked
+the row) · README.md's chat features (done) · group rooms (not needed: a room's replies are other agents' turns,
+and Eric picked chats) · voice modes, the Watch and CarPlay (not needed: no
+reply row) · live while a reply streams (not done: providers report a call's
+tokens only at its end, and Conduit doesn't estimate them from text)
+
+**Desktop app:** has it: the speed beside a reply's time and Settings > Chat > Reply speed (`desktop/src/renderer/src/state/replySpeeds.ts`, `desktop/src/renderer/src/state/useReplySpeeds.ts`, `desktop/src/renderer/src/components/ReplySpeedSetting.tsx`).
+
+**Code**
+- Measure: `notifier/reply_speed.py` (call_measure, ReplySpeedStore, replies), `notifier/__init__.py` (_post_api_request)
+- Route: `notifier/dashboard/api/session_usage.py` (chat_reply_speeds, `/sessions/reply-speeds`), `notifier/tests/test_reply_speed.py`
+- Phone: `Conduit/Models/ReplySpeeds.swift` (the answer, the label, the preference key), `Conduit/Services/AppState+ReplySpeeds.swift` (loadOpenChatReplySpeeds, replySpeedsOnScreen), `Conduit/Views/Components/ReplySpeedReader.swift` (reads as the chat opens and as each turn ends), `Conduit/Views/ChatRowState.swift` (replySpeed(for:)), `Conduit/Views/ChatView.swift` (the row's label), `Conduit/Views/AuxiliaryViews.swift` (ReplySpeedSettings)
+- Tests: `ConduitTests/ReplySpeedsTests.swift`
+
+**Rulings**
+- In the reply row, as grey text behind a Settings switch that is off by default: seen without a tap by those who turn it on, no new icon in the row (Eric, 2026-11-27, #3414).
+- The plugin's measurement only, never Hermes' `avg_tps`: that averages the chat's last ten model calls over their whole time, the wait for the first token and the tool steps included, so it reads low and is no one reply's (2026-11-27, #3414).
+- A call is timed from its first streamed chunk to its end; one with no streamed chunk, or with reasoning tokens (hidden thinking can come before the first chunk), from the request, so a speed may read low but never higher than the model wrote. A turn's speed is all its calls' output tokens over all their writing time (2026-11-27, #3414).
+- A reply from before the plugin measured it shows nothing; the newest reply still drawn from the stream takes the newest turn's speed once its turn ends.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
+
 ## /new in a Bot Chat
 
 `/new` (and `/reset`, `/clear`) starts a new chat, except in a bot's one
