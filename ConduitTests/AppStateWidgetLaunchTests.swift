@@ -1232,6 +1232,27 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertEqual(appState.composerNotice, AppLocalization.string("Conduit couldn't send this, so it's in the composer. Send it when you're ready.", table: .chat))
     }
 
+    /// Text too long for the sheet to show whole is never sent from it: it
+    /// waits in the composer, where it can all be read.
+    func testNewChatLinkTooLongToShowWaitsInTheComposer() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-long.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d6")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-long")
+        appState.newChatLinkSendOverride = { _ in
+            XCTFail("text the sheet can't show whole is never sent")
+            return true
+        }
+        let long = String(repeating: "a", count: NewChatLinkConfirmation.maximumCharacters + 1)
+
+        appState.openAppLink(.newChat(NewChatLink(text: long, sends: true)))
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertNil(appState.newChatLinkConfirmation)
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, long)
+    }
+
     /// Edit puts the text in the composer instead; Cancel drops it.
     func testNewChatLinkEditAndCancel() async throws {
         let suite = "AppStateWidgetLaunchTests.new-chat-link-edit.\(UUID().uuidString)"

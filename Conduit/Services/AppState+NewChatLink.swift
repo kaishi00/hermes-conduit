@@ -27,13 +27,17 @@ struct NewChatLinkConfirmation: Identifiable, Equatable {
     let dashboardID: UUID
     let key: ComposerDraftKey
 
-    /// Longest text the alert shows; the rest is cut with an ellipsis.
-    static let previewCharacters = 600
+    /// Longest text a link may send. The sheet shows it whole, since the
+    /// user is agreeing to all of it; longer text waits in the composer,
+    /// where it can all be read, instead.
+    static let maximumCharacters = 2_000
 
     static func preview(of text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count > previewCharacters else { return trimmed }
-        return String(trimmed.prefix(previewCharacters)) + "…"
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func canAsk(_ text: String) -> Bool {
+        preview(of: text).count <= maximumCharacters
     }
 }
 
@@ -73,7 +77,7 @@ extension AppState {
             Task { @MainActor [weak self] in await self?.nameNewChatFromLink(title) }
         }
         guard !request.text.isEmpty else { return }
-        if request.sends {
+        if request.sends, NewChatLinkConfirmation.canAsk(request.text) {
             newChatLinkConfirmation = NewChatLinkConfirmation(text: request.text, dashboardID: dashboardID, key: key)
         } else {
             putNewChatLinkText(request.text, dashboardID: dashboardID, key: key)

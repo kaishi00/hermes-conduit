@@ -12,7 +12,7 @@ The **Plan limits** widget (small and medium) shows the plan limits Hermes repor
 
 On iOS 18 and later, the **New Chat** control opens Conduit on a fresh chat with the keyboard up, in the profile on screen. Add it in Control Center (touch and hold, **Add a Control**, search for Conduit), on the Lock Screen (**Customize**, then a control slot), or under Settings > Action Button > Controls. The **New Chat** shortcut does the same and can pick a profile: Settings > Action Button > Shortcut lists it under Conduit, and Siri and Shortcuts run it ("New chat in Conduit"; issue 2860).
 
-A link opens the same new chat with text ready (issue 3389): `conduit://new?text=…&profile=…&title=…&send=0|1`, from another app, a Shortcuts **Open URLs** action, an NFC tag or a Focus automation. Every part is optional and percent-encoded. The text waits in the composer with the keyboard up; with `send=1`, Conduit shows it and sends it only when you tap **Send**, since any app or web page can open a link. To send without a tap, use the **Send to Hermes** action instead.
+A link opens the same new chat with text ready (issue 3389): `conduit://new?text=…&profile=…&title=…&send=0|1`, from another app, a Shortcuts **Open URLs** action, an NFC tag or a Focus automation. Every part is optional and percent-encoded. The text waits in the composer with the keyboard up; with `send=1`, Conduit shows it and sends it only when you tap **Send**, since any app or web page can open a link (text over 2,000 characters waits in the composer instead). To send without a tap, use the **Send to Hermes** action instead.
 
 ## Apple HomeView
 
