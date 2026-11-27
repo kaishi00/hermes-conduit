@@ -4601,7 +4601,7 @@ from the desktop it runs on)
 **Desktop app:** has it: Settings › Control from Hermes, the driver download, the ask, the bar and Stop (`desktop/src/main/pcControl.ts`, desktop#692, #693, #694).
 
 **Code**
-- Notifier: `notifier/pc_control_tool.py` (the tool, its checks and waits), `notifier/pc_control_store.py` (the file queue under `<HERMES_HOME>/conduit-pc/`: computers, grants, requests, results, a log that never holds what was typed or seen), `notifier/dashboard/api/pc_control.py` (the routes), `notifier/live_activity.py` (its Lock Screen category), `notifier/tests/test_pc_control.py`
+- Notifier: `notifier/pc_control_tool.py` (the tool, its checks and waits), `notifier/pc_control_store.py` (the file queue under conduit-pc/ in the Hermes home: computers, grants, requests, results, a log that never holds what was typed or seen), `notifier/dashboard/api/pc_control.py` (the routes), `notifier/live_activity.py` (its Lock Screen category), `notifier/tests/test_pc_control.py`
 - Desktop: `desktop/src/main/pcControl.ts` (state, the ask, the bar, Stop), `desktop/src/main/pcDriver.ts` (the pinned driver: download, SHA-256 check, unpack, its MCP client), `desktop/src/main/pcExecutor.ts` (computer_use's actions on the driver's tools), `desktop/src/renderer/src/state/pcControl.ts` (the poll per allowed bot), `desktop/src/renderer/src/components/PcControlSetting.tsx`, `desktop/test/pcExecutor.test.ts`
 
 **Rulings**
@@ -4617,7 +4617,7 @@ from the desktop it runs on)
 - The phone: answering the ask from the phone, and a line saying a bot is controlling a computer, with Stop (Eric's consent pick names the phone; stage 2). The app's own `HermesToolCategory` map still reads `conduit_user_computer` as "Using your iPhone" (`Shared/Widgets/HermesTurnActivity.swift`).
 - The desktop polls only the current dashboard's bots, not another combined dashboard's.
 
-**Checked:** 2026-11-27, #PRNUM (new entry: notifier #1123, desktop#692, #693, #694)
+**Checked:** 2026-11-27, #3411 (new entry: notifier #1123, desktop#692, #693, #694)
 
 ## Composer Return key
 
