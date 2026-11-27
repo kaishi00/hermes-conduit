@@ -7941,7 +7941,7 @@ intent's title and description · docs/WIDGETS.md · README.md
 **Open gaps**
 - Not tried on a device yet: the Action Button, the control, a cold launch and Siri's phrases.
 
-**Checked:** 2026-11-27, #APP_PR (issue 3389: a `conduit://new` link starts the same launch, see A new chat from a link); 2026-11-22, #3135 (issue 2932: the ruling says only a launch being carried out keeps a repeat out, as the code does; no change otherwise); 2026-11-22, #3078 (its Profile can name another combined dashboard's profile, which switches there); 2026-11-20, #2928 (issue 2870: a shared draft repeating a launch in flight stays in the inbox instead of taking its finish; the widget-repeats-shortcut mirror and the call refusal's V2 notice tested); 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+**Checked:** 2026-11-27, #3392 (issue 3389: a `conduit://new` link starts the same launch, see A new chat from a link); 2026-11-22, #3135 (issue 2932: the ruling says only a launch being carried out keeps a repeat out, as the code does; no change otherwise); 2026-11-22, #3078 (its Profile can name another combined dashboard's profile, which switches there); 2026-11-20, #2928 (issue 2870: a shared draft repeating a launch in flight stays in the inbox instead of taking its finish; the widget-repeats-shortcut mirror and the call refusal's V2 notice tested); 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
 
 ## A new chat from a link
 
@@ -7964,14 +7964,14 @@ is optional: `conduit://new` alone is the New Chat shortcut.
 - Tests: `ConduitTests/ConduitExternalLinkTests.swift` (testNewChatLinkReadsItsParts, testNewChatLinkRefusesAnOddProfileOrPath), `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatLinkPutsItsTextInTheNewChatsComposer, testNewChatLinkThatSendsAsksFirst, testNewChatLinkEditAndCancel, testNewChatLinkWithNoDashboardStartsNothing)
 
 **Rulings**
-- `send=1` never sends unseen: the chat opens and a Send / Edit sheet shows the text, and only Send sends it. Any app, web page, QR code or NFC tag can open a link, and Hermes acts on what it reads; an automation that must send without a tap uses Send to Hermes, which the user builds (Eric 2026-11-27, #APP_PR, issue 3389).
-- It is the New Chat shortcut's launch: on the dashboard in use (its profile can name another combined dashboard's, as the shortcut's can), nothing with no dashboard signed in, the keyboard up, and the shortcut's failure words; a launch that fails drops the text (#APP_PR).
-- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in the composer and says so. The title is set as the title menu's Rename sets it, once the chat opens (#APP_PR).
+- `send=1` never sends unseen: the chat opens and a Send / Edit sheet shows the text, and only Send sends it. Any app, web page, QR code or NFC tag can open a link, and Hermes acts on what it reads; an automation that must send without a tap uses Send to Hermes, which the user builds (Eric 2026-11-27, #3392, issue 3389).
+- It is the New Chat shortcut's launch: on the dashboard in use (its profile can name another combined dashboard's, as the shortcut's can), nothing with no dashboard signed in, the keyboard up, and the shortcut's failure words; a launch that fails drops the text (#3392).
+- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in the composer and says so. The title is set as the title menu's Rename sets it, once the chat opens (#3392).
 
 **Open gaps**
 - Not tried on a device yet: a cold launch from another app, and Safari's "Open in Conduit?".
 
-**Checked:** 2026-11-27, #APP_PR (added, issue 3389, with desktop#673).
+**Checked:** 2026-11-27, #3392 (added, issue 3389, with desktop#673).
 
 ## Shortcuts Hermes can run
 
