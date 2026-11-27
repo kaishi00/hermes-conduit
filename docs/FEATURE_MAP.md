@@ -4246,9 +4246,13 @@ Usage Details (not needed: the chat's tokens and cost, unchanged; Eric picked
 the row) · README.md's chat features (done) · group rooms (not needed: a room's replies are other agents' turns,
 and Eric picked chats) · voice modes, the Watch and CarPlay (not needed: no
 reply row) · live while a reply streams (not done: providers report a call's
-tokens only at its end, and Conduit doesn't estimate them from text)
+tokens only at its end, and Conduit doesn't estimate them from text) · a
+saved copy of another chat on screen (not shown: the speeds read are the live
+chat's) · the chat kept beside on the phone (not needed: a chat kept beside
+reads nothing from its host, `ChatRowState.beside`, as with Pulse cards; the
+desktop's Beside pane reads its own)
 
-**Desktop app:** has it: the speed beside a reply's time and Settings > Chat > Reply speed (`desktop/src/renderer/src/state/replySpeeds.ts`, `desktop/src/renderer/src/state/useReplySpeeds.ts`, `desktop/src/renderer/src/components/ReplySpeedSetting.tsx`).
+**Desktop app:** has it: the speed beside a reply's time and Settings > Chat > Reply speed (`desktop/src/renderer/src/state/replySpeeds.ts`, `desktop/src/renderer/src/state/useReplySpeeds.ts`, `desktop/src/renderer/src/components/ReplySpeedSetting.tsx`), in the main pane, chat windows and the Beside pane; a streamed reply takes the stored row its turn names (`persisted_turn.final_assistant_row_id`).
 
 **Code**
 - Measure: `notifier/reply_speed.py` (call_measure, ReplySpeedStore, replies), `notifier/__init__.py` (_post_api_request)
@@ -4260,12 +4264,13 @@ tokens only at its end, and Conduit doesn't estimate them from text)
 - In the reply row, as grey text behind a Settings switch that is off by default: seen without a tap by those who turn it on, no new icon in the row (Eric, 2026-11-27, #3414).
 - The plugin's measurement only, never Hermes' `avg_tps`: that averages the chat's last ten model calls over their whole time, the wait for the first token and the tool steps included, so it reads low and is no one reply's (2026-11-27, #3414).
 - A call is timed from its first streamed chunk to its end; one with no streamed chunk, or with reasoning tokens (hidden thinking can come before the first chunk), from the request, so a speed may read low but never higher than the model wrote. A turn's speed is all its calls' output tokens over all their writing time (2026-11-27, #3414).
-- A reply from before the plugin measured it shows nothing; the newest reply still drawn from the stream takes the newest turn's speed once its turn ends.
+- A reply from before the plugin measured it shows nothing; the newest reply, once its turn ends, takes the newest turn's speed while its own row has none (still drawn from the stream, or its row id came after the read).
+- A reply row belongs to one turn, the older one when two turns' windows hold it; an older Hermes without the sessions table's cost columns gets a 501 and shows no speed (notifier #1129).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
+**Checked:** 2026-11-27, #3417 (saved copy and kept-beside chat recorded, a late row id keeps the newest speed, notifier #1129 noted); 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
 
 ## /new in a Bot Chat
 

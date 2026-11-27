@@ -29,11 +29,19 @@ struct ReplySpeedReader: View {
                     if appState.openChatReplySpeeds != nil { appState.openChatReplySpeeds = nil }
                     return
                 }
+                // A new turn's reply isn't the one the last read's newest turn wrote.
+                if isBusy { dropUnsaved() }
                 guard let asked = openChatID, isShowing, !isBusy else { return }
-                guard var answer = await appState.loadOpenChatReplySpeeds(), !Task.isCancelled,
-                      openChatID == asked, enabled else { return }
+                let read = await appState.loadOpenChatReplySpeeds()
+                guard !Task.isCancelled, openChatID == asked, enabled else { return }
+                // A failed read keeps the saved rows' speeds, never an earlier turn's on the newest reply.
+                guard var answer = read else { dropUnsaved(); return }
                 answer.chatID = asked
                 if appState.openChatReplySpeeds != answer { appState.openChatReplySpeeds = answer }
             }
+    }
+
+    private func dropUnsaved() {
+        if appState.openChatReplySpeeds?.unsaved != nil { appState.openChatReplySpeeds?.unsaved = nil }
     }
 }

@@ -16,6 +16,7 @@ final class ReplySpeedsTests: XCTestCase {
             ["row_id": NSNull(), "tokens_per_s": 9.0] as [String: Any],  // an older turn whose reply never saved
             ["row_id": true, "tokens_per_s": 30.0] as [String: Any],     // a Bool is no row id
             ["row_id": 20, "tokens_per_s": -1] as [String: Any],         // nor a speed below zero
+            ["row_id": 21, "tokens_per_s": true] as [String: Any],       // nor a Bool a speed
             ["row_id": NSNull(), "tokens_per_s": 61.2] as [String: Any],
         ]])
         XCTAssertEqual(speeds.byRow, [12: 48.6])
@@ -35,13 +36,18 @@ final class ReplySpeedsTests: XCTestCase {
         XCTAssertEqual(state.replySpeed(for: live), 55)
         XCTAssertNil(state.replySpeed(for: older))
         XCTAssertNil(state.replySpeed(for: unmeasured))
+        // Its row id arrived after the turn-end read: it keeps the newest turn's speed.
+        let landed = ChatMessage(id: "live", role: .assistant, content: "Streamed", timestamp: "t2", rowId: 11)
+        XCTAssertEqual(state.replySpeed(for: landed), 55)
         state.isBusy = true
         XCTAssertNil(state.replySpeed(for: live), "a turn still running hasn't been measured")
     }
 
     func testTheLabelKeepsADecimalOnlyUnderTen() {
-        XCTAssertEqual(ReplySpeeds.number(41.6), 42.0.formatted(.number.precision(.fractionLength(0))))
-        XCTAssertEqual(ReplySpeeds.number(4.46), 4.5.formatted(.number.precision(.fractionLength(1))))
+        let locale = AppLocalization.formattingLocale
+        XCTAssertEqual(ReplySpeeds.number(41.6), 42.0.formatted(.number.precision(.fractionLength(0)).locale(locale)))
+        XCTAssertEqual(ReplySpeeds.number(4.46), 4.5.formatted(.number.precision(.fractionLength(1)).locale(locale)))
+        XCTAssertEqual(ReplySpeeds.number(9.97), 10.0.formatted(.number.precision(.fractionLength(0)).locale(locale)))
     }
 
     func testTheRouteNamesTheChat() {
