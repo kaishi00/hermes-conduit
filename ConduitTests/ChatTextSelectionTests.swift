@@ -123,6 +123,72 @@ final class ChatTextSelectionTests: XCTestCase {
         XCTAssertFalse(selectionCoordinator.hasActiveSelection)
     }
 
+    /// A long press selects the word the finger landed on, read as it
+    /// landed: UIKit picks the word once the press is recognized, after the
+    /// keyboard closing may have moved the text under the finger, and
+    /// another word was selected (issue 3378).
+    @MainActor
+    func testANewSelectionIsTheWordUnderTheFingerAsItLanded() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "touch-down-word-v1")
+        let view = SelectableTextView(
+            text: "alpha beta gamma",
+            selectionCoordinator: selectionCoordinator,
+            selectionSegment: descriptor
+        )
+        let bridgeCoordinator = view.makeCoordinator()
+        let hostView = view.makeUIViewForTests(coordinator: bridgeCoordinator)
+        let textView = hostView.mountedTextView
+
+        // Landed on "beta"; UIKit selected "gamma".
+        hostView.simulateTouchDownForTesting(character: 7)
+        textView.selectedRange = NSRange(location: 11, length: 5)
+        bridgeCoordinator.textViewDidChangeSelection(textView)
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 6, length: 4))
+        XCTAssertEqual(selectionCoordinator.activeSpans, [MarkdownSelectionSpan(segmentID: descriptor.id, range: NSRange(location: 6, length: 4))])
+
+        // Once per touch: the handle dragged afterwards is the user's.
+        textView.selectedRange = NSRange(location: 6, length: 10)
+        bridgeCoordinator.textViewDidChangeSelection(textView)
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 6, length: 10))
+        XCTAssertNotNil(textView.textLayoutManager, "the word and touch reads keep TextKit 2, so the view stays reusable")
+    }
+
+    /// Reading the character under a touch keeps the view on TextKit 2, so
+    /// an ordinary touch doesn't take it out of the pool.
+    @MainActor
+    func testTheCharacterUnderATouchIsReadWithoutTextKit1() {
+        let selectionCoordinator = MarkdownSelectionCoordinator()
+        let descriptor = MarkdownSelectionSegmentDescriptor(id: "paragraph", order: 0, separatorBefore: "")
+        selectionCoordinator.replaceSegments([descriptor], revision: "touch-down-textkit-v1")
+        let view = SelectableTextView(text: "alpha beta gamma", selectionCoordinator: selectionCoordinator, selectionSegment: descriptor)
+        let host = view.makeUIViewForTests(coordinator: view.makeCoordinator())
+        host.frame = CGRect(x: 0, y: 0, width: 320, height: 60)
+        host.layoutIfNeeded()
+        let index = host.characterIndexForTesting(at: CGPoint(x: 8, y: 10))
+        XCTAssertNotNil(index, "a point on the first word's letters")
+        XCTAssertLessThan(index ?? .max, 5, "in \"alpha\"")
+        XCTAssertNil(host.characterIndexForTesting(at: CGPoint(x: 310, y: 10)), "past the line's end")
+        XCTAssertNotNil(host.mountedTextView.textLayoutManager)
+    }
+
+    @MainActor
+    func testOnlyAOneWordSelectionGivesWayToTheTouchedWord() {
+        let text = "alpha beta gamma" as NSString
+        func word(_ index: Int) -> NSRange? {
+            guard index >= 0, index < text.length else { return nil }
+            for range in [NSRange(location: 0, length: 5), NSRange(location: 6, length: 4), NSRange(location: 11, length: 5)]
+            where NSLocationInRange(index, range) { return range }
+            return nil
+        }
+        XCTAssertEqual(ChatTextSelection.wordUnderTouchDown(selected: NSRange(location: 11, length: 5), touched: 7, word: word), NSRange(location: 6, length: 4))
+        XCTAssertNil(ChatTextSelection.wordUnderTouchDown(selected: NSRange(location: 6, length: 4), touched: 7, word: word), "already the touched word")
+        XCTAssertNil(ChatTextSelection.wordUnderTouchDown(selected: NSRange(location: 0, length: 16), touched: 7, word: word), "Select All holds it")
+        XCTAssertNil(ChatTextSelection.wordUnderTouchDown(selected: NSRange(location: 6, length: 10), touched: 2, word: word), "more than one word")
+        XCTAssertNil(ChatTextSelection.wordUnderTouchDown(selected: NSRange(location: 11, length: 5), touched: 5, word: word), "landed on a space")
+    }
+
     @MainActor
     func testReverseNativeSelectionActivationPreservesTouchedUpperEndpointForCrossSegmentUpdate() {
         let selectionCoordinator = MarkdownSelectionCoordinator()

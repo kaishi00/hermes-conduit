@@ -7,8 +7,9 @@ import UIKit
 /// selection endpoints anywhere in the message. The
 /// system's native handles cannot leave the text view that owns them, so a
 /// cross-segment selection takes over with coordinator-owned handles once
-/// the gesture ends. Within-block selections never show this chrome and keep
-/// the fully native handles and menu.
+/// the gesture ends, and keeps them if a handle drag brings it back inside
+/// one block. Selections that never left their block never show this chrome
+/// and keep the fully native handles and menu.
 struct MarkdownSelectionHandleOverlay: UIViewRepresentable {
     @ObservedObject var coordinator: MarkdownSelectionCoordinator
 
@@ -73,7 +74,31 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     /// keeps working; only the handles and the pill accept hits.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let view = super.hitTest(point, with: event)
+        // Where both handles' touch areas reach (a short selection, or its
+        // ends on lines close together), the one whose knob is nearer the
+        // finger: the end handle, laid over the start, took every touch
+        // there, so grabbing the start dragged the end (issue 3378).
+        if view is MarkdownSelectionHandleView, let nearer = nearerHandle(to: point) {
+            return nearer
+        }
         return view === self ? nil : view
+    }
+
+    private func nearerHandle(to point: CGPoint) -> MarkdownSelectionHandleView? {
+        let reaching = [anchorHandle, focusHandle].compactMap { $0 }.filter { handle in
+            !handle.isHidden && handle.point(inside: convert(point, to: handle), with: nil)
+        }
+        guard reaching.count == 2 else { return reaching.first }
+        let anchorKnob = convert(reaching[0].knobCenter, from: reaching[0])
+        let focusKnob = convert(reaching[1].knobCenter, from: reaching[1])
+        return Self.anchorIsNearer(to: point, anchorKnob: anchorKnob, focusKnob: focusKnob) ? reaching[0] : reaching[1]
+    }
+
+    /// Whether a touch at `point` is nearer the anchor's knob than the
+    /// focus's; a tie goes to the focus, the end last moved.
+    static func anchorIsNearer(to point: CGPoint, anchorKnob: CGPoint, focusKnob: CGPoint) -> Bool {
+        func distance(_ knob: CGPoint) -> CGFloat { hypot(point.x - knob.x, point.y - knob.y) }
+        return distance(anchorKnob) < distance(focusKnob)
     }
 
     private var copyFeedbackResetWorkItem: DispatchWorkItem?
@@ -94,6 +119,14 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     /// A handle is being dragged: the pin title waits for the drop rather
     /// than reading the selected text every frame.
     private var isDraggingHandle = false
+    /// Where the finger landed on each handle, in the window, and how far
+    /// the handle's line sat from it then. A drag moves the endpoint by the
+    /// finger's travel from there: the knob hangs below the line and its
+    /// touch area reaches 28 pt past it, so reading the finger itself as
+    /// the endpoint jumped it a line or more down at the first move, and a
+    /// short selection collapsed or flipped (issue 3378).
+    private var handleTouchDown: [ObjectIdentifier: CGPoint] = [:]
+    private var grabOffsets: [ObjectIdentifier: CGVector] = [:]
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -101,7 +134,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         guard
             let coordinator,
             let window,
-            coordinator.hasCrossSegmentSelection,
+            coordinator.drawsSelectionChrome,
             let anchor = coordinator.activeAnchorEndpoint,
             let focus = coordinator.activeFocusEndpoint
         else {
@@ -141,6 +174,11 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
 
         positionHandle(anchorHandle, atCaret: anchorCaret)
         positionHandle(focusHandle, atCaret: focusCaret)
+        // Named by where each sits, not by which end the drag started
+        // from: a selection dragged backward has its anchor at the end.
+        let anchorIsStart = coordinator.anchorComesFirst
+        anchorHandle?.accessibilityLabel = Self.handleLabel(isStart: anchorIsStart)
+        focusHandle?.accessibilityLabel = Self.handleLabel(isStart: !anchorIsStart)
 
         if let pill = copyPill {
             let copyFitted = pill.intrinsicContentSize
@@ -309,6 +347,12 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         setNeedsLayout()
     }
 
+    private static func handleLabel(isStart: Bool) -> String {
+        isStart
+            ? AppLocalization.string("Selection start handle", table: .chat)
+            : AppLocalization.string("Selection end handle", table: .chat)
+    }
+
     private static func endpointAccessibilityValue(_ segmentID: String, offset: Int) -> String {
         // VoiceOver position of a selection endpoint. A position, not a
         // count: String(offset) keeps it out of plural rules.
@@ -349,7 +393,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     @objc private func repositionFromDisplayLink() {
         guard
             let coordinator,
-            coordinator.hasCrossSegmentSelection,
+            coordinator.drawsSelectionChrome,
             let anchor = coordinator.activeAnchorEndpoint,
             let focus = coordinator.activeFocusEndpoint,
             let window
@@ -391,22 +435,54 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
             && !(otherGestureRecognizer.view is MarkdownSelectionHandleView)
     }
 
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if let handle = gestureRecognizer.view as? MarkdownSelectionHandleView, let window {
+            handleTouchDown[ObjectIdentifier(handle)] = touch.location(in: window)
+        }
+        return true
+    }
+
     @objc private func handlePan(_ pan: UIPanGestureRecognizer) {
         guard let window else { return }
         let point = pan.location(in: window)
+        let role: MarkdownSelectionHandleView.Role = pan.view === anchorHandle ? .anchor : .focus
+
+        // Each handle keeps its own: two fingers on a short selection's
+        // two handles don't share one.
+        guard let handle = pan.view else { return }
+        let key = ObjectIdentifier(handle)
 
         switch pan.state {
+        case .began:
+            let touchDown = handleTouchDown[key] ?? point
+            let offset = lineOffset(of: role, from: touchDown, in: window)
+            grabOffsets[key] = offset
+            handleDragMoved(role: role, windowPoint: point.offsetBy(offset))
         case .changed:
-            if pan.view === anchorHandle {
-                handleDragMoved(role: .anchor, windowPoint: point)
-            } else {
-                handleDragMoved(role: .focus, windowPoint: point)
-            }
+            handleDragMoved(role: role, windowPoint: point.offsetBy(grabOffsets[key] ?? .zero))
         case .ended, .cancelled:
+            grabOffsets[key] = nil
             handleDragEnded()
         default:
             break
         }
+    }
+
+    /// From `touchDown` to the middle of the line where `role`'s endpoint
+    /// sits.
+    private func lineOffset(of role: MarkdownSelectionHandleView.Role, from touchDown: CGPoint, in window: UIWindow) -> CGVector {
+        guard
+            let coordinator,
+            let endpoint = role == .anchor ? coordinator.activeAnchorEndpoint : coordinator.activeFocusEndpoint,
+            let caret = coordinator.caretRect(for: endpoint, in: window)
+        else { return .zero }
+        return Self.grabOffset(touchDown: touchDown, caret: caret)
+    }
+
+    /// What a handle's drag adds to the finger to find its endpoint: from
+    /// where the finger landed to the middle of the caret's line.
+    static func grabOffset(touchDown: CGPoint, caret: CGRect) -> CGVector {
+        CGVector(dx: caret.midX - touchDown.x, dy: caret.midY - touchDown.y)
     }
 
     func handleDragMoved(role: MarkdownSelectionHandleView.Role, windowPoint: CGPoint) {
@@ -609,6 +685,11 @@ final class MarkdownSelectionHandleView: UIView {
         bounds.insetBy(dx: -24, dy: -28).contains(point)
     }
 
+    /// The knob's middle, in this view: the knob fills the lower 12 pt.
+    var knobCenter: CGPoint {
+        CGPoint(x: bounds.midX, y: bounds.maxY - 6)
+    }
+
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
 
@@ -625,5 +706,11 @@ final class MarkdownSelectionHandleView: UIView {
         context.addLine(to: CGPoint(x: knob.midX, y: knob.minY + 1))
         context.strokePath()
         context.fillEllipse(in: knob)
+    }
+}
+
+private extension CGPoint {
+    func offsetBy(_ vector: CGVector) -> CGPoint {
+        CGPoint(x: x + vector.dx, y: y + vector.dy)
     }
 }

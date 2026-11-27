@@ -1551,6 +1551,67 @@ extension BotModeTests {
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: -120, height: 0)), "the other way")
     }
 
+    /// The swipe back is decided from how the drag starts and what it went
+    /// through (issue 3378): a scroll that drifts sideways stays a scroll,
+    /// and a selection seen at any step holds it, though the drag ends with
+    /// none showing (a handle let go).
+    func testTheSwipeBackIsDecidedFromTheDragsStartAndWhatItWentThrough() {
+        var swipe = BackSwipeDrag()
+        swipe.moved(CGSize(width: 20, height: 4), held: false)
+        swipe.moved(CGSize(width: 90, height: 20), held: false)
+        XCTAssertTrue(swipe.follows)
+        XCTAssertEqual(swipe.shift(for: CGSize(width: 90, height: 20)), 90, "the chat follows the finger")
+        XCTAssertTrue(swipe.goesBack(CGSize(width: 120, height: 30)))
+        XCTAssertFalse(swipe.goesBack(CGSize(width: 60, height: 10)), "let go short of the line: it comes back")
+        XCTAssertEqual(swipe.shift(for: CGSize(width: -30, height: 0)), 0, "never past its place")
+
+        var scroll = BackSwipeDrag()
+        scroll.moved(CGSize(width: 4, height: 20), held: false)
+        scroll.moved(CGSize(width: 100, height: 55), held: false)
+        XCTAssertFalse(scroll.follows)
+        XCTAssertEqual(scroll.shift(for: CGSize(width: 100, height: 55)), 0)
+        XCTAssertFalse(scroll.goesBack(CGSize(width: 100, height: 55)), "a scroll that drifted right")
+
+        var handle = BackSwipeDrag()
+        handle.moved(CGSize(width: 20, height: 0), held: true)
+        handle.moved(CGSize(width: 120, height: 0), held: false)
+        XCTAssertFalse(handle.goesBack(CGSize(width: 120, height: 0)), "a selection showed during the drag")
+
+        var selectedMidway = BackSwipeDrag()
+        selectedMidway.moved(CGSize(width: 20, height: 0), held: false)
+        selectedMidway.moved(CGSize(width: 60, height: 0), held: true)
+        XCTAssertFalse(selectedMidway.follows, "the chat stops following")
+        XCTAssertFalse(selectedMidway.goesBack(CGSize(width: 120, height: 0)))
+
+        XCTAssertTrue(BackSwipeDrag.startsSideways(CGSize(width: 20, height: 15)))
+        XCTAssertFalse(BackSwipeDrag.startsSideways(CGSize(width: 14, height: 15)), "past 45°")
+        XCTAssertFalse(BackSwipeDrag.startsSideways(CGSize(width: -20, height: 0)), "toward the leading edge")
+        XCTAssertFalse(BackSwipeDrag().goesBack(CGSize(width: 120, height: 0)), "never moved")
+    }
+
+    /// The swipe the screen holds: a new start point is a new drag (one the
+    /// system took never ended), a let-go returns the chat to its place, and
+    /// a second release changes nothing.
+    @MainActor
+    func testTheChatsSwipeStartsAfreshAndComesBackWhenLetGo() {
+        let swipe = ChatBackSwipe()
+        swipe.moved(from: CGPoint(x: 100, y: 300), by: CGSize(width: 20, height: 2), held: true)
+        swipe.moved(from: CGPoint(x: 100, y: 300), by: CGSize(width: 90, height: 2), held: false)
+        XCTAssertEqual(swipe.shift, 0, "held at its first step")
+
+        // Taken by the system: the next drag, from elsewhere, starts clean.
+        swipe.moved(from: CGPoint(x: 140, y: 200), by: CGSize(width: 20, height: 0), held: false)
+        swipe.moved(from: CGPoint(x: 140, y: 200), by: CGSize(width: 70, height: 4), held: false)
+        XCTAssertEqual(swipe.shift, 70, "follows the finger")
+        XCTAssertFalse(swipe.ended(from: CGPoint(x: 140, y: 200), at: CGSize(width: 70, height: 4), held: false, reduceMotion: true), "short of the line")
+        XCTAssertEqual(swipe.shift, 0, "back in its place")
+
+        swipe.moved(from: CGPoint(x: 140, y: 200), by: CGSize(width: 20, height: 0), held: false)
+        XCTAssertTrue(swipe.ended(from: CGPoint(x: 140, y: 200), at: CGSize(width: 120, height: 10), held: false, reduceMotion: true))
+        swipe.release(reduceMotion: true)
+        XCTAssertEqual(swipe.shift, 0)
+    }
+
     /// The slide is the transcript's own, asked for by the screen: the
     /// chat on screen leaves as Back is tapped, and the one opened comes in
     /// with its rows, whichever of the screen and the transcript hears of
