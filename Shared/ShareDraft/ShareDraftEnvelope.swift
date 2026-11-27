@@ -255,9 +255,9 @@ struct ShareDraftEnvelope: Codable, Equatable {
 
 /// File names in a shared draft.
 enum ShareDraftNames {
-    /// Whether `name` ends in an extension a file type is known by: "8.30"
-    /// in "Event 8.30" is none, so a picture named that still gets its
-    /// type's (#3374's reviews). Shared by the share extension and the
+    /// Whether `name` ends in a picture's or a video's extension: "8.30" in
+    /// "Event 8.30" or "37" in "at 10.00.37" is none, so a picture named that
+    /// still gets its type's (#3374's reviews). Shared by the share extension and the
     /// app's picker, drop and paste.
     /// One that is `type`'s own counts whatever the system knows of it.
     /// Only a picture's or a video's name is read this way: a document
@@ -267,8 +267,11 @@ enum ShareDraftNames {
         guard !ext.isEmpty else { return false }
         guard let type, type.conforms(to: .image) || type.conforms(to: .movie) else { return true }
         if let own = type.preferredFilenameExtension, own.caseInsensitiveCompare(ext) == .orderedSame { return true }
-        guard let known = UTType(filenameExtension: ext) else { return false }
-        return !known.isDynamic
+        // Only a picture's or a video's own kind of ending: "37" in a
+        // screenshot's "10.00.37" is no picture ending, whatever the system
+        // makes of it.
+        guard let known = UTType(filenameExtension: ext), !known.isDynamic else { return false }
+        return known.conforms(to: .image) || known.conforms(to: .movie)
     }
 
     static let maximumDisplayNameLength = 120
