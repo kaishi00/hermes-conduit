@@ -6694,25 +6694,29 @@ chat started.
 
 **Siblings:** the phone's line above the composer and its sheet (done,
 #3304: "2 Kanban tasks in progress", "· 1 blocked", the line red while
-one is, "Kanban tasks finished" with ×; the sheet's row per task opens it in Tasks) in chats,
+one is, "Kanban tasks finished" with ×; the sheet's row per task opens the task's own screen over the chat, with Open in Tasks in its toolbar for the full board, desktop issue 593) in chats,
 project chats, a Bot Chat and a workstream's own chat · the notifier's
 `GET /sessions/kanban-tasks` (done, notifier #1083, 0.197.0: every board,
 through the chat's compressions, `supported: false` from a Hermes that
 doesn't stamp cards) · Tasks › Board opening the task (done: the phone's
 `kanbanTaskOpenRequest`, the desktop's `focus`) · a far chat opened in
-place (done: read on its own runtime; its rows don't open in Tasks, which
-shows this dashboard's boards) · not needed: the Chats list's rows (Eric
+place (done: read on its own runtime, and its tasks open over the chat on
+their own dashboard's board; no Open in Tasks, since Tasks shows this
+dashboard's boards) · a chat in a window of its own on the desktop (done:
+the panel, no Open in Tasks, desktop issue 593) · the task's screen on Tasks
+(the same view, unchanged there) · not needed: the Chats list's rows (Eric
 2026-11-25 picked the line above the composer; reading every listed chat's
 tasks on each refresh isn't worth it), Delegate agents a chat started
 (their own line), group rooms (a room's turns run in each bot's own session, so its cards carry no room of their own to read by), Watch, CarPlay and voice calls (no composer) · Text: the
 line's, sheet's and caption's words in every language (done); README and
 docs name no such line
 
-**Desktop app:** has it: the bar beside the agents bar, Open in Tasks from the main window (`desktop/src/renderer/src/components/ChatTasksDock.tsx`, desktop#559).
+**Desktop app:** has it: the bar beside the agents bar; a row opens the board's task panel over the chat, with Open in Tasks from the main window (`desktop/src/renderer/src/components/ChatTasksDock.tsx`, desktop#559, desktop issue 593).
 
 **Code**
 - The route: `notifier/dashboard/api/chat_tasks.py` (chat_tasks, `_chain_ids` through session_usage's `_chain`, `_boards`, `_board_tasks`), `notifier/dashboard/api/capabilities.py` (`chat-kanban-tasks`); tests `notifier/tests/test_chat_tasks.py`
-- The phone: `Conduit/Models/ChatKanbanTasks.swift` (ChatKanbanTask, `shown`, `label`), `Conduit/Services/AppState+ChatKanbanTasks.swift` (loadOpenChatKanbanTasks, openChatKanbanTask), `Conduit/Views/Components/ChatKanbanTasksDock.swift`, `Conduit/Views/ChatView.swift` (bottomBar); tests `ConduitTests/ChatKanbanTasksTests.swift`
+- The phone: `Conduit/Models/ChatKanbanTasks.swift` (ChatKanbanTask, `shown`, `label`), `Conduit/Services/AppState+ChatKanbanTasks.swift` (loadOpenChatKanbanTasks, openChatKanbanTask, chatKanbanTaskStore, loadChatKanbanTask), `Conduit/Views/Components/ChatKanbanTasksDock.swift` (ChatKanbanTasksSheet, ChatKanbanTaskSheet), `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (`openInTasks`), `Conduit/Services/KanbanStore.swift` (`keepsBoardPick`), `Conduit/Views/ChatView.swift` (bottomBar); tests `ConduitTests/ChatKanbanTasksTests.swift`, `ConduitTests/KanbanTests.swift` (testStoreThatKeepsNoBoardPickLeavesTasksPickAlone)
+- The desktop: `desktop/src/renderer/src/components/ChatTasksDock.tsx` (ChatTaskPanel), `desktop/src/renderer/src/components/KanbanBoard.tsx` (TaskPanel's `extra`); tests `desktop/test/chatTaskPanel.test.ts`
 
 **Rulings**
 - The line shows above the composer, on phone and desktop, for the open chat's own tasks only: not cron jobs or other chats' (Eric 2026-11-25, desktop issue 553).
@@ -6720,11 +6724,12 @@ docs name no such line
 - It is read as the chat opens, at each turn's end, and every 15 s while a task is still open and the chat shows (see Reads while a screen shows); a saved copy of another chat reads nothing.
 - Finished tasks show only once the chat has seen its tasks open while it showed, so a chat reopened after they all finished shows nothing; the board keeps them.
 - A plugin without the route, or a Hermes whose tasks carry no session, shows no line, never "no tasks".
+- A task opens over the chat, never by leaving it: the task's full screen (phone) or the board's task panel (desktop), read and changed on its own board, with Open in Tasks as a separate button for the full board where Tasks shows that board. Opening it never changes Tasks' board pick (desktop issue 593, RuanMD).
 
 **Open gaps**
 - A task Hermes creates without a session (from the CLI or the dashboard) can't be told apart as the chat's, so it never shows.
 
-**Checked:** 2026-11-25, #3304 with notifier #1083 and desktop#559 (added: the line on phone and desktop, the plugin's route; desktop issue 553)
+**Checked:** 2026-11-27, #PRNUM with desktop#651 (a row opens its task over the chat, Open in Tasks separate; desktop issue 593); 2026-11-25, #3304 with notifier #1083 and desktop#559 (added: the line on phone and desktop, the plugin's route; desktop issue 553)
 
 ## Subagent settings
 

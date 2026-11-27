@@ -372,7 +372,8 @@ extension AppState {
               let bridge = runtime.dashboardTicketBridge else { return nil }
         // Its answers kept under its own dashboard, as its Tasks page keeps them there.
         let answers = act(onRuntime: runtime) { screenAnswers(profile: KeptRoute.everyProfile) }
-        let store = KanbanStore()
+        // The board it loads for the task isn't kept as that Tasks page's pick.
+        let store = KanbanStore(keepsBoardPick: false)
         store.configure(requester: bridge, serverIdentity: bridge.baseURL, answers: answers)
         return store
     }

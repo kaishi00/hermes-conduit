@@ -101,8 +101,14 @@ struct KanbanTaskDetailView: View {
     /// cleanup must leave the new one alone.
     @State private var attachmentDownloadToken: UUID?
 
-    init(task: KanbanTask) {
+    /// Opened over a chat (one of its Kanban tasks, desktop issue 593): the
+    /// toolbar's way to the full board in Tasks. Nil on Tasks itself, and
+    /// for a far chat's task, whose board Tasks doesn't show.
+    private let openInTasks: (() -> Void)?
+
+    init(task: KanbanTask, openInTasks: (() -> Void)? = nil) {
         initialTask = task
+        self.openInTasks = openInTasks
         _displayedTaskID = State(initialValue: task.id)
         _title = State(initialValue: task.title)
         _taskBody = State(initialValue: task.body ?? "")
@@ -278,6 +284,12 @@ struct KanbanTaskDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                if let openInTasks {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(AppLocalization.string("Open in Tasks", table: .chat), action: openInTasks)
+                            .accessibilityIdentifier("chatKanbanTask.openInTasks")
+                    }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     actionsMenu

@@ -236,6 +236,24 @@ final class KanbanTests: XCTestCase {
         XCTAssertTrue(keyA.hasPrefix(KanbanStore.selectedBoardKey + "."))
     }
 
+    /// A store opening one task over another screen (a chat's Kanban task,
+    /// desktop issue 593) loads that task's board without making it the
+    /// Tasks page's pick, and doesn't start on that pick either.
+    func testStoreThatKeepsNoBoardPickLeavesTasksPickAlone() async {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let key = KanbanStore.scopedBoardKey(serverIdentity: "https://example.test")
+        defaults.set("beta", forKey: key)
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses())
+        let store = KanbanStore(defaults: defaults, keepsBoardPick: false)
+        store.configure(requester: requester, serverIdentity: "https://example.test")
+        XCTAssertEqual(store.selectedBoardSlug, "beta")
+
+        await store.selectBoard(slug: "alpha", includeArchived: true)
+
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+        XCTAssertEqual(defaults.string(forKey: key), "beta")
+    }
+
     // MARK: - Mutation vs refresh error separation
 
     func testMutationFailureStaysVisibleAndRefreshFailureKeepsBoard() async throws {
