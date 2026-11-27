@@ -56,6 +56,11 @@ enum PictureClipboard {
         return Task { @MainActor in
             var pasted: [String: Any]?
             if let item, let file = await item.load().file {
+                // A later copy took the clipboard meanwhile: nothing to read.
+                guard copyNumber == latestCopy else {
+                    if let owned = file.ownedDirectory { try? FileManager.default.removeItem(at: owned) }
+                    return
+                }
                 pasted = await Task.detached(priority: .userInitiated) { () -> [String: Any]? in
                     defer {
                         if let owned = file.ownedDirectory { try? FileManager.default.removeItem(at: owned) }

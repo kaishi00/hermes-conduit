@@ -395,7 +395,13 @@ extension MarkdownLargeDocumentTests {
                 context.fill(CGRect(x: 0, y: 0, width: side, height: side))
             }
         }
+        // Set by the item's load and read by the test, both on the main
+        // actor (the copy's Task and this test are @MainActor).
         final class Gate: @unchecked Sendable { var release: CheckedContinuation<Void, Never>? }
+        func opened(_ gate: Gate) async {
+            for _ in 0..<1_000 where gate.release == nil { await Task.yield() }
+            XCTAssertNotNil(gate.release, "the copy never started fetching")
+        }
         func slowItem(_ gate: Gate) -> ImageGalleryItem {
             ImageGalleryItem(id: "slow", title: "slow") {
                 await withCheckedContinuation { gate.release = $0 }
@@ -403,10 +409,15 @@ extension MarkdownLargeDocumentTests {
             }
         }
 
+        // Clears only, never reading what was there: a read of the
+        // simulator's clipboard can block (see ComposerPasteTextViewTests).
+        UIPasteboard.general.items = []
+        defer { UIPasteboard.general.items = [] }
+
         // A description copied while a picture is still fetching stays.
         let first = Gate()
         let slow = PictureClipboard.copy(slowItem(first), shown: picture(2))
-        while first.release == nil { await Task.yield() }
+        await opened(first)
         PictureClipboard.copyDescription("A dog on a beach")
         first.release?.resume()
         await slow.value
@@ -415,7 +426,7 @@ extension MarkdownLargeDocumentTests {
         // A later picture stays over an earlier one whose fetch ends last.
         let second = Gate()
         let earlier = PictureClipboard.copy(slowItem(second), shown: picture(2))
-        while second.release == nil { await Task.yield() }
+        await opened(second)
         await PictureClipboard.copy(nil, shown: picture(3)).value
         second.release?.resume()
         await earlier.value
