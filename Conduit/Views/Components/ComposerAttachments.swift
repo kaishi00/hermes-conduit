@@ -120,8 +120,8 @@ enum AttachmentTypePolicy {
         let preferredExtension = type?.preferredFilenameExtension
         if !trimmed.isEmpty {
             let trimmed = String(trimmed)
-            let currentExtension = (trimmed as NSString).pathExtension
-            guard currentExtension.isEmpty, let preferredExtension else { return trimmed }
+            // "Event 8.30" ends in no extension a type is known by.
+            guard !ShareDraftNames.hasKnownExtension(trimmed, for: type), let preferredExtension else { return trimmed }
             return "\(trimmed).\(preferredExtension)"
         }
         let stem: String

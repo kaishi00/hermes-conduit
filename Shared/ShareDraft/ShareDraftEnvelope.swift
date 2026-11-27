@@ -12,6 +12,7 @@
 //
 
 import Foundation
+import UniformTypeIdentifiers
 
 /// How much one share can carry. The extension enforces these before it
 /// writes anything and says why something was left out; the app checks the
@@ -254,6 +255,19 @@ struct ShareDraftEnvelope: Codable, Equatable {
 
 /// File names in a shared draft.
 enum ShareDraftNames {
+    /// Whether `name` ends in an extension a file type is known by: "8.30"
+    /// in "Event 8.30" is none, so a picture named that still gets its
+    /// type's (#3374's reviews). Shared by the share extension and the
+    /// app's picker, drop and paste.
+    /// One that is `type`'s own counts whatever the system knows of it.
+    static func hasKnownExtension(_ name: String, for type: UTType? = nil) -> Bool {
+        let ext = (name as NSString).pathExtension
+        guard !ext.isEmpty else { return false }
+        if let own = type?.preferredFilenameExtension, own.caseInsensitiveCompare(ext) == .orderedSame { return true }
+        guard let known = UTType(filenameExtension: ext) else { return false }
+        return !known.isDynamic
+    }
+
     static let maximumDisplayNameLength = 120
 
     /// A name the extension made up for a file in the envelope's folder: a

@@ -279,13 +279,26 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     @MainActor
-    func testTheEndOfSpeechBufferEndsTheSentence() {
+    @MainActor
+    func testTheEndOfSpeechBufferEndsTheSentence() async {
+        // The voice lookup speak starts is stubbed and awaited before the
+        // stubs go back, so no real one outlives the test (#3374's review).
+        let saved = IPhoneVoices.readInstalled
+        let savedSystem = IPhoneVoices.systemVoice
+        IPhoneVoices.forgetInstalled()
+        IPhoneVoices.readInstalled = { [] }
+        IPhoneVoices.systemVoice = { _ in nil }
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.systemVoice = savedSystem
+            IPhoneVoices.forgetInstalled()
+        }
         let voice = SystemSpeechSynthesizer()
         var heard: [Int] = []
         var done = 0
         let onAudio: @MainActor (Data, Double) -> Void = { data, _ in heard.append(data.count) }
-        // The voice is found in a task that can't run before this test
-        // returns, and by then the sentence has ended, so nothing is written.
+        // The voice is found in a task that can't run before the buffers
+        // below, and by then the sentence has ended, so nothing is written.
         voice.speak("Hello.", language: "en-US", onAudio: onAudio, onDone: { done += 1 })
         let id = voice.utterance
         voice.received(Data(count: 4), rate: 22_050, isEnd: false, id: id, number: 1, onAudio: onAudio)
@@ -296,6 +309,8 @@ extension HermesVoiceGatewayTimeoutTests {
         voice.received(Data(), rate: 22_050, isEnd: true, id: id, number: 1, onAudio: onAudio)
         XCTAssertEqual(heard, [4], "Later buffers for an ended sentence are dropped")
         XCTAssertEqual(done, 1, "and it ends once")
+        // Shares speak's find, so it has landed once this returns.
+        _ = await IPhoneVoices.voice(for: "en-US")
     }
 
     @MainActor

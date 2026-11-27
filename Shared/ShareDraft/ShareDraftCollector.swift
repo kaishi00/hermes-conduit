@@ -434,7 +434,7 @@ struct ShareDraftCollector {
         while safe.last == "." { safe.removeLast() }
         let preferred = type?.preferredFilenameExtension
         if !safe.isEmpty {
-            guard (safe as NSString).pathExtension.isEmpty, let preferred else { return safe }
+            guard !ShareDraftNames.hasKnownExtension(safe, for: type), let preferred else { return safe }
             return ShareDraftNames.sanitizedDisplayName("\(safe).\(preferred)")
         }
         let stem: String

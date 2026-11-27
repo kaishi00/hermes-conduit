@@ -254,7 +254,13 @@ enum IPhoneVoices {
         let region = Locale.current.region?.identifier
         let key = "\(language)|\(chosen ?? "")|\(region ?? "")"
         if let found = foundVoices[key] { return found.voice }
-        if let finding = findingVoices[key] { return await finding.value.voice }
+        if let finding = findingVoices[key] {
+            let waitedFrom = generation
+            let found = await finding.value
+            // The voices changed while it waited: the next find reads the
+            // list after the change (#3374's review).
+            return generation == waitedFrom ? found.voice : await voice(for: language)
+        }
         let started = generation
         nonisolated(unsafe) let ask = systemVoice
         let finding = Task { @MainActor () -> FoundVoice in

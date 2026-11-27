@@ -161,6 +161,13 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertEqual(name, "Apple.png")
         XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "...", type: .png), "photo.png")
         XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Apple.", type: .png, ordinal: 1), "Apple.png")
+        // A dotted stem ending in a dot keeps no false extension: "8.30"
+        // is none (#3374's reviews); a real one stays as it was.
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "Event 8.30.", type: .png), "Event 8.30.png")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Event 8.30.", type: .png, ordinal: 1), "Event 8.30.png")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Event 8.30", type: .png, ordinal: 1), "Event 8.30.png")
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "Scan.PNG", type: .png), "Scan.PNG")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "flyer.jpeg", type: .png, ordinal: 1), "flyer.jpeg")
         let png = try pngData(width: 40, height: 30)
         let outcome = AttachmentStaging.finishStaging(
             fileAt: try stagedFile(png, named: name), name: name, type: .png, limitMegabytes: 16

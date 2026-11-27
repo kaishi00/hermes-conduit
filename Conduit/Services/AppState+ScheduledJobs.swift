@@ -319,10 +319,11 @@ extension AppState {
         return try? JSONDecoder().decode(CronJob.self, from: data)
     }
 
+    /// Read from the row itself, every alias the gateway and the dashboard
+    /// use (`name`, `summary`, `lastActive`, a string or float epoch) and
+    /// `session`'s nesting, whatever its other fields hold: a strict decode
+    /// first would take a row it can read without them (#3374's reviews).
     private func decodeCronRun(_ value: Any) -> CronRun? {
-        guard JSONSerialization.isValidJSONObject(value),
-              let data = try? JSONSerialization.data(withJSONObject: value) else { return nil }
-        if let decoded = try? JSONDecoder().decode(CronRun.self, from: data) { return decoded }
         guard let rawObject = value as? [String: Any] else { return nil }
         let object = rawObject["session"] as? [String: Any] ?? rawObject
         guard
@@ -335,7 +336,9 @@ extension AppState {
             profile: stringValue(object["profile"]),
             startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
             title: stringValue(object["title"]) ?? stringValue(object["name"]),
-            jobID: stringValue(object["job_id"]) ?? stringValue(object["cron_job_id"])
+            // The first that names a job, as the strict decode reads it: an
+            // empty or non-string one doesn't.
+            jobID: ["job_id", "cron_job_id"].lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty }
         )
     }
 
