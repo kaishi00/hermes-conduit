@@ -1793,6 +1793,9 @@ final class AppState: ObservableObject {
         set { shownRuntime.pulseSources = newValue }
     }
     @Published var pulseOpenRequest: PulseOpenRequest?
+    /// The open chat's reply speeds while Show reply speed is on
+    /// (AppState+ReplySpeeds.swift, read by ReplySpeedReader).
+    @Published var openChatReplySpeeds: ReplySpeeds?
     var pulseHomeChatID: String? {
         get { shownRuntime.pulseHomeChatID }
         set { shownRuntime.pulseHomeChatID = newValue }
@@ -3281,6 +3284,8 @@ final class AppState: ObservableObject {
         set { shownRuntime.chatListCatalogFreshness = newValue }
     }
     var openChatSync = OpenChatSync()
+    /// The open Bot Chat's stored tail owed to a `sessions.changed`.
+    var botChatTailRead = BotChatTailRead()
     /// Hermes' `sessions.changed` waiting for its catalog read, and the
     /// wait for one held back by the quiet-read wait (5 s, up to 60 s).
     var catalogChangeSignal: CatalogChangeSignal {

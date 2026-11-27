@@ -395,18 +395,31 @@ extension MarkdownLargeDocumentTests {
                 context.fill(CGRect(x: 0, y: 0, width: side, height: side))
             }
         }
+        // Set by the item's load and read by the test, both on the main
+        // actor (the copy's Task and this test are @MainActor).
         final class Gate: @unchecked Sendable { var release: CheckedContinuation<Void, Never>? }
-        func slowItem(_ gate: Gate) -> ImageGalleryItem {
+        // Throws when the copy never starts fetching, so the test fails
+        // rather than waiting on a copy that will never finish.
+        func opened(_ gate: Gate) async throws {
+            for _ in 0..<1_000 where gate.release == nil { await Task.yield() }
+            _ = try XCTUnwrap(gate.release, "the copy never started fetching")
+        }
+        func slowItem(_ gate: Gate, fetching file: ImageGalleryFile? = nil) -> ImageGalleryItem {
             ImageGalleryItem(id: "slow", title: "slow") {
                 await withCheckedContinuation { gate.release = $0 }
-                return .unavailable
+                return file.map { .file($0) } ?? .unavailable
             }
         }
+
+        // Clears only, never reading what was there: a read of the
+        // simulator's clipboard can block (see ComposerPasteTextViewTests).
+        UIPasteboard.general.items = []
+        defer { UIPasteboard.general.items = [] }
 
         // A description copied while a picture is still fetching stays.
         let first = Gate()
         let slow = PictureClipboard.copy(slowItem(first), shown: picture(2))
-        while first.release == nil { await Task.yield() }
+        try await opened(first)
         PictureClipboard.copyDescription("A dog on a beach")
         first.release?.resume()
         await slow.value
@@ -415,11 +428,30 @@ extension MarkdownLargeDocumentTests {
         // A later picture stays over an earlier one whose fetch ends last.
         let second = Gate()
         let earlier = PictureClipboard.copy(slowItem(second), shown: picture(2))
-        while second.release == nil { await Task.yield() }
+        try await opened(second)
         await PictureClipboard.copy(nil, shown: picture(3)).value
         second.release?.resume()
         await earlier.value
         let pasted = try XCTUnwrap(UIPasteboard.general.image)
         XCTAssertEqual(pasted.size.width * pasted.scale, picture(3).size.width * picture(3).scale, accuracy: 0.5)
+
+        // An earlier copy whose original arrives after a later copy leaves
+        // the clipboard alone and removes the file it was handed.
+        let owned = FileManager.default.temporaryDirectory
+            .appendingPathComponent("picture-copy-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: owned, withIntermediateDirectories: true)
+        let original = owned.appendingPathComponent("original.png")
+        try XCTUnwrap(picture(4).pngData()).write(to: original)
+        let third = Gate()
+        let stale = PictureClipboard.copy(
+            slowItem(third, fetching: ImageGalleryFile(url: original, ownedDirectory: owned)),
+            shown: picture(2)
+        )
+        try await opened(third)
+        PictureClipboard.copyDescription("A cat on a sofa")
+        third.release?.resume()
+        await stale.value
+        XCTAssertEqual(UIPasteboard.general.string, "A cat on a sofa")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: owned.path))
     }
 }

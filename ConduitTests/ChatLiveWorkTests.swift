@@ -143,8 +143,8 @@ final class ChatLiveWorkTests: XCTestCase {
     func testADashboardTurnStartNamesTheOldestForwardedMessage() {
         let appState = makeAppState()
         appState.activeSessionId = "api-1"
-        XCTAssertEqual(appState.admissionStarting(named: "adm-7", by: nil), "adm-7")
-        XCTAssertNil(appState.admissionStarting(named: nil, by: nil), "No client: nothing to name")
+        XCTAssertEqual(appState.admissionStarting(named: "adm-7", by: nil, in: "api-1"), "adm-7")
+        XCTAssertNil(appState.admissionStarting(named: nil, by: nil, in: "api-1"), "No client: nothing to name")
     }
 
     func testAnUnnamedStartAReadAlreadyAnsweredBringsBackNoOtherSend() {
@@ -158,8 +158,63 @@ final class ChatLiveWorkTests: XCTestCase {
         appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [second], startedAdmissions: ["adm-1"]), previous: nil, for: "api-1")
         XCTAssertEqual(appState.messages.map(\.id), ["local-1"])
         // adm-1's own start, coming after the read, is its own; the next one is adm-2's.
-        XCTAssertEqual(appState.forwardedSendStarting(), "adm-1")
-        XCTAssertEqual(appState.forwardedSendStarting(), "adm-2")
+        XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-1")
+        XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-2")
+    }
+
+    func testAnUnnamedStartInAnotherChatTakesNoneOfThisChatsSends() {
+        let appState = makeAppState()
+        appState.activeSessionId = "chat-a"
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "mine", sessionID: "chat-a")
+        XCTAssertNil(appState.forwardedSendStarting(in: "chat-b"), "chat-b's turn is none of chat-a's sends")
+        XCTAssertEqual(appState.shownChat.queuedSendOrder, ["adm-1"])
+        XCTAssertEqual(appState.forwardedSendStarting(in: "chat-a"), "adm-1")
+    }
+
+    func testAnUnnamedStartUnderTheChatsOtherIdTakesItsSend() {
+        let appState = makeAppState()
+        appState.activeSessionId = "chat-a"
+        appState.sessions = [row("chat-a", alternateIds: ["runtime-a"])]
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "mine", sessionID: "chat-a")
+        XCTAssertEqual(appState.forwardedSendStarting(in: "runtime-a"), "adm-1")
+    }
+
+    func testAnUnnamedStartUnderABorrowedIdTakesNoneOfThatChatsSends() {
+        let appState = makeAppState()
+        appState.activeSessionId = "shared-runtime"
+        appState.sessions = [row("bot-b", alternateIds: ["shared-runtime"]), row("shared-runtime", alternateIds: [])]
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "mine", sessionID: "shared-runtime")
+        XCTAssertNil(appState.forwardedSendStarting(in: "bot-b"), "bot-b only carries the other chat's id")
+        XCTAssertEqual(appState.forwardedSendStarting(in: "shared-runtime"), "adm-1")
+    }
+
+    private func row(_ id: String, alternateIds: [String]) -> SessionSummary {
+        SessionSummary(id: id, alternateIds: alternateIds, title: id, model: "Hermes", updatedLabel: "now",
+                       profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+    }
+
+    func testTheStampCapKeepsHeldSendsStamps() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        appState.messages = [ChatMessage(id: "local-h", role: .user, content: "held", timestamp: "1")]
+        appState.messages.append(ChatMessage(id: "local-s", role: .user, content: "started", timestamp: "2"))
+        appState.holdForwardedSend(admissionID: "adm-h", rowID: "local-h", text: "held", sessionID: "api-1")
+        appState.holdForwardedSend(admissionID: "adm-s", rowID: "local-s", text: "started", sessionID: "api-1")
+        // A read names adm-s started: it awaits its own unnamed start, its chat kept.
+        let waiting = QueuedPrompt(admissionID: "adm-h", text: "held", status: .queued, sequence: 1)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [waiting], startedAdmissions: ["adm-s"]), previous: nil, for: "api-1")
+        XCTAssertEqual(appState.shownChat.readStartedAdmissions, ["adm-s"])
+        // Stamps for sends no longer held (their rows gone) fill the cap.
+        for index in 0..<31 {
+            appState.holdForwardedSend(admissionID: "adm-\(index)", rowID: "gone-\(index)", text: "x", sessionID: "api-1")
+        }
+        appState.holdForwardedSend(admissionID: "adm-new", rowID: "gone-new", text: "x", sessionID: "api-1")
+        XCTAssertEqual(Set(appState.shownChat.forwardedSendTimes.keys), ["adm-h", "adm-new"])
+        XCTAssertEqual(Set(appState.shownChat.forwardedSendChats.keys), ["adm-h", "adm-s", "adm-new"])
+        XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-s", "Its own start still finds it")
     }
 
     private func makeAppState() -> AppState {
