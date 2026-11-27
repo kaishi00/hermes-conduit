@@ -102,11 +102,12 @@ struct KanbanTaskDetailView: View {
     @State private var attachmentDownloadToken: UUID?
 
     /// Opened over a chat (one of its Kanban tasks, desktop issue 593): the
-    /// toolbar's way to the full board in Tasks. Nil on Tasks itself, and
-    /// for a far chat's task, whose board Tasks doesn't show.
-    private let openInTasks: (() -> Void)?
+    /// toolbar's way to the full board in Tasks, for the task shown (a
+    /// dependency opened from it included), by its id. Nil on Tasks itself,
+    /// and for a far chat's task, whose board Tasks doesn't show.
+    private let openInTasks: ((String) -> Void)?
 
-    init(task: KanbanTask, openInTasks: (() -> Void)? = nil) {
+    init(task: KanbanTask, openInTasks: ((String) -> Void)? = nil) {
         initialTask = task
         self.openInTasks = openInTasks
         _displayedTaskID = State(initialValue: task.id)
@@ -287,7 +288,7 @@ struct KanbanTaskDetailView: View {
                 }
                 if let openInTasks {
                     ToolbarItem(placement: .primaryAction) {
-                        Button(AppLocalization.string("Open in Tasks", table: .tasks), action: openInTasks)
+                        Button(AppLocalization.string("Open in Tasks", table: .tasks)) { openInTasks(displayedTaskID) }
                             .accessibilityIdentifier("chatKanbanTask.openInTasks")
                     }
                 }

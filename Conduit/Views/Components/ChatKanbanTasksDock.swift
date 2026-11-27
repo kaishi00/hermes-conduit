@@ -63,9 +63,9 @@ struct ChatKanbanTasksDock: View {
             } while !Task.isCancelled
         }
         .sheet(isPresented: $showsSheet) {
-            ChatKanbanTasksSheet(appState: appState, tasks: tasks, canOpenInTasks: appState.canOpenChatKanbanTask) { task in
+            ChatKanbanTasksSheet(appState: appState, tasks: tasks, canOpenInTasks: appState.canOpenChatKanbanTask) { taskID in
                 showsSheet = false
-                appState.openChatKanbanTask(task)
+                appState.openChatKanbanTask(taskID: taskID)
             }
         }
     }
@@ -134,7 +134,8 @@ private struct ChatKanbanTasksSheet: View {
     /// Tasks shows this dashboard's boards: a far chat's tasks open here,
     /// on their own dashboard, but not there.
     let canOpenInTasks: Bool
-    let openInTasks: (ChatKanbanTask) -> Void
+    /// The task shown, by its id: a dependency opened from the chat's task too.
+    let openInTasks: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var opened: ChatKanbanTaskSheet?
     @State private var loadingID: String?
@@ -170,7 +171,7 @@ private struct ChatKanbanTasksSheet: View {
         }
         .presentationDetents([.medium, .large])
         .sheet(item: $opened) { sheet in
-            KanbanTaskDetailView(task: sheet.task, openInTasks: canOpenInTasks ? { openInTasks(sheet.chatTask) } : nil)
+            KanbanTaskDetailView(task: sheet.task, openInTasks: canOpenInTasks ? openInTasks : nil)
                 .environment(sheet.store)
                 .environmentObject(appState)
                 .presentationDetents([.large])
@@ -189,7 +190,7 @@ private struct ChatKanbanTasksSheet: View {
             do {
                 let found = try await appState.loadChatKanbanTask(task)
                 guard request == asked else { return }
-                opened = ChatKanbanTaskSheet(chatTask: task, store: found.store, task: found.task)
+                opened = ChatKanbanTaskSheet(store: found.store, task: found.task)
             } catch is CancellationError {
                 return
             } catch {
@@ -247,7 +248,6 @@ private struct ChatKanbanTasksSheet: View {
 /// One of the chat's Kanban tasks, open over the chat on its own board.
 private struct ChatKanbanTaskSheet: Identifiable {
     let id = UUID()
-    let chatTask: ChatKanbanTask
     let store: KanbanStore
     let task: KanbanTask
 }
