@@ -45,6 +45,7 @@ struct ChatPcControlDock: View {
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
             guard openChatID != nil, isShowing, isBusy else {
                 controlling = nil
+                stopFailed = false
                 return
             }
             let asked = openChatID
@@ -52,7 +53,10 @@ struct ChatPcControlDock: View {
                 let started = revision
                 let now = await appState.loadOpenChatPcControl()
                 guard !Task.isCancelled, openChatID == asked else { return }
-                if revision == started { controlling = now }
+                if revision == started {
+                    controlling = now
+                    if now == nil { stopFailed = false }
+                }
                 try? await Task.sleep(for: PcControlling.refreshInterval)
             } while !Task.isCancelled
         }
@@ -83,9 +87,14 @@ struct ChatPcControlDock: View {
                 let asked = openChatID
                 Task {
                     let stopped = await appState.stopPcControl(item)
-                    // Couldn't reach the host: the line comes back, saying so, for another try.
-                    guard !stopped, openChatID == asked else { return }
+                    // A read that started while Stop was on its way can't bring the line back.
                     revision += 1
+                    guard appState.activeSessionId == asked else { return }
+                    if stopped {
+                        controlling = nil
+                        return
+                    }
+                    // Couldn't reach the host: the line comes back, saying so, for another try.
                     controlling = item
                     stopFailed = true
                 }

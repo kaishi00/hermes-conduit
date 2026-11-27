@@ -2,7 +2,7 @@
 //  PcControl.swift
 //  Conduit
 //
-//  Control from Hermes (plugin 0.204+, `pc-asks`): which chat's bot is
+//  Control from Hermes (plugin 0.205+, `pc-asks`): which chat's bot is
 //  controlling which of the user's computers, from the plugin's
 //  `GET /pc/state`, for the line over that chat with Stop
 //  (`POST /pc/stop`). The ask itself is a confirm prompt

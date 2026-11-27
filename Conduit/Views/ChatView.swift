@@ -339,7 +339,7 @@ struct ChatView: View {
                     && (!appState.showSidebar || shell.hasChatBeside)
             )
             // The chat's bot controlling one of the user's computers, with Stop
-            // (Control from Hermes, plugin 0.204+).
+            // (Control from Hermes, plugin 0.205+).
             ChatPcControlDock(
                 appState: appState,
                 openChatID: appState.activeSessionId,

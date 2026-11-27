@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  Control from Hermes on the phone: whether the open chat's bot is
-//  controlling one of the user's computers, and Stop (plugin 0.204+).
+//  controlling one of the user's computers, and Stop (plugin 0.205+).
 //
 
 import Foundation

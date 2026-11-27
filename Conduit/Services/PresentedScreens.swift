@@ -68,7 +68,7 @@ struct PresentedRoom: Equatable {
 /// linked person's Hermes asks yours, and what the plugin's rule would answer
 /// waits for you. Only an answer there is to Share: a question has none, so
 /// it's answered with Say instead or Don't share.
-/// A computer's ask (Control from Hermes, plugin 0.204+): may a chat's bot
+/// A computer's ask (Control from Hermes, plugin 0.205+): may a chat's bot
 /// control the user's computer, where they run Conduit for desktop? The
 /// computer asks too; the first answer counts.
 struct PresentedComputer: Equatable {
@@ -615,7 +615,7 @@ final class PresentedScreensSync: ObservableObject {
     /// reply writes draws, a page in a card and a few tags as text, so
     /// Hermes hears it may use it where no card fits (plugin 0.199+,
     /// ReplyHTML). "pc-asks": a computer's ask (Control from Hermes),
-    /// answered Allow or Don't Allow (plugin 0.204+).
+    /// answered Allow or Don't Allow (plugin 0.205+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
                            "text-drafts", "email-texts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks",
                            "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards", "reply-html", "pc-asks"]

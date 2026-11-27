@@ -4624,6 +4624,7 @@ reaches the phone's notification, and the Watch shows it as one)
 **Open gaps**
 - The desktop polls only the current dashboard's bots, not another combined dashboard's.
 - The phone's line shows in the chat that's controlling; there's no line elsewhere (the chats list, another chat) while a bot controls a computer.
+- One chat controlling two computers at once shows only the first on the phone's line, and Stop stops that one.
 
 **Checked:** 2026-11-27, #3416 (the phone: notifier #1128, desktop#699)
 
