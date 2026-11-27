@@ -45,9 +45,13 @@ struct ReplySpeeds: Equatable {
         self.chatID = chatID
         let replies = (response["replies"] as? [[String: Any]]) ?? []
         for (index, reply) in replies.enumerated() {
+<<<<<<< HEAD
             guard let number = reply["tokens_per_s"] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { continue }
             let rate = number.doubleValue
             guard rate.isFinite, rate > 0 else { continue }
+=======
+            guard let rate = (reply["tokens_per_s"] as? NSNumber)?.doubleValue, rate.isFinite, rate > 0 else { continue }
+>>>>>>> 1bac39f085addedfd597a10e0f78c3040d64ff31
             if let row = Self.rowID(reply["row_id"]) {
                 byRow[row] = rate
             } else if index == replies.count - 1 {
@@ -74,9 +78,13 @@ struct ReplySpeeds: Equatable {
     }
 
     static func number(_ rate: Double) -> String {
+<<<<<<< HEAD
         let locale = AppLocalization.formattingLocale
         return (rate * 10).rounded() < 100
             ? rate.formatted(.number.precision(.fractionLength(1)).locale(locale))
             : rate.formatted(.number.precision(.fractionLength(0)).locale(locale))
+=======
+        rate < 10 ? rate.formatted(.number.precision(.fractionLength(1))) : rate.formatted(.number.precision(.fractionLength(0)))
+>>>>>>> 1bac39f085addedfd597a10e0f78c3040d64ff31
     }
 }

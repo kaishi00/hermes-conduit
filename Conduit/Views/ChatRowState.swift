@@ -87,10 +87,17 @@ struct ChatRowState: Equatable {
     init() {}
 
     /// The speed a reply's row shows: its saved row's, else, for the newest
+<<<<<<< HEAD
     /// reply once its turn is done, the newest turn's: one still drawn from
     /// the stream, or one whose row id arrived after the turn-end read.
     func replySpeed(for message: ChatMessage) -> Double? {
         if let row = message.rowId, let rate = replySpeeds[row] { return rate }
+=======
+    /// reply still drawn from the stream once its turn is done, the newest
+    /// turn's.
+    func replySpeed(for message: ChatMessage) -> Double? {
+        if let row = message.rowId { return replySpeeds[row] }
+>>>>>>> 1bac39f085addedfd597a10e0f78c3040d64ff31
         guard !isBusy, message.id == latestAssistantMessageID else { return nil }
         return unsavedReplySpeed
     }
@@ -120,8 +127,12 @@ struct ChatRowState: Equatable {
         followUpBoardRowID = cardsCanSend ? facts.followUpBoardRowID : nil
         cardTaps = appState.notifierPlugin.reports(RichCardActionContext.capability)
         pulseCards = appState.pulseCards(forChat: appState.activeSessionId)
+<<<<<<< HEAD
         // Not on a saved copy of another chat: the speeds are the live chat's.
         if appState.savedCopyScrollSessionKey == nil, let speeds = appState.replySpeedsOnScreen {
+=======
+        if let speeds = appState.replySpeedsOnScreen {
+>>>>>>> 1bac39f085addedfd597a10e0f78c3040d64ff31
             replySpeeds = speeds.byRow
             unsavedReplySpeed = speeds.unsaved
         }
