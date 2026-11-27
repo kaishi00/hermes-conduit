@@ -36,6 +36,14 @@ enum PictureClipboard {
     /// later picture on the clipboard.
     @MainActor private static var latestCopy = 0
 
+    /// Copies a picture's description. A picture copy still fetching then
+    /// leaves the clipboard alone, as a later picture copy would.
+    @MainActor
+    static func copyDescription(_ text: String) {
+        latestCopy += 1
+        UIPasteboard.general.string = text
+    }
+
     /// Copies the picture `item` fetches, at full size, else `shown` (the
     /// row's own copy) when the original can't be had. Buzzes when neither
     /// can, and tells VoiceOver when it's copied.
@@ -91,7 +99,7 @@ struct PictureMenu: ViewModifier {
                             Text(description)
                         }
                         Button {
-                            UIPasteboard.general.string = description
+                            PictureClipboard.copyDescription(description)
                         } label: {
                             Label(AppLocalization.string("Copy Description"), systemImage: "text.quote")
                         }
