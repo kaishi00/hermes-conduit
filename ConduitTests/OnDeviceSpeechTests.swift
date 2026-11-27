@@ -337,6 +337,41 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(asked.onMain, 0)
     }
 
+    /// A find waiting on another that the voices list changed under asks
+    /// iOS again rather than taking the stale answer (#3374's review).
+    @MainActor
+    func testAWaiterFindsAgainWhenTheVoicesChangeWhileItWaits() async {
+        let saved = IPhoneVoices.readInstalled
+        let savedSystem = IPhoneVoices.systemVoice
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.systemVoice = savedSystem
+            IPhoneVoices.forgetInstalled()
+        }
+        let asked = LockedCount()
+        let release = DispatchSemaphore(value: 0)
+        let started = expectation(description: "the first find asked iOS")
+        IPhoneVoices.systemVoice = { _ in
+            asked.add(onMain: Thread.isMainThread)
+            if asked.count == 1 {
+                started.fulfill()
+                release.wait()
+            }
+            return nil
+        }
+        IPhoneVoices.readInstalled = { [] }
+        IPhoneVoices.forgetInstalled()
+        let first = Task { await IPhoneVoices.voice(for: "en-US") }
+        let waiter = Task { await IPhoneVoices.voice(for: "en-US") }
+        await fulfillment(of: [started], timeout: 5)
+        for _ in 0..<5 { await Task.yield() }
+        // A voice downloaded while the first find was out.
+        IPhoneVoices.forgetInstalled()
+        release.signal()
+        _ = await (first.value, waiter.value)
+        XCTAssertEqual(asked.count, 2, "The waiter found again after the change")
+    }
+
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
         let eloquence = iPhoneVoice("com.apple.eloquence.en-US.Flo", "Flo", "en-US", quality: 2)
         let basic = iPhoneVoice("samantha", "Samantha", "en-US")

@@ -3804,39 +3804,56 @@ extension SessionPresentationCacheTests {
         XCTAssertFalse(onDisk().contains("row-streaming"))
     }
 
-    /// The pending tools store never reaches disk ahead of a sessions
-    /// write still waiting out its interval: a tool's side record goes once
-    /// the sessions store holds it (#3374's review).
-    func testThePendingToolsStoreWaitsForAWaitingSessionsWrite() throws {
+    /// A running tool's start reaches disk at once, as the crash-recovery
+    /// marker it is, while the sessions store keeps waiting out its
+    /// interval; a record only the waiting sessions write has folded in
+    /// stays on disk until that write lands (#3374's review).
+    func testAToolStartGoesAtOnceAndKeepsWhatTheWaitingSessionsWriteFolded() throws {
         let storage = FailingPresentationStorage()
         let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true, writeInterval: 60)
         let key = "conduit.sessionPresentation.v1"
-        func save(_ id: String) {
+        let toolsKey = "conduit.sessionPresentation.pendingTools.v1"
+        func onDisk(_ key: String) -> String { storage.data(forKey: key).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+        func save(_ id: String, _ session: String) {
             cache.save(
                 [ChatMessage(id: id, role: .assistant, content: "Reply", timestamp: "2024-01-01T10:00:00Z")],
                 profile: "default",
-                sessionIDs: ["session-a"]
+                sessionIDs: [session]
             )
         }
-        save("row-first")
+        func start(_ call: String) {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: "pending-\(call)", role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: call, name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: ["session-b"]
+            )
+        }
+        save("row-first", "session-a")
         cache.waitForQueuedWrites()
-        save("row-folded")
+        save("row-waiting", "session-a")
         cache.waitForQueuedWrites()
         XCTAssertEqual(storage.writeCount(key), 1, "The sessions write waits out its interval")
-        // The pending tools store's first write goes at once, and takes the
-        // waiting sessions write with it, first.
-        cache.recordPendingToolStart(
-            ChatMessage(
-                id: "pending", role: .tool, content: "", timestamp: "now",
-                tool: ToolActivity(id: "call-1", name: "terminal", input: "pwd", output: nil, status: .running)
-            ),
-            profile: "default",
-            sessionIDs: ["session-b"]
-        )
+
+        start("call-1")
         cache.waitForQueuedWrites()
-        XCTAssertEqual(storage.writeCount("conduit.sessionPresentation.pendingTools.v1"), 1)
-        XCTAssertEqual(storage.writeCount(key), 2)
-        XCTAssertTrue(storage.data(forKey: key).flatMap { String(data: $0, encoding: .utf8) }?.contains("row-folded") == true)
+        XCTAssertTrue(onDisk(toolsKey).contains("call-1"), "A start goes at once")
+        // The save folds call-1 into the sessions store, whose write waits.
+        save("row-b", "session-b")
+        start("call-2")
+        cache.waitForQueuedWrites()
+        XCTAssertEqual(storage.writeCount(key), 1, "The sessions store keeps its pacing")
+        XCTAssertTrue(onDisk(toolsKey).contains("call-2"), "A second start goes at once too")
+        XCTAssertTrue(onDisk(toolsKey).contains("call-1"), "Kept until the sessions write holding it lands")
+
+        let landed = expectation(description: "writes landed")
+        cache.notifyWhenPendingWritesLand { landed.fulfill() }
+        wait(for: [landed], timeout: 5)
+        XCTAssertTrue(onDisk(key).contains("row-b"))
+        XCTAssertTrue(onDisk(key).contains("call-1"), "The sessions store holds the folded tool")
+        XCTAssertFalse(onDisk(toolsKey).contains("call-1"), "Then the side record goes")
     }
 
     /// A store whose bytes haven't changed since its last write isn't
@@ -3904,8 +3921,7 @@ extension SessionPresentationCacheTests {
         // on removal (bytes unchanged since the last write aren't written
         // again, and count as landed), and another chat's keeps it from
         // emptying, so the removal's write to it needs the disk too (an
-        // empty store is removed, which always lands) and stays unlanded
-        // after the save below lands the sessions store.
+        // empty store is removed, which always lands).
         for (call, session) in [("call-1", "session-b"), ("call-2", "session-c")] {
             cache.recordPendingToolStart(
                 ChatMessage(
@@ -3926,6 +3942,9 @@ extension SessionPresentationCacheTests {
         wait(for: [failed], timeout: 5)
         XCTAssertNil(storage.data(forKey: FailingPresentationStorage.tombstonesKey), "Nothing landed")
 
+        // The pending tools store still can't be written, so its removal
+        // stays unlanded when the flush below retries it.
+        storage.failsPendingToolsWrites = true
         storage.failsStoreWrites = false
         storage.failsTombstoneWrites = false
         cache.save(
@@ -4171,6 +4190,12 @@ private final class FailingPresentationStorage: SessionPresentationStorage {
     private var stored: [String: Data] = [:]
     private var failing = false
     private var failingTombstones = false
+    private var failingPendingTools = false
+
+    var failsPendingToolsWrites: Bool {
+        get { lock.withLock { failingPendingTools } }
+        set { lock.withLock { failingPendingTools = newValue } }
+    }
 
     var failsStoreWrites: Bool {
         get { lock.withLock { failing } }
@@ -4196,6 +4221,7 @@ private final class FailingPresentationStorage: SessionPresentationStorage {
     func storeData(_ data: Data, forKey key: String) -> Bool {
         lock.withLock {
             guard key == Self.tombstonesKey ? !failingTombstones : !failing else { return false }
+            guard key != "conduit.sessionPresentation.pendingTools.v1" || !failingPendingTools else { return false }
             stored[key] = data
             writes[key, default: 0] += 1
             return true
