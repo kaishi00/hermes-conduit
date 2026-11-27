@@ -61,14 +61,18 @@ final class ChatBackSwipe: ObservableObject {
     private var dragStart: CGPoint?
 
     func moved(_ value: DragGesture.Value, held: Bool) {
+        moved(from: value.startLocation, by: value.translation, held: held)
+    }
+
+    func moved(from start: CGPoint, by translation: CGSize, held: Bool) {
         // A drag the system took (never ended) leaves its state behind:
         // a new start point is a new drag.
-        if value.startLocation != dragStart {
+        if start != dragStart {
             drag = BackSwipeDrag()
-            dragStart = value.startLocation
+            dragStart = start
         }
-        drag.moved(value.translation, held: held)
-        let shift = drag.shift(for: value.translation)
+        drag.moved(translation, held: held)
+        let shift = drag.shift(for: translation)
         if shift != self.shift { self.shift = shift }
     }
 
@@ -76,9 +80,13 @@ final class ChatBackSwipe: ObservableObject {
     /// back to its place either way; going back slides or zooms it on
     /// from there.
     func ended(_ value: DragGesture.Value, held: Bool, reduceMotion: Bool) -> Bool {
-        if value.startLocation != dragStart { drag = BackSwipeDrag() }
-        drag.moved(value.translation, held: held)
-        let goesBack = drag.goesBack(value.translation)
+        ended(from: value.startLocation, at: value.translation, held: held, reduceMotion: reduceMotion)
+    }
+
+    func ended(from start: CGPoint, at translation: CGSize, held: Bool, reduceMotion: Bool) -> Bool {
+        if start != dragStart { drag = BackSwipeDrag() }
+        drag.moved(translation, held: held)
+        let goesBack = drag.goesBack(translation)
         release(reduceMotion: reduceMotion)
         return goesBack
     }

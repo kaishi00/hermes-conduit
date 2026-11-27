@@ -1589,6 +1589,29 @@ extension BotModeTests {
         XCTAssertFalse(BackSwipeDrag().goesBack(CGSize(width: 120, height: 0)), "never moved")
     }
 
+    /// The swipe the screen holds: a new start point is a new drag (one the
+    /// system took never ended), a let-go returns the chat to its place, and
+    /// a second release changes nothing.
+    @MainActor
+    func testTheChatsSwipeStartsAfreshAndComesBackWhenLetGo() {
+        let swipe = ChatBackSwipe()
+        swipe.moved(from: CGPoint(x: 100, y: 300), by: CGSize(width: 20, height: 2), held: true)
+        swipe.moved(from: CGPoint(x: 100, y: 300), by: CGSize(width: 90, height: 2), held: false)
+        XCTAssertEqual(swipe.shift, 0, "held at its first step")
+
+        // Taken by the system: the next drag, from elsewhere, starts clean.
+        swipe.moved(from: CGPoint(x: 140, y: 200), by: CGSize(width: 20, height: 0), held: false)
+        swipe.moved(from: CGPoint(x: 140, y: 200), by: CGSize(width: 70, height: 4), held: false)
+        XCTAssertEqual(swipe.shift, 70, "follows the finger")
+        XCTAssertFalse(swipe.ended(from: CGPoint(x: 140, y: 200), at: CGSize(width: 70, height: 4), held: false, reduceMotion: true), "short of the line")
+        XCTAssertEqual(swipe.shift, 0, "back in its place")
+
+        swipe.moved(from: CGPoint(x: 140, y: 200), by: CGSize(width: 20, height: 0), held: false)
+        XCTAssertTrue(swipe.ended(from: CGPoint(x: 140, y: 200), at: CGSize(width: 120, height: 10), held: false, reduceMotion: true))
+        swipe.release(reduceMotion: true)
+        XCTAssertEqual(swipe.shift, 0)
+    }
+
     /// The slide is the transcript's own, asked for by the screen: the
     /// chat on screen leaves as Back is tapped, and the one opened comes in
     /// with its rows, whichever of the screen and the transcript hears of
