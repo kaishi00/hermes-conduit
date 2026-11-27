@@ -87,7 +87,11 @@ extension AppState {
         guard let chatID = activeSessionId,
               chatID == sessionID || knownSessionIDs(for: sessionID).contains(chatID),
               !shownChat.startedAdmissionIDs.contains(admissionID) else { return }
-        if shownChat.forwardedSendTimes.count >= 32 { shownChat.forwardedSendTimes.removeAll() }
+        if shownChat.forwardedSendTimes.count >= 32 {
+            // Only sends no longer held let go of their stamps.
+            let held = Set(shownChat.queuedSendOrder)
+            shownChat.forwardedSendTimes = shownChat.forwardedSendTimes.filter { held.contains($0.key) }
+        }
         shownChat.forwardedSendTimes[admissionID] = Date()
         if let index = messages.firstIndex(where: { $0.id == rowID }) {
             holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
@@ -107,7 +111,12 @@ extension AppState {
     func admissionStarting(named admissionID: String?, by client: HermesClient?) -> String? {
         if let admissionID { return admissionID }
         guard let client, !client.speaksSessionAuthority, authorityQueue.readOnly else { return nil }
-        // A read already brought back the send this start is for.
+        return forwardedSendStarting()
+    }
+
+    /// The forwarded send an unnamed `message.start` begins: one a read
+    /// already brought back (its start is its own), else the oldest held.
+    func forwardedSendStarting() -> String? {
         if !shownChat.readStartedAdmissions.isEmpty { return shownChat.readStartedAdmissions.removeFirst() }
         return shownChat.queuedSendOrder.first
     }

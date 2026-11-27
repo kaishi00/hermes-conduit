@@ -121,6 +121,21 @@ final class ChatLiveWorkTests: XCTestCase {
         XCTAssertNil(appState.admissionStarting(named: nil, by: nil), "No client: nothing to name")
     }
 
+    func testAnUnnamedStartAReadAlreadyAnsweredBringsBackNoOtherSend() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        appState.messages = [ChatMessage(id: "local-1", role: .user, content: "first", timestamp: "1"),
+                             ChatMessage(id: "local-2", role: .user, content: "second", timestamp: "2")]
+        appState.holdForwardedSend(admissionID: "adm-1", rowID: "local-1", text: "first", sessionID: "api-1")
+        appState.holdForwardedSend(admissionID: "adm-2", rowID: "local-2", text: "second", sessionID: "api-1")
+        let second = QueuedPrompt(admissionID: "adm-2", text: "second", status: .queued, sequence: 2)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [second], startedAdmissions: ["adm-1"]), previous: nil, for: "api-1")
+        XCTAssertEqual(appState.messages.map(\.id), ["local-1"])
+        // adm-1's own start, coming after the read, is its own; the next one is adm-2's.
+        XCTAssertEqual(appState.forwardedSendStarting(), "adm-1")
+        XCTAssertEqual(appState.forwardedSendStarting(), "adm-2")
+    }
+
     private func makeAppState() -> AppState {
         let suite = "ChatLiveWorkTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else { fatalError("Failed to create test UserDefaults suite") }
