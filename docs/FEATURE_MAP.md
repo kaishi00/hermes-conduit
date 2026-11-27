@@ -4270,7 +4270,7 @@ desktop's Beside pane reads its own)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
+**Checked:** 2026-11-27, #3417 (saved copy and kept-beside chat recorded, a late row id keeps the newest speed, notifier #1129 noted); 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
 
 ## /new in a Bot Chat
 
