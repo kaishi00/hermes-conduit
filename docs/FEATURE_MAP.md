@@ -6715,7 +6715,7 @@ docs name no such line
 
 **Code**
 - The route: `notifier/dashboard/api/chat_tasks.py` (chat_tasks, `_chain_ids` through session_usage's `_chain`, `_boards`, `_board_tasks`), `notifier/dashboard/api/capabilities.py` (`chat-kanban-tasks`); tests `notifier/tests/test_chat_tasks.py`
-- The phone: `Conduit/Models/ChatKanbanTasks.swift` (ChatKanbanTask, `shown`, `label`), `Conduit/Services/AppState+ChatKanbanTasks.swift` (loadOpenChatKanbanTasks, openChatKanbanTask, chatKanbanTaskStore, loadChatKanbanTask), `Conduit/Views/Components/ChatKanbanTasksDock.swift` (ChatKanbanTasksSheet, ChatKanbanTaskSheet), `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (`openInTasks`), `Conduit/Services/KanbanStore.swift` (`keepsBoardPick`), `Conduit/Views/ChatView.swift` (bottomBar); tests `ConduitTests/ChatKanbanTasksTests.swift`, `ConduitTests/KanbanTests.swift` (testStoreThatKeepsNoBoardPickLeavesTasksPickAlone)
+- The phone: `Conduit/Models/ChatKanbanTasks.swift` (ChatKanbanTask, `shown`, `label`), `Conduit/Services/AppState+ChatKanbanTasks.swift` (loadOpenChatKanbanTasks, openChatKanbanTask, loadChatKanbanTask), `Conduit/Views/Components/ChatKanbanTasksDock.swift` (ChatKanbanTasksSheet, ChatKanbanTaskSheet), `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (`openInTasks`), `Conduit/Services/KanbanStore.swift` (`keepsBoardPick`), `Conduit/Views/ChatView.swift` (bottomBar); tests `ConduitTests/ChatKanbanTasksTests.swift`, `ConduitTests/KanbanTests.swift` (testStoreThatKeepsNoBoardPickLeavesTasksPickAlone)
 - The desktop: `desktop/src/renderer/src/components/ChatTasksDock.tsx` (ChatTaskPanel), `desktop/src/renderer/src/components/KanbanBoard.tsx` (TaskPanel's `extra`); tests `desktop/test/chatTaskPanel.test.ts`
 
 **Rulings**
@@ -6729,7 +6729,7 @@ docs name no such line
 **Open gaps**
 - A task Hermes creates without a session (from the CLI or the dashboard) can't be told apart as the chat's, so it never shows.
 
-**Checked:** 2026-11-27, #PRNUM with desktop#651 (a row opens its task over the chat, Open in Tasks separate; desktop issue 593); 2026-11-25, #3304 with notifier #1083 and desktop#559 (added: the line on phone and desktop, the plugin's route; desktop issue 553)
+**Checked:** 2026-11-27, #3375 with desktop#651 (a row opens its task over the chat, Open in Tasks separate; desktop issue 593); 2026-11-25, #3304 with notifier #1083 and desktop#559 (added: the line on phone and desktop, the plugin's route; desktop issue 553)
 
 ## Subagent settings
 

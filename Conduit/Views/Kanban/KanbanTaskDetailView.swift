@@ -287,7 +287,7 @@ struct KanbanTaskDetailView: View {
                 }
                 if let openInTasks {
                     ToolbarItem(placement: .primaryAction) {
-                        Button(AppLocalization.string("Open in Tasks", table: .chat), action: openInTasks)
+                        Button(AppLocalization.string("Open in Tasks", table: .tasks), action: openInTasks)
                             .accessibilityIdentifier("chatKanbanTask.openInTasks")
                     }
                 }

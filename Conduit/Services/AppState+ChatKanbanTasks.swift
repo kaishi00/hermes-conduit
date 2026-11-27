@@ -45,30 +45,29 @@ extension AppState {
         kanbanTaskOpenRequest = KanbanTaskOpenRequest(taskID: task.taskID, dashboardID: activeDashboardID)
     }
 
-    /// A Kanban store on the chat on screen's own dashboard (a far chat's
-    /// through its kept connection), for one of its tasks opened over the
-    /// chat (desktop issue 593), so reading it never leaves the chat. Its
-    /// board isn't kept as Tasks' pick. Nil without a connection.
-    func chatKanbanTaskStore() -> KanbanStore? {
-        onChatRuntimeValue(unreachable: nil) {
+    /// One of the chat's tasks, read on its own board for its screen over
+    /// the chat (desktop issue 593), so reading it never leaves the chat: a
+    /// Kanban store on the chat on screen's own dashboard (a far chat's
+    /// through its kept connection) with that board loaded, and the task.
+    /// The board isn't kept as Tasks' pick. Throws what the read threw.
+    func loadChatKanbanTask(_ task: ChatKanbanTask) async throws -> (store: KanbanStore, task: KanbanTask) {
+        let store: KanbanStore? = onChatRuntimeValue(unreachable: nil) {
             guard isConnected, let bridge = dashboardTicketBridge else { return nil }
             let store = KanbanStore(keepsBoardPick: false)
             store.configure(requester: bridge, serverIdentity: bridge.baseURL,
                             answers: screenAnswers(profile: KeptRoute.everyProfile))
             return store
         }
-    }
-
-    /// The chat's task on its own board, that board loaded in `store`
-    /// (`chatKanbanTaskStore`), for its sheet. Throws what the read threw.
-    func loadChatKanbanTask(_ task: ChatKanbanTask, in store: KanbanStore) async throws -> KanbanTask {
+        guard let store else {
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks))
+        }
         // Archived too, as the Tasks page's lookup loads them.
         await store.selectBoard(slug: task.board, includeArchived: true)
         guard store.loadedBoardSlug == task.board else {
             throw KanbanServiceError.invalidResponse(store.errorMessage
                 ?? AppLocalization.string("Couldn't find Kanban task \(task.taskID) on your boards.", table: .tasks))
         }
-        return try await store.fetchTaskDetail(id: task.taskID).task
+        return (store, try await store.fetchTaskDetail(id: task.taskID).task)
     }
 }
 

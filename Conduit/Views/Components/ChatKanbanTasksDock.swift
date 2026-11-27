@@ -149,7 +149,7 @@ private struct ChatKanbanTasksSheet: View {
                     ForEach(tasks) { task in
                         Button { open(task) } label: { row(task) }
                             .buttonStyle(.plain)
-                            .accessibilityHint(Text(AppLocalization.string("Opens the task on the board", table: .pulse)))
+                            .accessibilityHint(Text(AppLocalization.string("Opens the task here, over the chat", table: .chat)))
                     }
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
@@ -183,18 +183,13 @@ private struct ChatKanbanTasksSheet: View {
         request += 1
         let asked = request
         failure = nil
-        guard let store = appState.chatKanbanTaskStore() else {
-            loadingID = nil
-            failure = AppLocalization.string("Kanban is not connected.", table: .tasks)
-            return
-        }
         loadingID = task.id
         Task {
             defer { if request == asked { loadingID = nil } }
             do {
-                let found = try await appState.loadChatKanbanTask(task, in: store)
+                let found = try await appState.loadChatKanbanTask(task)
                 guard request == asked else { return }
-                opened = ChatKanbanTaskSheet(chatTask: task, store: store, task: found)
+                opened = ChatKanbanTaskSheet(chatTask: task, store: found.store, task: found.task)
             } catch is CancellationError {
                 return
             } catch {
