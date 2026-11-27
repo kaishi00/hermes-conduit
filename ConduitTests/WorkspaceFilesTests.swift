@@ -203,6 +203,32 @@ extension HermesVoiceGatewayTimeoutTests {
         } catch {}
     }
 
+    /// Desktop issue 686: a folder the lookup found comes back with its
+    /// trailing slash, so the Folder opens it as a folder.
+    func testAFolderTheLookupFoundEndsInItsSeparator() async throws {
+        var answer: [String: Any] = ["ok": true, "path": "/Users/r/project/.agents/skills/x", "via": "chat", "isDirectory": true]
+        let client = workspaceClient(answer: { _, _, _ in answer }, requests: { _, _, _ in })
+        let folder = try await client.resolve(path: ".agents/skills/x/", sessionIDs: ["live-1"])
+        XCTAssertEqual(folder, "/Users/r/project/.agents/skills/x/")
+        answer = ["ok": true, "path": "/Users/r/project/a.md", "via": "folder", "isDirectory": false]
+        let file = try await client.resolve(path: "a.md", sessionIDs: ["live-1"])
+        XCTAssertEqual(file, "/Users/r/project/a.md")
+
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("/Users/r/project/.agents/skills/x/"), "/Users/r/project/.agents/skills/x")
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("C:\\dev\\app\\"), "C:\\dev\\app")
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("/"), "/")
+        XCTAssertNil(WorkspaceFolderView.revealedFolder("/Users/r/project/a.md"))
+        // A POSIX name ending in a backslash is a name, not a folder (issue 2303).
+        XCTAssertNil(WorkspaceFolderView.revealedFolder("/srv/reports\\"))
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("/srv/reports\\/"), "/srv/reports\\")
+        // A relative name isn't a Windows path: its backslash is its own.
+        XCTAssertNil(WorkspaceFolderView.revealedFolder("reports\\"))
+        XCTAssertEqual(WorkspaceFolderView.revealedFolder("\\\\nas\\share\\"), "\\\\nas\\share")
+        answer = ["ok": true, "path": "/srv/reports\\", "via": "folder", "isDirectory": true]
+        let named = try await client.resolve(path: "reports\\/", sessionIDs: ["live-1"])
+        XCTAssertEqual(named, "/srv/reports\\/")
+    }
+
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {
         var sent: [String: Any]?
         var path = ""

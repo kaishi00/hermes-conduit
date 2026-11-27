@@ -10,6 +10,9 @@ final class WorkspaceFilesClient {
     /// `GET /workspace/resolve` (plugin 0.132): where a file a reply names
     /// by its name or a relative path is (issue 1809).
     static let resolveCapability = "workspace-resolve"
+    /// The same lookup finds folders and says so (plugin 0.205.5, desktop
+    /// issue 686): a found folder comes back with its trailing slash.
+    static let resolveFoldersCapability = "workspace-resolve-folders"
     /// `POST /workspace/duplicate` with `to` (plugin 0.164.13): Copy, then
     /// Paste into another folder (issue 1438).
     static let copyCapability = "workspace-copy"
@@ -172,7 +175,15 @@ final class WorkspaceFilesClient {
         if response["path"] is NSNull { return nil }
         guard let path = response["path"] as? String else { throw Failure.malformed }
         let found = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        return found.isEmpty ? nil : found
+        guard !found.isEmpty else { return nil }
+        // A folder ends in its separator, so the Folder opens it as one.
+        // A POSIX name may end in a backslash (issue 2303): only a Windows
+        // path's backslash is a separator.
+        let windows = found.range(of: #"^[A-Za-z]:\\"#, options: .regularExpression) != nil
+        if response["isDirectory"] as? Bool == true, !found.hasSuffix("/"), !(windows && found.hasSuffix("\\")) {
+            return found + (windows ? "\\" : "/")
+        }
+        return found
     }
 
     // MARK: - Requests

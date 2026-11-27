@@ -877,8 +877,11 @@ struct WorkspaceFolderView: View {
         if entry.isDirectory {
             // A folder from search or Recently Changed: shown open in the tree.
             query = ""
+            let scope = explorer.scope
             Task {
                 _ = await explorer.reveal(entry.path)
+                // The open folder changed meanwhile: this folder isn't its.
+                guard explorer.scope == scope else { return }
                 if !explorer.expanded.contains(entry.path), let message = await explorer.toggle(entry) {
                     failure = message
                 }
@@ -1002,6 +1005,12 @@ struct WorkspaceFolderView: View {
     /// A path a reply named: the chat's own folder when it's there, and the
     /// file opens, at its line for a search match.
     private func show(_ reveal: WorkspaceReveal) async {
+        // A folder (its path ends in a separator: a folder link, or one the
+        // plugin's lookup found) opens as a folder (desktop issue 686).
+        if let folder = Self.revealedFolder(reveal.path) {
+            await showFolder(folder)
+            return
+        }
         // The folder holding it, the chat's first: a file in none of them
         // opens to read, outside the tree, with nothing to change.
         let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) })
@@ -1024,6 +1033,59 @@ struct WorkspaceFolderView: View {
         // A later tap replaced this one: that one opens.
         guard !Task.isCancelled else { return }
         open(entry, line: reveal.line)
+    }
+
+    /// A revealed path that names a folder, without its trailing
+    /// separator; nil for a file.
+    static func revealedFolder(_ path: String) -> String? {
+        // A POSIX name may end in a backslash (issue 2303): only a Windows
+        // path (a drive's or a share's) takes a backslash as its separator.
+        let windows = path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil || path.hasPrefix("\\\\")
+        let ends = { (text: String) in text.hasSuffix("/") || (windows && text.hasSuffix("\\")) }
+        guard ends(path) else { return nil }
+        var folder = path
+        while folder.count > 1, ends(folder),
+              folder.range(of: #"^[A-Za-z]:[\\/]$"#, options: .regularExpression) == nil {
+            folder.removeLast()
+        }
+        return folder
+    }
+
+    /// A folder a reply named: shown open in the tree of the chat's or a
+    /// project's folder holding it, else opened as a folder of its own, as
+    /// Open Folder… opens one (kept in its list for this profile).
+    private func showFolder(_ folder: String) async {
+        query = ""
+        let profile = appState.workspaceProfile(far: far)
+        if let holder = roots.first(where: { Self.path(folder, isIn: $0.path) }),
+           AppState.normalizedWorkspacePath(folder) != AppState.normalizedWorkspacePath(holder.path) {
+            if root?.path != holder.path { rootPath = holder.path }
+            await explorer.open(root: holder.path, profile: profile)
+            // Another profile opened meanwhile: this folder isn't its.
+            guard !Task.isCancelled, appState.workspaceProfile(far: far) == profile else { return }
+            let scope = explorer.scope
+            var entry = await explorer.reveal(folder)
+            // Another folder opened meanwhile: this folder isn't its.
+            guard !Task.isCancelled, explorer.scope == scope else { return }
+            entry.isDirectory = true
+            open(entry)
+            return
+        }
+        if let same = roots.first(where: { AppState.normalizedWorkspacePath($0.path) == AppState.normalizedWorkspacePath(folder) }) {
+            rootPath = same.path
+            await explorer.open(root: same.path, profile: profile)
+            return
+        }
+        // A relative name nothing placed (no lookup, no chat folder) isn't a
+        // folder to keep in the profile's list: say it wasn't found.
+        guard AppState.isAbsoluteWorkspacePath(folder) || folder.hasPrefix("\\\\") else {
+            let name = folder.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? folder
+            failure = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.", table: .chat)
+            return
+        }
+        appState.rememberOpenedWorkspaceFolder(folder, profile: profile, far: far)
+        rootPath = folder
+        await explorer.open(root: folder, profile: profile)
     }
 
     // MARK: - Changing
