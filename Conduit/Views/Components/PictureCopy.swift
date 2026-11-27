@@ -46,12 +46,14 @@ enum PictureClipboard {
 
     /// Copies the picture `item` fetches, at full size, else `shown` (the
     /// row's own copy) when the original can't be had. Buzzes when neither
-    /// can, and tells VoiceOver when it's copied.
+    /// can, and tells VoiceOver when it's copied. Returns the copy's work,
+    /// which tests wait on.
     @MainActor
-    static func copy(_ item: ImageGalleryItem?, shown: UIImage?) {
+    @discardableResult
+    static func copy(_ item: ImageGalleryItem?, shown: UIImage?) -> Task<Void, Never> {
         latestCopy += 1
         let copyNumber = latestCopy
-        Task { @MainActor in
+        return Task { @MainActor in
             var pasted: [String: Any]?
             if let item, let file = await item.load().file {
                 pasted = await Task.detached(priority: .userInitiated) { () -> [String: Any]? in
@@ -62,10 +64,11 @@ enum PictureClipboard {
                     return PictureClipboard.pasteboardItem(for: data)
                 }.value
             }
+            // A later copy took the clipboard meanwhile: nothing to encode.
+            guard copyNumber == latestCopy else { return }
             if pasted == nil, let png = shown?.pngData() {
                 pasted = [UTType.png.identifier: png]
             }
-            guard copyNumber == latestCopy else { return }
             guard let pasted else {
                 Haptics.error()
                 return
