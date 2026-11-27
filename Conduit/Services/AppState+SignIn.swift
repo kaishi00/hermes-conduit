@@ -56,7 +56,7 @@ extension AppState {
                 guard let self, self.activeClientEpoch == epoch else { return }
                 self.handleStreamEvent(event, turnGeneration: turnGeneration)
                 if case .messageStart(let sessionID) = event,
-                   let admissionID = self.admissionStarting(named: admissionID, by: client) {
+                   let admissionID = self.admissionStarting(named: admissionID, by: client, in: sessionID) {
                     self.noteQueuedTurnStarted(sessionID: sessionID, admissionID: admissionID)
                 }
             }
