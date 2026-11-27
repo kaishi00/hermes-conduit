@@ -1294,6 +1294,45 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNil(appState.newChatLinkLaunch)
     }
 
+    /// A link repeating the New Chat launch already on its way rides it,
+    /// as the shortcut does: the launch goes on, and the link's text waits
+    /// for the chat it opens.
+    func testNewChatLinkRidesTheSameLaunchInFlight() throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-ride.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d5")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        let inFlight = try XCTUnwrap(appState.widgetLaunchCoordinator.pendingLink)
+        appState.openAppLink(.newChat(NewChatLink(text: "Hello")))
+
+        XCTAssertEqual(appState.widgetLaunchCoordinator.pendingLink, inFlight, "the launch in flight goes on")
+        XCTAssertEqual(appState.newChatLinkLaunch?.link, inFlight)
+        XCTAssertEqual(appState.newChatLinkLaunch?.request.text, "Hello")
+    }
+
+    /// A shared draft's launch isn't ridden: its text would land over the
+    /// link's, so the link starts nothing and the draft's launch goes on.
+    func testNewChatLinkLeavesASharedDraftsLaunchAlone() throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-link-draft.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d6")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        let inFlight = try XCTUnwrap(appState.widgetLaunchCoordinator.pendingLink)
+        let draft = SharedDraftLaunch(envelopeID: UUID(), link: inFlight)
+        appState.sharedDraftLaunch = draft
+        appState.openAppLink(.newChat(NewChatLink(text: "Hello")))
+
+        XCTAssertEqual(appState.widgetLaunchCoordinator.pendingLink, inFlight)
+        XCTAssertEqual(appState.sharedDraftLaunch, draft)
+        XCTAssertNil(appState.newChatLinkLaunch)
+    }
+
     private func connectedLinkAppState(defaults: UserDefaults, current: SavedDashboard, created: String) throws -> AppState {
         let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
         appState.newChatFocusesComposer = false
