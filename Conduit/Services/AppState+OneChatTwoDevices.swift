@@ -410,6 +410,11 @@ extension AppState {
             let frontier = appState.shownChat.durablePersistedRowIDs
             let messageIDs = Set(appState.messages.map(\.id))
             let last = appState.messages.last?.id
+            // The newest shown row the store vouches for. An idle Bot Chat's
+            // rows after it are the shown rows' own tool cards and reasoning
+            // (derived ids) or local display rows (notes, call cards), which
+            // the page never holds, so they can't anchor it.
+            let anchor = appState.messages.last(where: { frontier.contains($0.id) })?.id
             let wasEmpty = appState.shownChat.persistedOrderingFrontier.isPositivelyEmpty
             let outcome = await appState.foregroundPersistedTailOutcome(sessionId: storedID, profile: profile, using: bridge)
             switch outcome {
@@ -438,7 +443,7 @@ extension AppState {
             }
             let rows: [ChatMessage]
             switch appState.foregroundFreshnessVerdict(
-                outcome, localFrontier: frontier, localMessageIDs: messageIDs, lastLocalMessageID: last,
+                outcome, localFrontier: frontier, localMessageIDs: messageIDs, lastLocalMessageID: anchor,
                 requestedSessionID: storedID, runtimeSessionID: sessionID, livenessIsRunning: false, locallyOwnedTurn: nil
             ) {
             case let .advanced(_, newRows):
@@ -446,13 +451,13 @@ extension AppState {
             case .unchanged:
                 appState.botChatTailRead.noteRead(generation: generation)
                 return
-            case .inconclusive where last == nil && wasEmpty:
-                // Every normalized row comes from the page, tool cards and
-                // reasoning rows (derived ids) included.
-                guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else {
-                    appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
-                    return
-                }
+            case .inconclusive where anchor == nil && wasEmpty && !transcript.messages.isEmpty:
+                // A chat proven empty (local display rows aside) has nothing to
+                // anchor on and every row of the newest page is new: all of
+                // them merge, tool cards and reasoning rows (derived ids)
+                // included. A full page leaves Load earlier for the rest (the
+                // window takes the page's canLoadEarlier). A page of hidden
+                // rows only is asked again like any unproven one.
                 rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
             default:
                 // No ordering proof yet (the tail not anchored, or the
