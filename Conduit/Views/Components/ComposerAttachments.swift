@@ -114,9 +114,12 @@ enum AttachmentTypePolicy {
     /// The real file name when the system gave one, with an extension that
     /// matches the content; otherwise "photo"/"video"/"file" plus one.
     static func filename(suggested: String?, type: UTType?, ordinal: Int = 1) -> String {
-        let trimmed = (suggested ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = Substring((suggested ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+        // "Apple." has no extension, and would become "Apple..png" (#3366).
+        while trimmed.last == "." { trimmed.removeLast() }
         let preferredExtension = type?.preferredFilenameExtension
         if !trimmed.isEmpty {
+            let trimmed = String(trimmed)
             let currentExtension = (trimmed as NSString).pathExtension
             guard currentExtension.isEmpty, let preferredExtension else { return trimmed }
             return "\(trimmed).\(preferredExtension)"

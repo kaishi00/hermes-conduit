@@ -823,8 +823,8 @@ struct PhonePersonRow: View {
                   systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
-            // The iPad app on a Mac has no limited access picker to open.
-            if #available(iOS 18.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
+            // Only where the picker is attached (not the iPad app on a Mac).
+            if PhoneContactAccessPicker.isAvailable() {
                 Button("Let Conduit see them", action: allowAccess)
                     .scaledFont(.caption.weight(.semibold))
                     .buttonStyle(.borderless)
@@ -855,8 +855,15 @@ private struct PhoneContactAccessPicker: ViewModifier {
     var onMac = ProcessInfo.processInfo.isiOSAppOnMac
     let done: () -> Void
 
+    /// Whether the picker can be attached here, so a button that opens it
+    /// shows only where it will open (#3371).
+    static func isAvailable(onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        if #available(iOS 18.0, *) { return !onMac }
+        return false
+    }
+
     func body(content: Content) -> AnyView {
-        if #available(iOS 18.0, *), !onMac {
+        if #available(iOS 18.0, *), Self.isAvailable(onMac: onMac) {
             return picker(content)
         }
         return AnyView(content)

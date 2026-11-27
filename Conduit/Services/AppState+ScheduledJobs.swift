@@ -331,11 +331,11 @@ extension AppState {
             id: id,
             lastActive: Self.integerValue(object["last_active"] ?? object["lastActive"]),
             model: stringValue(object["model"]),
-            preview: stringValue(object["preview"] ?? object["summary"]),
+            preview: stringValue(object["preview"]) ?? stringValue(object["summary"]),
             profile: stringValue(object["profile"]),
             startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
-            title: stringValue(object["title"] ?? object["name"]),
-            jobID: stringValue(object["job_id"] ?? object["cron_job_id"])
+            title: stringValue(object["title"]) ?? stringValue(object["name"]),
+            jobID: stringValue(object["job_id"]) ?? stringValue(object["cron_job_id"])
         )
     }
 
@@ -375,7 +375,9 @@ extension AppState {
     }
 
     private func stringValue(_ value: Any?) -> String? {
-        guard let value else { return nil }
+        // JSON null comes back as NSNull, which would describe itself as
+        // "<null>" (#3373).
+        guard let value, !(value is NSNull) else { return nil }
         let string = String(describing: value).trimmingCharacters(in: .whitespacesAndNewlines)
         return string.isEmpty ? nil : string
     }

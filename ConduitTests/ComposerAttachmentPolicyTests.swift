@@ -154,6 +154,22 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), png)
     }
 
+    func testANameEndingInADotStagesWithOneDot() throws {
+        // Most ways in name the file through filename(suggested:type:)
+        // first, which saw "Apple." as having no extension (#3366).
+        let name = AttachmentTypePolicy.filename(suggested: "Apple.", type: .png)
+        XCTAssertEqual(name, "Apple.png")
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "...", type: .png), "photo.png")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Apple.", type: .png, ordinal: 1), "Apple.png")
+        let png = try pngData(width: 40, height: 30)
+        let outcome = AttachmentStaging.finishStaging(
+            fileAt: try stagedFile(png, named: name), name: name, type: .png, limitMegabytes: 16
+        )
+        guard case .staged(let attachment) = outcome else { return XCTFail("Expected it staged, got \(outcome)") }
+        defer { URL(string: attachment.uri).map { try? FileManager.default.removeItem(at: $0) } }
+        XCTAssertEqual(attachment.name, "Apple.png")
+    }
+
     func testAStagedPictureWhoseExtensionLiesIsNamedByItsBytes() throws {
         let png = try pngData(width: 40, height: 30)
         let outcome = AttachmentStaging.finishStaging(

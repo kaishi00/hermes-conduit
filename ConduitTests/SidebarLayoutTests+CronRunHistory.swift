@@ -219,4 +219,45 @@ extension SidebarLayoutTests {
         let numeric = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-7f3a","job_id":42}"#.utf8))
         XCTAssertNil(numeric.jobID)
     }
+
+    func testAFloatEpochAndANullTitleKeepTheRunReadable() async throws {
+        // What a Hermes host answers for a fire it suppressed before the
+        // agent started (#3373).
+        let strict = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-1","title":null,"preview":"","last_active":1795700095.023133,"started_at":1795700095.023133}"#.utf8))
+        XCTAssertEqual(strict.lastActive, 1_795_700_095)
+        XCTAssertEqual(strict.startedAt, 1_795_700_095)
+        XCTAssertNil(strict.title)
+        XCTAssertEqual(strict.displayName, "local-1", "a blank preview is no name either")
+
+        // The route's answer as the sheet reads it. A numeric id is past
+        // the strict decode, so the last row checks the lenient path's
+        // null handling: its null title is no "<null>", and the name stands in.
+        let state = cronRunHistoryState()
+        let requester = CronRunsRequester()
+        requester.responsesByPath["/api/cron/jobs/aaaaaaaaaaaa/runs"] = [
+            "runs": [
+                ["id": "local-1", "title": NSNull(), "last_active": 1795700095.023133, "model": 7],
+                ["id": "local-2", "title": "Daily brief", "started_at": 1795700095.5],
+                ["id": 42, "title": NSNull(), "name": "Nightly sweep", "last_active": 1795700095.023133],
+            ],
+        ]
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester, gateway: nil)
+        XCTAssertEqual(state.cronRuns.map(\.displayName), ["local-1", "Daily brief", "Nightly sweep"])
+        XCTAssertFalse(state.cronRuns.contains { $0.displayName.contains("<null>") })
+        XCTAssertEqual(state.cronRuns.map(\.lastActive), [1_795_700_095, nil, 1_795_700_095])
+        XCTAssertEqual(state.cronRuns.map(\.startedAt), [nil, 1_795_700_095, nil])
+    }
+
+    func testARunsTimeReadsAsADateNotAnEpoch() {
+        let locale = Locale(identifier: "en_US")
+        let run = CronRun(id: "local-1", lastActive: 1_795_700_095, model: nil, preview: nil, profile: nil, startedAt: nil, title: nil)
+        let label = run.timeLabel(locale: locale)
+        XCTAssertFalse(label.isEmpty)
+        XCTAssertNil(label.range(of: #"\d{10}"#, options: .regularExpression), label)
+        let millis = CronRun(id: "local-1", lastActive: 1_795_700_095_000, model: nil, preview: nil, profile: nil, startedAt: nil, title: nil)
+        XCTAssertEqual(millis.timeLabel(locale: locale), label)
+        let started = CronRun(id: "local-1", lastActive: nil, model: nil, preview: nil, profile: nil, startedAt: 1_795_700_095, title: nil)
+        XCTAssertEqual(started.timeLabel(locale: locale), label, "the start stands in for a missing last activity")
+        XCTAssertEqual(CronRun(id: "x", lastActive: nil, model: nil, preview: nil, profile: nil, startedAt: nil, title: nil).timeLabel(), "")
+    }
 }

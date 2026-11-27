@@ -278,6 +278,51 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(heard.count, 1, "Audio for a sentence already stopped is dropped")
     }
 
+    @MainActor
+    func testTheEndOfSpeechBufferEndsTheSentence() {
+        let voice = SystemSpeechSynthesizer()
+        var heard: [Int] = []
+        var done = 0
+        let onAudio: @MainActor (Data, Double) -> Void = { data, _ in heard.append(data.count) }
+        // The voice is found in a task that can't run before this test
+        // returns, and by then the sentence has ended, so nothing is written.
+        voice.speak("Hello.", language: "en-US", onAudio: onAudio, onDone: { done += 1 })
+        let id = voice.utterance
+        voice.received(Data(count: 4), rate: 22_050, isEnd: false, id: id, number: 1, onAudio: onAudio)
+        voice.received(Data(), rate: 22_050, isEnd: true, id: id, number: 1, onAudio: onAudio)
+        XCTAssertEqual(done, 1, "iOS's empty last buffer ends the sentence")
+        XCTAssertNotEqual(voice.utterance, id)
+        voice.received(Data(count: 4), rate: 22_050, isEnd: false, id: id, number: 1, onAudio: onAudio)
+        voice.received(Data(), rate: 22_050, isEnd: true, id: id, number: 1, onAudio: onAudio)
+        XCTAssertEqual(heard, [4], "Later buffers for an ended sentence are dropped")
+        XCTAssertEqual(done, 1, "and it ends once")
+    }
+
+    @MainActor
+    func testOverlappingFindsOfOneVoiceAskIOSOnce() async {
+        let saved = IPhoneVoices.readInstalled
+        let savedSystem = IPhoneVoices.systemVoice
+        defer {
+            IPhoneVoices.readInstalled = saved
+            IPhoneVoices.systemVoice = savedSystem
+            IPhoneVoices.forgetInstalled()
+        }
+        let asked = LockedCount()
+        IPhoneVoices.systemVoice = { _ in
+            asked.add(onMain: Thread.isMainThread)
+            return nil
+        }
+        IPhoneVoices.readInstalled = { [] }
+        IPhoneVoices.forgetInstalled()
+        // Read Aloud starting while a Classic reply's first sentence is
+        // still finding the same voice (#3371).
+        async let one = IPhoneVoices.voice(for: "en-US")
+        async let two = IPhoneVoices.voice(for: "en-US")
+        _ = await (one, two)
+        XCTAssertEqual(asked.count, 1, "The second find waits on the first")
+        XCTAssertEqual(asked.onMain, 0)
+    }
+
     func testAScreenReaderVoiceNeverWinsOverAnyOtherVoice() {
         let eloquence = iPhoneVoice("com.apple.eloquence.en-US.Flo", "Flo", "en-US", quality: 2)
         let basic = iPhoneVoice("samantha", "Samantha", "en-US")
