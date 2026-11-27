@@ -266,7 +266,7 @@ enum ShareDraftNames {
         let ext = (name as NSString).pathExtension
         guard !ext.isEmpty else { return false }
         guard let type, type.conforms(to: .image) || type.conforms(to: .movie) else { return true }
-        if let own = type?.preferredFilenameExtension, own.caseInsensitiveCompare(ext) == .orderedSame { return true }
+        if let own = type.preferredFilenameExtension, own.caseInsensitiveCompare(ext) == .orderedSame { return true }
         guard let known = UTType(filenameExtension: ext) else { return false }
         return !known.isDynamic
     }
