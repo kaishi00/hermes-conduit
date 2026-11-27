@@ -1122,6 +1122,18 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-b"), [])
     }
 
+    /// A late slash result keeps only what it prints for its chat: one that
+    /// would send, fill the composer or run another command isn't a note.
+    func testOnlyAPrintedSlashResultIsKeptWhenItsChatHasLeft() {
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("exec"), "output": .string("Done.")])), "Done.")
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("plugin"), "message": .string("Hi")])), "Hi")
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("other"), "notice": .string("Note")])), "Note")
+        XCTAssertNil(AppState.printedSlashOutput(.object(["type": .string("exec"), "output": .string("")])))
+        for type in ["send", "skill", "prefill", "alias"] {
+            XCTAssertNil(AppState.printedSlashOutput(.object(["type": .string(type), "message": .string("words")])), type)
+        }
+    }
+
     /// Saved notes are kept to the newest within a count and a size, and
     /// the newest one always stays.
     func testSavedLocalNotesKeepTheNewest() {

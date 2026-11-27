@@ -427,7 +427,15 @@ extension AppState {
                 command: command.cleaned,
                 context: submissionContext
             )
-            guard isCurrentComposerSubmission(submissionContext) else { return }
+            guard isCurrentComposerSubmission(submissionContext) else {
+                // Its chat left the screen while Hermes ran it: what it
+                // printed is saved for that chat (issue 3394); nothing it
+                // would send or put in the composer runs.
+                if let output = Self.printedSlashOutput(result) {
+                    appendSlashOutput(output, context: submissionContext)
+                }
+                return
+            }
             await handleSlashResult(
                 result,
                 depth: 0,
@@ -442,9 +450,23 @@ extension AppState {
                 await refreshSessionControl(for: sessionId)
             }
         } catch {
-            guard isCurrentComposerSubmission(submissionContext) else { return }
+            // A failure after its chat left the screen is saved for that
+            // chat too (appendSlashOutput's stale-context branch); a
+            // cancelled command has nothing to say.
+            if error is CancellationError, !isCurrentComposerSubmission(submissionContext) { return }
             appendSlashOutput(Self.slashFailureNote(command: command.name, error: error), context: submissionContext)
         }
+    }
+
+    /// What a slash result only prints (`exec`, `plugin`, or a type Conduit
+    /// doesn't know), as `handleSlashResult` shows it; nil for one that
+    /// sends, fills the composer or runs another command.
+    static func printedSlashOutput(_ result: AnyCodable) -> String? {
+        let obj = result.objectValue ?? [:]
+        let type = obj["type"]?.stringValue ?? ""
+        guard !["send", "skill", "prefill", "alias"].contains(type) else { return nil }
+        let output = obj["output"]?.stringValue ?? obj["message"]?.stringValue ?? obj["notice"]?.stringValue ?? ""
+        return output.isEmpty ? nil : output
     }
 
     /// Hermes' `/queue` management words. Conduit can only add to the
