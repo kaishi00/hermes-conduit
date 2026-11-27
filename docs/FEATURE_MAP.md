@@ -3081,7 +3081,7 @@ dashboard-scoped) · VoiceOver (a heading is a header with its menu as
 actions, its value Collapsed or Expanded and Needs you) · README.md's Bots Home line · Watch,
 CarPlay and widgets (not needed: no bots list by category)
 
-**Desktop app:** has it: the Bots sidebar draws the same headings, folds them, files a bot from its right-click menu or by dropping it on a heading, renames, moves and deletes from a heading's right-click menu, other combined dashboards' bots included, the order synced as `bots.categories`; Edit Bot has the Category field, and this host's group chats are filed from their right-click menu or a drop on a heading, synced as `groups.categories` (desktop#708: its state in botCategories.ts, the headings in BotsHome.tsx).
+**Desktop app:** has it: the Bots sidebar draws the same headings, folds them, files a bot from its right-click menu or by dropping it on a heading, renames, moves and deletes from a heading's right-click menu, other combined dashboards' bots included, the order synced as `bots.categories`; Edit Bot has the Category field, and this host's group chats are filed from their right-click menu or a drop on a heading, synced as `groups.categories` (desktop#708, #713 and #716: `desktop/src/renderer/src/state/botCategories.ts`, the headings in `desktop/src/renderer/src/components/BotsHome.tsx`, the field in `desktop/src/renderer/src/components/BotEditor.tsx`).
 
 **Code**
 - Model: `Conduit/Models/BotCategories.swift` (BotCategoryTag, BotCategorySection, BotCategories: tag, patch, tag(named:among:), sections, moving, renaming), `Conduit/Services/BotModeModels.swift` (BotProfile.category, read in decodeRow and kept in the roster copy)
@@ -3106,7 +3106,7 @@ CarPlay and widgets (not needed: no bots list by category)
 - Hermes Desktop's sections for group chats are on that computer, so a room it filed shows under Group Chats in Conduit, and one Conduit filed shows unfiled there.
 - Hermes Desktop's order of sections and its empty sections are its own local storage, so its order and Conduit's can differ.
 
-**Checked:** 2026-11-27, #3426 (added, with desktop#708; Edit Bot's Category and group chats filed, in the same PRs).
+**Checked:** 2026-11-27, #3428 (a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
 
 ## Bots: create and edit
 
