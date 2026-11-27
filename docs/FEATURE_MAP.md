@@ -3106,7 +3106,7 @@ CarPlay and widgets (not needed: no bots list by category)
 - Hermes Desktop's sections for group chats are on that computer, so a room it filed shows under Group Chats in Conduit, and one Conduit filed shows unfiled there.
 - Hermes Desktop's order of sections and its empty sections are its own local storage, so its order and Conduit's can differ.
 
-**Checked:** 2026-11-27, #3428 (a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
+**Checked:** 2026-11-27, #3430 (a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
 
 ## Bots: create and edit
 
