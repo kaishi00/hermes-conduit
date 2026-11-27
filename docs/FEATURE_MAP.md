@@ -4288,7 +4288,9 @@ beside its time on the desktop. The notifier measures it: Hermes'
 `post_api_request` hook reports every model call of a turn with the
 provider's token counts and its times, the plugin adds up the turn's output
 tokens over the time the model spent writing, and its route ties each turn to
-the reply it ended on (asked about by xilian82, 2026-11-27).
+the reply it ended on (asked about by xilian82, 2026-11-27). On the desktop
+a second switch, Show reply speed in the composer, puts the newest reply's
+speed in a chip after the context ring (desktop#718).
 
 **Siblings:** the phone's reply row (done) · the desktop's reply head (done:
 its row shows only on hover) · the Settings switch on each, with its caption
@@ -4303,9 +4305,12 @@ tokens only at its end, and Conduit doesn't estimate them from text) · a
 saved copy of another chat on screen (not shown: the speeds read are the live
 chat's) · the chat kept beside on the phone (not needed: a chat kept beside
 reads nothing from its host, `ChatRowState.beside`, as with Pulse cards; the
-desktop's Beside pane reads its own)
+desktop's Beside pane reads its own) · the desktop composer's chip (done,
+desktop#718: main pane and chat windows; the Beside pane has no composer) ·
+the phone's composer (not needed: Eric picked desktop only, as the phone's
+controls row is already full)
 
-**Desktop app:** has it: the speed beside a reply's time and Settings > Chat > Reply speed (`desktop/src/renderer/src/state/replySpeeds.ts`, `desktop/src/renderer/src/state/useReplySpeeds.ts`, `desktop/src/renderer/src/components/ReplySpeedSetting.tsx`), in the main pane, chat windows and the Beside pane; a streamed reply takes the stored row its turn names (`persisted_turn.final_assistant_row_id`).
+**Desktop app:** has it: the speed beside a reply's time and Settings > Chat > Reply speed (`desktop/src/renderer/src/state/replySpeeds.ts`, `desktop/src/renderer/src/state/useReplySpeeds.ts`, `desktop/src/renderer/src/components/ReplySpeedSetting.tsx`), in the main pane, chat windows and the Beside pane, and the composer's chip behind its own switch (`desktop/src/renderer/src/components/Composer.tsx`, desktop#718); a streamed reply takes the stored row its turn names (`persisted_turn.final_assistant_row_id`).
 
 **Code**
 - Measure: `notifier/reply_speed.py` (call_measure, ReplySpeedStore, replies), `notifier/__init__.py` (_post_api_request)
@@ -4318,12 +4323,13 @@ desktop's Beside pane reads its own)
 - The plugin's measurement only, never Hermes' `avg_tps`: that averages the chat's last ten model calls over their whole time, the wait for the first token and the tool steps included, so it reads low and is no one reply's (2026-11-27, #3414).
 - A call is timed from its first streamed chunk to its end; one with no streamed chunk, or with reasoning tokens (hidden thinking can come before the first chunk), from the request, so a speed may read low but never higher than the model wrote. A turn's speed is all its calls' output tokens over all their writing time (2026-11-27, #3414).
 - A reply from before the plugin measured it shows nothing; the newest reply, once its turn ends, takes the newest turn's speed while its own row has none (still drawn from the stream, or its row id came after the read).
+- The composer chip is desktop only, behind a second switch of its own rather than one choice: off by default, kept on each computer, either switch on without the other. It shows the newest finished reply's speed, never an average or a live estimate, dimmed while the next turn runs until that turn's speed is read, and nothing before any is measured; a click opens Settings > Chat (Eric, 2026-11-27, desktop#718, #PRNUM).
 - A reply row belongs to one turn, the older one when two turns' windows hold it; an older Hermes without the sessions table's cost columns gets a 501 and shows no speed (notifier #1129).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-27, #3417 (saved copy and kept-beside chat recorded, a late row id keeps the newest speed, notifier #1129 noted); 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
+**Checked:** 2026-11-27, #PRNUM (the desktop composer's chip, desktop#718; phone composer not needed); 2026-11-27, #3417 (saved copy and kept-beside chat recorded, a late row id keeps the newest speed, notifier #1129 noted); 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
 
 ## /new in a Bot Chat
 
