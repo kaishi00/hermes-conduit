@@ -216,4 +216,33 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(WatchCallAnswer.tookAnswer(body: ["ok": true, "status": "not_waiting"]))
         XCTAssertFalse(WatchCallAnswer.tookAnswer(body: ["ok": false, "status": 400, "detail": "choice must be once or deny"]))
     }
+
+    /// Issue 3332: where the Watch's GPT-Live sends a delegation that marks
+    /// nothing, and what its answer_call probe leads to.
+    func testAnUnmarkedWatchDelegationProbesTheCallThenStartsWork() {
+        // On a call that answers Hermes, the user's words go as the answer first.
+        XCTAssertEqual(WatchCallAnswer.unmarkedRoute(ownWords: "", userWords: " Google TV ", granted: true, canRun: true),
+                       .probe("Google TV"))
+        // "New job:" is separate work, never the answer.
+        XCTAssertEqual(WatchCallAnswer.unmarkedRoute(ownWords: "New job: check the weather", userWords: "Google TV", granted: true, canRun: true),
+                       .newJob("check the weather"))
+        // No answer_call on the grant, none left to run, or nothing said: work.
+        XCTAssertEqual(WatchCallAnswer.unmarkedRoute(ownWords: "", userWords: "Google TV", granted: false, canRun: false), .newWork)
+        XCTAssertEqual(WatchCallAnswer.unmarkedRoute(ownWords: "", userWords: "Google TV", granted: true, canRun: false), .newWork)
+        XCTAssertEqual(WatchCallAnswer.unmarkedRoute(ownWords: "check the weather", userWords: "  ", granted: true, canRun: true), .newWork)
+
+        // The host took the answer: its reply goes back.
+        let taken: [String: Any] = ["ok": true, "status": "answered", "question": 1, "answer": "Google TV"]
+        XCTAssertEqual(WatchCallAnswer.probeResult(.answered(taken)), .reply(WatchCallAnswer.delegatedReply(body: taken)))
+        // It took none (an approval waits, or every question is answered):
+        // new work, the probe's grant call left out of the job's budget.
+        XCTAssertEqual(WatchCallAnswer.probeResult(.answered(["ok": true, "status": "not_waiting"])), .newWork(spent: 1))
+        // The probe never left the Watch (too large, seal failed, grant
+        // gone): new work, as before the probe, with no call spent.
+        XCTAssertEqual(WatchCallAnswer.probeResult(.unavailable(reason: "tooLarge", grantGone: false, sent: false)), .newWork(spent: 0))
+        // One that went out with no answer may have been taken: not work.
+        XCTAssertEqual(WatchCallAnswer.probeResult(.unavailable(reason: "relay 502", grantGone: false, sent: true)),
+                       .reply(WatchCallAnswer.unavailableReply))
+        XCTAssertEqual(WatchCallAnswer.probeResult(.timedOut), .reply(WatchCallAnswer.timedOutReply))
+    }
 }

@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import Conduit
 
 /// The one-tap Conduit plugin update (NotifierPluginUpdate.swift) and the
@@ -418,6 +419,70 @@ extension GatewayRestartTests {
         // The next update's restart asks again.
         appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.65.0", boot: "a"))
         XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+    }
+
+    func testAPluginReportWritesTheStatusOnceAndNotAgainWhenTheSame() throws {
+        // Each write of the status redraws whatever reads AppState, and a
+        // read after every turn answers the same (#828): one write per new
+        // report, none for a repeat.
+        let suite = "GatewayRestartTests.oneWrite.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        var writes = 0
+        let watch = appState.notifierPluginValues.dropFirst().sink { _ in writes += 1 }
+        defer { watch.cancel() }
+        let report = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+        appState.applyNotifierPluginReport(report)
+        XCTAssertEqual(writes, 1)
+        appState.applyNotifierPluginReport(report)
+        XCTAssertEqual(writes, 1)
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.64.0", boot: "a"))
+        XCTAssertEqual(writes, 2)
+    }
+
+    func testAStatusReadWritesTheStatusOnceAndNotAgainWhenTheSame() async throws {
+        // The read after each turn (#3377's review): the first answer writes
+        // the status once, the same answer again writes nothing.
+        let suite = "GatewayRestartTests.oneReadWrite.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        var writes = 0
+        let watch = appState.notifierPluginValues.dropFirst().sink { _ in writes += 1 }
+        defer { watch.cancel() }
+        let report = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.shutdown() }
+        appState.dashboardTicketBridge = held.bridge
+
+        // Each read goes on to other requests once the status is in; those
+        // fail once the capabilities answer is given, so the read ends.
+        let first = Task { @MainActor in await appState.refreshNotifierPluginStatus() }
+        try await held.answer(report, toPathEnding: "capabilities")
+        held.shutdown()
+        await first.value
+        XCTAssertEqual(writes, 1)
+        XCTAssertEqual(appState.notifierPlugin.runtime?.loadedVersion, "0.63.0")
+
+        let again = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { again.shutdown() }
+        appState.dashboardTicketBridge = again.bridge
+        let second = Task { @MainActor in await appState.refreshNotifierPluginStatus() }
+        try await again.answer(report, toPathEnding: "capabilities")
+        again.shutdown()
+        await second.value
+        XCTAssertEqual(writes, 1, "the same answer writes nothing")
     }
 
     func testFinishSetupPendingHoldsTheNoticeUntilItEnds() throws {

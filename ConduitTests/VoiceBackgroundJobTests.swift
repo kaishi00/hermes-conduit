@@ -378,6 +378,17 @@ extension VoiceConversationControllerTests {
                                                in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
         for _ in 0..<200 where refusedContinuedFake.droppedSurfaces.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(refusedContinuedFake.droppedSurfaces, ["rt-call"])
+        XCTAssertEqual(refusedContinued.jobs.first?.requestOutcomeUnknown, false, "a refusal says Hermes didn't take it")
+        // Lost on its way there, it may have reached Hermes: its words
+        // count as sent, as a first job's do (issue 3362).
+        let (lostContinued, lostContinuedFake) = makeSupervisor()
+        lostContinuedFake.submitError = URLError(.networkConnectionLost)
+        _ = await lostContinued.continueJob(instructions: "and the logs",
+                                            in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
+        for _ in 0..<200 where lostContinued.jobs.first?.status.isActive != false { try? await Task.sleep(for: .milliseconds(10)) }
+        guard case .failed? = lostContinued.jobs.first?.status else { return XCTFail("the lost submit fails the job") }
+        XCTAssertEqual(lostContinued.jobs.first?.requestOutcomeUnknown, true)
+        XCTAssertEqual(lostContinued.jobs.first?.requestWordsSpent, true)
         // Cancelled while its report goes: nothing is sent, the report is
         // dropped, and the chat's running turn (another's) isn't interrupted.
         let (cancelledContinued, cancelledContinuedFake) = makeSupervisor()

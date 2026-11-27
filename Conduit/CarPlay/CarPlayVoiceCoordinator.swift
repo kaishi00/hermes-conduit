@@ -1381,8 +1381,9 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         // A load that came back empty may have failed with the connection;
         // the next connection asks once more.
-        // A far agent's list reads through its own kept connection, once
-        // per open, whatever the screen's connection does.
+        // A far agent's list reads through its own kept connection, whatever
+        // the screen's connection does: once per open, and again below when
+        // its list isn't read (#3362).
         if !appState.isConnected, chatCatalogLoad == nil, farAgent?.dashboardID == nil { didRequestChatCatalog = false }
         // A far read that landed meanwhile (the phone's poll, a
         // sessions.changed) ends the backoff: a later failed car read

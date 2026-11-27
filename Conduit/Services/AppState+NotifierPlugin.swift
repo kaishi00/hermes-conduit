@@ -104,21 +104,29 @@ extension AppState {
         notifierPluginStatusAcceptedGeneration = generation
         let couldInviteLinkedPeople = canInviteLinkedPeople
         let couldAnswerRoomApprovals = canAnswerRoomApprovals
+        // One write, and none when the host said the same again: every
+        // read after a turn answers alike, and each write redrew whatever
+        // reads AppState (#828). Skipping it is safe because the setter's
+        // one unconditional step, PluginUpdateAsk.setActive, takes the
+        // manager Remembered keeps, written below on every read; anything
+        // added there that must run on each read belongs here instead.
+        var next = notifierPlugin
         // A failed list read keeps what this host's list said before.
-        notifierPlugin.hostCopy = state == .predatesCapabilities
-            ? hostCopy ?? (notifierPlugin.state == .predatesCapabilities ? notifierPlugin.hostCopy : nil)
+        next.hostCopy = state == .predatesCapabilities
+            ? hostCopy ?? (next.state == .predatesCapabilities ? next.hostCopy : nil)
             : nil
-        notifierPlugin.state = state
-        notifierPlugin.runtime = runtime
+        next.state = state
+        next.runtime = runtime
         if let runtime {
             NotifierPluginStatus.Remembered.remember(
                 signInEndsOnRestart: runtime.signInEndsOnRestart, for: activeDashboardID, in: defaults
             )
         }
-        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(
+        next.managedBy = NotifierPluginStatus.managedBy(
             after: state, reported: managedBy,
-            before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
+            before: next.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
         )
+        if next != notifierPlugin { notifierPlugin = next }
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)
         // Its Hermes' own name, for a dashboard whose address names nothing.
@@ -162,15 +170,17 @@ extension AppState {
         notifierPluginStatusAcceptedGeneration = notifierPluginStatusGeneration
         let couldInviteLinkedPeople = canInviteLinkedPeople
         let couldAnswerRoomApprovals = canAnswerRoomApprovals
-        notifierPlugin.hostCopy = nil
-        notifierPlugin.state = state
-        notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
-        if let runtime = notifierPlugin.runtime {
+        var next = notifierPlugin
+        next.hostCopy = nil
+        next.state = state
+        next.runtime = NotifierPluginStatus.runtime(from: json)
+        if let runtime = next.runtime {
             NotifierPluginStatus.Remembered.remember(
                 signInEndsOnRestart: runtime.signInEndsOnRestart, for: activeDashboardID, in: defaults
             )
         }
-        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
+        next.managedBy = NotifierPluginStatus.managedBy(from: json)
+        if next != notifierPlugin { notifierPlugin = next }
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)
         // An update that brings the name lands it with the report.

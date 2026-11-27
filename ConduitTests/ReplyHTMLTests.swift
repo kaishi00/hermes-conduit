@@ -127,6 +127,48 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.foldsApart(attribute), attribute, "a summary inside an attribute isn't the fold's summary")
     }
 
+    func testACloseWithACodeSpanAfterItEndsNoFoldOnEitherSide() {
+        // #3349: the pass that looks ahead counted this close, the pass that folds didn't, so the fold opened on
+        // the first line ran to the reply's end and hid the rest.
+        let lines = ["<details> Tap for details.", "The details.", "</details> `note`", "More prose."]
+        XCTAssertEqual(ReplyHTML.foldsApart(lines), lines)
+    }
+
+    func testACloseInsideACodeSpanInTheBodyStillFolds() {
+        // #3349: a `</details>` in a code span closes nothing, so it doesn't keep the line as written.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary>Wrap it in `</details>` to close.", "More.", "</details>"]),
+            ["<details><summary>S</summary>", "Wrap it in `</details>` to close.", "More.", "</details>"]
+        )
+    }
+
+    func testTextEitherSideOfACodeSpanNeverJoinsIntoAClose() {
+        // #3379's review: dropping the span left "</det" + "ails>", a close the line never had.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary>Use </det`x`ails> as text.", "More.", "</details>"]),
+            ["<details><summary>S</summary>", "Use </det`x`ails> as text.", "More.", "</details>"]
+        )
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary>Use </det<!-- x -->ails> as text.", "More.", "</details>"]),
+            ["<details><summary>S</summary>", "Use </det<!-- x -->ails> as text.", "More.", "</details>"]
+        )
+    }
+
+    func testAnOpeningJoinedAcrossACodeSpanTakesNoClose() {
+        // #3385's review: the look-ahead read "<det`x`ails>" as an opening and gave it the close.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details> Tap for details.", "<det`x`ails> is the tag.", "</details>"]),
+            ["<details>", " Tap for details.", "<det`x`ails> is the tag.", "</details>"]
+        )
+    }
+
+    func testACloseInACommentStillBeingWrittenClosesNothing() {
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary><!-- </details> still being written"]),
+            ["<details><summary>S</summary>", "<!-- </details> still being written"]
+        )
+    }
+
     func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body so far"]), ["<details><summary>S</summary>", "Body so far"])
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Click <b>here</b>"]), ["<details><summary>S</summary>", "Click <b>here</b>"])
