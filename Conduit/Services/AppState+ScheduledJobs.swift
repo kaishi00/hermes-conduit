@@ -328,14 +328,19 @@ extension AppState {
         let object = rawObject["session"] as? [String: Any] ?? rawObject
         guard
               let id = stringValue(object["id"] ?? object["session_id"] ?? object["run_id"]), !id.isEmpty else { return nil }
+        // A name is a non-blank string: a number isn't one, so the next
+        // name stands in for it.
+        func text(_ value: Any?) -> String? {
+            (value as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        }
         return CronRun(
             id: id,
             lastActive: Self.integerValue(object["last_active"] ?? object["lastActive"]),
             model: stringValue(object["model"]),
-            preview: stringValue(object["preview"]) ?? stringValue(object["summary"]),
+            preview: text(object["preview"]) ?? text(object["summary"]),
             profile: stringValue(object["profile"]),
             startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
-            title: stringValue(object["title"]) ?? stringValue(object["name"]),
+            title: text(object["title"]) ?? text(object["name"]),
             // The first that names a job, as the strict decode reads it: an
             // empty or non-string one doesn't.
             jobID: ["job_id", "cron_job_id"].lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty }

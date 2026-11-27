@@ -168,6 +168,9 @@ final class ComposerAttachmentPolicyTests: XCTestCase {
         XCTAssertEqual(ShareDraftCollector.displayName(suggested: "Event 8.30", type: .png, ordinal: 1), "Event 8.30.png")
         XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "Scan.PNG", type: .png), "Scan.PNG")
         XCTAssertEqual(ShareDraftCollector.displayName(suggested: "flyer.jpeg", type: .png, ordinal: 1), "flyer.jpeg")
+        // A document keeps an ending no type is known by.
+        XCTAssertEqual(AttachmentTypePolicy.filename(suggested: "terraform.tfvars", type: .plainText), "terraform.tfvars")
+        XCTAssertEqual(ShareDraftCollector.displayName(suggested: "terraform.tfvars", type: .plainText, ordinal: 1), "terraform.tfvars")
         let png = try pngData(width: 40, height: 30)
         let outcome = AttachmentStaging.finishStaging(
             fileAt: try stagedFile(png, named: name), name: name, type: .png, limitMegabytes: 16

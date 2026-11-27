@@ -279,7 +279,6 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     @MainActor
-    @MainActor
     func testTheEndOfSpeechBufferEndsTheSentence() async {
         // The voice lookup speak starts is stubbed and awaited before the
         // stubs go back, so no real one outlives the test (#3374's review).

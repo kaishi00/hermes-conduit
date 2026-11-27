@@ -243,13 +243,15 @@ extension SidebarLayoutTests {
                 // hold (#3374's reviews), and an epoch written as a string.
                 ["id": "local-3", "model": 7, "name": "Nightly sweep", "summary": "Run summary", "lastActive": 1795700095],
                 ["id": "local-4", "title": "Weekly", "last_active": "1795700095"],
+                // A number is no name: the preview stands in.
+                ["id": "local-5", "title": 7, "preview": "Daily brief"],
             ],
         ]
         await state.loadCronRuns(for: CronJob(enabled: true, id: "aaaaaaaaaaaa"), dashboard: requester, gateway: nil)
-        XCTAssertEqual(state.cronRuns.map(\.displayName), ["local-1", "Daily brief", "Nightly sweep", "Nightly sweep", "Weekly"])
+        XCTAssertEqual(state.cronRuns.map(\.displayName), ["local-1", "Daily brief", "Nightly sweep", "Nightly sweep", "Weekly", "Daily brief"])
         XCTAssertFalse(state.cronRuns.contains { $0.displayName.contains("<null>") })
-        XCTAssertEqual(state.cronRuns.map(\.lastActive), [1_795_700_095, nil, 1_795_700_095, 1_795_700_095, 1_795_700_095])
-        XCTAssertEqual(state.cronRuns.map(\.startedAt), [nil, 1_795_700_095, nil, nil, nil])
+        XCTAssertEqual(state.cronRuns.map(\.lastActive), [1_795_700_095, nil, 1_795_700_095, 1_795_700_095, 1_795_700_095, nil])
+        XCTAssertEqual(state.cronRuns.map(\.startedAt), [nil, 1_795_700_095, nil, nil, nil, nil])
         XCTAssertEqual(state.cronRuns[3].preview, "Run summary")
     }
 

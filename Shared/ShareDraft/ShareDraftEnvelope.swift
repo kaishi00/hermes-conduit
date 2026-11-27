@@ -260,9 +260,12 @@ enum ShareDraftNames {
     /// type's (#3374's reviews). Shared by the share extension and the
     /// app's picker, drop and paste.
     /// One that is `type`'s own counts whatever the system knows of it.
+    /// Only a picture's or a video's name is read this way: a document
+    /// keeps whatever ending it has (`terraform.tfvars`).
     static func hasKnownExtension(_ name: String, for type: UTType? = nil) -> Bool {
         let ext = (name as NSString).pathExtension
         guard !ext.isEmpty else { return false }
+        guard let type, type.conforms(to: .image) || type.conforms(to: .movie) else { return true }
         if let own = type?.preferredFilenameExtension, own.caseInsensitiveCompare(ext) == .orderedSame { return true }
         guard let known = UTType(filenameExtension: ext) else { return false }
         return !known.isDynamic
