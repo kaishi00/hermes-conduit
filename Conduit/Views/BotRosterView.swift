@@ -384,7 +384,7 @@ struct BotRosterView: View {
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { _ in
-            Text(AppLocalization.string("Its bots move to Other.", table: .bots))
+            Text(AppLocalization.string("Its bots move to Other, and its group chats back to Group Chats.", table: .bots))
         }
         .task(id: rosterRefreshKey) {
             // Not during a pop's slide (`V2ShownUpdates.settled`).
@@ -825,7 +825,15 @@ struct BotRosterView: View {
             appState.fileGroupRoom(roomID, under: name)
         case .rename(let old):
             let items = categoryItems
-            Task { managementNotice = await appState.renameBotCategory(old, to: name, items: items) }
+            Task {
+                let notice = await appState.renameBotCategory(old, to: name, items: items)
+                managementNotice = notice
+                // A folded heading stays folded under its new name, once the rename took.
+                guard notice == nil else { return }
+                foldedCategories = foldedCategories.split(separator: "\n").map {
+                    String($0) == BotCategories.key(old) ? BotCategories.key(name) : String($0)
+                }.joined(separator: "\n")
+            }
         }
     }
 

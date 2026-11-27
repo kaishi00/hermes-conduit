@@ -154,6 +154,7 @@ final class BotCategoriesTests: XCTestCase {
         XCTAssertEqual(BotCategories.moving(BotOrder(), "Home", by: 1, shown: shown).names, ["Business", "Home", "Clients"])
         XCTAssertEqual(BotCategories.moving(BotOrder(), "Home", by: -1, shown: shown), BotOrder(), "nothing before the first")
         XCTAssertEqual(BotCategories.renaming(BotOrder(names: shown), "business", to: "Work").names, ["Home", "Work", "Clients"])
+        XCTAssertEqual(BotCategories.renaming(BotOrder(names: ["Business", "Home"]), "Personal", to: "business").names, ["Business", "Home"])
     }
 
     /// Group chats are filed by room id, kept per dashboard and synced as

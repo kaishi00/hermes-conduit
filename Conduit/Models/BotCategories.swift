@@ -213,7 +213,9 @@ enum BotCategories {
 
     /// The order with a renamed category in its old name's place.
     static func renaming(_ order: BotOrder, _ old: String, to new: String) -> BotOrder {
-        guard !order.isEmpty else { return order }
+        // A name the order doesn't hold keeps it as it is: one merged into
+        // an ordered name keeps that name's place.
+        guard order.names.contains(where: { same($0, old) }) else { return order }
         let names = order.names.compactMap { name -> String? in
             if same(name, old) { return new }
             return same(name, new) ? nil : name

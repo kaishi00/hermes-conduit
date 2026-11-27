@@ -1394,7 +1394,9 @@ extension AppState {
         // Its starter face, so every phone shows the same one, and the
         // face's color for Desktop's initial when no color was picked.
         meta[StarterFaces.metaKey] = face
-        if let filed = BotCategories.editPatch(current: nil, to: draft.category, among: botRoster) {
+        // Settled on a fresh read, so it reuses an id another client just made.
+        let among = draft.category == nil ? botRoster : ((try? await client.botRoster())?.bots ?? botRoster)
+        if let filed = BotCategories.editPatch(current: nil, to: draft.category, among: among) {
             for case let (key, value?) in filed { meta[key] = value }
         }
         if draft.color == nil { meta["color"] = StarterFaces.face(face).hex }
@@ -1552,9 +1554,6 @@ extension AppState {
         if let face = draft.face, face != StarterFaces.storedFace(in: bot.botMeta) {
             patch[StarterFaces.metaKey] = face
         }
-        if let filed = BotCategories.editPatch(current: bot.category, to: draft.category, among: botRoster) {
-            patch.merge(filed) { _, new in new }
-        }
         let changesNameOrColor = !patch.isEmpty
         if uploaded {
             patch["imageKind"] = "photo"
@@ -1688,6 +1687,14 @@ extension AppState {
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
             problems += laterWritesSkipped()
             return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+        }
+        // The Category, as Bots Home files a bot: its id settled over a
+        // fresh read, so another client's filing meanwhile isn't split.
+        if BotCategories.editPatch(current: bot.category, to: draft.category, among: botRoster) != nil {
+            let tag = BotCategories.clean(draft.category).map { BotCategories.tag(named: $0, among: botRoster) }
+            if !(await writeBotCategory(bot.name, tag: tag, client: client)) {
+                problems.append(AppLocalization.string("Could not update \(bot.displayLabel)."))
+            }
         }
         // Skills, tools and MCP: only the sections the user changed, and
         // only once the editor loaded them from the bot itself.
