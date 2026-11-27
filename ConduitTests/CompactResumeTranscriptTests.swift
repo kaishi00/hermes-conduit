@@ -3097,6 +3097,40 @@ final class CompactResumeTranscriptTests: XCTestCase {
                        "The tool card's own row anchors the next read")
     }
 
+    func testAnEmptyBotChatShowingALocalNoteTakesItsFirstPage() async throws {
+        var tail: [[String: Any]] = []
+        let app = try await openBotChat(expecting: []) { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.messages.append(ChatMessage(id: "note-1", role: .system, content: "A local note", timestamp: "2026-09-01T09:59:00Z"))
+        tail = [transcriptRow(1, role: "user", content: "Run the example job"),
+                transcriptRow(2, role: "assistant", content: "The example job is complete.")]
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.map(\.content),
+                       ["A local note", "Run the example job", "The example job is complete."],
+                       "A local note doesn't keep the first stored page out")
+    }
+
+    func testABotChatEndingOnAnUnconfirmedSendDoesNotAddItsTwin() async throws {
+        let reads = Counter()
+        var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
+        let clock = TestClock()
+        let app = try await openBotChat { sessionID in
+            reads.value += 1
+            return self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        app.messages.append(ChatMessage(id: "local-2", role: .user, content: "And the second one", timestamp: "2026-09-01T10:00:05Z"))
+        tail.append(transcriptRow(2, role: "user", content: "And the second one"))
+        let before = reads.value
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(reads.value, before + 1)
+        XCTAssertEqual(app.messages.filter { $0.content == "And the second one" }.count, 1,
+                       "The unconfirmed send's stored twin isn't added beside it")
+    }
+
     func testABotChatTailPageEchoingNoSessionIDStillMerges() async throws {
         var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
         let app = try await openBotChat { _ in

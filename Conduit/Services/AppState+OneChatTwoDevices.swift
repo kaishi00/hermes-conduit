@@ -413,8 +413,13 @@ extension AppState {
             // The newest shown row the store vouches for. An idle Bot Chat's
             // rows after it are the shown rows' own tool cards and reasoning
             // (derived ids) or local display rows (notes, call cards), which
-            // the page never holds, so they can't anchor it.
-            let anchor = appState.messages.last(where: { frontier.contains($0.id) })?.id
+            // the page never holds, so they can't anchor it. A user row that
+            // isn't stored (a send left unconfirmed) has a stored twin the
+            // page would add again, so the tail stays unanchored past it.
+            let durableIndex = appState.messages.lastIndex { frontier.contains($0.id) }
+            let unstoredUserRow = appState.messages[(durableIndex.map { $0 + 1 } ?? 0)...]
+                .contains { $0.role == .user }
+            let anchor = unstoredUserRow ? last : durableIndex.map { appState.messages[$0].id }
             let wasEmpty = appState.shownChat.persistedOrderingFrontier.isPositivelyEmpty
             let outcome = await appState.foregroundPersistedTailOutcome(sessionId: storedID, profile: profile, using: bridge)
             switch outcome {
