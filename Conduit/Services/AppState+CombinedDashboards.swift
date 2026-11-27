@@ -460,7 +460,18 @@ extension AppState {
             voiceBackgroundJobSupervisor.observe(event)
             if isLocalLiveActive { localLiveTurns.observe(event) }
         }
-        if case .sessionsChanged = event { return }
+        if case .sessionsChanged = event {
+            // Only the kept dashboard whose Bot Chat is open can read that
+            // chat's persisted tail from this signal (covered by the list,
+            // it's read once it shows again).
+            if chatOnScreenDashboardID == id {
+                act(onRuntime: kept.runtime) {
+                    guard activeSessionId != nil, activeBotChatProfile != nil else { return }
+                    noteCatalogChanged()
+                }
+            }
+            return
+        }
         // A chat followed there (its chat on screen, opened in place, or one
         // left mid-reply there) takes its turn's events on its own runtime,
         // as the one on screen's chats take theirs (no-switch stage 2).

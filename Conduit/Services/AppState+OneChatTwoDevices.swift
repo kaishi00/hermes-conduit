@@ -190,6 +190,14 @@ extension AppState {
             if case .unreachable = chatRuntimeRoute { setActiveChatRepliesElsewhere(false) }
             return
         }
+        // Bot Chats use their authenticated stored tail, never the workspace
+        // registry: a change held back, or a tail read still owed, is read now.
+        if activeBotChatProfile != nil {
+            readPendingCatalogChange()
+            readOpenBotChatTail()
+            setActiveChatRepliesElsewhere(false)
+            return
+        }
         guard isSceneActive, isConnected, let client,
               client !== activeListUnsupportedClient,
               let local = openChatLocalTurn() else {
@@ -348,7 +356,16 @@ extension AppState {
         guard isSceneActive, isConnected else { return }
         let now = chatSyncNow()
         if catalogChangeSignal.takeRead(now: now, turnRunningHere: turnState.isRunning) {
+            let signaled = catalogChangeSignal.takeSignal()
             refreshCatalogAfterLeavingChat(reportingFailure: false, readingChange: true)
+            // The open Bot Chat, even covered by the list, is owed one read of
+            // its stored tail per signal, kept until it lands (BotChatTailRead);
+            // the catalog's retry of a failed read owes it none.
+            if signaled, chatOnScreenIsInScope, activeBotChatProfile != nil,
+               let sessionID = activeSessionId, !sessionID.isEmpty {
+                botChatTailRead.noteChanged(sessionID: sessionID)
+                readOpenBotChatTail()
+            }
             return
         }
         guard !turnState.isRunning, catalogChangeReadTask == nil,
@@ -360,6 +377,96 @@ extension AppState {
             guard !Task.isCancelled, let self else { return }
             self.catalogChangeReadTask = nil
             self.readPendingCatalogChange()
+        }
+    }
+
+    /// Bot Chats are outside the workspace's live registry. Read only the
+    /// already-open conversation's authenticated, bounded persisted page,
+    /// once a `sessions.changed` owes it one. Anything that holds the read
+    /// back (a read or turn under way, an older page loading) leaves it owed
+    /// for the next check.
+    private func readOpenBotChatTail() {
+        guard isSceneActive, isConnected,
+              chatOnScreenIsInScope, let sessionID = chatShownOnScreen, let profile = activeBotChatProfile,
+              botChatTailRead.isDue(sessionID: sessionID, now: chatSyncNow()),
+              let client, let bridge = dashboardTicketBridge,
+              let window = persistedTranscriptWindow, window.profile == profile,
+              window.trustedSessionIDs.contains(sessionID), !window.isLoadingEarlier,
+              openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing,
+              turnState == .idle else { return }
+        let dashboardID = activeDashboardID
+        let storedID = window.resolvedSessionID ?? window.requestedSessionID
+        let generation = botChatTailRead.generation
+        // Its retry is BotChatTailRead's, never the ordinary chat's check.
+        startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false, callsOffCheck: false) { appState in
+            @MainActor func isCurrent() -> Bool {
+                appState.chatOnScreenIsInScope && appState.activeDashboardID == dashboardID && appState.client === client
+                    && appState.dashboardTicketBridge === bridge && appState.chatShownOnScreen == sessionID
+                    && appState.activeBotChatProfile == profile && appState.persistedTranscriptWindow == window
+                    && appState.turnState == .idle && appState.reconciliation == nil && !appState.isChatRefreshing
+                    && !Task.isCancelled
+            }
+            guard isCurrent() else { return }
+            let frontier = appState.shownChat.durablePersistedRowIDs
+            let messageIDs = Set(appState.messages.map(\.id))
+            let last = appState.messages.last?.id
+            let wasEmpty = appState.shownChat.persistedOrderingFrontier.isPositivelyEmpty
+            let outcome = await appState.foregroundPersistedTailOutcome(sessionId: storedID, profile: profile, using: bridge)
+            switch outcome {
+            case .failed:
+                // Transient (timeout, 429/5xx): the next check tries again.
+                appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
+                return
+            case .unavailable, .unsupportedTailContract:
+                // No bounded tail on this host: Back and a pull to refresh
+                // still read the chat.
+                appState.botChatTailRead.noteRead(generation: generation)
+                return
+            case .hydrated:
+                break
+            }
+            // The chat moved meanwhile (a row streamed in, another page
+            // loaded): still owed, read again at the next check.
+            guard isCurrent(), appState.messages.last?.id == last,
+                  appState.shownChat.durablePersistedRowIDs == frontier,
+                  case let .hydrated(transcript) = outcome else { return }
+            // A page echoing a session id must echo this chat's; one echoing
+            // none answers the request's own identity, as opens and backfill take it.
+            if let resolvedID = transcript.resolvedSessionId, !window.trustedSessionIDs.contains(resolvedID) {
+                appState.botChatTailRead.noteRead(generation: generation)
+                return
+            }
+            let rows: [ChatMessage]
+            switch appState.foregroundFreshnessVerdict(
+                outcome, localFrontier: frontier, localMessageIDs: messageIDs, lastLocalMessageID: last,
+                requestedSessionID: storedID, runtimeSessionID: sessionID, livenessIsRunning: false, locallyOwnedTurn: nil
+            ) {
+            case let .advanced(_, newRows):
+                rows = newRows
+            case .unchanged:
+                appState.botChatTailRead.noteRead(generation: generation)
+                return
+            case .inconclusive where last == nil && wasEmpty:
+                // Every normalized row comes from the page, tool cards and
+                // reasoning rows (derived ids) included.
+                guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else {
+                    appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
+                    return
+                }
+                rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
+            default:
+                // No ordering proof yet (the tail not anchored, or the
+                // anchor past the newest page): asked again like a failed
+                // read, and given up with it.
+                appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
+                return
+            }
+            appState.botChatTailRead.noteRead(generation: generation)
+            guard !rows.isEmpty else { return }
+            appState.applyPersistedForegroundAdvancement(
+                requestedSessionID: storedID, transcript: transcript, newRows: rows,
+                runtimeSessionID: sessionID, profile: profile
+            )
         }
     }
 
@@ -431,6 +538,7 @@ extension AppState {
     private func startOpenChatSyncRead(
         sessionID: String,
         expectsRunning: Bool,
+        callsOffCheck: Bool = true,
         _ read: @escaping @MainActor (AppState) async -> Void
     ) {
         let readID = UUID()
@@ -450,7 +558,7 @@ extension AppState {
             guard self.activeSessionId == sessionID, self.chatOnScreenIsInScope, self.reconciliation == nil,
                   self.turnState == (expectsRunning ? .running : .idle) else {
                 // New rows still unread: the next check asks again.
-                if !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }
+                if callsOffCheck, !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }
                 return
             }
             await read(self)

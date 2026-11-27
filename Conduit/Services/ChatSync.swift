@@ -162,8 +162,21 @@ struct CatalogChangeSignal {
         min(Self.maximumInterval, Self.minimumInterval * pow(2, Double(min(quietReads, 8))))
     }
 
+    /// Hermes signaled since the last `takeSignal`: a read retried after a
+    /// failure carries no new signal of its own.
+    private(set) var signaledSinceTake = false
+
     mutating func noteChanged() {
         isPending = true
+        signaledSinceTake = true
+    }
+
+    /// Whether a signal came since the last call, clearing it: the open Bot
+    /// Chat's tail is owed a read once per signal read, never again for the
+    /// catalog's own retries.
+    mutating func takeSignal() -> Bool {
+        defer { signaledSinceTake = false }
+        return signaledSinceTake
     }
 
     /// Whether the pending change is read now. Taking it clears it.
@@ -216,6 +229,55 @@ struct CatalogChangeSignal {
         guard let lastReadAt else { return 0 }
         let wait = (1...Self.quickRetries).contains(failedReads) ? Self.minimumInterval : interval
         return max(0, wait - now.timeIntervalSince(lastReadAt))
+    }
+}
+
+/// The open Bot Chat's stored tail read a `sessions.changed` asks for.
+/// Bot Chats are outside the workspace registry, so the change is owed to
+/// the chat on screen until one read of its tail lands: kept through a
+/// read or turn under way, the list covering the chat, an older page
+/// loading, or a read that failed or proved nothing (read again 5 s later,
+/// three reads at most).
+struct BotChatTailRead {
+    static let retryInterval: TimeInterval = 5
+    static let maximumFailures = 3
+
+    private(set) var owedSessionID: String?
+    /// Bumped by each change, so a read that started before it never
+    /// settles the newer one.
+    private(set) var generation = 0
+    private(set) var failures = 0
+    private var lastFailureAt: Date?
+
+    mutating func noteChanged(sessionID: String) {
+        if owedSessionID != sessionID { failures = 0; lastFailureAt = nil }
+        owedSessionID = sessionID
+        generation += 1
+    }
+
+    /// Whether the tail of this chat may be read now.
+    func isDue(sessionID: String, now: Date) -> Bool {
+        guard owedSessionID == sessionID else { return false }
+        guard let lastFailureAt else { return true }
+        return now.timeIntervalSince(lastFailureAt) >= Self.retryInterval
+    }
+
+    /// A read that started at `generation` landed (or can never land):
+    /// the change is settled unless a newer one came meanwhile.
+    mutating func noteRead(generation read: Int) {
+        guard read == generation else { return }
+        owedSessionID = nil
+        failures = 0
+        lastFailureAt = nil
+    }
+
+    /// A transient failure: tried again after the retry wait, until the
+    /// last allowed failure gives the change up.
+    mutating func noteFailed(generation read: Int, at now: Date) {
+        guard read == generation else { return }
+        failures += 1
+        lastFailureAt = now
+        if failures >= Self.maximumFailures { noteRead(generation: read) }
     }
 }
 
