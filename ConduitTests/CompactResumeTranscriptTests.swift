@@ -3057,15 +3057,44 @@ final class CompactResumeTranscriptTests: XCTestCase {
     }
 
     func testAnEmptyBotChatTakesAFullFirstPageAndCanLoadEarlier() async throws {
+        let reads = Counter()
         var tail: [[String: Any]] = []
         let app = try await openBotChat(expecting: []) { sessionID in
-            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+            reads.value += 1
+            return self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
         }
+        let before = reads.value
         tail = syntheticRows(1..<121)
         app.handleStreamEvent(.sessionsChanged)
         try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(reads.value, before + 1, "One tail read takes the whole page")
+        XCTAssertEqual(app.messages.count, 120)
         XCTAssertEqual(app.messages.last?.content, "Row 120")
         XCTAssertEqual(app.persistedTranscriptWindow?.canLoadEarlier, true, "Load earlier reads the rest")
+    }
+
+    func testABotChatEndingOnAToolCardStillTakesTheNextStoredReply() async throws {
+        var tail = [transcriptRow(1, role: "user", content: "Run the example job")]
+        let clock = TestClock()
+        let app = try await openBotChat(expecting: ["Run the example job"]) { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        tail.append([
+            "id": 2, "role": "assistant", "content": "Reading the log.", "timestamp": "2026-09-01T10:00:02Z",
+            "tool_calls": [["id": "call_1", "type": "function",
+                            "function": ["name": "read_file", "arguments": "{\"path\": \"/tmp/job.log\"}"]]]
+        ])
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.last?.role, .tool, "The chat now ends on the step's tool card")
+
+        clock.now += 60
+        tail.append(transcriptRow(3, role: "assistant", content: "The example job is complete."))
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.last?.content, "The example job is complete.",
+                       "The tool card's own row anchors the next read")
     }
 
     func testABotChatTailPageEchoingNoSessionIDStillMerges() async throws {
