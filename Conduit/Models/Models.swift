@@ -308,6 +308,18 @@ struct ReviewSummaryRecord: Codable, Identifiable, Equatable {
     var activity: ReviewActivity
 }
 
+/// One of a chat's own notes (slash command output, /btw and /background
+/// answers), saved for the chat because Hermes never stores it (issue 3394).
+/// `sessionId` is the chat's durable id when Hermes confirmed one, as a
+/// review's is.
+struct LocalChatNoteRecord: Codable, Identifiable, Equatable {
+    var id: String
+    var profile: String
+    var sessionId: String
+    var timestamp: String
+    var content: String
+}
+
 struct ClarifyChoice: Codable, Equatable, Identifiable {
     var label: String
     var value: String

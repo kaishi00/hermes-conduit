@@ -1352,22 +1352,50 @@ extension AppState {
         _ text: String,
         context: ComposerSubmissionContext? = nil
     ) {
-        if let context {
-            guard isCurrentComposerSubmission(context) else { return }
+        // Unique: two notes can land in the same instant.
+        let id = "slash-\(UUID().uuidString)"
+        // To the millisecond: a note placed among Hermes' rows when the chat
+        // opens again must not land before a row from the same second.
+        let timestamp = Self.reviewTimestampFormatter.string(from: Date())
+        if let context, !isCurrentComposerSubmission(context) {
+            // The chat it was typed in left the screen while it ran: saved
+            // for that chat, so it shows when the chat opens (issue 3394).
+            // The runtime id it was typed under, or the durable id Hermes
+            // confirmed for it; never the scroll identity's canonical id,
+            // which can still name the chat open before a new one.
+            if let sessionID = context.sessionID,
+               let key = ChatScrollIdentityNormalization.sessionID(
+                   confirmedDurableSessionID(forRuntime: sessionID) ?? sessionID
+               ) {
+                persistLocalNote(LocalChatNoteRecord(
+                    id: id, profile: context.profile, sessionId: key, timestamp: timestamp, content: text
+                ))
+            }
+            return
         }
         // Mid-turn ordering rule: slash output must not land below the live
         // reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
         messages.append(ChatMessage(
-            // Unique: two notes can land in the same instant.
-            id: "slash-\(UUID().uuidString)",
+            id: id,
             role: .system,
             content: text,
             rawContent: nil,
-            timestamp: Self.localTimestamp(),
+            timestamp: timestamp,
             author: nil
         ))
         cacheMessagePresentation()
+        // Hermes never stores it: saved so the chat keeps it when it's
+        // opened again (issue 3394).
+        if let active = activeSessionId, !active.isEmpty {
+            persistLocalNote(LocalChatNoteRecord(
+                id: id,
+                profile: activeProfile,
+                sessionId: reviewRecordSessionID(eventSessionId: active),
+                timestamp: timestamp,
+                content: text
+            ))
+        }
     }
 
     /// `[btw "question"]` / `[bg task]` over the answer, as Desktop and the

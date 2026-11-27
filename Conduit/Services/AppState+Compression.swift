@@ -59,7 +59,13 @@ extension AppState {
                     compressingSessionIDs.insert(activeClaimID)
                 }
             )
-            guard isCurrentComposerSubmission(outcome.context) else { return }
+            guard isCurrentComposerSubmission(outcome.context) else {
+                // Another chat (or this one opened again) took the screen
+                // while Hermes compressed: the note is saved for this chat,
+                // and shows when it's opened (issue 3394).
+                appendSlashOutput(Self.lateCompressionNote(for: outcome.result), context: outcome.context)
+                return
+            }
             let disposition = applySessionCompressionResult(
                 outcome.result,
                 sessionID: outcome.sessionID,
@@ -452,6 +458,18 @@ extension AppState {
         return .adopted
     }
 
+    /// The note a compression that ended after its chat left the screen
+    /// leaves for that chat: what the chat would have shown.
+    private static func lateCompressionNote(for result: SessionCompressResult) -> String {
+        if result.lockHeld {
+            return result.message ?? AppLocalization.string("Compression is already in progress.")
+        }
+        if result.isPending {
+            return result.message ?? AppLocalization.string("Compression continues in the background; the transcript will refresh when it finishes.")
+        }
+        return compressionRecord(for: result)
+    }
+
     /// The chat record a finished compression leaves behind: summary lines on
     /// success; a warning note instead when the compression aborted (upstream
     /// Desktop keeps an aborted run out of the success path); the host's own
@@ -522,7 +540,7 @@ extension AppState {
             includePendingApprovals: false
         )
         // The chat's own notes aren't among the compressed rows; keep them.
-        let kept = Self.keepingLocalNotes(from: messages, in: merged)
+        let kept = mergeLocalNotes(into: Self.keepingLocalNotes(from: messages, in: merged), sessionId: sessionID)
         // The window describes the history from before the compression
         // (it goes just below), so it bounds no call card here.
         messages = mergeVoiceCallMarkers(

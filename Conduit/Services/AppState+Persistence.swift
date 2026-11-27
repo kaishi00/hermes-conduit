@@ -80,12 +80,14 @@ extension AppState {
     /// chat's own ids, or a runtime id Hermes confirmed as one of them. Never
     /// the scroll identity's aliases or a reconciliation's ids, which keep the
     /// previous chat's ids after a new chat and pinned its reviews there.
-    private func reviewRecordBelongs(_ record: ReviewSummaryRecord, toOwnIDs ownIDs: Set<String>) -> Bool {
-        if let key = ChatScrollIdentityNormalization.sessionID(record.sessionId), ownIDs.contains(key) {
+    /// A saved local note (`LocalChatNoteRecord`) belongs to a chat by the
+    /// same rule.
+    private func savedRecordBelongs(sessionId: String, toOwnIDs ownIDs: Set<String>) -> Bool {
+        if let key = ChatScrollIdentityNormalization.sessionID(sessionId), ownIDs.contains(key) {
             return true
         }
         guard let durable = ChatScrollIdentityNormalization.sessionID(
-            confirmedDurableSessionID(forRuntime: record.sessionId)
+            confirmedDurableSessionID(forRuntime: sessionId)
         ) else { return false }
         return ownIDs.contains(durable)
     }
@@ -93,7 +95,7 @@ extension AppState {
     func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
         let ownIDs = chatOwnSessionIDs(for: sessionId)
         let records = cachedReviews().filter {
-            $0.profile == activeProfile && reviewRecordBelongs($0, toOwnIDs: ownIDs)
+            $0.profile == activeProfile && savedRecordBelongs(sessionId: $0.sessionId, toOwnIDs: ownIDs)
         }
         guard !records.isEmpty else { return history }
         var reviews: [ChatMessage] = []
@@ -166,6 +168,40 @@ extension AppState {
         guard !reviews.isEmpty else { return nil }
         let placed = placingReviews(reviews, into: messages.filter { !isSaved($0) })
         return placed.map(\.id) == messages.map(\.id) ? nil : placed
+    }
+
+    /// The chat's own notes (slash command output, /btw and /background
+    /// answers) saved for it, put back into a transcript rebuilt from
+    /// Hermes' rows, which never hold them (issue 3394): a chat opened again,
+    /// from the list or after another chat, keeps them as a refresh of the
+    /// open chat does (`keepingLocalNotes`). Placed among the rows by time,
+    /// as saved reviews are. A note the transcript already shows (carried by
+    /// `keepingLocalNotes`, same id) or that a row already says (a system
+    /// row with the same text) isn't added again.
+    func mergeLocalNotes(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
+        let records = cachedLocalNotes()
+        guard !records.isEmpty else { return history }
+        let ownIDs = chatOwnSessionIDs(for: sessionId)
+        let shownIDs = Set(history.map(\.id))
+        let rowTexts = Set(history.lazy.filter { $0.role == .system }.map(\.content))
+        let notes = records
+            .filter { record in
+                record.profile == activeProfile
+                    && !shownIDs.contains(record.id)
+                    && !rowTexts.contains(record.content)
+                    && savedRecordBelongs(sessionId: record.sessionId, toOwnIDs: ownIDs)
+            }
+            .map { record in
+                ChatMessage(
+                    id: record.id,
+                    role: .system,
+                    content: record.content,
+                    rawContent: nil,
+                    timestamp: record.timestamp,
+                    author: nil
+                )
+            }
+        return Self.placingReviews(notes, into: history)
     }
 
     /// The chat's "Voice call" markers for calls started from it.
@@ -517,6 +553,37 @@ extension AppState {
     private func cachedReviews() -> [ReviewSummaryRecord] {
         guard let data = defaults.data(forKey: reviewSummaryCacheKey) else { return [] }
         return (try? JSONDecoder().decode([ReviewSummaryRecord].self, from: data)) ?? []
+    }
+
+    /// The most local notes kept, and the most text they hold together:
+    /// a /background answer can run long.
+    static let maximumRememberedLocalNotes = 200
+    static let maximumRememberedLocalNoteBytes = 256 * 1024
+
+    /// Saves one of the chat's own notes for it (see `mergeLocalNotes`).
+    /// Device-local, like the review cache: Hermes never stores the notes.
+    func persistLocalNote(_ record: LocalChatNoteRecord) {
+        var records = cachedLocalNotes()
+        records.append(record)
+        records = Self.trimmedLocalNotes(records)
+        if let data = try? JSONEncoder().encode(records) {
+            defaults.set(data, forKey: localChatNoteCacheKey)
+        }
+    }
+
+    /// The newest notes within both limits; the newest one always stays.
+    static func trimmedLocalNotes(_ records: [LocalChatNoteRecord]) -> [LocalChatNoteRecord] {
+        var kept = Array(records.suffix(maximumRememberedLocalNotes))
+        var bytes = kept.reduce(0) { $0 + $1.content.utf8.count }
+        while bytes > maximumRememberedLocalNoteBytes, kept.count > 1 {
+            bytes -= kept.removeFirst().content.utf8.count
+        }
+        return kept
+    }
+
+    private func cachedLocalNotes() -> [LocalChatNoteRecord] {
+        guard let data = defaults.data(forKey: localChatNoteCacheKey) else { return [] }
+        return (try? JSONDecoder().decode([LocalChatNoteRecord].self, from: data)) ?? []
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {

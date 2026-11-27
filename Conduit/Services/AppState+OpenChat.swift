@@ -783,6 +783,11 @@ extension AppState {
         mergeCachedReviews(into: [], sessionId: sessionID)
     }
 
+    /// The saved local notes a chat shows when its history loads.
+    func cachedLocalNoteRowsForTesting(_ sessionID: String) -> [ChatMessage] {
+        mergeLocalNotes(into: [], sessionId: sessionID)
+    }
+
     /// The ownership verdict a cross-profile decision would reach for this
     /// profile, so tests can pin all three cases without driving a switch.
     func profileOwnershipVerdictForTesting(_ profile: String) -> ProfileOwnershipVerdict {

@@ -758,6 +758,7 @@ extension AppState {
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
         defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         defaults.removeObject(forKey: reviewSummaryCacheKey)
+        defaults.removeObject(forKey: localChatNoteCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
         defaults.removeObject(forKey: knownProfileNamesKey)
         // The other combined dashboards' profiles as seen from this one:

@@ -3027,7 +3027,10 @@ extension AppState {
             ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: shownChat.durablePersistedRowIDs)
             : restored
         let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
+        // A chat opened again starts from no rows on screen: its notes come
+        // back from where they were saved (issue 3394).
+        let withNotes = mergeLocalNotes(into: rebuilt, sessionId: result.sessionId)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: withNotes, sessionId: result.sessionId), sessionId: result.sessionId)
         // A cached push copy of a clarify the transcript already holds from
         // Hermes goes, so one question never shows as two cards.
         for live in messages.compactMap(\.clarify)

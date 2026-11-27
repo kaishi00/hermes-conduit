@@ -3410,6 +3410,8 @@ final class AppState: ObservableObject {
     let profileOrderKey = "conduit.profileOrder.v1"
     let sessionFilterOrderKey = "conduit.sessionFilterOrder.v1"
     let reviewSummaryCacheKey = "conduit.reviewSummaryCache.v1"
+    /// The chats' own notes, which Hermes never stores (issue 3394).
+    let localChatNoteCacheKey = "conduit.localChatNotes.v1"
     let knownProfilesKey = "conduit.knownProfiles.v1"
     /// Each known profile's name, for Siri and Shortcuts.
     let knownProfileNamesKey = "conduit.knownProfileNames.v1"
