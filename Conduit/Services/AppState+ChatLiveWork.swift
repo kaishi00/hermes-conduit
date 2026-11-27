@@ -157,7 +157,9 @@ extension AppState {
     /// waiting send, or a held row no forward recorded, is never this start.
     func forwardedSendStarting(in sessionID: String?) -> String? {
         guard let sessionID else { return nil }
-        let into: (String) -> Bool = { self.shownChat.forwardedSendChats[$0] == sessionID }
+        // The chat by any of its ids: a compacted chat's turn may start under another.
+        let known = knownSessionIDs(for: sessionID).union([sessionID])
+        let into: (String) -> Bool = { self.shownChat.forwardedSendChats[$0].map(known.contains) ?? false }
         if let index = shownChat.readStartedAdmissions.firstIndex(where: into) {
             let admissionID = shownChat.readStartedAdmissions.remove(at: index)
             shownChat.forwardedSendChats.removeValue(forKey: admissionID)
