@@ -4257,15 +4257,15 @@ tokens only at its end, and Conduit doesn't estimate them from text)
 - Tests: `ConduitTests/ReplySpeedsTests.swift`
 
 **Rulings**
-- In the reply row, as grey text behind a Settings switch that is off by default: seen without a tap by those who turn it on, no new icon in the row (Eric, 2026-11-27, #NNNN).
-- The plugin's measurement only, never Hermes' `avg_tps`: that averages the chat's last ten model calls over their whole time, the wait for the first token and the tool steps included, so it reads low and is no one reply's (2026-11-27, #NNNN).
-- A call is timed from its first streamed chunk to its end; one with no streamed chunk, or with reasoning tokens (hidden thinking can come before the first chunk), from the request, so a speed may read low but never higher than the model wrote. A turn's speed is all its calls' output tokens over all their writing time (2026-11-27, #NNNN).
+- In the reply row, as grey text behind a Settings switch that is off by default: seen without a tap by those who turn it on, no new icon in the row (Eric, 2026-11-27, #3414).
+- The plugin's measurement only, never Hermes' `avg_tps`: that averages the chat's last ten model calls over their whole time, the wait for the first token and the tool steps included, so it reads low and is no one reply's (2026-11-27, #3414).
+- A call is timed from its first streamed chunk to its end; one with no streamed chunk, or with reasoning tokens (hidden thinking can come before the first chunk), from the request, so a speed may read low but never higher than the model wrote. A turn's speed is all its calls' output tokens over all their writing time (2026-11-27, #3414).
 - A reply from before the plugin measured it shows nothing; the newest reply still drawn from the stream takes the newest turn's speed once its turn ends.
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-27, #NNNN (added with notifier #NOTIF and desktop#DESK).
+**Checked:** 2026-11-27, #3414 (added with notifier #1127 and desktop#698).
 
 ## /new in a Bot Chat
 
