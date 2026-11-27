@@ -2917,6 +2917,55 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true, "The affordance must not be retired")
     }
 
+    func testAChangeSignalAddsAStoredReplyToTheOpenBotChat() async throws {
+        let reads = Counter()
+        var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionID, profile, query in
+                XCTAssertEqual(sessionID, "stored-a")
+                XCTAssertEqual(profile, "default")
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                reads.value += 1
+                return self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+            }
+        )
+        let app = harness.appState
+        app.isConnected = true
+        app.sessions = [session("stored-a")]
+        app.installDashboardTicketBridgeForTesting(DashboardTicketBridge(
+            baseURL: "https://one.example",
+            pendingRequests: DashboardTicketBridgePendingRequests(),
+            readinessPollAttempts: 0,
+            readinessPollInterval: .milliseconds(1)
+        ))
+
+        let opened = await app.openSession("stored-a")
+        XCTAssertTrue(opened)
+        app.noteBotChatSessionForTesting("stored-a", profile: "default")
+        app.noteBotChatSessionForTesting("runtime-a", profile: "default")
+        app.showSidebar = false
+        XCTAssertEqual(app.chatShownOnScreen, "runtime-a")
+        XCTAssertEqual(app.activeBotChatProfile, "default")
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job"])
+        let before = reads.value
+
+        tail.append(transcriptRow(2, role: "assistant", content: "The example job is complete."))
+        app.handleStreamEvent(.sessionsChanged)
+        let read = try XCTUnwrap(app.openChatSyncRead)
+        await read.value
+
+        XCTAssertEqual(reads.value, before + 1, "Read one authenticated tail page")
+        XCTAssertEqual(app.activeSessionId, "runtime-a")
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
+    }
+
     // MARK: - Harness
 
     private func makeHarness(

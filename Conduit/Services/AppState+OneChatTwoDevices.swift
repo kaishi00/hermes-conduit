@@ -190,6 +190,12 @@ extension AppState {
             if case .unreachable = chatRuntimeRoute { setActiveChatRepliesElsewhere(false) }
             return
         }
+        // Bot Chats use their authenticated stored tail, never the workspace registry.
+        if activeBotChatProfile != nil {
+            readPendingCatalogChange()
+            setActiveChatRepliesElsewhere(false)
+            return
+        }
         guard isSceneActive, isConnected, let client,
               client !== activeListUnsupportedClient,
               let local = openChatLocalTurn() else {
@@ -346,9 +352,13 @@ extension AppState {
     /// one held back by a turn, at the open chat's or the list's next check.
     func readPendingCatalogChange() {
         guard isSceneActive, isConnected else { return }
+        // Leave a change pending when the open Bot Chat already has a read in flight.
+        if chatOnScreenIsInScope, chatShownOnScreen != nil, activeBotChatProfile != nil,
+           openChatSyncRead != nil || reconciliation != nil || isChatRefreshing { return }
         let now = chatSyncNow()
         if catalogChangeSignal.takeRead(now: now, turnRunningHere: turnState.isRunning) {
             refreshCatalogAfterLeavingChat(reportingFailure: false, readingChange: true)
+            readOpenBotChatTail()
             return
         }
         guard !turnState.isRunning, catalogChangeReadTask == nil,
@@ -360,6 +370,57 @@ extension AppState {
             guard !Task.isCancelled, let self else { return }
             self.catalogChangeReadTask = nil
             self.readPendingCatalogChange()
+        }
+    }
+
+    /// Bot Chats are outside the workspace's live registry. Read only the
+    /// already-open conversation's authenticated, bounded persisted page.
+    private func readOpenBotChatTail() {
+        guard chatOnScreenIsInScope, let sessionID = chatShownOnScreen, let profile = activeBotChatProfile,
+              let client, let bridge = dashboardTicketBridge,
+              let window = persistedTranscriptWindow, window.profile == profile,
+              window.trustedSessionIDs.contains(sessionID), !window.isLoadingEarlier,
+              openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing,
+              turnState == .idle else { return }
+        let dashboardID = activeDashboardID
+        let storedID = window.resolvedSessionID ?? window.requestedSessionID
+        startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false) { appState in
+            @MainActor func isCurrent() -> Bool {
+                appState.chatOnScreenIsInScope && appState.activeDashboardID == dashboardID && appState.client === client
+                    && appState.dashboardTicketBridge === bridge && appState.chatShownOnScreen == sessionID
+                    && appState.activeBotChatProfile == profile && appState.persistedTranscriptWindow == window
+                    && appState.turnState == .idle && appState.reconciliation == nil && !appState.isChatRefreshing
+                    && !Task.isCancelled
+            }
+            guard isCurrent() else { return }
+            let frontier = appState.shownChat.durablePersistedRowIDs
+            let messageIDs = Set(appState.messages.map(\.id))
+            let last = appState.messages.last?.id
+            let wasEmpty = appState.shownChat.persistedOrderingFrontier.isPositivelyEmpty
+            let outcome = await appState.foregroundPersistedTailOutcome(sessionId: storedID, profile: profile, using: bridge)
+            guard isCurrent(), appState.messages.last?.id == last,
+                  appState.shownChat.durablePersistedRowIDs == frontier,
+                  case let .hydrated(transcript) = outcome,
+                  let resolvedID = transcript.resolvedSessionId, window.trustedSessionIDs.contains(resolvedID) else { return }
+            let rows: [ChatMessage]
+            switch appState.foregroundFreshnessVerdict(
+                outcome, localFrontier: frontier, localMessageIDs: messageIDs, lastLocalMessageID: last,
+                requestedSessionID: storedID, runtimeSessionID: sessionID, livenessIsRunning: false, locallyOwnedTurn: nil
+            ) {
+            case let .advanced(_, newRows):
+                rows = newRows
+            case .inconclusive where last == nil && wasEmpty:
+                // A previously validated empty chat can take a complete first page.
+                guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else { return }
+                rows = transcript.messages.filter { transcript.durableRowIDs.contains($0.id) }
+            default:
+                return
+            }
+            guard !rows.isEmpty else { return }
+            appState.applyPersistedForegroundAdvancement(
+                requestedSessionID: storedID, transcript: transcript, newRows: rows,
+                runtimeSessionID: sessionID, profile: profile
+            )
         }
     }
 
