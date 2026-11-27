@@ -1129,9 +1129,35 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("plugin"), "message": .string("Hi")])), "Hi")
         XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("other"), "notice": .string("Note")])), "Note")
         XCTAssertNil(AppState.printedSlashOutput(.object(["type": .string("exec"), "output": .string("")])))
-        for type in ["send", "skill", "prefill", "alias"] {
+        for type in ["send", "skill", "prefill"] {
             XCTAssertNil(AppState.printedSlashOutput(.object(["type": .string(type), "message": .string("words")])), type)
         }
+        // What those print is kept: a prefill's notice, a targetless alias's output.
+        XCTAssertEqual(AppState.printedSlashOutput(.object([
+            "type": .string("prefill"), "message": .string("words"), "notice": .string("Filled in.")
+        ])), "Filled in.")
+        XCTAssertEqual(AppState.printedSlashOutput(.object(["type": .string("alias"), "output": .string("No target.")])), "No target.")
+        XCTAssertNil(AppState.printedSlashOutput(.object([
+            "type": .string("alias"), "target": .string("compress"), "output": .string("Running…")
+        ])))
+    }
+
+    /// A /btw answer that comes after its chat left the screen is saved for
+    /// that chat, not drawn in the one shown.
+    func testALateSideAgentAnswerIsSavedForItsChat() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-b"
+        appState.messages = []
+        appState.sideAgentProfilesBySession["chat-a"] = appState.activeProfile
+
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "chat-a", kind: .btw, taskId: "btw_1", text: "Ship on Friday.", question: "When do we ship?"
+        ))
+        XCTAssertEqual(appState.messages, [], "the chat on screen doesn't show another chat's answer")
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-a").count, 1)
+        XCTAssertTrue(appState.cachedLocalNoteRowsForTesting("chat-a").first?.content.contains("Ship on Friday.") == true)
     }
 
     /// Saved notes are kept to the newest within a count and a size, and

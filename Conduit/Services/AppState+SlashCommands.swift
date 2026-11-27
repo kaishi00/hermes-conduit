@@ -327,6 +327,7 @@ extension AppState {
                 } else {
                     _ = try await client.startSideAgent(kind, sessionId: sessionId, text: command.argument)
                 }
+                sideAgentProfilesBySession[sessionId] = submissionContext.profile
                 appendSlashOutput(
                     kind == .btw
                         ? AppLocalization.string("Answering from a snapshot of this chat. The answer will appear here.")
@@ -337,7 +338,8 @@ extension AppState {
             } catch where HermesClient.isMissingRPCMethod(error) {
                 break
             } catch {
-                guard isCurrentComposerSubmission(submissionContext) else { return }
+                // Saved for its chat when that left the screen meanwhile.
+                if error is CancellationError, !isCurrentComposerSubmission(submissionContext) { return }
                 appendSlashOutput(
                     AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))"),
                     context: submissionContext
@@ -458,15 +460,27 @@ extension AppState {
         }
     }
 
-    /// What a slash result only prints (`exec`, `plugin`, or a type Conduit
-    /// doesn't know), as `handleSlashResult` shows it; nil for one that
-    /// sends, fills the composer or runs another command.
+    /// What a slash result prints, as `handleSlashResult` shows it: an
+    /// `exec`, `plugin` or unknown type's output, a `prefill`'s notice, a
+    /// targetless `alias`'s output. Nil for what it would send, put in the
+    /// composer or run.
     static func printedSlashOutput(_ result: AnyCodable) -> String? {
         let obj = result.objectValue ?? [:]
         let type = obj["type"]?.stringValue ?? ""
-        guard !["send", "skill", "prefill", "alias"].contains(type) else { return nil }
         let output = obj["output"]?.stringValue ?? obj["message"]?.stringValue ?? obj["notice"]?.stringValue ?? ""
-        return output.isEmpty ? nil : output
+        let printed: String
+        switch type {
+        case "send", "skill":
+            return nil
+        case "prefill":
+            printed = obj["notice"]?.stringValue ?? ""
+        case "alias":
+            let target = obj["target"]?.stringValue ?? obj["command"]?.stringValue ?? obj["name"]?.stringValue ?? ""
+            printed = target.isEmpty ? output : ""
+        default:
+            printed = output
+        }
+        return printed.isEmpty ? nil : printed
     }
 
     /// Hermes' `/queue` management words. Conduit can only add to the
@@ -887,12 +901,14 @@ extension AppState {
         } catch where HermesClient.isMissingRPCMethod(error) {
             return false
         } catch {
-            if isCurrentComposerSubmission(context) {
-                appendSlashOutput(Self.slashFailureNote(command: "rollback", error: error), context: context)
-            }
+            // Saved for its chat when that left the screen meanwhile (issue 3394).
+            if error is CancellationError, !isCurrentComposerSubmission(context) { return true }
+            appendSlashOutput(Self.slashFailureNote(command: "rollback", error: error), context: context)
             return true
         }
-        guard isCurrentComposerSubmission(context) else { return true }
+        // What it prints is saved for a chat that left the screen meanwhile
+        // (appendSlashOutput's stale-context branch); only a restore's
+        // reopen waits for the chat to be on screen.
         let object = result.objectValue ?? [:]
         switch request.method {
         case .list:
@@ -913,7 +929,8 @@ extension AppState {
             // they leave the screen. The note goes under the reloaded
             // transcript, which would otherwise replace it.
             let removed = HermesClient.exactIntValue(object["history_removed"]) ?? 0
-            guard object["success"]?.boolValue == true, request.filePath == nil, removed > 0 else {
+            guard object["success"]?.boolValue == true, request.filePath == nil, removed > 0,
+                  isCurrentComposerSubmission(context) else {
                 appendSlashOutput(note, context: context)
                 return true
             }
@@ -1164,9 +1181,10 @@ extension AppState {
         } catch where HermesClient.isMissingRPCMethod(error) {
             return false
         } catch {
+            if error is CancellationError, !isCurrentComposerSubmission(context) { return true }
             note = Self.mcpReloadFailureNote(error)
         }
-        guard isCurrentComposerSubmission(context) else { return true }
+        // Saved for its chat when that left the screen meanwhile (issue 3394).
         appendSlashOutput(note, context: context)
         return true
     }
@@ -1218,11 +1236,11 @@ extension AppState {
         } catch where HermesClient.isMissingRPCMethod(error) {
             return false
         } catch {
+            if error is CancellationError, !isCurrentComposerSubmission(context) { return true }
             note = Self.slashFailureNote(command: "reload-skills", error: error)
         }
-        if isCurrentComposerSubmission(context) {
-            appendSlashOutput(note, context: context)
-        }
+        // Saved for its chat when that left the screen meanwhile (issue 3394).
+        appendSlashOutput(note, context: context)
         if reloaded { await loadChatResumeSlashCommands() }
         return true
     }
@@ -1343,7 +1361,14 @@ extension AppState {
                         command: nestedCommand,
                         context: context
                     )
-                    guard isCurrentComposerSubmission(context) else { return }
+                    guard isCurrentComposerSubmission(context) else {
+                        // Its chat left the screen: what the target printed
+                        // is saved for it, as a top-level result is.
+                        if let output = Self.printedSlashOutput(nested) {
+                            appendSlashOutput(output, context: context)
+                        }
+                        return
+                    }
                     await handleSlashResult(
                         nested,
                         depth: depth + 1,
@@ -1353,7 +1378,7 @@ extension AppState {
                         context: context
                     )
                 } catch {
-                    guard isCurrentComposerSubmission(context) else { return }
+                    if error is CancellationError, !isCurrentComposerSubmission(context) { return }
                     appendSlashOutput(
                         AppLocalization.string("⚠️ Alias target failed: \(UserFacingError.message(for: error))"),
                         context: context
@@ -1368,6 +1393,35 @@ extension AppState {
                 appendSlashOutput(output, context: context)
             }
         }
+    }
+
+    /// Saves a note for a chat that isn't on screen, under the runtime id
+    /// it ran on, or the durable id Hermes confirmed for it; never the
+    /// scroll identity's canonical id, which can still name the chat open
+    /// before a new one (issue 3394).
+    func persistLeftChatNote(_ text: String, id: String, timestamp: String, profile: String, runtimeSessionID: String) {
+        guard let key = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: runtimeSessionID) ?? runtimeSessionID
+        ) else { return }
+        persistLocalNote(LocalChatNoteRecord(id: id, profile: profile, sessionId: key, timestamp: timestamp, content: text))
+    }
+
+    /// A /btw or /background answer for a chat this phone ran it in that
+    /// has left the screen: saved for that chat, so it shows when the chat
+    /// opens (issue 3394). False for one the screen takes.
+    func keepLeftChatSideAgentAnswer(_ event: StreamEvent) -> Bool {
+        guard case .sideAgentComplete(let sessionID, let kind, let taskId, let text, let question) = event,
+              let profile = sideAgentProfilesBySession[sessionID],
+              !eventBelongsToActiveSession(sessionID),
+              reconciliation?.accepts(sessionID) != true else { return false }
+        persistLeftChatNote(
+            Self.sideAgentNote(kind: kind, taskId: taskId, text: text, question: question),
+            id: "slash-\(UUID().uuidString)",
+            timestamp: Self.reviewTimestampFormatter.string(from: Date()),
+            profile: profile,
+            runtimeSessionID: sessionID
+        )
+        return true
     }
 
     func appendSlashOutput(
@@ -1385,13 +1439,8 @@ extension AppState {
             // The runtime id it was typed under, or the durable id Hermes
             // confirmed for it; never the scroll identity's canonical id,
             // which can still name the chat open before a new one.
-            if let sessionID = context.sessionID,
-               let key = ChatScrollIdentityNormalization.sessionID(
-                   confirmedDurableSessionID(forRuntime: sessionID) ?? sessionID
-               ) {
-                persistLocalNote(LocalChatNoteRecord(
-                    id: id, profile: context.profile, sessionId: key, timestamp: timestamp, content: text
-                ))
+            if let sessionID = context.sessionID {
+                persistLeftChatNote(text, id: id, timestamp: timestamp, profile: context.profile, runtimeSessionID: sessionID)
             }
             return
         }

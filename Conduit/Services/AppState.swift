@@ -3412,6 +3412,10 @@ final class AppState: ObservableObject {
     let reviewSummaryCacheKey = "conduit.reviewSummaryCache.v1"
     /// The chats' own notes, which Hermes never stores (issue 3394).
     let localChatNoteCacheKey = "conduit.localChatNotes.v1"
+    /// The runtime sessions a /btw or /background ran on from here, with
+    /// their profile: an answer that comes after its chat left the screen
+    /// is saved for that chat (issue 3394).
+    var sideAgentProfilesBySession: [String: String] = [:]
     let knownProfilesKey = "conduit.knownProfiles.v1"
     /// Each known profile's name, for Siri and Shortcuts.
     let knownProfileNamesKey = "conduit.knownProfileNames.v1"
