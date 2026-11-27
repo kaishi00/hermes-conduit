@@ -12,6 +12,8 @@ The **Plan limits** widget (small and medium) shows the plan limits Hermes repor
 
 On iOS 18 and later, the **New Chat** control opens Conduit on a fresh chat with the keyboard up, in the profile on screen. Add it in Control Center (touch and hold, **Add a Control**, search for Conduit), on the Lock Screen (**Customize**, then a control slot), or under Settings > Action Button > Controls. The **New Chat** shortcut does the same and can pick a profile: Settings > Action Button > Shortcut lists it under Conduit, and Siri and Shortcuts run it ("New chat in Conduit"; issue 2860).
 
+A link opens the same new chat with text ready (issue 3389): `conduit://new?text=…&profile=…&title=…&send=0|1`, from another app, a Shortcuts **Open URLs** action, an NFC tag or a Focus automation. Every part is optional and percent-encoded. The text waits in the composer with the keyboard up; with `send=1`, Conduit shows it and sends it only when you tap **Send**, since any app or web page can open a link. To send without a tap, use the **Send to Hermes** action instead.
+
 ## Apple HomeView
 
 HomeView shows small widgets from a paired iPhone or iPad, and opens only CarPlay audio and video apps from the phone, so a tap that would open Conduit says **App Unavailable**. The small Pulse widget's **Not now** and **Done** are made to work there: HomeView sends a widget's button taps to the iPhone, which runs them (not yet tried on a HomeView). The launcher widgets show but can't open anything on HomeView; turn on **Hide conversation title** to keep a chat's title off a shared screen. In Night Mode, Conduit-chan's artwork is drawn light on dark (also untried on a device). HomeView is one screen the household shares, which is why **Do it** isn't on the small size (issue 2561).

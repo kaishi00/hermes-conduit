@@ -50179,6 +50179,88 @@
           }
         }
       }
+    },
+    "Conduit couldn't send this, so it's in the composer. Send it when you're ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte das nicht senden, darum steht es im Eingabefeld. Sende es, wenn du so weit bist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo enviar esto, así que está en el campo de mensaje. Envíalo cuando quieras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n’a pas pu envoyer ceci, il est donc dans le champ de saisie. Envoie-le quand tu es prêt."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat mengirim ini, jadi ada di kolom pesan. Kirim saat Anda siap."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a inviarlo, quindi è nel campo di testo. Invialo quando sei pronto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信できなかったため、入力欄に入れました。準備ができたら送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보내지 못해 입력란에 넣었습니다. 준비되면 보내세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł tego wysłać, więc jest to w polu wiadomości. Wyślij, gdy będziesz gotowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu enviar isto, então está no campo de mensagem. Envie quando quiser."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не смог это отправить, поэтому это в поле ввода. Отправьте, когда будете готовы."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bunu gönderemedi, bu yüzden mesaj alanında. Hazır olduğunuzda gönderin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法发送此内容，所以已放在输入框中。准备好后再发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法傳送此內容，所以已放在輸入框中。準備好後再傳送。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

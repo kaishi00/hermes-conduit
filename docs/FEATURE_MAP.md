@@ -7917,7 +7917,7 @@ waits for the connection and says when it can't; done) · the app's own New
 Chat and its focus (done: one launch origin now says whose launch it is, see
 A new chat that something waits on) · Talk to Conduit (the same Profile
 parameter and its Siri phrases; not needed) · Open Chat and Send to Hermes
-(other App Shortcuts; not needed) · a shared draft's launch (done: one repeating the shortcut's New Chat waits in the inbox, issue 2870) · Which dashboard a launch signs in to
+(other App Shortcuts; not needed) · a shared draft's launch (done: one repeating the shortcut's New Chat waits in the inbox, issue 2870) · a `conduit://new` link (the same launch, with text ready; done, see A new chat from a link) · Which dashboard a launch signs in to
 (done: the launch's own switch, see there) · the New Chat control in Control Center,
 the Lock Screen and the Action Button (done) · the Watch's shortcuts (not needed: the Watch has no composer) ·
 CarPlay (not needed: no keyboard) · Conduit/AppShortcuts.xcstrings and the
@@ -7928,7 +7928,7 @@ intent's title and description · docs/WIDGETS.md · README.md
 **Code**
 - Intent: `Conduit/Intents/NewChatIntent.swift` (NewChatIntent), listed in `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), phrases in `Conduit/AppShortcuts.xcstrings`
 - Control: `ConduitWidgets/LauncherWidgets.swift` (NewChatControl, in the widget bundle on iOS 18; its kind is `Shared/Widgets/WidgetSnapshot.swift`'s ConduitWidgetKind.newChatControl), `Shared/Widgets/NewChatControlIntent.swift` (OpenNewChatIntent, built into the app and the extension; NewChatControlRequests), its handler set in `Conduit/ConduitApp.swift` (didFinishLaunching)
-- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut, routeWidgetLaunchURL's origin, receiveLaunch, false when it went on as the launch already in flight), `Conduit/Services/AppState+ShareDraft.swift` (launchSharedDraft: a shared draft's launch, recorded only when receiveLaunch started it), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
+- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut and newChatShortcutLaunchLink, which a `conduit://new` link starts too, routeWidgetLaunchURL's origin, receiveLaunch, false when it went on as the launch already in flight), `Conduit/Services/AppState+ShareDraft.swift` (launchSharedDraft: a shared draft's launch, recorded only when receiveLaunch started it), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
 - Tests: `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatShortcutFocusesItsComposerOnEveryDevice, testNewChatShortcutWithNoDashboardStartsNothing, testNewChatShortcutStartsInTheProfileItNames, testNewChatShortcutDuringACallSaysToEndTheCall, testNewChatShortcutRepeatingAWidgetsLaunchKeepsTheWidgetsOrigin, testAWidgetRepeatingAShortcutsNewChatKeepsTheShortcutsOrigin), `ConduitTests/ShareDraftTests+AppState.swift` (testADraftRepeatingAShortcutsNewChatLeavesItsFinishAlone)
 
 **Rulings**
@@ -7941,7 +7941,37 @@ intent's title and description · docs/WIDGETS.md · README.md
 **Open gaps**
 - Not tried on a device yet: the Action Button, the control, a cold launch and Siri's phrases.
 
-**Checked:** 2026-11-22, #3135 (issue 2932: the ruling says only a launch being carried out keeps a repeat out, as the code does; no change otherwise); 2026-11-22, #3078 (its Profile can name another combined dashboard's profile, which switches there); 2026-11-20, #2928 (issue 2870: a shared draft repeating a launch in flight stays in the inbox instead of taking its finish; the widget-repeats-shortcut mirror and the call refusal's V2 notice tested); 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+**Checked:** 2026-11-27, #APP_PR (issue 3389: a `conduit://new` link starts the same launch, see A new chat from a link); 2026-11-22, #3135 (issue 2932: the ruling says only a launch being carried out keeps a repeat out, as the code does; no change otherwise); 2026-11-22, #3078 (its Profile can name another combined dashboard's profile, which switches there); 2026-11-20, #2928 (issue 2870: a shared draft repeating a launch in flight stays in the inbox instead of taking its finish; the widget-repeats-shortcut mirror and the call refusal's V2 notice tested); 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+
+## A new chat from a link
+
+`conduit://new?text=…&profile=…&title=…&send=0|1` (issue 3389) opens
+Conduit on a new chat with text ready, from another app, a widget or an
+automation (Shortcuts, an NFC tag, a Focus change), or from a link in a
+reply. The text waits in the composer with the keyboard up; `send=1` shows
+it in a Send / Edit sheet and sends it only on Send. `profile` and `title`
+work as the New Chat and Send to Hermes shortcuts take them, and every part
+is optional: `conduit://new` alone is the New Chat shortcut.
+
+**Siblings:** the New Chat shortcut (the same launch, origin and failures; done, see New Chat from Siri, Shortcuts and the Action Button) · Send to Hermes (sends in the background without opening Conduit; not needed: it stays the way an automation the user built sends unasked) · a shared draft's launch (composer delivery the same way; not needed: its inbox is the share sheet's) · `conduit://session/` links from other apps (the scheme's other outside link; not needed) · links in replies (an in-app tap opens it the same way, the Send sheet included; done) · the Watch and CarPlay (not needed: no composer) · the notifier (not needed: no tool writes these links) · text: README.md, docs/WIDGETS.md, Conduit/Localizable.xcstrings and Conduit/Strings/Chat.xcstrings (the sheet's title and the composer's notice when a send is refused)
+
+**Desktop app:** has it: `desktop/src/shared/linkUrls.ts` (newChatLink) reads it from the command line or the Mac's open-url, and `desktop/src/renderer/src/App.tsx` (openNewChatLink) opens a new chat with its title and the text in the composer; `send=1` asks first in Conduit's dialog, where Cancel leaves the text in the composer (its dialog has two buttons), desktop#673.
+
+**Code**
+- Reading it: `Conduit/Services/ConduitAppLink.swift` (newChat, NewChatLink, init?(externalURL:)), from outside in `Conduit/ConduitApp.swift` (onOpenURL, at once rather than held for the connection, since the launch waits itself)
+- The launch and its text: `Conduit/Services/AppState+NewChatLink.swift` (startNewChatFromLink, newChatLinkLaunchEnded, sendNewChatLinkText, editNewChatLinkText), `Conduit/Services/AppState+WidgetLaunch.swift` (newChatShortcutLaunchLink), `Conduit/Services/AppState.swift` (the coordinator's ended)
+- The Send sheet: `Conduit/Views/RootView.swift` (newChatLinkConfirmation's alert)
+- Tests: `ConduitTests/ConduitExternalLinkTests.swift` (testNewChatLinkReadsItsParts, testNewChatLinkRefusesAnOddProfileOrPath), `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatLinkPutsItsTextInTheNewChatsComposer, testNewChatLinkThatSendsAsksFirst, testNewChatLinkEditAndCancel, testNewChatLinkWithNoDashboardStartsNothing)
+
+**Rulings**
+- `send=1` never sends unseen: the chat opens and a Send / Edit sheet shows the text, and only Send sends it. Any app, web page, QR code or NFC tag can open a link, and Hermes acts on what it reads; an automation that must send without a tap uses Send to Hermes, which the user builds (Eric 2026-11-27, #APP_PR, issue 3389).
+- It is the New Chat shortcut's launch: on the dashboard in use (its profile can name another combined dashboard's, as the shortcut's can), nothing with no dashboard signed in, the keyboard up, and the shortcut's failure words; a launch that fails drops the text (#APP_PR).
+- A link's text is literal: a send never runs it as a slash command. A refused send leaves it in the composer and says so. The title is set as the title menu's Rename sets it, once the chat opens (#APP_PR).
+
+**Open gaps**
+- Not tried on a device yet: a cold launch from another app, and Safari's "Open in Conduit?".
+
+**Checked:** 2026-11-27, #APP_PR (added, issue 3389, with desktop#673).
 
 ## Shortcuts Hermes can run
 

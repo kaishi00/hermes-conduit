@@ -45,6 +45,40 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
+    /// `conduit://new` (issue 3389): every part optional, read from
+    /// outside as from inside, and written back the same way.
+    func testNewChatLinkReadsItsParts() throws {
+        let url = try XCTUnwrap(URL(string: "conduit://new?text=Plan%20the%20trip%0Afor%20May&profile=work&title=%20Trip%20&send=1"))
+        let expected = ConduitAppLink.newChat(NewChatLink(text: "Plan the trip\nfor May", profile: "work", title: "Trip", sends: true))
+        XCTAssertEqual(ConduitAppLink(url: url), expected)
+        XCTAssertEqual(ConduitAppLink(externalURL: url), expected)
+        XCTAssertEqual(ConduitAppLink(url: expected.url), expected)
+
+        let bare = try XCTUnwrap(URL(string: "conduit://new"))
+        guard case .newChat(let plain)? = ConduitAppLink(externalURL: bare) else { return XCTFail("conduit://new opens a new chat") }
+        XCTAssertTrue(plain.isPlainNewChat)
+        XCTAssertFalse(plain.sends)
+        XCTAssertEqual(ConduitAppLink.newChat(plain).url.absoluteString, "conduit://new")
+
+        let quiet = try XCTUnwrap(URL(string: "conduit://new?text=hi&send=0"))
+        guard case .newChat(let unsent)? = ConduitAppLink(externalURL: quiet) else { return XCTFail() }
+        XCTAssertFalse(unsent.sends, "send=0 is the default")
+        let blank = try XCTUnwrap(URL(string: "conduit://new?text=%20%20&title=&profile="))
+        guard case .newChat(let empty)? = ConduitAppLink(externalURL: blank) else { return XCTFail() }
+        XCTAssertEqual(empty, NewChatLink(), "blank parts are left out")
+    }
+
+    func testNewChatLinkRefusesAnOddProfileOrPath() throws {
+        for raw in ["conduit://new?profile=a%20b&text=hi", "conduit://new/extra?text=hi"] {
+            let url = try XCTUnwrap(URL(string: raw), raw)
+            XCTAssertNil(ConduitAppLink(externalURL: url), raw)
+        }
+        let long = String(repeating: "t", count: 200)
+        let titled = try XCTUnwrap(URL(string: "conduit://new?title=" + long))
+        guard case .newChat(let request)? = ConduitAppLink(url: titled) else { return XCTFail() }
+        XCTAssertEqual(request.title?.count, NewChatLink.maximumTitleCharacters)
+    }
+
     func testExternalLinkLongestAcceptedIDStillOpens() throws {
         let id = String(repeating: "a", count: 128)
         let url = try XCTUnwrap(URL(string: "conduit://session/" + id))

@@ -477,7 +477,8 @@ struct ConduitApp: App {
             // (Handoff) too, since Conduit has one window.
             .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
             // Another app opening a chat: only session links, opened through
-            // the same route as an in-app link once Hermes is connected.
+            // the same route as an in-app link once Hermes is connected, and
+            // new chat links (conduit://new).
             .onOpenURL { url in
                 // The Shortcuts app back from a run Hermes asked for.
                 if PhoneShortcutRunner.shared.handle(url) { return }
@@ -491,6 +492,12 @@ struct ConduitApp: App {
                 // A computer's pairing code read by the Camera.
                 if appState.routeComputerPairingLink(url) { return }
                 guard let link = ConduitAppLink(externalURL: url) else { return }
+                // A new chat link is the New Chat shortcut's launch, which
+                // waits for the connection itself (issue 3389).
+                if case .newChat = link {
+                    appState.openAppLink(link)
+                    return
+                }
                 pendingExternalLink = link
             }
             .task(id: externalLinkRouteKey) {

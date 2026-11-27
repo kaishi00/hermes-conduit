@@ -51,18 +51,24 @@ extension AppState {
     /// sign-in instead).
     @discardableResult
     func startNewChatFromShortcut(profile: String?) -> Bool {
+        guard let link = newChatShortcutLaunchLink(profile: profile) else { return false }
+        return routeWidgetLaunchURL(link.url, origin: .shortcut)
+    }
+
+    /// The New Chat shortcut's launch for `profile`: a widget's New Chat on
+    /// the dashboard in use. Nil with no dashboard to start it on.
+    func newChatShortcutLaunchLink(profile: String?) -> WidgetLaunchLink? {
         // Another combined dashboard's profile ("New Atlas chat") starts it
         // there, the widget's New Chat switching as it does for a far
         // workspace.
         let parts = profile.map { ConduitProfileEntity.parts(of: $0) }
         let asked = parts?.profile.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let dashboardID = parts?.dashboardID ?? activeDashboardID,
-              let link = WidgetLaunchLink(
-                  action: .newChat,
-                  workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: asked.isEmpty ? activeProfile : asked),
-                  reference: nil
-              ) else { return false }
-        return routeWidgetLaunchURL(link.url, origin: .shortcut)
+        guard let dashboardID = parts?.dashboardID ?? activeDashboardID else { return nil }
+        return WidgetLaunchLink(
+            action: .newChat,
+            workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: asked.isEmpty ? activeProfile : asked),
+            reference: nil
+        )
     }
 
     func prepareWidgetLaunch(_ link: WidgetLaunchLink, lease: WidgetLaunchLease) async -> WidgetLaunchOutcome {

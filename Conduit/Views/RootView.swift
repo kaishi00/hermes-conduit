@@ -101,6 +101,39 @@ struct RootView: View {
         } message: { _ in
             Text("Conduit didn't have your chats yet when you shared this. It opens in a new chat, and nothing is sent until you send it.")
         }
+        // A `conduit://new` link with send=1 (issue 3389): its text is
+        // shown and sent only on Send, since any app or web page can open a
+        // link (Eric 2026-11-27).
+        .alert(
+            Text("Send this to Hermes?"),
+            isPresented: Binding(
+                get: { appState.newChatLinkConfirmation != nil },
+                set: { presented in
+                    if !presented, let confirmation = appState.newChatLinkConfirmation {
+                        appState.discardNewChatLinkText(confirmation)
+                    }
+                }
+            ),
+            presenting: appState.newChatLinkConfirmation
+        ) { confirmation in
+            Button {
+                appState.sendNewChatLinkText(confirmation)
+            } label: {
+                Text("Send")
+            }
+            Button {
+                appState.editNewChatLinkText(confirmation)
+            } label: {
+                Text("Edit")
+            }
+            Button(role: .cancel) {
+                appState.discardNewChatLinkText(confirmation)
+            } label: {
+                Text("Cancel")
+            }
+        } message: { confirmation in
+            Text(verbatim: NewChatLinkConfirmation.preview(of: confirmation.text))
+        }
         .onChange(of: scenePhase) { _, newPhase in
             // Only the primary window drives the process-wide lifecycle: a
             // transient duplicate window's .background must never suspend a

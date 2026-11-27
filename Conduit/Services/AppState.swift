@@ -560,6 +560,15 @@ final class AppState: ObservableObject {
     /// Drafts the user put off choosing a dashboard for: not asked about
     /// again until Conduit next comes to the front.
     var postponedSharedDraftIDs: Set<UUID> = []
+    // MARK: New chat links (AppState+NewChatLink.swift)
+    /// A `conduit://new` link's launch, and what it carries (issue 3389).
+    var newChatLinkLaunch: NewChatLinkLaunch?
+    /// A link's text waiting for the user's Send (`send=1`).
+    @Published var newChatLinkConfirmation: NewChatLinkConfirmation?
+    /// Test seam: sends a link's text in place of submitComposer.
+    var newChatLinkSendOverride: ((String) async -> Bool)?
+    /// Test seam: names the new chat in place of renameSession.
+    var newChatLinkTitleOverride: ((String) async -> Void)?
     var widgetAwaitingInteractiveAuthenticationDashboardID: UUID?
     /// Refresh tokens a sign-out handed to Hermes' logout, until revoked.
     var serverSignOutQueue: ServerSignOutQueue = .shared
@@ -620,6 +629,7 @@ final class AppState: ObservableObject {
             },
             ended: { [weak self] link, outcome in
                 self?.sharedDraftLaunchEnded(link, outcome: outcome)
+                self?.newChatLinkLaunchEnded(link, outcome: outcome)
             }
         )
     }()
