@@ -1076,6 +1076,13 @@ struct WorkspaceFolderView: View {
             await explorer.open(root: same.path, profile: profile)
             return
         }
+        // A relative name nothing placed (no lookup, no chat folder) isn't a
+        // folder to keep in the profile's list: say it wasn't found.
+        guard AppState.isAbsoluteWorkspacePath(folder) || folder.hasPrefix("\\\\") else {
+            let name = folder.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? folder
+            failure = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.", table: .chat)
+            return
+        }
         appState.rememberOpenedWorkspaceFolder(folder, profile: profile, far: far)
         rootPath = folder
         await explorer.open(root: folder, profile: profile)
