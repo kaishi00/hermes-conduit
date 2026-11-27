@@ -277,6 +277,10 @@ enum VoiceFollowUpOutcome: Equatable {
     case joined(title: String)
     /// The request had already finished, so Hermes didn't get it.
     case finished(title: String)
+    /// The connection dropped while the words went (a timeout, a lost
+    /// connection), so Hermes may have them: they count as sent, and a
+    /// retry never carries them twice (#3361).
+    case mayHaveGone(title: String)
     /// Hermes couldn't be reached, or wasn't working on the request.
     case failed(String)
 
@@ -2167,6 +2171,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return outcome
     }
 
+    /// A redirect that failed after its words may have left (#3361): the
+    /// send's own ambiguity rule, less the failures that stop a request
+    /// before it goes (no network, no host, a bad address) and a cancelled
+    /// follow-up, whose call is over.
+    static func followUpMayHaveGone(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if case HermesError.invalidUrl = error { return false }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                 .internationalRoamingOff, .dataNotAllowed, .callIsActive, .badURL, .unsupportedURL,
+                 .appTransportSecurityRequiresSecureConnection, .cancelled:
+                return false
+            default:
+                return true
+            }
+        }
+        return AppState.isAmbiguousPromptDelivery(error)
+    }
+
     private func sendFollowUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome {
         let words = words.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let job = job(jobID) else { return .finished(title: "") }
@@ -2210,6 +2234,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                         result = try await backend.redirect(sessionID, text)
                     }
                 } catch {
+                    // A redirect the connection lost on its way may have
+                    // reached Hermes and set the job on its new course, as a
+                    // job's own submit may (requestOutcomeUnknown): the words
+                    // stay sent and the job keeps waiting for its turn's end,
+                    // as after a redirect Hermes took (#3361).
+                    if Self.followUpMayHaveGone(error) {
+                        if generation == self.generation, !wasQueued {
+                            update(jobID) { if $0.followUp == .sending { $0.followUp = .accepted } }
+                        }
+                        return .mayHaveGone(title: job.title)
+                    }
                     if generation == self.generation, !wasQueued { endFollowUp(jobID) }
                     return .failed(UserFacingError.message(for: error))
                 }

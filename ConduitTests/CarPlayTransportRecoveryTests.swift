@@ -491,12 +491,16 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         let reboundThread = VoiceThreadTarget(runtimeSessionID: "rebound-id", storedSessionID: nil, title: "Other")
         XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("rebound-id")))
         XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.thread(reboundThread)))
+        XCTAssertTrue(appState.isOpenChat(reboundThread))
         appState.reconciliation = AppState.Reconciliation(
             token: UUID(), requestedSessionId: "shown-chat", movedOnSessionIDs: ["rebound-id"]
         )
 
         XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.session("rebound-id")))
         XCTAssertFalse(appState.voiceRequestIsAboutShownChat(.thread(reboundThread)))
+        // #3401: the turn's delivery and busy check read the same answer, so the request never lands in the shown chat.
+        XCTAssertFalse(appState.isOpenChat(reboundThread))
+        XCTAssertTrue(appState.isOpenChat(VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: "rebound-id", title: "Shown")))
         XCTAssertTrue(appState.voiceRequestIsAboutShownChat(.session("shown-chat")))
         XCTAssertTrue(appState.voiceRequestIsAboutShownChat(
             .thread(VoiceThreadTarget(runtimeSessionID: "shown-chat", storedSessionID: "rebound-id", title: "Shown"))

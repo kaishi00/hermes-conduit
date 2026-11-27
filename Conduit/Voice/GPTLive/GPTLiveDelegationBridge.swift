@@ -643,6 +643,8 @@ final class GPTLiveDelegationBridge {
                 text: "\(Self.sentPrefix) into \(job) as a change: tell the user in a few words that it's in. Its result still follows on the job's earlier delegation; don't guess it.]",
                 channel: .speakable
             )] + settleOpenDelegations()
+        case .mayHaveGone:
+            return [Self.followUpReply(delegationID: id, outcome)] + settleOpenDelegations()
         case .finished, .failed:
             lastSentAt = nil
             return [Self.followUpReply(delegationID: id, outcome)] + settleOpenDelegations()
@@ -1526,7 +1528,8 @@ final class GPTLiveDelegationBridge {
     /// A running job took a delegation's words as a change.
     private func noteTaker(_ outcome: VoiceFollowUpOutcome, jobID: UUID, delegationID id: String) {
         switch outcome {
-        case .interrupted, .queued, .joined: lastTaker = (id, jobID)
+        // Words that may have gone count as taken: a retry never sends them twice (#3361).
+        case .interrupted, .queued, .joined, .mayHaveGone: lastTaker = (id, jobID)
         case .finished, .failed: lastUntaken = id
         }
     }
@@ -1635,6 +1638,8 @@ final class GPTLiveDelegationBridge {
             return .delegationReply(delegationID: delegationID, text: "Conduit added the user's words to \(VoiceFollowUpOutcome.quoted(title)) before Hermes started on it. Its result still follows on the earlier delegation; don't guess it." + otherwise, channel: .commentary)
         case .finished(let title):
             return .delegationReply(delegationID: delegationID, text: relay("\(VoiceFollowUpOutcome.quoted(title)) had already finished, so Hermes didn't get this. Ask the user what they want instead."), channel: .speakable)
+        case .mayHaveGone(let title):
+            return .delegationReply(delegationID: delegationID, text: relay("The connection dropped while Conduit passed this to \(VoiceFollowUpOutcome.quoted(title)), so Hermes may have it. Tell the user it may have gone through, and don't send it again unless they ask."), channel: .speakable)
         case .failed(let message):
             return .delegationReply(delegationID: delegationID, text: relay("Hermes didn't get that (\(message))."), channel: .speakable)
         }

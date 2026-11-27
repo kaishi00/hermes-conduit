@@ -169,6 +169,22 @@ final class ReplyHTMLTests: XCTestCase {
         )
     }
 
+    func testALineEndingCloseInsideAnUnfinishedCommentKeepsTheFoldOpen() {
+        // #3388: the fold closed mid-stream, then opened again once the `-->` came.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details><summary>S</summary>Body <!-- </details>", "More."]),
+            ["<details><summary>S</summary>", "Body <!-- </details>", "More."]
+        )
+    }
+
+    func testOnlyALineThatOpensAFoldTakesAClose() {
+        // #3388 (DeepSeek on #3386): the second line is prose to the folding pass, so it can't take the first's close.
+        XCTAssertEqual(
+            ReplyHTML.foldsApart(["<details> Here is the syntax:", "<details> and <summary> make a fold.", "</details>"]),
+            ["<details>", " Here is the syntax:", "<details> and <summary> make a fold.", "</details>"]
+        )
+    }
+
     func testAOneLineFoldFoldsWhileItsCloseIsStillBeingWritten() {
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Body so far"]), ["<details><summary>S</summary>", "Body so far"])
         XCTAssertEqual(ReplyHTML.foldsApart(["<details><summary>S</summary>Click <b>here</b>"]), ["<details><summary>S</summary>", "Click <b>here</b>"])

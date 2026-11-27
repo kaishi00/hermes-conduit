@@ -830,11 +830,7 @@ struct BotRosterView: View {
                 managementNotice = notice
                 // A folded heading stays folded under its new name, once the rename took.
                 guard notice == nil else { return }
-                // A merge into a folded name would list it twice, and one tap would leave it folded.
-                var seen = Set<String>()
-                foldedCategories = foldedCategories.split(separator: "\n").map {
-                    String($0) == BotCategories.key(old) ? BotCategories.key(name) : String($0)
-                }.filter { seen.insert($0).inserted }.joined(separator: "\n")
+                foldedCategories = BotCategories.refolding(foldedCategories, old, to: name)
             }
         }
     }

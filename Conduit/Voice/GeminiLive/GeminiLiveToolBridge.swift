@@ -1520,6 +1520,9 @@ final class GeminiLiveToolBridge {
             return ["status": "sent", "message": "Added to \(VoiceFollowUpOutcome.quoted(title)) before Hermes started on it. Tell the user in a few words; the result still comes back on the earlier request."]
         case .finished(let title):
             return ["status": "not_sent", "message": "\(VoiceFollowUpOutcome.quoted(title)) had already finished, so Hermes didn't get this. Tell the user, and ask what they want instead."]
+        case .mayHaveGone(let title):
+            // The Watch keeps the words as sent on `delivery: unknown`, as for a job's own unknown submit.
+            return ["status": "unknown", "delivery": "unknown", "message": "The connection dropped while Conduit passed the user's words to \(VoiceFollowUpOutcome.quoted(title)), so Hermes may have them. Tell the user it may have gone through, and don't send it again unless they ask; the result still comes back on the earlier request."]
         case .failed(let message):
             return ["status": "not_sent", "error": message]
         }

@@ -3335,6 +3335,37 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
     }
 
+    func testAFollowUpTheConnectionLostMayHaveGone() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.redirectError = URLError(.timedOut)
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "make it Alex")
+
+        XCTAssertEqual(outcome, .mayHaveGone(title: job.title))
+        XCTAssertFalse(outcome.foundRequestFinished)
+        // Counted as sent: one try, and the turn's end still ends the job.
+        XCTAssertEqual(fake.redirects.count, 1)
+        XCTAssertEqual(supervisor.jobs.first?.followUp, .accepted)
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "Booked for Alex.", reasoning: nil))
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+
+        let result = GeminiLiveToolBridge.followUpResult(outcome)
+        XCTAssertEqual(result["status"], "unknown")
+        XCTAssertEqual(result["delivery"], "unknown")
+    }
+
+    func testAFollowUpThatNeverLeftIsNotCalledMaybeSent() {
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.notConnectedToInternet)))
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.cannotConnectToHost)))
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(HermesError.notConnected))
+        XCTAssertFalse(VoiceBackgroundJobSupervisor.followUpMayHaveGone(CancellationError()))
+        XCTAssertTrue(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.timedOut)))
+        XCTAssertTrue(VoiceBackgroundJobSupervisor.followUpMayHaveGone(URLError(.networkConnectionLost)))
+        XCTAssertTrue(VoiceBackgroundJobSupervisor.followUpMayHaveGone(HermesError.connectionClosed))
+    }
+
     func testAFollowUpWhileTheChatTurnWaitsJoinsIt() async throws {
         let (supervisor, fake) = makeThreadSupervisor()
         fake.threadBusy = true

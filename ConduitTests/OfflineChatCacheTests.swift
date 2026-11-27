@@ -1075,6 +1075,22 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .unavailable)
     }
 
+    /// A saved copy of another chat never shows the live chat's reply
+    /// speeds (#3419).
+    func testASavedCopyOfAnotherChatShowsNoReplySpeeds() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.activeSessionId = "live-b"
+        appState.openChatReplySpeeds = ReplySpeeds(chatID: "live-b", byRow: [1: 40], unsaved: 30)
+        XCTAssertNotNil(appState.replySpeedsOnScreen)
+        XCTAssertNotNil(appState.savedCopyScrollSessionKey, "The copy is drawn under its own key")
+
+        let rows = ChatRowState(appState)
+        XCTAssertTrue(rows.replySpeeds.isEmpty)
+        XCTAssertNil(rows.unsavedReplySpeed)
+    }
+
     /// While Hermes is on its way the copy reads as the chat and takes a
     /// message to send once the chat is ready. Only a real offline state
     /// calls it a copy.

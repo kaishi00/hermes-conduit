@@ -1177,6 +1177,44 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-a").count, 1)
     }
 
+    /// An answer under the opened chat's own other id is that open's: held
+    /// for it, never saved as a left chat's note (#3405).
+    func testASideAgentAnswerUnderTheOpenedChatsOtherIdIsHeldNotSaved() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b", alternateIDs: ["rt-b"])]
+        appState.activeSessionId = "chat-b"
+        appState.messages = []
+        appState.sideAgentProfilesBySession["rt-b"] = appState.activeProfile
+        _ = appState.beginReconciliation()
+
+        let kept = appState.keepLeftChatSideAgentAnswer(.sideAgentComplete(
+            sessionId: "rt-b", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil
+        ))
+        XCTAssertFalse(kept)
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("rt-b"), [])
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-b"), [])
+    }
+
+    /// A runtime id the opened chat's row still lists but another chat
+    /// owns isn't proof the answer is this open's: it is saved for
+    /// the chat it ran in (#3405).
+    func testASideAgentAnswerUnderASharedAliasIsNotHeldForTheOpen() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        // chat-a stores under rt-x now; chat-b's stale row still lists it.
+        appState.sessions = [session("chat-a", storedID: "rt-x"), session("chat-b", alternateIDs: ["rt-x"])]
+        appState.activeSessionId = "chat-b"
+        appState.messages = []
+        appState.sideAgentProfilesBySession["rt-x"] = appState.activeProfile
+        _ = appState.beginReconciliation()
+
+        let kept = appState.keepLeftChatSideAgentAnswer(.sideAgentComplete(
+            sessionId: "rt-x", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil
+        ))
+        XCTAssertTrue(kept)
+    }
+
     /// A note whose command ran on a connection since replaced (another
     /// server) isn't saved: its ids could name another chat there.
     func testALateNoteFromAnEarlierConnectionIsNotSaved() {

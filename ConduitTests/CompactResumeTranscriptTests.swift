@@ -3129,6 +3129,62 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(reads.value, before + 1)
         XCTAssertEqual(app.messages.filter { $0.content == "And the second one" }.count, 1,
                        "The unconfirmed send's stored twin isn't added beside it")
+        // Unanchored, it's asked again after the retry wait, not before.
+        await app.openChatSyncTick()
+        if let read = app.openChatSyncRead { try await read.value }
+        XCTAssertEqual(reads.value, before + 1, "Not before the retry wait")
+        clock.now += BotChatTailRead.retryInterval
+        await app.openChatSyncTick()
+        if let read = app.openChatSyncRead { try await read.value }
+        XCTAssertEqual(reads.value, before + 2, "Asked again after the retry wait")
+        XCTAssertEqual(app.messages.filter { $0.content == "And the second one" }.count, 1)
+    }
+
+    func testAnEmptyBotChatWithAnUnconfirmedSendSettlesOnAnEmptyPage() async throws {
+        let reads = Counter()
+        let clock = TestClock()
+        let app = try await openBotChat(expecting: []) { sessionID in
+            reads.value += 1
+            return self.tailPagePayload(sessionId: sessionID, rows: [], offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        app.messages.append(ChatMessage(id: "local-1", role: .user, content: "Start the example job", timestamp: "2026-09-01T10:00:05Z"))
+        let before = reads.value
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(reads.value, before + 1)
+        clock.now += BotChatTailRead.retryInterval
+        await app.openChatSyncTick()
+        if let read = app.openChatSyncRead { try await read.value }
+        XCTAssertEqual(reads.value, before + 1, "Nothing stored yet: the read settles, not retried")
+        XCTAssertEqual(app.messages.map(\.id), ["local-1"])
+    }
+
+    func testAToolResultOnTheNextReadFoldsIntoItsCallsCard() async throws {
+        var tail = [transcriptRow(1, role: "user", content: "Run the example job")]
+        let clock = TestClock()
+        let app = try await openBotChat(expecting: ["Run the example job"]) { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        tail.append([
+            "id": 2, "role": "assistant", "content": "", "timestamp": "2026-09-01T10:00:02Z",
+            "tool_calls": [["id": "call_1", "type": "function",
+                            "function": ["name": "read_file", "arguments": "{\"path\": \"/tmp/job.log\"}"]]]
+        ])
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.filter { $0.role == .tool }.count, 1, "The call's card, unanswered")
+
+        clock.now += 60
+        tail.append(["id": 3, "role": "tool", "tool_call_id": "call_1", "content": "done", "timestamp": "2026-09-01T10:00:03Z"])
+        tail.append(transcriptRow(4, role: "assistant", content: "The example job is complete."))
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        let cards = app.messages.filter { $0.role == .tool }
+        XCTAssertEqual(cards.count, 1, "The result folds into its call's card, not a second card")
+        XCTAssertEqual(cards.first?.tool?.output, "done")
+        XCTAssertEqual(app.messages.last?.content, "The example job is complete.")
     }
 
     func testABotChatShowingOnlyToolCardsStillTakesTheNextStoredReply() async throws {

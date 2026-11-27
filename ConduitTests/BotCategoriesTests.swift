@@ -126,6 +126,17 @@ final class BotCategoriesTests: XCTestCase {
         XCTAssertEqual(log.writes.map(\.1), [nil, nil])
     }
 
+    /// A folded heading stays folded under its new name; a merge into a
+    /// folded name lists it once; a change of case alone keeps it (#3433).
+    func testARenameRefoldsTheHeading() {
+        XCTAssertEqual(BotCategories.refolding("work\nhome", "Work", to: "Clients"), "clients\nhome")
+        XCTAssertEqual(BotCategories.refolding("work\nclients", "Work", to: "Clients"), "clients", "Both folded: listed once")
+        XCTAssertEqual(BotCategories.refolding("clients", "Work", to: "Clients"), "clients", "Only the new name folded")
+        XCTAssertEqual(BotCategories.refolding("home", "Work", to: "Clients"), "home", "Only other headings folded")
+        XCTAssertEqual(BotCategories.refolding("work", "Work", to: "WORK"), "work", "Only the case changed")
+        XCTAssertEqual(BotCategories.refolding("", "Work", to: "Clients"), "")
+    }
+
     /// Headings group by name in any case (one category across dashboards
     /// whose ids differ), follow the order, then first appearance, with
     /// Other last; no category at all is no headings.

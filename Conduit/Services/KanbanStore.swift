@@ -385,11 +385,12 @@ final class KanbanStore {
     /// 404) doesn't stop the search, but when no board has the task the
     /// first failure is thrown, so a lost connection doesn't read as a
     /// missing task.
-    func findTask(id: String) async throws -> (board: String, task: KanbanTask)? {
+    func findTask(id: String, onBoard named: String? = nil) async throws -> (board: String, task: KanbanTask)? {
         guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
-        let first = loadedBoardSlug ?? resolvedSelectedBoardSlug
+        var order = KanbanStore.findOrder(named: named, loaded: loadedBoardSlug ?? resolvedSelectedBoardSlug, boards: boards.map(\.slug))
         var failure: Error?
-        for slug in [first] + boards.map(\.slug).filter({ $0 != first }) {
+        while !order.isEmpty {
+            let slug = order.removeFirst()
             do {
                 return (slug, try await service.fetchTask(id: id, board: slug).task)
             } catch DashboardTicketBridgeError.http(let status, let detail)
@@ -403,6 +404,15 @@ final class KanbanStore {
         }
         if let failure { throw failure }
         return nil
+    }
+
+    /// The boards a task id is looked for on: the one the caller named,
+    /// then the loaded one, then the rest (#3380).
+    nonisolated static func findOrder(named: String?, loaded: String, boards: [String]) -> [String] {
+        var order: [String] = []
+        if let named, !named.isEmpty { order.append(named) }
+        for slug in [loaded] + boards where !order.contains(slug) { order.append(slug) }
+        return order
     }
 
     func fetchTaskLog(id: String, tailBytes: Int = 16_384) async throws -> KanbanWorkerLog {
@@ -1294,4 +1304,7 @@ struct KanbanTaskOpenRequest: Equatable {
     let id = UUID()
     let taskID: String
     let dashboardID: UUID?
+    /// The board the task is on, when the caller knows it: looked at
+    /// first, since one task id can be on two boards (#3380).
+    var board: String? = nil
 }

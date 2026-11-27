@@ -232,12 +232,18 @@ enum ReplyHTML {
             closedAfter[index] = closes > 0
             guard !inCode[index] else { continue }
             // Only a `</details>` ending its line closes a fold, as fold(in:at:) reads it (one per line, nothing after
-            // it, not even a comment or a code span); one in prose doesn't. The line as written, as the pass below
-            // reads it, so a fold this counts as closed is closed there too (#3349). A `</details>` ending the line
-            // can't be inside a code span, which would end after it.
-            if matches(foldClosingEnd, lines[index]) { closes += 1 }
+            // it, not even a comment or a code span); one in prose doesn't. Read with the same tests as the pass
+            // below, so a fold this counts as closed is closed there too (#3349, #3388).
+            if closesFold(lines[index]) { closes += 1 }
             // An opening read as written too: one joined across a code span (`<det` and `ails>`) isn't one there.
-            if matches(foldOpeningStart, lines[index]) { closes = max(0, closes - 1) }
+            // Only a line the pass below opens a fold on takes a close (#3388).
+            let ns = lines[index] as NSString
+            if let opening = foldOpeningStart.firstMatch(in: lines[index], range: NSRange(location: 0, length: ns.length)),
+               opensFoldHere(after: ns.substring(with: opening.range(at: 3)),
+                             closedLater: closedAfter[index],
+                             withSummary: opening.range(at: 2).location != NSNotFound) {
+                closes = max(0, closes - 1)
+            }
         }
         for (index, line) in lines.enumerated() {
             if fence.isCode(line) {
@@ -265,7 +271,8 @@ enum ReplyHTML {
                 continue
             }
             let restNS = rest as NSString
-            if depth > 0, let closing = foldClosingEnd.firstMatch(in: rest, range: NSRange(location: 0, length: restNS.length)) {
+            if depth > 0, closesFold(rest),
+               let closing = foldClosingEnd.firstMatch(in: rest, range: NSRange(location: 0, length: restNS.length)) {
                 let body = restNS.substring(with: closing.range(at: 1))
                 if !body.trimmingCharacters(in: .whitespaces).isEmpty { out.append(body) }
                 out.append("</details>")
@@ -278,6 +285,7 @@ enum ReplyHTML {
     }
 
     private static let foldClosingTag = compiled(#"</details\s*>"#, [.caseInsensitive])
+    private static let foldClosingTagEnd = compiled(#"</details\s*>\s*$"#, [.caseInsensitive])
     private static let tagStart = compiled(#"<[a-zA-Z/!]"#)
     private static let comment = compiled(#"<!--.*?-->"#)
     private static let unfinishedComment = compiled(#"<!--.*$"#)
@@ -290,6 +298,16 @@ enum ReplyHTML {
         let filler = "\u{1}"
         let closed = replacing(comment, in: withoutCodeSpans(line, filler: filler), with: filler)
         return replacing(unfinishedComment, in: closed, with: filler)
+    }
+
+    /// Whether `text` ends in a `</details>` that closes a fold: one ending
+    /// the line, outside a comment still streaming in (`Body <!-- </details>`
+    /// waits for its `-->`, #3388). A `</details>` ending the line can't be in
+    /// a code span, which would end after it, and one after a finished
+    /// comment still closes. The look-ahead, the folding pass and
+    /// `opensFoldHere` all read a close this way, so they agree.
+    private static func closesFold(_ text: String) -> Bool {
+        matches(foldClosingEnd, text) && matches(foldClosingTagEnd, withoutCode(text))
     }
 
     private static func withoutCodeSpans(_ line: String, filler: String) -> String {
@@ -309,7 +327,7 @@ enum ReplyHTML {
         if body.isEmpty { return true }
         // A body starting with a fence mark stays on the line, so it can't open a code block that runs on.
         if body.hasPrefix("```") || body.hasPrefix("~~~") { return false }
-        if matches(foldClosingEnd, after) { return true }
+        if closesFold(after) { return true }
         // A close with words after it on the line stays as written: folded, they'd hide the rest of the reply.
         // One in a code span or a comment closes nothing, so it doesn't count (#3349).
         if matches(foldClosingTag, withoutCode(after)) { return false }

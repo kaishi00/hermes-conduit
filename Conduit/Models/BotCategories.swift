@@ -222,4 +222,14 @@ enum BotCategories {
         }
         return BotOrder(names: names)
     }
+
+    /// The folded headings (keys, one per line) after `old` became `new`:
+    /// a folded heading stays folded under its new name, and a merge into a
+    /// folded name lists it once, so one tap unfolds it (#3433).
+    static func refolding(_ folded: String, _ old: String, to new: String) -> String {
+        var seen = Set<String>()
+        return folded.split(separator: "\n").map {
+            String($0) == key(old) ? key(new) : String($0)
+        }.filter { seen.insert($0).inserted }.joined(separator: "\n")
+    }
 }

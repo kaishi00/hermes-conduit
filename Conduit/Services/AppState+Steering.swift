@@ -266,6 +266,7 @@ extension AppState {
         shownChat.forwardedSendTimes = [:]
         shownChat.forwardedSendChats = [:]
         shownChat.readStartedAdmissions = []
+        shownChat.otherAppStartsSeen = []
         shownChat.ownSendRowIDs = [:]
         shownChat.startedAdmissionIDs = []
         shownChat.startedAdmissionAnchors = [:]

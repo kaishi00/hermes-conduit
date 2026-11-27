@@ -1306,9 +1306,9 @@ extension AppState {
         switch chat {
         case .shown: return true
         case .thread(let thread):
-            // Not by an id the identity index rebound to another chat, as
-            // a session below.
-            return isOpenChat(thread, excluding: reconciliation?.movedOnSessionIDs ?? [])
+            // Not by an id the identity index rebound to another chat
+            // (isOpenChat leaves those out), as a session below.
+            return isOpenChat(thread)
         case .session(let sessionID):
             guard callDashboardOffScreen == nil else { return false }
             if eventBelongsToActiveSession(sessionID) { return true }
