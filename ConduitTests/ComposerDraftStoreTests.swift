@@ -78,6 +78,8 @@ final class ComposerDraftStoreTests: XCTestCase {
         settle()
         XCTAssertEqual(sends, 0, "a publish that changes nothing the composer shows")
 
+        // The chat on screen's own state, observed on its own (issue 828):
+        // it doesn't publish as AppState's, and still reaches the composer.
         appState.composerNotice = "Reconnecting"
         appState.activeAgents = 2
         settle(until: { sends >= 1 })

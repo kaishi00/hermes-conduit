@@ -98,13 +98,27 @@ struct BotLastReply: View {
     /// That's the newest reply row, as `read()` takes it, not the newest
     /// row (a tool step or a steer can follow it), and a finished reply can
     /// replace its row's text under the same id, so the text counts too
-    /// (streamed tokens don't touch `messages`).
+    /// (streamed tokens don't touch `messages`). Covered by that chat or
+    /// behind another tab, it doesn't read the transcript, which is
+    /// observed past the tab's hold, so replies redraw nothing; the key
+    /// changes as it shows again.
     private var readKey: String {
         let chat = bot.canonicalSession
-        let openTail = appState.activeBotChatProfile == bot.name ? Self.replyKey(appState.messages) : ""
+        let openTail = Self.openTail(
+            isShown: shell.isTabActive && !shell.isRootCovered,
+            isOpen: appState.activeBotChatProfile == bot.name,
+            messages: appState.messages
+        )
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
                 String(appState.isConnected), String(shell.isTabActive),
                 String(shell.isRootCovered)].joined(separator: "\u{1F}")
+    }
+
+    /// The open chat's part of the key: its newest reply, read only while
+    /// Bots Home shows (its tab picked, nothing pushed over it), so the
+    /// transcript, observed past the tab's hold, isn't read behind it.
+    static func openTail(isShown: Bool, isOpen: Bool, messages: @autoclosure () -> [ChatMessage]) -> String {
+        isShown && isOpen ? replyKey(messages()) : ""
     }
 
     /// The open chat's newest reply as the re-read follows it: the row

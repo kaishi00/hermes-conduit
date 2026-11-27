@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Observation
 
 /// An error a chat put on screen (`ChatState.chatErrorShown`).
 struct ChatErrorShown: Equatable {
@@ -20,9 +21,11 @@ struct ChatErrorShown: Equatable {
 ///
 /// Views and tests still read the chat on screen through AppState
 /// (`messages`, `offlineChatPresentation`, `persistedTranscriptWindow`,
-/// `liveTurn` and the rest forward here), and AppState publishes this
-/// object's changes as its own, so every view that observes AppState redraws
-/// as before. What reacts to a change outside the chat (the chat on screen
+/// `liveTurn` and the rest forward here). It is `@Observable` (issue 828):
+/// a view redraws for the chat properties it reads, and a chat change no
+/// longer publishes as AppState's, so views that don't read the chat (the
+/// Settings pages, the Chats list) leave it alone. The stream's own
+/// bookkeeping and tasks aren't observed. What reacts to a change outside the chat (the chat on screen
 /// claim, a message waiting to send, the viewport) stays in AppState's
 /// forwarding setters. `liveTurn` publishes on its own object, as before.
 ///
@@ -31,11 +34,13 @@ struct ChatErrorShown: Equatable {
 /// transition, which chat is open) and what spans chats (sets and
 /// dictionaries keyed by session) stay in AppState for stage 2 to place.
 @MainActor
-final class ChatState: ObservableObject {
+@Observable
+final class ChatState {
 
     // MARK: Transcript
 
-    @Published var messages: [ChatMessage] = [] {
+    var messages: [ChatMessage] = [] {
+        willSet { messagesSends.send(newValue) }
         didSet {
             transcriptRevision &+= 1
             rowsRevision &+= 1
@@ -50,17 +55,20 @@ final class ChatState: ObservableObject {
             }
         }
     }
+    let messagesSends = WillSetValues<[ChatMessage]>()
+    /// As `$messages` gave it: the value on subscribing, then each one set.
+    var messagesValues: AnyPublisher<[ChatMessage], Never> { messagesSends.publisher { [weak self] in self?.messages ?? [] } }
     /// Bumped on every write to `messages`.
-    @Published private(set) var transcriptRevision: UInt64 = 0
+    private(set) var transcriptRevision: UInt64 = 0
     /// Bumped on every write to `messages` or `offlineChatPresentation`, the
     /// two the chat view's rows (`AppState.chatRowsOnScreen`) are read from:
-    /// a cheap stand-in for comparing those rows. Not published: each write
-    /// that bumps it publishes already.
+    /// a cheap stand-in for comparing those rows. Observed, so a cache keyed
+    /// on it (`AppState.chatRowsOnScreen`) redraws its readers on a hit.
     private(set) var rowsRevision: UInt64 = 0
     /// Cached once per transcript mutation so view updates do not rescan the full history.
-    @Published private(set) var pendingClarifyMessageID: String?
+    private(set) var pendingClarifyMessageID: String?
     /// What that card is, for the jump button's words.
-    @Published private(set) var pendingDecisionKind = PendingDecisionKind.question
+    private(set) var pendingDecisionKind = PendingDecisionKind.question
     /// Read-only copy of a recently opened conversation, shown while the
     /// server has not answered yet (#99): the chat view draws its rows as
     /// the chat's, provisionally. It never feeds `messages`, `sessions`, or
@@ -69,14 +77,16 @@ final class ChatState: ObservableObject {
     /// Retry, Edit, reactions, pins). Written through AppState's
     /// `offlineChatPresentation`, which also follows it with the chat on
     /// screen claim and a message waiting to send.
-    @Published var offlineChatPresentation: OfflineChatPresentation? {
+    /// A turn edge (`edgeChanges`), not observed.
+    @ObservationIgnored var offlineChatPresentation: OfflineChatPresentation? {
+        willSet { if newValue != offlineChatPresentation { edgeChanges.send() } }
         didSet { rowsRevision &+= 1 }
     }
     /// Persisted-history pagination window of the chat.
     /// Drives the "Load earlier messages" affordance; nil means the current
     /// transcript is either a legacy one-shot hydration or not persisted-
     /// history-backed at all, and no older pages exist to fetch.
-    @Published var persistedTranscriptWindow: PersistedTranscriptWindowState?
+    var persistedTranscriptWindow: PersistedTranscriptWindowState?
     /// Row ids POSITIVELY known to originate from validated persisted-
     /// transcript hydration (raw rows carrying a durable `id`/`message_id`)
     /// for the chat, adopted from the latest accepted hydration and cleared
@@ -93,44 +103,53 @@ final class ChatState: ObservableObject {
     /// 20 to 30 times a second, and an AppState publish re-renders every view
     /// that observes it, so any open sheet re-rendered at that rate and lagged.
     let liveTurn = LiveTurnProjection()
-    var activeAssistantMessageId: String?
-    var activeReasoningMessageId: String?
-    var receivedReasoningForCurrentTurn = false
+    @ObservationIgnored var activeAssistantMessageId: String?
+    @ObservationIgnored var activeReasoningMessageId: String?
+    @ObservationIgnored var receivedReasoningForCurrentTurn = false
     /// Authoritative merged reasoning for the live thinking card. Raw deltas
     /// merge into this buffer immediately; the published transcript is only
     /// republished at a coalesced cadence so an expanded ThinkingCard cannot
     /// monopolize main-actor layout work during a live reasoning stream.
-    var reasoningBuffer = ""
-    var reasoningPublishTask: Task<Void, Never>?
-    var hasScheduledReasoningPublish = false
-    var streamingBuffer = ""
+    @ObservationIgnored var reasoningBuffer = ""
+    @ObservationIgnored var reasoningPublishTask: Task<Void, Never>?
+    @ObservationIgnored var hasScheduledReasoningPublish = false
+    @ObservationIgnored var streamingBuffer = ""
     /// The last row a `message.interim` sealed in the running turn.
-    var interimRowID: String?
+    @ObservationIgnored var interimRowID: String?
     /// Every row `message.interim` sealed while the current turn runs: its
     /// progress notes, which a call's chat seed leaves out (#1991). A
     /// finished reply can keep an interim row's id, so the id alone doesn't
     /// tell.
-    var runningTurnNoteIDs: Set<String> = []
+    @ObservationIgnored var runningTurnNoteIDs: Set<String> = []
     /// Gateway deltas can arrive much faster than SwiftUI can lay out a chat
     /// transcript. Keep the authoritative buffer intact, but publish at a
     /// display-friendly cadence so an active response cannot monopolize the
     /// main actor (and make sheets or session rows feel untappable).
-    var streamingPublishTask: Task<Void, Never>?
+    @ObservationIgnored var streamingPublishTask: Task<Void, Never>?
     /// A fast gateway can emit its final delta and completion inside one
     /// publish interval. Keep that final projection alive briefly so the UI's
     /// character reveal can drain instead of jumping straight to the result.
-    var streamingCompletionTask: Task<Void, Never>?
-    var pendingStreamingCompletion: AppState.PendingStreamingCompletion?
-    var hasScheduledStreamingPublish = false
-    var lastStreamingPublishBurst = 0
-    var lastStreamingPublishDate: Date?
+    @ObservationIgnored var streamingCompletionTask: Task<Void, Never>?
+    @ObservationIgnored var pendingStreamingCompletion: AppState.PendingStreamingCompletion?
+    @ObservationIgnored var hasScheduledStreamingPublish = false
+    @ObservationIgnored var lastStreamingPublishBurst = 0
+    @ObservationIgnored var lastStreamingPublishDate: Date?
 
     // MARK: Turn and reconcile
 
     /// Written through AppState's `turnState`, which also follows a change
     /// with the message waiting to send, the backdrop and the chat on screen
     /// claim.
-    @Published var turnState: TurnState = .idle
+    /// A turn edge (`edgeChanges`), not observed.
+    @ObservationIgnored var turnState: TurnState = .idle {
+        willSet {
+            turnStateSends.send(newValue)
+            if newValue != turnState { edgeChanges.send() }
+        }
+    }
+    let turnStateSends = WillSetValues<TurnState>()
+    /// As `$turnState` gave it: the value on subscribing, then each one set.
+    var turnStateValues: AnyPublisher<TurnState, Never> { turnStateSends.publisher { [weak self] in self?.turnState ?? .idle } }
     /// Whether `turnState` may have missed server-side turn edges. Set at
     /// lifecycle boundaries where the socket can die or the gateway can change
     /// state unobserved (scene dips, reconnects, ambiguous submissions);
@@ -139,10 +158,20 @@ final class ChatState: ObservableObject {
     /// state. A stale idle state must not route the next input as a new-turn
     /// `prompt.submit` — Hermes would apply its busy policy to it and the
     /// message would silently join a turn the user never saw start.
-    /// Publishes its flips: the chat list's Working marker reads it.
-    var turnStateIsStale = false {
-        willSet { if newValue != turnStateIsStale { objectWillChange.send() } }
+    /// A turn edge (`edgeChanges`), not observed: the chat list's Working
+    /// marker reads it.
+    @ObservationIgnored var turnStateIsStale = false {
+        willSet { if newValue != turnStateIsStale { edgeChanges.send() } }
     }
+    /// The turn's edges and the saved copy shown (`turnState`,
+    /// `turnStateIsStale`, `offlineChatPresentation`) publish here, before
+    /// they change, and AppState passes them on as its own changes. They
+    /// change a few times a turn, and the held screens read them (the Chats
+    /// list's New Chat and Working markers, a project page's New
+    /// conversation): Observation would reach those screens past their
+    /// hold (`V2ShownUpdates`), so these stay AppState publishes, which the
+    /// hold covers. The reply streaming in is observed (issue 828).
+    let edgeChanges = PassthroughSubject<Void, Never>()
     var turnLifecycleEvidence = AppState.TurnLifecycleEvidence(revision: 0, running: false)
     /// Whether the visible persisted transcript may be MISSING rows —
     /// conceptually disjoint from `turnStateIsStale`, which answers "do I
@@ -184,8 +213,8 @@ final class ChatState: ObservableObject {
 
     // MARK: Composer and sending
 
-    @Published var composerPrefillText = ""
-    @Published var composerPrefillToken = UUID()
+    var composerPrefillText = ""
+    var composerPrefillToken = UUID()
     /// The draft the prefill is for, until ComposerBar puts it in. A new
     /// chat's draft load can land in the same update as the prefill, so
     /// the composer waits until this draft is the one loaded. Set only by
@@ -193,32 +222,32 @@ final class ChatState: ObservableObject {
     var composerPrefillDraftKey: ComposerDraftKey?
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
-    @Published var composerQuoteRequest: ComposerQuoteRequest?
+    var composerQuoteRequest: ComposerQuoteRequest?
     /// A "Replying to" card's tap (issue 1420): the chat or room on screen
     /// scrolls to the reply it quoted, then clears it.
-    @Published var pendingQuotedReplyJump: QuotedReplyJump?
+    var pendingQuotedReplyJump: QuotedReplyJump?
     /// Files dropped on the open chat (#1408), waiting for its composer to
     /// stage them, and the same for the open room's composer.
-    @Published var composerDropRequest: AttachmentDropRequest?
+    var composerDropRequest: AttachmentDropRequest?
     /// Asks the composer to take focus (a screenshot chat opened with the
     /// keyboard). ComposerBar focuses and then consumes it.
-    @Published var composerFocusRequest: ComposerFocusRequest?
+    var composerFocusRequest: ComposerFocusRequest?
     /// Asks the open chat's composer to start dictating (its big button
     /// set to Dictation, or Dictate in the button's menu). ComposerBar
     /// starts and then consumes it.
-    @Published var composerDictationRequest: ComposerDictationRequest?
+    var composerDictationRequest: ComposerDictationRequest?
     /// Words the composer puts back: a waiting message taken back to edit,
     /// or one its chat never took. ComposerBar applies each, then consumes it.
-    @Published var composerRestoreRequests: [ComposerRestoreRequest] = []
+    var composerRestoreRequests: [ComposerRestoreRequest] = []
     /// A composer send still checking Hermes before its message shows: the
     /// composer says it's sending meanwhile (#1401).
-    @Published var composerSendChecks: [ComposerSendCheck] = []
+    var composerSendChecks: [ComposerSendCheck] = []
     /// Sends whose chat was left while their reply was lost: Hermes may
     /// have them, so their words come back without an "unsent" notice.
     var composerSubmissionsOfUnknownDelivery: [ComposerSubmissionContext] = []
     /// Why a waiting message went back to a draft, until it's dismissed or
     /// the composer is used.
-    @Published var composerNotice: String? {
+    var composerNotice: String? {
         didSet {
             // Each notice says what it is; a new one starts as a waiting
             // message's until its writer says otherwise.
@@ -227,10 +256,10 @@ final class ChatState: ObservableObject {
     }
     /// The symbol beside the notice: a message that came back, or a draft
     /// shared from another app (AppState+ShareDraft.swift).
-    @Published var composerNoticeSystemImage = AppState.composerReturnNoticeSystemImage
+    var composerNoticeSystemImage = AppState.composerReturnNoticeSystemImage
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
-    @Published var isWritingReasoningEffort = false
+    var isWritingReasoningEffort = false
     /// The failed send's error under the composer, which leaving its chat
     /// clears: the composer shows `errorMessage` unlocked too.
     var sendFailureShown: String?
@@ -251,7 +280,7 @@ final class ChatState: ObservableObject {
     /// chat as "Sends when connected" and goes once the chat is ready. Its
     /// file beside the dashboard's saved chats brings it back as a draft
     /// if Conduit stops first.
-    @Published var pendingComposerSend: PendingComposerSend?
+    var pendingComposerSend: PendingComposerSend?
     /// The chat Conduit last created, while it's the one open: it takes the
     /// New Chat draft and a message that waited for it.
     var newChatOpenedSessionID: String? {
@@ -267,7 +296,7 @@ final class ChatState: ObservableObject {
     var pendingComposerSendCheckScheduled = false
     /// A waiting message whose chat is ready but still settling is looked
     /// at again shortly: not all of that settling is published.
-    var pendingComposerSendRecheckTask: Task<Void, Never>?
+    @ObservationIgnored var pendingComposerSendRecheckTask: Task<Void, Never>?
     /// Waiting messages handed to the normal send and not back yet. Their
     /// files stay until it goes, so a switch back to their dashboard
     /// mustn't restore them meanwhile.
@@ -286,7 +315,7 @@ final class ChatState: ObservableObject {
     /// once no question is waiting for its id.
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
-    @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
     /// The suggestion row's guesses (AppState+Predictive.swift).
     let predictive = PredictiveStore()
     /// The open chat's queue on the session authority: messages waiting
@@ -313,15 +342,15 @@ final class ChatState: ObservableObject {
     /// above its reply.
     var startedAdmissionAnchors: [String: String?] = [:]
     /// What the row asks the composer to do: send, edit or insert a guess.
-    @Published var predictiveComposerRequest: PredictiveComposerRequest?
+    var predictiveComposerRequest: PredictiveComposerRequest?
     /// The reply suggested replies were last asked for (asked once each).
     var predictiveRepliesAsked: PredictiveStore.Anchor?
     /// The draft last asked about, and the wait for the next pause.
     var predictiveDraftAsked: (sessionID: String, draft: String)?
-    var predictivePauseTask: Task<Void, Never>?
+    @ObservationIgnored var predictivePauseTask: Task<Void, Never>?
     /// The follow-up checks for the reply on screen, and the next one.
     var predictiveFollowUp = PredictiveFollowUpState()
-    var predictiveFollowUpTask: Task<Void, Never>?
+    @ObservationIgnored var predictiveFollowUpTask: Task<Void, Never>?
     /// The hidden turn sent for Hermes to follow up, until it settles.
     /// `after` is the chat's last row when it was sent: only a reply
     /// after it is the follow-up's.
@@ -360,15 +389,15 @@ final class ChatState: ObservableObject {
     /// The open chat's plan card (AppState+ChatCards). Its own observable:
     /// the card changing redraws the card alone.
     let chatCards = ChatCardsModel()
-    @Published var activeSessionTitle = AppLocalization.string("New conversation")
-    @Published var isChatRefreshing = false
-    @Published var isBranchingChat = false
+    var activeSessionTitle = AppLocalization.string("New conversation")
+    var isChatRefreshing = false
+    var isBranchingChat = false
     /// An Edit and resend, /undo or /retry reading the chat's turns, taking
     /// them back and reopening the chat. Another rewind is refused and the
     /// composer and sends wait meanwhile: they would change the history its
     /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
     /// refuse a stale count), or land in the transcript the reopen replaces.
-    @Published var isRewindingTurns = false
+    var isRewindingTurns = false
     /// The chat a slash command's prompt or prefill was refused in while a
     /// rewind ran, by its durable id (else its runtime id): the rewind in
     /// that chat says so once it is done, after its reopen has replaced the
@@ -378,8 +407,8 @@ final class ChatState: ObservableObject {
     /// Counts rewinds started: a rewind clears the flags above only while
     /// no later one has started.
     var rewindGeneration = 0
-    @Published var activeAgents = 0
-    @Published var delegateAgents: [DelegateAgentActivity] = []
+    var activeAgents = 0
+    var delegateAgents: [DelegateAgentActivity] = []
     /// When each delegate agent last sent an event. An event that changes
     /// nothing its card shows renews this without publishing the cards, and
     /// the roster check counts it as the card's latest news.
@@ -392,13 +421,13 @@ final class ChatState: ObservableObject {
     var chatErrorShown: ChatErrorShown?
     /// Another device is getting the reply of a turn in the open chat; its
     /// working line says so.
-    @Published var activeChatRepliesElsewhere = false
+    var activeChatRepliesElsewhere = false
     /// Latest in-flight tapback per message id, so an older reply to a
     /// quick re-tap can't overwrite the newer one. Generations come from one
     /// counter that only grows, so a settled entry can be dropped without a
     /// later tap reusing a number an older request still holds.
     var reactionRequestGenerations: [String: Int] = [:]
     var lastReactionRequestGeneration = 0
-    var inlineImageRowFetches: [String: Task<AppState.InlineImageRowFetch, Never>] = [:]
+    @ObservationIgnored var inlineImageRowFetches: [String: Task<AppState.InlineImageRowFetch, Never>] = [:]
     var inlineImageRowsUnavailable: Set<String> = []
 }

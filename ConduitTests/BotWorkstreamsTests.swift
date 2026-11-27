@@ -72,6 +72,20 @@ extension BotModeTests {
         XCTAssertEqual(BotLastReply.replyKey([]), "")
     }
 
+    /// Behind another tab or a pushed chat, Bots Home's key doesn't read the
+    /// open chat's transcript, which is observed past the tab's hold, so a
+    /// reply there redraws nothing (issue 828).
+    func testBotsHomeLastReplyReadsTheTranscriptOnlyWhileShown() {
+        let reply = ChatMessage(id: "r1", role: .assistant, content: "Done.", timestamp: "1")
+        var reads = 0
+        func messages() -> [ChatMessage] { reads += 1; return [reply] }
+        XCTAssertEqual(BotLastReply.openTail(isShown: false, isOpen: true, messages: messages()), "")
+        XCTAssertEqual(BotLastReply.openTail(isShown: true, isOpen: false, messages: messages()), "")
+        XCTAssertEqual(reads, 0)
+        XCTAssertEqual(BotLastReply.openTail(isShown: true, isOpen: true, messages: messages()), BotLastReply.replyKey([reply]))
+        XCTAssertEqual(reads, 1)
+    }
+
     func testBotsHomeWithFewBots() throws {
         let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
         XCTAssertEqual(BotsHomeWork.preview(snapshot).map(\.ref), ["W2", "W1", "A1"])
