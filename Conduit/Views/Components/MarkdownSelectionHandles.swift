@@ -126,7 +126,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     /// the endpoint jumped it a line or more down at the first move, and a
     /// short selection collapsed or flipped (issue 3378).
     private var handleTouchDown: [ObjectIdentifier: CGPoint] = [:]
-    private var grabOffset: CGVector = .zero
+    private var grabOffsets: [ObjectIdentifier: CGVector] = [:]
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -447,15 +447,21 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         let point = pan.location(in: window)
         let role: MarkdownSelectionHandleView.Role = pan.view === anchorHandle ? .anchor : .focus
 
+        // Each handle keeps its own: two fingers on a short selection's
+        // two handles don't share one.
+        guard let handle = pan.view else { return }
+        let key = ObjectIdentifier(handle)
+
         switch pan.state {
         case .began:
-            let touchDown = pan.view.flatMap { handleTouchDown[ObjectIdentifier($0)] } ?? point
-            grabOffset = lineOffset(of: role, from: touchDown, in: window)
-            handleDragMoved(role: role, windowPoint: point.offsetBy(grabOffset))
+            let touchDown = handleTouchDown[key] ?? point
+            let offset = lineOffset(of: role, from: touchDown, in: window)
+            grabOffsets[key] = offset
+            handleDragMoved(role: role, windowPoint: point.offsetBy(offset))
         case .changed:
-            handleDragMoved(role: role, windowPoint: point.offsetBy(grabOffset))
+            handleDragMoved(role: role, windowPoint: point.offsetBy(grabOffsets[key] ?? .zero))
         case .ended, .cancelled:
-            grabOffset = .zero
+            grabOffsets[key] = nil
             handleDragEnded()
         default:
             break
