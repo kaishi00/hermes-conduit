@@ -2557,7 +2557,7 @@ no chat or from a Kanban task's worker · the Kanban task such a card links, ope
 - Cards drawn from their picks (the shapes, the Pulse frame and its bar, Ask, Open, Draft, Later, Updated, and the brief in its parts) haven't been tried on a phone against notifier 0.150.0 (#2058, #2096, notifier #640).
 - Leaving single profiles out (Settings > Pulse's Leave out menu) hasn't been tried on a phone against notifier 0.195.11 (#3260).
 
-**Checked:** 2026-11-27, #PRNUM with notifier #1143 (notifier issue 1138: a calendar event made in another zone is told in the reading's zone, with where it was made, in the report, look ahead, brief and follow-up checks, and a card about it takes the day it falls on there).
+**Checked:** 2026-11-27, #3442 with notifier #1143 (notifier issue 1138: a calendar event made in another zone is told in the reading's zone, with where it was made, in the report, look ahead, brief and follow-up checks, and a card about it takes the day it falls on there).
 
 ## Where you are, for Pulse
 
