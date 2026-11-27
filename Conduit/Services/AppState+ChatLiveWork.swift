@@ -57,14 +57,15 @@ extension AppState {
         var settled = false
         for admissionID in shownChat.queuedSendOrder where ours(admissionID) && !waiting.contains(admissionID) && !newer(admissionID) {
             shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
-            shownChat.forwardedSendChats.removeValue(forKey: admissionID)
             if work.startedAdmissions.contains(admissionID) {
-                // Its turn runs there now; the unnamed start still to come is its own.
+                // Its turn runs there now; the unnamed start still to come is its
+                // own (its chat kept, so only that chat's start takes it).
                 noteQueuedTurnStarted(sessionID: chatID, admissionID: admissionID)
                 shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [admissionID]).suffix(8))
             } else {
                 // It ran and ended between reads, or was withdrawn in the Webapp
                 // or Hermes Desktop: the chat's stored rows tell which.
+                shownChat.forwardedSendChats.removeValue(forKey: admissionID)
                 _ = takeQueuedSendRow(admissionID: admissionID)
                 authorityQueue.drop(admissionID)
                 settled = true
@@ -82,8 +83,22 @@ extension AppState {
             shownChat.forwardedSendChats[row.admissionID] = chatID
             shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [row.admissionID]).suffix(8))
         }
+        // One the last read listed, that nothing holds and is now neither waiting
+        // nor running, ran and ended between reads or was withdrawn: the chat's
+        // stored rows tell which. Not while a turn runs there: its words drawn in
+        // above may not be stored yet, and the turn's end reads the chat anyway.
+        if !work.running, previous?.queued.contains(where: { !waiting.contains($0.admissionID)
+            && !work.startedAdmissions.contains($0.admissionID)
+            && !shownChat.queuedSendOrder.contains($0.admissionID) }) == true {
+            settled = true
+        }
         // No turn runs there: no unnamed start is still to come.
-        if !work.running { shownChat.readStartedAdmissions.removeAll(where: ours) }
+        if !work.running {
+            for admissionID in shownChat.readStartedAdmissions where ours(admissionID) {
+                shownChat.forwardedSendChats.removeValue(forKey: admissionID)
+            }
+            shownChat.readStartedAdmissions.removeAll(where: ours)
+        }
         let held = authorityQueue.sessionID == chatID
             ? authorityQueue.rows.filter { !waiting.contains($0.admissionID) && shownChat.queuedSendOrder.contains($0.admissionID) }
             : []
@@ -108,8 +123,8 @@ extension AppState {
               chatID == sessionID || knownSessionIDs(for: sessionID).contains(chatID),
               !shownChat.startedAdmissionIDs.contains(admissionID) else { return }
         if shownChat.forwardedSendTimes.count >= 32 {
-            // Only sends no longer held let go of their stamps.
-            let held = Set(shownChat.queuedSendOrder)
+            // Only sends no longer held, nor awaiting their own start, let go of their stamps.
+            let held = Set(shownChat.queuedSendOrder + shownChat.readStartedAdmissions)
             shownChat.forwardedSendTimes = shownChat.forwardedSendTimes.filter { held.contains($0.key) }
             shownChat.forwardedSendChats = shownChat.forwardedSendChats.filter { held.contains($0.key) }
         }
@@ -128,18 +143,32 @@ extension AppState {
 
     /// The queued message a `message.start` begins: the one Hermes names on
     /// its own listener, else, on `hermes dashboard`, the oldest of the
-    /// user's forwarded ones (the dashboard relays only a forwarded
-    /// message's own turn, without naming it).
-    func admissionStarting(named admissionID: String?, by client: HermesClient?) -> String? {
+    /// user's forwarded ones into that chat (the dashboard relays only a
+    /// forwarded message's own turn, without naming it).
+    func admissionStarting(named admissionID: String?, by client: HermesClient?, in sessionID: String?) -> String? {
         if let admissionID { return admissionID }
         guard let client, !client.speaksSessionAuthority, authorityQueue.readOnly else { return nil }
-        return forwardedSendStarting()
+        return forwardedSendStarting(in: sessionID)
     }
 
-    /// The forwarded send an unnamed `message.start` begins: one a read
-    /// already brought back (its start is its own), else the oldest held.
-    func forwardedSendStarting() -> String? {
-        if !shownChat.readStartedAdmissions.isEmpty { return shownChat.readStartedAdmissions.removeFirst() }
-        return shownChat.queuedSendOrder.first
+    /// The forwarded send an unnamed `message.start` in `sessionID` begins:
+    /// one a read already brought back (its start is its own), else the
+    /// oldest held. Only sends forwarded into that chat: another chat's
+    /// waiting send, or a held row no forward recorded, is never this start.
+    func forwardedSendStarting(in sessionID: String?) -> String? {
+        guard let sessionID else { return nil }
+        // The chat by any of its own ids (a compacted chat's turn may start under
+        // another), never one another chat owns or carries too (issue 2602).
+        let known = followedSessionIDs(for: sessionID)
+        let into: (String) -> Bool = { self.shownChat.forwardedSendChats[$0].map(known.contains) ?? false }
+        if let index = shownChat.readStartedAdmissions.firstIndex(where: into) {
+            let admissionID = shownChat.readStartedAdmissions.remove(at: index)
+            shownChat.forwardedSendChats.removeValue(forKey: admissionID)
+            return admissionID
+        }
+        guard let admissionID = shownChat.queuedSendOrder.first(where: into) else { return nil }
+        shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
+        shownChat.forwardedSendChats.removeValue(forKey: admissionID)
+        return admissionID
     }
 }
