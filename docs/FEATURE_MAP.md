@@ -3107,7 +3107,7 @@ CarPlay and widgets (not needed: no bots list by category)
 - Hermes Desktop's order of sections and its empty sections are its own local storage, so its order and Conduit's can differ.
 - A rename or delete from a combined grid re-files other dashboards' bots, but not those dashboards' own `bots.categories` order or `groups.categories` filings (phone and desktop): there, a renamed heading drops out of the saved order, and a deleted one can come back holding only that dashboard's filed rooms.
 
-**Checked:** 2026-11-27, #3432 (a merged rename's fold keys deduplicated, the far-prefs gap recorded; #3430: a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
+**Checked:** 2026-11-27, #3431 (a merged rename's fold keys deduplicated, the far-prefs gap recorded; #3430: a room dropped on a heading files after the drag ends, Edit Bot settles the id on a fresh read, a rename merge keeps its place, the delete prompt names group chats; #3426 added it with desktop#708).
 
 ## Bots: create and edit
 
