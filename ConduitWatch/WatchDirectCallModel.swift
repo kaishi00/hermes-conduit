@@ -606,12 +606,13 @@ final class WatchDirectCallModel: ObservableObject {
     /// The session activated the way the reports of a working
     /// socket did (asynchronously), before the engine starts in it. Play
     /// and record with the default route policy, so the built-in speaker
-    /// plays; long-form audio would want Bluetooth and can't record.
+    /// plays (long-form audio would want Bluetooth and can't record), or a
+    /// headset connected to the Watch (setWatchCallCategory).
     private func activateAudioSession() async -> Bool {
         let session = AVAudioSession.sharedInstance()
         let startedAt = now
         do {
-            try session.setCategory(.playAndRecord, mode: .default, policy: .default, options: [])
+            try session.setWatchCallCategory()
             let activated = try await session.activate(options: [])
             WatchCallLog.shared.note("directAudioSession", [
                 "activated": activated,
