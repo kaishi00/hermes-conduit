@@ -1,6 +1,7 @@
 import XCTest
 import UIKit
 import UniformTypeIdentifiers
+import ImageIO
 @testable import Conduit
 
 /// The picture viewer pages through the pictures around the one tapped and
@@ -336,25 +337,31 @@ extension MarkdownLargeDocumentTests {
 
     /// Copy in a picture's long-press menu puts the picture on the
     /// clipboard: PNG, JPEG and GIF as their own bytes (a GIF keeps its
-    /// frames), any other picture as a PNG, and bytes that aren't a picture
-    /// not at all.
+    /// frames), typed by the bytes rather than a file name, any other
+    /// picture as a PNG, and bytes that aren't a picture not at all.
     func testCopyKeepsCommonPicturesAndConvertsTheRest() throws {
         let png = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
             UIColor.red.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
         }.pngData())
-        let kept = try XCTUnwrap(PictureClipboard.pasteboardItem(for: png, fileExtension: "PNG"))
+        let kept = try XCTUnwrap(PictureClipboard.pasteboardItem(for: png))
+        XCTAssertEqual(Array(kept.keys), [UTType.png.identifier])
         XCTAssertEqual(kept[UTType.png.identifier] as? Data, png)
 
         let jpeg = try XCTUnwrap(UIImage(data: png)?.jpegData(compressionQuality: 0.9))
-        let keptJPEG = try XCTUnwrap(PictureClipboard.pasteboardItem(for: jpeg, fileExtension: "jpg"))
+        let keptJPEG = try XCTUnwrap(PictureClipboard.pasteboardItem(for: jpeg))
+        XCTAssertEqual(Array(keptJPEG.keys), [UTType.jpeg.identifier])
         XCTAssertEqual(keptJPEG[UTType.jpeg.identifier] as? Data, jpeg)
 
-        // A picture named for a type apps don't all paste goes as a PNG.
-        let converted = try XCTUnwrap(PictureClipboard.pasteboardItem(for: jpeg, fileExtension: "heic"))
+        // A TIFF, which not every app pastes, goes as a PNG.
+        let tiff = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(tiff, UTType.tiff.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(UIImage(data: png)?.cgImage), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let converted = try XCTUnwrap(PictureClipboard.pasteboardItem(for: tiff as Data))
         XCTAssertEqual(Array(converted.keys), [UTType.png.identifier])
         XCTAssertNotNil(UIImage(data: try XCTUnwrap(converted[UTType.png.identifier] as? Data)))
 
-        XCTAssertNil(PictureClipboard.pasteboardItem(for: Data("not a picture".utf8), fileExtension: "png"))
+        XCTAssertNil(PictureClipboard.pasteboardItem(for: Data("not a picture".utf8)))
     }
 }

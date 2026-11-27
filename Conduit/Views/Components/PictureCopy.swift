@@ -9,6 +9,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import ImageIO
 
 enum PictureClipboard {
     /// The original's types that go on the clipboard as they are; any
@@ -16,23 +17,32 @@ enum PictureClipboard {
     static let keptTypes: [UTType] = [.png, .jpeg, .gif]
 
     /// What goes on the clipboard for a picture's bytes: the bytes under
-    /// their own type when an app pastes that type everywhere, else a PNG
-    /// made from them. Nil when the bytes aren't a picture.
-    static func pasteboardItem(for data: Data, fileExtension: String) -> [String: Any]? {
-        if let type = UTType(filenameExtension: fileExtension.lowercased()),
-           let kept = keptTypes.first(where: { type.conforms(to: $0) }),
-           UIImage(data: data) != nil {
+    /// their own type, read from the bytes themselves (a file's name can be
+    /// missing or wrong), when an app pastes that type everywhere, else a
+    /// PNG made from them. Nil when the bytes aren't a picture.
+    static func pasteboardItem(for data: Data) -> [String: Any]? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0 else { return nil }
+        if let identifier = CGImageSourceGetType(source) as String?,
+           let type = UTType(identifier),
+           let kept = keptTypes.first(where: { type.conforms(to: $0) }) {
             return [kept.identifier: data]
         }
         guard let png = UIImage(data: data)?.pngData() else { return nil }
         return [UTType.png.identifier: png]
     }
 
+    /// Counts copies, so a slow fetch for an earlier one never replaces a
+    /// later picture on the clipboard.
+    @MainActor private static var latestCopy = 0
+
     /// Copies the picture `item` fetches, at full size, else `shown` (the
     /// row's own copy) when the original can't be had. Buzzes when neither
     /// can, and tells VoiceOver when it's copied.
     @MainActor
     static func copy(_ item: ImageGalleryItem?, shown: UIImage?) {
+        latestCopy += 1
+        let copyNumber = latestCopy
         Task { @MainActor in
             var pasted: [String: Any]?
             if let item, let file = await item.load().file {
@@ -41,12 +51,13 @@ enum PictureClipboard {
                         if let owned = file.ownedDirectory { try? FileManager.default.removeItem(at: owned) }
                     }
                     guard let data = try? Data(contentsOf: file.url, options: .mappedIfSafe) else { return nil }
-                    return pasteboardItem(for: data, fileExtension: file.url.pathExtension)
+                    return PictureClipboard.pasteboardItem(for: data)
                 }.value
             }
             if pasted == nil, let png = shown?.pngData() {
                 pasted = [UTType.png.identifier: png]
             }
+            guard copyNumber == latestCopy else { return }
             guard let pasted else {
                 Haptics.error()
                 return
