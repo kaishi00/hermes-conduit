@@ -677,7 +677,7 @@ struct BotRosterView: View {
                 if !isFolded(section) {
                     if !section.items.isEmpty {
                         if mixed {
-                            mixedGrid(section.items, shown: shown)
+                            mixedGrid(section.items, shown: shown, filing: section)
                         } else {
                             BotPortraitGrid(bots: section.items.map(\.bot), onDropAtEnd: { dragged in
                                 dropAfterCategory(dragged, section: section)
@@ -843,9 +843,21 @@ struct BotRosterView: View {
     /// The group's grid: every combined dashboard's bots in one order the
     /// person arranges, each with its dashboard's badge.
     /// `shown`: the whole group's order, when `items` are one category's.
-    private func mixedGrid(_ items: [CombinedBotsHomeItem], shown: [String]? = nil) -> some View {
+    /// `filing`: the heading `items` are under, which a bot dropped past
+    /// its last one is filed under too.
+    private func mixedGrid(
+        _ items: [CombinedBotsHomeItem],
+        shown: [String]? = nil,
+        filing section: BotCategorySection<CombinedBotsHomeItem>? = nil
+    ) -> some View {
         let shown = shown ?? items.map(\.id)
-        return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }, sizedFor: shown.count) { item in
+        return BotPortraitGrid(items: items, onDropAtEnd: { dragged in
+            moveMixed(dragged, onto: nil, shown: shown)
+            if let section, canManageBots, let item = appState.botsHomeItem(dragged: dragged),
+               !BotCategories.same(item.bot.category?.name, section.name) {
+                file(item, under: section.name)
+            }
+        }, sizedFor: shown.count) { item in
             switch item.kind {
             case .own(let bot):
                 portrait(bot, mixedKey: item.id, shown: shown)

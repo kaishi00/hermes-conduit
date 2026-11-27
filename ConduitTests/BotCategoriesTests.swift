@@ -88,6 +88,44 @@ final class BotCategoriesTests: XCTestCase {
         XCTAssertEqual(moved?["sectionName"] as? String, "business")
     }
 
+    /// Written over a fresh read, a bot keeps its own id for its name, or
+    /// takes the one another bot there files the name under now.
+    func testTheIDIsSettledOnTheFreshRead() {
+        let minted = BotCategoryTag(id: "sec-new", name: "Clients")
+        XCTAssertEqual(BotCategories.resolved(minted, current: BotCategoryTag(id: "mine", name: "clients"), among: []).id, "mine")
+        let first = bot("a", category: BotCategoryTag(id: "sec-first", name: "Clients"))
+        XCTAssertEqual(BotCategories.resolved(minted, current: BotCategoryTag(id: "w", name: "Work"), among: [first, bot("b")]),
+                       BotCategoryTag(id: "sec-first", name: "Clients"))
+        XCTAssertEqual(BotCategories.resolved(minted, current: nil, among: [bot("b")]), minted)
+    }
+
+    /// A rename re-files every bot it holds under the new name, and a
+    /// delete takes them all out, through the one write path.
+    func testRenameAndDeleteRefileEveryBot() async throws {
+        let suite = "BotCategoriesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let log = WriteLog()
+        appState.botCategoryWriterForTesting = { name, tag in
+            log.writes.append((name, tag?.name))
+            return true
+        }
+        let work = BotCategoryTag(id: "sec-w", name: "Work")
+        let items = [bot("a", category: work), bot("b", category: work), bot("c")].map {
+            CombinedBotsHomeItem(dashboardID: appState.activeDashboardID, kind: .own($0))
+        }
+        appState.fileGroupRoom("room-1", under: "work")
+        _ = await appState.renameBotCategory("Work", to: "Clients", items: items)
+        XCTAssertEqual(log.writes.map(\.0), ["a", "b"])
+        XCTAssertEqual(log.writes.map(\.1), ["Clients", "Clients"])
+        XCTAssertEqual(appState.groupRoomCategory("room-1"), "Clients")
+        log.writes = []
+        _ = await appState.deleteBotCategory("Work", items: items)
+        XCTAssertEqual(log.writes.map(\.0), ["a", "b"])
+        XCTAssertEqual(log.writes.map(\.1), [nil, nil])
+    }
+
     /// Headings group by name in any case (one category across dashboards
     /// whose ids differ), follow the order, then first appearance, with
     /// Other last; no category at all is no headings.
@@ -166,4 +204,10 @@ final class BotCategoriesTests: XCTestCase {
         XCTAssertTrue(appState.botCategoryOrder.isEmpty)
         XCTAssertNil(defaults.stringArray(forKey: key))
     }
+}
+
+/// The writes a test's category writer saw.
+@MainActor
+private final class WriteLog {
+    var writes: [(String, String?)] = []
 }

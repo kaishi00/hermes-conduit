@@ -112,6 +112,9 @@ extension AppState {
         }
         switch item.kind {
         case .own(let bot):
+            if let botCategoryWriterForTesting {
+                return await botCategoryWriterForTesting(bot.name, tag(among: botRoster)) ? nil : failure
+            }
             guard let client, isConnected, !bot.isKeptCopy else {
                 return AppLocalization.string("Connect to Hermes to manage bots.")
             }
@@ -164,15 +167,17 @@ extension AppState {
 
     /// A bot's category written over the Hermes `client` reaches: its
     /// ui_meta read fresh, patched and written with its revision, read
-    /// again once when another client wrote first.
+    /// again once when another client wrote first. The id is settled on
+    /// that fresh read, so the bots a rename re-files in turn share one.
     func writeBotCategory(_ name: String, tag: BotCategoryTag?, client: HermesClient) async -> Bool {
         if let botCategoryWriterForTesting { return await botCategoryWriterForTesting(name, tag) }
         for _ in 0..<2 {
             guard let roster = try? await client.botRoster(),
                   let fresh = roster.bots.first(where: { $0.name == name }) else { return false }
+            let written = tag.map { BotCategories.resolved($0, current: fresh.category, among: roster.bots) }
             guard let result = try? await client.configureBotProfile(
                 name: name,
-                botMeta: BotMetaPatch.merged(existing: fresh.botMeta, patch: BotCategories.patch(tag)),
+                botMeta: BotMetaPatch.merged(existing: fresh.botMeta, patch: BotCategories.patch(written)),
                 expectedMetaRevision: fresh.botMetaRevision
             ) else { return false }
             switch BotMetaWriteOutcome(configureResult: result) {

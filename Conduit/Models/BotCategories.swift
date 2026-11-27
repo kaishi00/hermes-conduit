@@ -135,6 +135,18 @@ enum BotCategories {
         return patch(tag(named: name, among: bots))
     }
 
+    /// `tag` as written over a fresh read of the host's roster: the bot's
+    /// own id for a name it has already, else the id another bot there
+    /// files the name under now (a rename's later bots take the id its
+    /// first one got), else `tag`'s.
+    static func resolved(_ tag: BotCategoryTag, current: BotCategoryTag?, among bots: [BotProfile]) -> BotCategoryTag {
+        if let current, same(current.name, tag.name) { return BotCategoryTag(id: current.id, name: tag.name) }
+        if let other = bots.compactMap(\.category).first(where: { same($0.name, tag.name) }) {
+            return BotCategoryTag(id: other.id, name: tag.name)
+        }
+        return tag
+    }
+
     /// The tag a bot on one host takes for `name`: the id another of that
     /// host's bots already files that name under, else a new one in Hermes
     /// Desktop's shape.
