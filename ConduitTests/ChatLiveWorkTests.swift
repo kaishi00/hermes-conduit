@@ -176,14 +176,21 @@ final class ChatLiveWorkTests: XCTestCase {
         let appState = makeAppState()
         appState.activeSessionId = "api-1"
         appState.messages = [ChatMessage(id: "local-h", role: .user, content: "held", timestamp: "1")]
+        appState.messages.append(ChatMessage(id: "local-s", role: .user, content: "started", timestamp: "2"))
         appState.holdForwardedSend(admissionID: "adm-h", rowID: "local-h", text: "held", sessionID: "api-1")
+        appState.holdForwardedSend(admissionID: "adm-s", rowID: "local-s", text: "started", sessionID: "api-1")
+        // A read names adm-s started: it awaits its own unnamed start, its chat kept.
+        let waiting = QueuedPrompt(admissionID: "adm-h", text: "held", status: .queued, sequence: 1)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [waiting], startedAdmissions: ["adm-s"]), previous: nil, for: "api-1")
+        XCTAssertEqual(appState.shownChat.readStartedAdmissions, ["adm-s"])
         // Stamps for sends no longer held (their rows gone) fill the cap.
         for index in 0..<31 {
             appState.holdForwardedSend(admissionID: "adm-\(index)", rowID: "gone-\(index)", text: "x", sessionID: "api-1")
         }
         appState.holdForwardedSend(admissionID: "adm-new", rowID: "gone-new", text: "x", sessionID: "api-1")
         XCTAssertEqual(Set(appState.shownChat.forwardedSendTimes.keys), ["adm-h", "adm-new"])
-        XCTAssertEqual(Set(appState.shownChat.forwardedSendChats.keys), ["adm-h", "adm-new"])
+        XCTAssertEqual(Set(appState.shownChat.forwardedSendChats.keys), ["adm-h", "adm-s", "adm-new"])
+        XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-s", "Its own start still finds it")
     }
 
     private func makeAppState() -> AppState {

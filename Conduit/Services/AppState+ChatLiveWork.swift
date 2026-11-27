@@ -165,6 +165,9 @@ extension AppState {
             shownChat.forwardedSendChats.removeValue(forKey: admissionID)
             return admissionID
         }
-        return shownChat.queuedSendOrder.first(where: into)
+        guard let admissionID = shownChat.queuedSendOrder.first(where: into) else { return nil }
+        shownChat.forwardedSendTimes.removeValue(forKey: admissionID)
+        shownChat.forwardedSendChats.removeValue(forKey: admissionID)
+        return admissionID
     }
 }
