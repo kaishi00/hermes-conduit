@@ -372,7 +372,7 @@ extension AppStateVoiceCapabilityTests {
             sent = body
             return ["ok": true, "prompts": []]
         }
-        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "email-texts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks", "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards", "reply-html"])
+        XCTAssertEqual(sent["features"] as? [String], ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards", "text-drafts", "email-texts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks", "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards", "reply-html", "pc-asks"])
     }
 
     func testRunWorksAskIsARoomsAskToStartWork() throws {

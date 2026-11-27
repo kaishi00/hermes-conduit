@@ -21,7 +21,9 @@ struct ChatPcControlDock: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var controlling: PcControlling?
-    @State private var stopping = false
+    /// Bumped by Stop: a read that started before it can't bring the line back.
+    @State private var revision = 0
+    @State private var stopFailed = false
 
     private var shows: Bool { controlling != nil && isShowing }
 
@@ -36,7 +38,10 @@ struct ChatPcControlDock: View {
         .padding(.horizontal, 12)
         .padding(.bottom, shows ? 6 : 0)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: controlling)
-        .onChange(of: openChatID) { controlling = nil }
+        .onChange(of: openChatID) {
+            controlling = nil
+            stopFailed = false
+        }
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
             guard openChatID != nil, isShowing, isBusy else {
                 controlling = nil
@@ -44,9 +49,10 @@ struct ChatPcControlDock: View {
             }
             let asked = openChatID
             repeat {
+                let started = revision
                 let now = await appState.loadOpenChatPcControl()
                 guard !Task.isCancelled, openChatID == asked else { return }
-                if !stopping { controlling = now }
+                if revision == started { controlling = now }
                 try? await Task.sleep(for: PcControlling.refreshInterval)
             } while !Task.isCancelled
         }
@@ -57,17 +63,31 @@ struct ChatPcControlDock: View {
             Image(systemName: "desktopcomputer")
                 .foregroundStyle(Color.conduitAura)
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("\(appState.openChatBotName) is controlling \(item.name)", table: .chat))
-                .scaledFont(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AppLocalization.string("\(appState.openChatBotName) is controlling \(item.name)", table: .chat))
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if stopFailed {
+                    Text(AppLocalization.string("Couldn't stop it. Try again.", table: .chat))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 4)
             Button {
                 Haptics.medium()
-                stopping = true
+                revision += 1
                 controlling = nil
+                stopFailed = false
+                let asked = openChatID
                 Task {
-                    _ = await appState.stopPcControl(item)
-                    stopping = false
+                    let stopped = await appState.stopPcControl(item)
+                    // Couldn't reach the host: the line comes back, saying so, for another try.
+                    guard !stopped, openChatID == asked else { return }
+                    revision += 1
+                    controlling = item
+                    stopFailed = true
                 }
             } label: {
                 Label(AppLocalization.string("Stop"), systemImage: "stop.fill")
