@@ -5,8 +5,10 @@
 //  The Kanban tasks the open chat handed to the board (desktop issue 553):
 //  a line above the composer, "2 Kanban tasks in progress", drawn like the
 //  plan's, opening a sheet with a row per task (its lane, who has it, its
-//  board and, while it's blocked, why). Red while one is blocked; "Kanban
-//  tasks finished" once none is open, until the chat changes or × hides it.
+//  board and, while it's blocked, why). A row opens the task over the chat,
+//  with Open in Tasks for the full board (desktop issue 593). Red while one
+//  is blocked; "Kanban tasks finished" once none is open, until the chat
+//  changes or × hides it.
 //
 
 import SwiftUI
@@ -61,9 +63,9 @@ struct ChatKanbanTasksDock: View {
             } while !Task.isCancelled
         }
         .sheet(isPresented: $showsSheet) {
-            ChatKanbanTasksSheet(tasks: tasks, canOpen: appState.canOpenChatKanbanTask) { task in
+            ChatKanbanTasksSheet(appState: appState, tasks: tasks, canOpenInTasks: appState.canOpenChatKanbanTask) { taskID in
                 showsSheet = false
-                appState.openChatKanbanTask(task)
+                appState.openChatKanbanTask(taskID: taskID)
             }
         }
     }
@@ -123,29 +125,40 @@ struct ChatKanbanTasksDock: View {
     }
 }
 
-/// Each of the chat's Kanban tasks, from its line.
+/// Each of the chat's Kanban tasks, from its line. A row opens its task over
+/// the chat, on its own board, so reading it never leaves the conversation;
+/// the task's Open in Tasks goes on to the full board (desktop issue 593).
 private struct ChatKanbanTasksSheet: View {
+    let appState: AppState
     let tasks: [ChatKanbanTask]
-    /// Tasks shows this dashboard's boards: a far chat's tasks don't open there.
-    let canOpen: Bool
-    let open: (ChatKanbanTask) -> Void
+    /// Tasks shows this dashboard's boards: a far chat's tasks open here,
+    /// on their own dashboard, but not there.
+    let canOpenInTasks: Bool
+    /// The task shown, by its id: a dependency opened from the chat's task too.
+    let openInTasks: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var opened: ChatKanbanTaskSheet?
+    @State private var loadingID: String?
+    @State private var failure: String?
+    /// Only the last tap's task opens: an earlier, slower read drops.
+    @State private var request = 0
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     ForEach(tasks) { task in
-                        if canOpen {
-                            Button { open(task) } label: { row(task) }
-                                .buttonStyle(.plain)
-                                .accessibilityHint(Text(AppLocalization.string("Open in Tasks", table: .chat)))
-                        } else {
-                            row(task)
-                        }
+                        Button { open(task) } label: { row(task) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint(Text(AppLocalization.string("Opens the task here, over the chat", table: .chat)))
                     }
                 } footer: {
-                    Text(AppLocalization.string("Cards this chat put on the Kanban board. Hermes’ workers run them in the background.", table: .chat))
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let failure {
+                            Text(verbatim: failure).foregroundStyle(.red)
+                        }
+                        Text(AppLocalization.string("Cards this chat put on the Kanban board. Hermes’ workers run them in the background.", table: .chat))
+                    }
                 }
             }
             .navigationTitle(Text(verbatim: ChatKanbanTasks.label(tasks)))
@@ -157,6 +170,34 @@ private struct ChatKanbanTasksSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(item: $opened) { sheet in
+            KanbanTaskDetailView(task: sheet.task, openInTasks: canOpenInTasks ? openInTasks : nil)
+                .environment(sheet.store)
+                .environmentObject(appState)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    /// The task, read on its own board, then opened over the chat.
+    private func open(_ task: ChatKanbanTask) {
+        request += 1
+        let asked = request
+        failure = nil
+        loadingID = task.id
+        Task {
+            defer { if request == asked { loadingID = nil } }
+            do {
+                let found = try await appState.loadChatKanbanTask(task)
+                guard request == asked else { return }
+                opened = ChatKanbanTaskSheet(store: found.store, task: found.task)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard request == asked else { return }
+                failure = UserFacingError.message(for: error)
+            }
+        }
     }
 
     private func row(_ task: ChatKanbanTask) -> some View {
@@ -174,9 +215,18 @@ private struct ChatKanbanTasksSheet: View {
                     .scaledFont(.body.weight(.medium))
                     .lineLimit(2)
                 Spacer(minLength: 6)
-                Text(verbatim: status.displayName)
-                    .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
+                if loadingID == task.id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(verbatim: status.displayName)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+                Image(systemName: "chevron.right")
+                    .scaledFont(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
             if !detail.isEmpty {
                 Text(verbatim: detail)
@@ -193,4 +243,11 @@ private struct ChatKanbanTasksSheet: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
     }
+}
+
+/// One of the chat's Kanban tasks, open over the chat on its own board.
+private struct ChatKanbanTaskSheet: Identifiable {
+    let id = UUID()
+    let store: KanbanStore
+    let task: KanbanTask
 }

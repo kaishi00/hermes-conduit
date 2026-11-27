@@ -82,12 +82,19 @@ final class KanbanStore {
         configurationGeneration == generation
     }
 
+    /// False for a store that opens one task over another screen (a chat's
+    /// Kanban task, a far Pulse card's): the board it loads for that task
+    /// is never kept as the Tasks page's pick.
+    @ObservationIgnored private let keepsBoardPick: Bool
+
     init(
         defaults: UserDefaults = .standard,
-        serviceFactory: ((any DashboardJSONRequester) -> KanbanService)? = nil
+        serviceFactory: ((any DashboardJSONRequester) -> KanbanService)? = nil,
+        keepsBoardPick: Bool = true
     ) {
         self.defaults = defaults
         self.makeService = serviceFactory ?? { KanbanService(requester: $0) }
+        self.keepsBoardPick = keepsBoardPick
     }
 
     var effectiveBoardSlug: String? {
@@ -196,11 +203,11 @@ final class KanbanStore {
         requesterID = identity
         self.serverIdentity = normalizedServer
         let scopedKey = Self.scopedBoardKey(serverIdentity: normalizedServer)
-        persistenceKey = scopedKey
+        persistenceKey = keepsBoardPick ? scopedKey : nil
         selectedBoardSlug = defaults.string(forKey: scopedKey) ?? ""
 
         // One-time migration for the pre-scoped key.
-        if requester != nil, selectedBoardSlug.isEmpty, let legacy = defaults.string(forKey: Self.selectedBoardKey) {
+        if keepsBoardPick, requester != nil, selectedBoardSlug.isEmpty, let legacy = defaults.string(forKey: Self.selectedBoardKey) {
             selectedBoardSlug = legacy
             defaults.set(legacy, forKey: scopedKey)
             defaults.removeObject(forKey: Self.selectedBoardKey)
