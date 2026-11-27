@@ -23,7 +23,9 @@ struct ChatPcControlDock: View {
     @State private var controlling: PcControlling?
     /// Bumped by Stop: a read that started before it can't bring the line back.
     @State private var revision = 0
-    @State private var stopFailed = false
+    /// The computer whose Stop didn't reach the host: its line says so, and
+    /// no other computer's line does.
+    @State private var stopFailedOn: String?
 
     private var shows: Bool { controlling != nil && isShowing }
 
@@ -40,12 +42,12 @@ struct ChatPcControlDock: View {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: controlling)
         .onChange(of: openChatID) {
             controlling = nil
-            stopFailed = false
+            stopFailedOn = nil
         }
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
             guard openChatID != nil, isShowing, isBusy else {
                 controlling = nil
-                stopFailed = false
+                stopFailedOn = nil
                 return
             }
             let asked = openChatID
@@ -55,7 +57,7 @@ struct ChatPcControlDock: View {
                 guard !Task.isCancelled, openChatID == asked else { return }
                 if revision == started {
                     controlling = now
-                    if now == nil { stopFailed = false }
+                    if now?.computer != stopFailedOn { stopFailedOn = nil }
                 }
                 try? await Task.sleep(for: PcControlling.refreshInterval)
             } while !Task.isCancelled
@@ -71,7 +73,7 @@ struct ChatPcControlDock: View {
                 Text(AppLocalization.string("\(appState.openChatBotName) is controlling \(item.name)", table: .chat))
                     .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                if stopFailed {
+                if stopFailedOn == item.computer {
                     Text(AppLocalization.string("Couldn't stop it. Try again.", table: .chat))
                         .scaledFont(.caption)
                         .foregroundStyle(.red)
@@ -83,20 +85,25 @@ struct ChatPcControlDock: View {
                 Haptics.medium()
                 revision += 1
                 controlling = nil
-                stopFailed = false
+                stopFailedOn = nil
                 let asked = openChatID
+                let askedDashboard = appState.activeDashboardID
                 Task {
                     let stopped = await appState.stopPcControl(item)
+                    // Only for the chat Stop was pressed in, still on the same
+                    // dashboard and still in its turn: another chat's reads, or
+                    // a turn that ended, are left alone.
+                    guard appState.activeSessionId == asked, appState.activeDashboardID == askedDashboard,
+                          appState.isBusy else { return }
                     // A read that started while Stop was on its way can't bring the line back.
                     revision += 1
-                    guard appState.activeSessionId == asked else { return }
                     if stopped {
                         controlling = nil
                         return
                     }
                     // Couldn't reach the host: the line comes back, saying so, for another try.
                     controlling = item
-                    stopFailed = true
+                    stopFailedOn = item.computer
                 }
             } label: {
                 Label(AppLocalization.string("Stop"), systemImage: "stop.fill")

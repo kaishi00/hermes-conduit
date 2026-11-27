@@ -18,6 +18,8 @@ struct PcControlling: Equatable, Identifiable {
     let name: String
     /// The Hermes session driving it.
     let session: String
+    /// The chat's title. Kept from the plugin's payload; the line names
+    /// the bot instead, since it shows in that chat.
     let chat: String
 
     var id: String { computer }
