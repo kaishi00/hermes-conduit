@@ -1700,9 +1700,7 @@ private struct SettingsHomeGroup: Identifiable, Equatable {
 /// only state boxes and AppState, so an earlier copy acts the same.
 private struct V2SettingsHomeGroupCard: View, Equatable {
     let group: SettingsHomeGroup
-    let perform: (SettingsHomeRow.Action) -> Void
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.group == rhs.group }
+    @EqualityIgnored var perform: (SettingsHomeRow.Action) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
