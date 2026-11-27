@@ -8989,7 +8989,7 @@ text that describes it (none)
 - Tests: `ConduitTests/MessageNormalizerTests.swift` (testCompactionPrefixHelperClassifiesFromABoundedHead, testEveryContextEngineSummaryDepthIsOmitted and the Recent Summary cases), `desktop/test/transcript.test.ts` ("a context engine's summary", "Hermes' own summary after a compaction"), `notifier/tests/test_pulse.py` (test_a_chats_summary_is_not_the_users_words, test_a_summary_folded_into_a_reply_is_not_the_bots_words), `notifier/tests/test_work_coord.py`, `notifier/tests/test_artifacts.py` (test_a_context_engines_summary_names_nobodys_files, test_hermes_summary_in_a_reply_delivers_nothing, test_the_summary_header_is_one_pattern_everywhere)
 
 **Rulings**
-- Hermes' handoff is told by its `_compressed_summary` flag or its `[CONTEXT COMPACTION` / `[CONTEXT SUMMARY]:` opening, as a user row or a reply; a row it merged into keeps its own words, the user's or the bot's (before its delimiter, or after its end marker), and shows them. Hermes' projection doesn't unwrap a reply it merged into, so the desktop drew one in full (Nahida's chat, 2026-11-27; #PR).
+- Hermes' handoff is told by its `_compressed_summary` flag or its `[CONTEXT COMPACTION` / `[CONTEXT SUMMARY]:` opening, as a user row or a reply; a row it merged into keeps its own words, the user's or the bot's (before its delimiter, or after its end marker), and shows them. Hermes' projection doesn't unwrap a reply it merged into, so the desktop drew one in full (Nahida's chat, 2026-11-27; #3429).
 - A context engine's summary is told by LCM-X's own part header, `[Recent|Session Arc|Durable|Depth-N Summary (dN, node M)]` at the row's start (its `_LCM_SUMMARY_PART_HEADER_RE`). Hermes doesn't recognize it, so it reaches the apps as a plain user row, and a compaction carries the same summary forward as a fresh row. The whole row is hidden: a row LCM-X merged behind it keeps its own copy in the store. A message that only quotes a header mid-text is the user's (Furina's Bot Chat on .52, 2026-11-26: an 88,341-character Session Arc summary drawn as Eric's message; #3395).
 - The summary is hidden, not shown as a marker: the chat reads as the conversation it was.
 - Hermes' own detector isn't patched from the plugin: it also feeds what the model sees after a compaction, which is the engine's business.
@@ -8997,7 +8997,7 @@ text that describes it (none)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-27, #PR (Hermes' handoff kept as a reply or folded into one: hidden on the desktop and left out of Pulse and the files list, desktop#710, notifier #1132; the phone already did); 2026-11-27, #3395 (new entry: every depth of LCM-X's summary hidden on the phone and the desktop, and left out of Pulse, work coordination and the files list, notifier #1117, desktop#674).
+**Checked:** 2026-11-27, #3429 (Hermes' handoff kept as a reply or folded into one: hidden on the desktop and left out of Pulse and the files list, desktop#710, notifier #1132; the phone already did); 2026-11-27, #3395 (new entry: every depth of LCM-X's summary hidden on the phone and the desktop, and left out of Pulse, work coordination and the files list, notifier #1117, desktop#674).
 
 ## Pictures in messages
 
