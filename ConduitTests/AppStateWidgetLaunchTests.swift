@@ -1295,22 +1295,64 @@ final class AppStateWidgetLaunchTests: XCTestCase {
     }
 
     /// A link repeating the New Chat launch already on its way rides it,
-    /// as the shortcut does: the launch goes on, and the link's text waits
-    /// for the chat it opens.
-    func testNewChatLinkRidesTheSameLaunchInFlight() throws {
+    /// as the shortcut does: that launch goes on (one chat created, not a
+    /// cancelled one and another), and the link's text lands in its chat.
+    func testNewChatLinkRidesTheSameLaunchInFlight() async throws {
         let suite = "AppStateWidgetLaunchTests.new-chat-link-ride.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d5")
-        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d7")
+        let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-ride")
+        let createEntered = WidgetLaunchTestGate()
+        let createRelease = WidgetLaunchTestGate()
+        var creations = 0
+        appState.widgetSessionCreatorOverride = { _, _ in
+            creations += 1
+            await createEntered.signal()
+            await createRelease.wait()
+            return ("link-ride", "link-ride", "default")
+        }
 
         XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
-        let inFlight = try XCTUnwrap(appState.widgetLaunchCoordinator.pendingLink)
+        guard await waitForGate(createEntered, "the shortcut's launch never reached session creation", retryReadinessIn: appState) else { return }
         appState.openAppLink(.newChat(NewChatLink(text: "Hello")))
+        await createRelease.signal()
+        guard await waitForLaunchCompletion(appState) else { return }
+        for _ in 0..<1_000 where appState.composerRestoreRequests.isEmpty { await Task.yield() }
 
-        XCTAssertEqual(appState.widgetLaunchCoordinator.pendingLink, inFlight, "the launch in flight goes on")
-        XCTAssertEqual(appState.newChatLinkLaunch?.link, inFlight)
-        XCTAssertEqual(appState.newChatLinkLaunch?.request.text, "Hello")
+        XCTAssertEqual(creations, 1, "the launch in flight goes on, never cancelled and started again")
+        XCTAssertEqual(appState.activeSessionId, "link-ride")
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, "Hello")
+        XCTAssertNil(appState.newChatLinkLaunch)
+    }
+
+    /// Send tapped after moving to another chat: the text goes back in the
+    /// link's chat's draft, and the notice names that chat by the link's
+    /// title, or "New chat" when it gave none.
+    func testNewChatLinkSendFromAnotherChatNamesTheLinksChat() async throws {
+        for title in ["Lisbon", nil] as [String?] {
+            let suite = "AppStateWidgetLaunchTests.new-chat-link-moved.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d9")
+            let appState = try connectedLinkAppState(defaults: defaults, current: current, created: "link-moved")
+            appState.newChatLinkTitleOverride = { _ in }
+            appState.newChatLinkSendOverride = { _ in
+                XCTFail("nothing is sent into another chat")
+                return true
+            }
+
+            appState.openAppLink(.newChat(NewChatLink(text: "Book a table", title: title, sends: true)))
+            guard await waitForLaunchCompletion(appState) else { return }
+            let confirmation = try XCTUnwrap(appState.newChatLinkConfirmation)
+            appState.activeSessionId = "another-chat"
+            appState.sendNewChatLinkText(confirmation)
+
+            XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, "Book a table")
+            XCTAssertEqual(appState.composerRestoreRequests.last?.key, confirmation.key)
+            let named = title ?? AppLocalization.string("New chat")
+            XCTAssertEqual(appState.composerNotice, AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat))
+        }
     }
 
     /// A shared draft's launch isn't ridden: its text would land over the
@@ -1319,7 +1361,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         let suite = "AppStateWidgetLaunchTests.new-chat-link-draft.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d6")
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000d8")
         let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
 
         XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
