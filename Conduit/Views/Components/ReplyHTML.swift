@@ -233,8 +233,10 @@ enum ReplyHTML {
             guard !inCode[index] else { continue }
             let line = withoutCode(lines[index])
             // Only a `</details>` ending its line closes a fold, as fold(in:at:) reads it (one per line, nothing after
-            // it, not even a comment); one in prose doesn't.
-            if matches(foldClosingEnd, withoutCodeSpans(lines[index])) { closes += 1 }
+            // it, not even a comment or a code span); one in prose doesn't. The line as written, as the pass below
+            // reads it, so a fold this counts as closed is closed there too (#3349). A `</details>` ending the line
+            // can't be inside a code span, which would end after it.
+            if matches(foldClosingEnd, lines[index]) { closes += 1 }
             if matches(foldOpeningStart, line) { closes = max(0, closes - 1) }
         }
         for (index, line) in lines.enumerated() {
@@ -303,7 +305,8 @@ enum ReplyHTML {
         if body.hasPrefix("```") || body.hasPrefix("~~~") { return false }
         if matches(foldClosingEnd, after) { return true }
         // A close with words after it on the line stays as written: folded, they'd hide the rest of the reply.
-        if matches(foldClosingTag, after) { return false }
+        // One in a code span or a comment closes nothing, so it doesn't count (#3349).
+        if matches(foldClosingTag, withoutCode(after)) { return false }
         if withSummary { return true }
         return closedLater && !matches(tagStart, after)
     }
