@@ -56,6 +56,8 @@ struct ChatStepStyle: Equatable {
         "conduit_notify": ("bell", .conduitAccent),
         "conduit_present": ("checkmark.bubble", .conduitAccent),
         "conduit_settings": ("gearshape", .secondary),
+        // Not the iPhone: the user's computer (Control from Hermes).
+        "conduit_user_computer": ("desktopcomputer", .conduitAura),
     ]
 
     /// Tool Search's own steps: finding tools, then reading about them.
@@ -185,6 +187,11 @@ struct ChatStepLabel: Equatable {
             kind = .named(call.app)
             action = call.action.isEmpty ? nil : call.action
             about = ChatStepSubject.argument(from: input)
+            return
+        }
+        // Control from Hermes drives the user's computer, not the iPhone.
+        if name.lowercased() == "conduit_user_computer" {
+            kind = .named(AppLocalization.string("your computer", table: .chat))
             return
         }
         let category = HermesToolCategory(toolName: name)

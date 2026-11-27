@@ -68,6 +68,31 @@ struct PresentedRoom: Equatable {
 /// linked person's Hermes asks yours, and what the plugin's rule would answer
 /// waits for you. Only an answer there is to Share: a question has none, so
 /// it's answered with Say instead or Don't share.
+/// A computer's ask (Control from Hermes, plugin 0.205+): may a chat's bot
+/// control the user's computer, where they run Conduit for desktop? The
+/// computer asks too; the first answer counts.
+struct PresentedComputer: Equatable {
+    let id: String
+    let name: String
+    /// The bot asking, as the Bots list names it; empty for the main one.
+    let bot: String
+
+    init(id: String, name: String, bot: String) {
+        self.id = id
+        self.name = name
+        self.bot = bot
+    }
+
+    init?(json: Any?) {
+        guard let entry = json as? [String: Any],
+              let id = (entry["computer"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty
+        else { return nil }
+        let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let bot = (entry["bot"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(id: id, name: String(name.prefix(80)), bot: String(bot.prefix(80)))
+    }
+}
+
 struct PresentedLink: Equatable {
     let id: String
     let name: String
@@ -155,10 +180,12 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// A Link's ask: a linked person's Hermes asks yours. The preview is the
     /// answer to Share, or their question when there's none.
     let link: PresentedLink?
+    /// A computer's ask: Allow or Don't Allow, nothing to edit.
+    let computer: PresentedComputer?
 
     init(id: String, title: String, preview: String, actionLabel: String,
          spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil,
-         room: PresentedRoom? = nil, link: PresentedLink? = nil) {
+         room: PresentedRoom? = nil, link: PresentedLink? = nil, computer: PresentedComputer? = nil) {
         self.id = id
         self.title = title
         self.preview = preview
@@ -169,6 +196,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         self.maps = maps
         self.room = room
         self.link = link
+        self.computer = computer
     }
 
     /// A room's or a Link's ask: answered with Share, Say instead or Don't
@@ -200,7 +228,8 @@ struct PresentedConfirm: Identifiable, Equatable {
             expiresAt: expires,
             maps: PresentedMapsTarget(json: entry["maps"]),
             room: PresentedRoom(json: entry["room"]),
-            link: PresentedLink(json: entry["link"])
+            link: PresentedLink(json: entry["link"]),
+            computer: PresentedComputer(json: entry["pc"])
         )
     }
 
@@ -585,10 +614,11 @@ final class PresentedScreensSync: ObservableObject {
     /// conduit_show row (plugin 0.196+, issue 3215). "reply-html": HTML a
     /// reply writes draws, a page in a card and a few tags as text, so
     /// Hermes hears it may use it where no card fits (plugin 0.199+,
-    /// ReplyHTML).
+    /// ReplyHTML). "pc-asks": a computer's ask (Control from Hermes),
+    /// answered Allow or Don't Allow (plugin 0.205+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
                            "text-drafts", "email-texts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks",
-                           "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards", "reply-html"]
+                           "room-work", "pulse-looks", "pulse-more-shapes", "placed-boards", "reply-html", "pc-asks"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.

@@ -281,6 +281,11 @@ extension ChatTypographyTests {
     func testKnownKindsKeepConduitsOwnWords() {
         XCTAssertEqual(ChatStepLabel(toolName: "web_search", catalog: stepCatalog).kind, .category(.web))
         XCTAssertEqual(ChatStepLabel(toolName: "conduit_calendar", catalog: stepCatalog).kind, .category(.phone))
+        // Control from Hermes drives the user's computer, never "Using your iPhone".
+        XCTAssertEqual(ChatStepLabel(toolName: "conduit_user_computer", catalog: stepCatalog).kind,
+                       .named(AppLocalization.string("your computer", table: .chat)))
+        XCTAssertEqual(HermesToolCategory(toolName: "conduit_user_computer"), .tool)
+        XCTAssertEqual(ChatStepStyle(toolName: "conduit_user_computer").symbol, "desktopcomputer")
     }
 
     func testOtherToolsAreNamedByTheirToolset() {

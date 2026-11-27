@@ -4636,21 +4636,29 @@ stopped, off) · the plugin's routes the desktop polls (`GET /pc/next`,
 `pc-control` capability · the desktop's Settings › Control from Hermes (the
 toggle, which downloads the driver, the download's progress and Try Again,
 Delete It once off, the computer's name, the bots allowed) · the ask, once per
-chat, on the computer (Allow / Don't Allow), a new chat taking over · the bar on
-top of the screen while a bot is in control, kept out of screenshots, with Stop
-and its hotkey · Stop in Settings · the Lock Screen's step (`tool`, not "your
-iPhone") · the notifier's README and CHANGELOG · the phone (gap: see Open gaps)
-· the Watch and CarPlay (not needed: the computer is the user's own, controlled
-from the desktop it runs on)
+chat, on the computer (Allow / Don't Allow), a new chat taking over · the same
+ask on the phone, a confirm prompt with its notification (`pc-asks`: Control
+from Hermes, Don't Allow and Allow, no Edit; an Allow said on a call counts as
+any confirm's yes), the first answer counting and closing the computer's dialog
+· another computer's ask in the desktop's confirm panel · the bar on top of the
+screen while a bot is in control, kept out of screenshots, with Stop and its
+hotkey · Stop in Settings · the phone's line over the chat while its bot
+controls a computer ("Atlas is controlling Asuka"), with Stop, which takes the
+computer's bar away · the chat's step row ("Using your computer", a computer
+icon) and the Lock Screen's step (`tool`), never "Using your iPhone" · the
+notifier's README and CHANGELOG · the Watch and CarPlay (not needed: an ask
+reaches the phone's notification, and the Watch shows it as one)
 
-**Desktop app:** has it: Settings › Control from Hermes, the driver download, the ask, the bar and Stop (`desktop/src/main/pcControl.ts`, desktop#692, #693, #694).
+**Desktop app:** has it: Settings › Control from Hermes, the driver download, the ask, the bar and Stop (`desktop/src/main/pcControl.ts`, desktop#692, #693, #694); the ask following the phone's copy, Stop elsewhere taking the bar away, and another computer's ask in its confirm panel (`desktop/src/renderer/src/state/pcControl.ts` askEverywhere, `desktop/src/renderer/src/state/presented.ts`, desktop#699).
 
 **Code**
-- Notifier: `notifier/pc_control_tool.py` (the tool, its checks and waits), `notifier/pc_control_store.py` (the file queue under conduit-pc/ in the Hermes home: computers, grants, requests, results, a log that never holds what was typed or seen), `notifier/dashboard/api/pc_control.py` (the routes), `notifier/live_activity.py` (its Lock Screen category), `notifier/tests/test_pc_control.py`
-- Desktop: `desktop/src/main/pcControl.ts` (state, the ask, the bar, Stop), `desktop/src/main/pcDriver.ts` (the pinned driver: download, SHA-256 check, unpack, its MCP client), `desktop/src/main/pcExecutor.ts` (computer_use's actions on the driver's tools), `desktop/src/renderer/src/state/pcControl.ts` (the poll per allowed bot), `desktop/src/renderer/src/components/PcControlSetting.tsx`, `desktop/test/pcExecutor.test.ts`
+- Notifier: `notifier/pc_control_tool.py` (the tool, its checks and waits; _ask_phone and _withdraw, the phone's copy of the ask), `notifier/pc_control_store.py` (the file queue under conduit-pc/ in the Hermes home: computers, grants, requests, results, a log that never holds what was typed or seen; controlling and stopped_at), `notifier/present_store.py` (ask_pc, pc_ask, settle_pc, withdraw_pc, PC_ASK_FEATURE), `notifier/dashboard/api/pc_control.py` (the routes, with `/pc/ask` and `/pc/state`, and /pc/next's `stopped`), `notifier/live_activity.py` (its Lock Screen category), `notifier/tests/test_pc_control.py`
+- Phone: `Conduit/Services/PresentedScreens.swift` (PresentedComputer, PresentedConfirm.computer, the pc-asks feature), `Conduit/Views/PresentedConfirmPanel.swift` (its asker line, Don't Allow, no Edit), `Conduit/Models/PcControl.swift` (PcControlling), `Conduit/Services/AppState+PcControl.swift` (loadOpenChatPcControl, stopPcControl), `Conduit/Views/Components/ChatPcControlDock.swift` (the line and Stop, placed in `Conduit/Views/ChatView.swift`), `Conduit/Views/ChatActivityRows.swift` (the step row), `Shared/Widgets/HermesTurnActivity.swift` (HermesToolCategory's exact map), tests in `ConduitTests/PresentedScreensTests.swift` and `ConduitTests/ChatTypographyTests+StepRows.swift`
+- Desktop: `desktop/src/main/pcControl.ts` (state, the ask, the bar, Stop), `desktop/src/main/pcDriver.ts` (the pinned driver: download, SHA-256 check, unpack, its MCP client), `desktop/src/main/pcExecutor.ts` (computer_use's actions on the driver's tools), `desktop/src/renderer/src/state/pcControl.ts` (the poll per allowed bot, askEverywhere), `desktop/src/renderer/src/state/presented.ts` (another computer's ask), `desktop/src/renderer/src/components/PcControlSetting.tsx`, `desktop/test/pcExecutor.test.ts`, `desktop/test/pcAsk.test.ts`
 
 **Rulings**
-- Each chat asks once, on the computer, and keeps it until Stop or another chat takes over; one chat drives a computer at a time (Eric 2026-11-27, picked "Ask once per chat, on PC or phone"; the phone half is a gap).
+- Each chat asks once, on the computer and the phone, and keeps it until Stop or another chat takes over; one chat drives a computer at a time (Eric 2026-11-27, picked "Ask once per chat, on PC or phone"). The first answer counts: the phone's closes the computer's dialog, and the dialog's late answer can't overturn it. Only Allow lets a chat in; anything else, an ask that ran out included, is a no (notifier #1128, desktop#699, #3416).
+- The phone's line shows only while the chat's turn runs, since a bot acts only in a turn, and a chat counts as controlling while it acted in the last minute, as long as the computer's bar stays (#3416).
 - Off until the user turns it on, and only the bots ticked there can ask. Turning it on downloads the driver, since not everyone wants it; it isn't bundled (Eric 2026-11-27, notifier #1123, desktop#692).
 - A separate tool, not a `computer_use` backend: Hermes takes one backend per profile, and swapping it would take Bot Screen away (notifier #1123, the plugin's choice).
 - The plugin queues computer_use-level actions and the desktop maps them to its pinned driver, so the driver and its mapping move together (desktop#692, the desktop's choice).
@@ -4659,10 +4667,11 @@ from the desktop it runs on)
 - Stop takes waiting actions off the queue and answers them stopped; one the computer already answered keeps its answer, and an answered request is never claimed, so a stopped action can't run (notifier #1123, #1125 reviews).
 
 **Open gaps**
-- The phone: answering the ask from the phone, and a line saying a bot is controlling a computer, with Stop (Eric's consent pick names the phone; stage 2). The app's own `HermesToolCategory` map still reads `conduit_user_computer` as "Using your iPhone" (`Shared/Widgets/HermesTurnActivity.swift`).
 - The desktop polls only the current dashboard's bots, not another combined dashboard's.
+- The phone's line shows in the chat that's controlling; there's no line elsewhere (the chats list, another chat) while a bot controls a computer.
+- One chat controlling two computers at once shows only the first on the phone's line, and Stop stops that one.
 
-**Checked:** 2026-11-27, #3411 (new entry: notifier #1123, desktop#692, #693, #694)
+**Checked:** 2026-11-27, #3416 (the phone: notifier #1128, desktop#699)
 
 ## Composer Return key
 

@@ -95,7 +95,9 @@ enum HermesToolCategory: String, Codable, CaseIterable {
         "delegate_task": .agents, "memory": .memory, "session_search": .memory,
         "vision_analyze": .images, "image_generate": .images, "text_to_speech": .audio,
         "todo": .planning, "cronjob": .schedule, "send_message": .messages, "message_agent": .messages,
-        "skill_view": .skills, "skills_list": .skills, "skill_manage": .skills,
+        "skill_view": .skills, "skill_manage": .skills, "skills_list": .skills,
+        // The user's computer, not the iPhone (Control from Hermes), as the plugin says.
+        "conduit_user_computer": .tool,
     ]
     private static let prefixes: [(String, HermesToolCategory)] = [
         ("browser_", .browser), ("mcp_", .connector), ("conduit_", .phone),
