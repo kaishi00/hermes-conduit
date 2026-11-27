@@ -3856,6 +3856,50 @@ extension SessionPresentationCacheTests {
         XCTAssertFalse(onDisk(toolsKey).contains("call-1"), "Then the side record goes")
     }
 
+    /// A start reaches disk even when a save folds it in before its write
+    /// runs, and a call re-issued under a new row replaces its old record
+    /// on disk too (#3374's reviews).
+    func testAToolStartFoldedAtOnceOrReissuedReachesDiskOnce() throws {
+        let storage = FailingPresentationStorage()
+        let cache = SessionPresentationCache(storage: storage, writesAsynchronously: true, writeInterval: 60)
+        let toolsKey = "conduit.sessionPresentation.pendingTools.v1"
+        func onDisk() -> String { storage.data(forKey: toolsKey).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+        func save(_ id: String, _ session: String) {
+            cache.save(
+                [ChatMessage(id: id, role: .assistant, content: "Reply", timestamp: "2024-01-01T10:00:00Z")],
+                profile: "default",
+                sessionIDs: [session]
+            )
+        }
+        func start(_ row: String, _ call: String, _ session: String) {
+            cache.recordPendingToolStart(
+                ChatMessage(
+                    id: row, role: .tool, content: "", timestamp: "now",
+                    tool: ToolActivity(id: call, name: "terminal", input: "pwd", output: nil, status: .running)
+                ),
+                profile: "default",
+                sessionIDs: [session]
+            )
+        }
+        save("row-first", "session-a")
+        cache.waitForQueuedWrites()
+        save("row-waiting", "session-a")
+
+        // Folded by the save before its write may have run.
+        start("pending-folded", "call-folded", "session-b")
+        save("row-b", "session-b")
+        cache.waitForQueuedWrites()
+        XCTAssertTrue(onDisk().contains("pending-folded"), "The start reached disk")
+
+        start("pending-old", "call-1", "session-c")
+        cache.waitForQueuedWrites()
+        XCTAssertTrue(onDisk().contains("pending-old"))
+        start("pending-new", "call-1", "session-c")
+        cache.waitForQueuedWrites()
+        XCTAssertTrue(onDisk().contains("pending-new"))
+        XCTAssertFalse(onDisk().contains("pending-old"), "The re-issued call's old record is gone from disk too")
+    }
+
     /// A store whose bytes haven't changed since its last write isn't
     /// written again.
     func testAStoreWithTheSameBytesIsntWrittenAgain() throws {

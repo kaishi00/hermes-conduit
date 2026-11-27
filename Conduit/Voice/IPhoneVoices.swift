@@ -166,6 +166,10 @@ enum IPhoneVoices {
     /// Aloud asking meanwhile waits on the first instead of asking iOS's
     /// speech service again.
     @MainActor private static var findingVoices: [String: Task<FoundVoice, Never>] = [:]
+    #if DEBUG
+    /// Called when a find starts waiting on another's. Tests only.
+    @MainActor static var waiterJoined: (() -> Void)?
+    #endif
     /// Counts forgets, so a voice found from a forgotten list isn't kept.
     @MainActor private static var generation = 0
 
@@ -256,6 +260,9 @@ enum IPhoneVoices {
         if let found = foundVoices[key] { return found.voice }
         if let finding = findingVoices[key] {
             let waitedFrom = generation
+            #if DEBUG
+            waiterJoined?()
+            #endif
             let found = await finding.value
             // The voices changed while it waited: the next find reads the
             // list after the change (#3374's review).
