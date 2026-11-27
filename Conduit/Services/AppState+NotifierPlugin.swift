@@ -106,7 +106,10 @@ extension AppState {
         let couldAnswerRoomApprovals = canAnswerRoomApprovals
         // One write, and none when the host said the same again: every
         // read after a turn answers alike, and each write redrew whatever
-        // reads AppState (#828).
+        // reads AppState (#828). Skipping it is safe because the setter's
+        // one unconditional step, PluginUpdateAsk.setActive, takes the
+        // manager Remembered keeps, written below on every read; anything
+        // added there that must run on each read belongs here instead.
         var next = notifierPlugin
         // A failed list read keeps what this host's list said before.
         next.hostCopy = state == .predatesCapabilities
