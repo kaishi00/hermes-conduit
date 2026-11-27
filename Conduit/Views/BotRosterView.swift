@@ -384,7 +384,7 @@ struct BotRosterView: View {
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { _ in
-            Text(AppLocalization.string("Its bots move to Other.", table: .bots))
+            Text(AppLocalization.string("Its bots and group chats move to Other.", table: .bots))
         }
         .task(id: rosterRefreshKey) {
             // Not during a pop's slide (`V2ShownUpdates.settled`).

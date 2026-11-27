@@ -53237,84 +53237,84 @@
         }
       }
     },
-    "Its bots move to Other." : {
+    "Its bots and group chats move to Other." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ihre Bots kommen zu „Andere“."
+            "value" : "Ihre Bots und Gruppenchats kommen zu „Andere“."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sus bots pasan a Otro."
+            "value" : "Sus bots y chats de grupo pasan a Otro."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ses bots passent dans Autre."
+            "value" : "Ses bots et discussions de groupe passent dans Autre."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Botnya pindah ke Lainnya."
+            "value" : "Bot dan obrolan grupnya pindah ke Lainnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I suoi bot passano in Altro."
+            "value" : "I suoi bot e le chat di gruppo passano in Altro."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ボットは「その他」に移ります。"
+            "value" : "ボットとグループチャットは「その他」に移ります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "봇은 기타로 이동합니다."
+            "value" : "봇과 그룹 채팅은 기타로 이동합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jej boty trafią do Inne."
+            "value" : "Jej boty i czaty grupowe trafią do Inne."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os bots dela vão para Outro."
+            "value" : "Os bots e chats em grupo dela vão para Outro."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Её боты перейдут в «Другое»."
+            "value" : "Её боты и групповые чаты перейдут в «Другое»."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Botları Diğer'e taşınır."
+            "value" : "Botları ve grup sohbetleri Diğer'e taşınır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "其中的机器人会移到“其他”。"
+            "value" : "其中的机器人和群聊会移到“其他”。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "其中的機器人會移到「其他」。"
+            "value" : "其中的機器人和群聊會移到「其他」。"
           }
         }
       }
