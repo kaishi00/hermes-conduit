@@ -6947,18 +6947,29 @@ enum MessageNormalizer {
     /// bracketed notices, anchored at the start of the content so ordinary
     /// discussion of "context compaction" is never mistaken for a summary.
     /// Classification reads only a bounded head: leading whitespace is
-    /// skipped by index and only the next 32 characters are compared, so a
+    /// skipped by index and only the next 48 characters are compared, so a
     /// multi-megabyte summary is never copied or tail-scanned to classify it.
+    ///
+    /// A context engine plugin can write the summary in Hermes' place:
+    /// LCM-X stores its frontier as a user row of parts headed
+    /// `[Session Arc Summary (d1, node 22)]` (Recent, Session Arc, Durable or
+    /// Depth-N; its engine.py `_LCM_SUMMARY_PART_HEADER_RE`), with no
+    /// `_compressed_summary` flag or display kind, and a compaction carries
+    /// it forward as a fresh row. A row it merged with keeps its own copy,
+    /// so the whole carrier is scaffolding.
     static func hasCompactionSummaryPrefix(_ content: String) -> Bool {
         var headStart = content.startIndex
         while headStart < content.endIndex, content[headStart].isWhitespace {
             headStart = content.index(after: headStart)
         }
-        let head = content[headStart...].prefix(32).lowercased()
+        let head = content[headStart...].prefix(48).lowercased()
         return head.hasPrefix("[context compaction")
             || head.hasPrefix("[context summary]:")
-            || head.hasPrefix("[recent summary (")
+            || head.range(of: contextEngineSummaryHeader, options: .regularExpression) != nil
     }
+
+    private static let contextEngineSummaryHeader =
+        #"^\[(recent|session arc|durable|depth-[0-9]+) summary \(d[0-9]+, node [0-9]+\)\]"#
 
     /// Normalizes the gateway's native clarification event into one
     /// batch-capable activity. Current Hermes sends
