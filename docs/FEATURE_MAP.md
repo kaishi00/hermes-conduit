@@ -4684,7 +4684,7 @@ trycua's cua-driver.
 computer_use's actions plus launch_app and a computer name; type and key bring
 the window to the front) and its results (a screenshot with numbered elements,
 and errors that tell the bot what to say: offline, which computer, denied,
-stopped, off) · the plugin's routes the desktop polls (`GET /pc/next`,
+stopped, off) · the line each main-chat turn gets while a computer is online, naming it and the tool, not `computer_use` (`pc_control_tool.note`, notifier #1133) · the plugin's routes the desktop polls (`GET /pc/next`,
 `POST /pc/result`, `POST /pc/stop`, `DELETE /pc/computer`) and the
 `pc-control` capability · the desktop's Settings › Control from Hermes (the
 toggle, which downloads the driver, the download's progress and Try Again,
@@ -4717,6 +4717,7 @@ reaches the phone's notification, and the Watch shows it as one)
 - The plugin queues computer_use-level actions and the desktop maps them to its pinned driver, so the driver and its mapping move together (desktop#692, the desktop's choice).
 - Keys go to the window in front: type and key bring the window to the front first and type nothing if it can't come, since the driver's background delivery put typing into a Notepad tab the user wasn't on (Asuka test 2026-11-27, desktop#692). Combos go through press_key, which a modern Notepad takes and hotkey doesn't.
 - Only the desktop's main window can hand over actions or change the setting; a docked chat shows another dashboard's pages (desktop#692 review).
+- While a computer is online, each main-chat turn is told it can control it with `conduit_user_computer`, not `computer_use` or another desktop app's tools: a bot asked to look at Eric's PC searched for "computer use", found only those and said it couldn't (Eric 2026-11-27, notifier #1133). Subagents and room turns don't get the line.
 - Stop takes waiting actions off the queue and answers them stopped; one the computer already answered keeps its answer, and an answered request is never claimed, so a stopped action can't run (notifier #1123, #1125 reviews).
 
 **Open gaps**
@@ -4724,7 +4725,7 @@ reaches the phone's notification, and the Watch shows it as one)
 - The phone's line shows in the chat that's controlling; there's no line elsewhere (the chats list, another chat) while a bot controls a computer.
 - One chat controlling two computers at once shows only the first on the phone's line, and Stop stops that one.
 
-**Checked:** 2026-11-27, #3422 (the Stop line's edge cases; the phone: #3416, notifier #1128, desktop#699, desktop#702)
+**Checked:** 2026-11-27, #3432 (the per-turn line naming the user's computer, notifier #1133; before: #3422, #3416, notifier #1128, desktop#699, desktop#702)
 
 ## Composer Return key
 
