@@ -2966,6 +2966,137 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
     }
 
+    func testAFailedBotChatTailReadIsTriedAgainAtTheNextCheck() async throws {
+        let reads = Counter()
+        let failing = Flag()
+        var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
+        let clock = TestClock()
+        let app = try await openBotChat { sessionID in
+            reads.value += 1
+            if failing.isOn { return .failed(URLError(.timedOut)) }
+            return self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        let before = reads.value
+
+        tail.append(transcriptRow(2, role: "assistant", content: "The example job is complete."))
+        failing.isOn = true
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(reads.value, before + 1)
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job"])
+
+        // Inside the retry wait: no read.
+        failing.isOn = false
+        await app.openChatSyncTick()
+        XCTAssertNil(app.openChatSyncRead, "The retry waits 5 s after the failure")
+
+        clock.now += BotChatTailRead.retryInterval
+        await app.openChatSyncTick()
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(reads.value, before + 2, "The owed tail is read again after the failure")
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
+
+        // Settled: the next check reads nothing.
+        clock.now += BotChatTailRead.retryInterval
+        await app.openChatSyncTick()
+        XCTAssertNil(app.openChatSyncRead)
+    }
+
+    func testAChangeWhileAnOlderPageLoadsIsReadOnceItEnds() async throws {
+        var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
+        let app = try await openBotChat { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        tail.append(transcriptRow(2, role: "assistant", content: "The example job is complete."))
+        app.persistedTranscriptWindow?.isLoadingEarlier = true
+        app.handleStreamEvent(.sessionsChanged)
+        XCTAssertNil(app.openChatSyncRead, "No tail read while an older page loads")
+
+        app.persistedTranscriptWindow?.isLoadingEarlier = false
+        await app.openChatSyncTick()
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
+    }
+
+    func testABotChatTailPageEchoingNoSessionIDStillMerges() async throws {
+        var tail = [transcriptRow(1, role: "user", content: "Start the example job")]
+        let app = try await openBotChat { _ in
+            .payload([
+                "messages": tail,
+                "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": tail.count]
+            ])
+        }
+        tail.append(transcriptRow(2, role: "assistant", content: "The example job is complete."))
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job", "The example job is complete."])
+    }
+
+    func testBotChatTailReadKeepsANewerChangeAndGivesUpAfterThreeFailures() {
+        let start = Date(timeIntervalSince1970: 0)
+        var read = BotChatTailRead()
+        XCTAssertFalse(read.isDue(sessionID: "a", now: start))
+        read.noteChanged(sessionID: "a")
+        let first = read.generation
+        read.noteChanged(sessionID: "a")
+        read.noteRead(generation: first)
+        XCTAssertTrue(read.isDue(sessionID: "a", now: start), "A read from before the newer change leaves it owed")
+        XCTAssertFalse(read.isDue(sessionID: "b", now: start))
+
+        let current = read.generation
+        read.noteFailed(generation: current, at: start)
+        XCTAssertFalse(read.isDue(sessionID: "a", now: start + 4))
+        XCTAssertTrue(read.isDue(sessionID: "a", now: start + 5))
+        read.noteFailed(generation: current, at: start + 5)
+        read.noteFailed(generation: current, at: start + 10)
+        XCTAssertFalse(read.isDue(sessionID: "a", now: start + 60), "Three failures give the change up")
+    }
+
+    /// An open Bot Chat ("stored-a" in profile "default", runtime
+    /// "runtime-a") whose stored tail each read takes from `tail`.
+    private func openBotChat(
+        tail: @escaping @MainActor (String) async -> PersistedTranscriptFetchOutcome
+    ) async throws -> AppState {
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { sessionID, profile, query in
+                XCTAssertEqual(sessionID, "stored-a")
+                XCTAssertEqual(profile, "default")
+                XCTAssertEqual(query, PersistedTranscriptPagination.tailQuery(offset: 0))
+                return await tail(sessionID)
+            }
+        )
+        let app = harness.appState
+        app.isConnected = true
+        app.sessions = [session("stored-a")]
+        app.installDashboardTicketBridgeForTesting(DashboardTicketBridge(
+            baseURL: "https://one.example",
+            pendingRequests: DashboardTicketBridgePendingRequests(),
+            readinessPollAttempts: 0,
+            readinessPollInterval: .milliseconds(1)
+        ))
+        let opened = await app.openSession("stored-a")
+        XCTAssertTrue(opened)
+        app.noteBotChatSessionForTesting("stored-a", profile: "default")
+        app.noteBotChatSessionForTesting("runtime-a", profile: "default")
+        app.showSidebar = false
+        XCTAssertEqual(app.chatShownOnScreen, "runtime-a")
+        XCTAssertEqual(app.activeBotChatProfile, "default")
+        XCTAssertEqual(app.messages.map(\.content), ["Start the example job"])
+        return app
+    }
+
+    private final class TestClock {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+    }
+
     // MARK: - Harness
 
     private func makeHarness(

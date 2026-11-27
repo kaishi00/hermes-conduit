@@ -190,9 +190,11 @@ extension AppState {
             if case .unreachable = chatRuntimeRoute { setActiveChatRepliesElsewhere(false) }
             return
         }
-        // Bot Chats use their authenticated stored tail, never the workspace registry.
+        // Bot Chats use their authenticated stored tail, never the workspace
+        // registry: a change held back, or a tail read still owed, is read now.
         if activeBotChatProfile != nil {
             readPendingCatalogChange()
+            readOpenBotChatTail()
             setActiveChatRepliesElsewhere(false)
             return
         }
@@ -352,13 +354,15 @@ extension AppState {
     /// one held back by a turn, at the open chat's or the list's next check.
     func readPendingCatalogChange() {
         guard isSceneActive, isConnected else { return }
-        // Leave a change pending when the open Bot Chat already has a read in flight.
-        if chatOnScreenIsInScope, chatShownOnScreen != nil, activeBotChatProfile != nil,
-           openChatSyncRead != nil || reconciliation != nil || isChatRefreshing { return }
         let now = chatSyncNow()
         if catalogChangeSignal.takeRead(now: now, turnRunningHere: turnState.isRunning) {
             refreshCatalogAfterLeavingChat(reportingFailure: false, readingChange: true)
-            readOpenBotChatTail()
+            // The Bot Chat on screen is owed one read of its stored tail,
+            // kept until it lands (BotChatTailRead).
+            if chatOnScreenIsInScope, activeBotChatProfile != nil, let sessionID = chatShownOnScreen {
+                botChatTailRead.noteChanged(sessionID: sessionID)
+                readOpenBotChatTail()
+            }
             return
         }
         guard !turnState.isRunning, catalogChangeReadTask == nil,
@@ -374,9 +378,14 @@ extension AppState {
     }
 
     /// Bot Chats are outside the workspace's live registry. Read only the
-    /// already-open conversation's authenticated, bounded persisted page.
+    /// already-open conversation's authenticated, bounded persisted page,
+    /// once a `sessions.changed` owes it one. Anything that holds the read
+    /// back (a read or turn under way, an older page loading) leaves it owed
+    /// for the next check.
     private func readOpenBotChatTail() {
-        guard chatOnScreenIsInScope, let sessionID = chatShownOnScreen, let profile = activeBotChatProfile,
+        guard isSceneActive, isConnected,
+              chatOnScreenIsInScope, let sessionID = chatShownOnScreen, let profile = activeBotChatProfile,
+              botChatTailRead.isDue(sessionID: sessionID, now: chatSyncNow()),
               let client, let bridge = dashboardTicketBridge,
               let window = persistedTranscriptWindow, window.profile == profile,
               window.trustedSessionIDs.contains(sessionID), !window.isLoadingEarlier,
@@ -384,6 +393,7 @@ extension AppState {
               turnState == .idle else { return }
         let dashboardID = activeDashboardID
         let storedID = window.resolvedSessionID ?? window.requestedSessionID
+        let generation = botChatTailRead.generation
         startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false) { appState in
             @MainActor func isCurrent() -> Bool {
                 appState.chatOnScreenIsInScope && appState.activeDashboardID == dashboardID && appState.client === client
@@ -398,10 +408,28 @@ extension AppState {
             let last = appState.messages.last?.id
             let wasEmpty = appState.shownChat.persistedOrderingFrontier.isPositivelyEmpty
             let outcome = await appState.foregroundPersistedTailOutcome(sessionId: storedID, profile: profile, using: bridge)
+            switch outcome {
+            case .failed:
+                // Transient (timeout, 429/5xx): the next check tries again.
+                appState.botChatTailRead.noteFailed(generation: generation, at: appState.chatSyncNow())
+                return
+            case .unavailable, .unsupportedTailContract:
+                // No bounded tail on this host: Back and a pull to refresh
+                // still read the chat.
+                appState.botChatTailRead.noteRead(generation: generation)
+                return
+            case .hydrated:
+                break
+            }
+            // The chat moved meanwhile (a row streamed in, another page
+            // loaded): still owed, read again at the next check.
             guard isCurrent(), appState.messages.last?.id == last,
                   appState.shownChat.durablePersistedRowIDs == frontier,
-                  case let .hydrated(transcript) = outcome,
-                  let resolvedID = transcript.resolvedSessionId, window.trustedSessionIDs.contains(resolvedID) else { return }
+                  case let .hydrated(transcript) = outcome else { return }
+            appState.botChatTailRead.noteRead(generation: generation)
+            // A page echoing a session id must echo this chat's; one echoing
+            // none answers the request's own identity, as opens and backfill take it.
+            if let resolvedID = transcript.resolvedSessionId, !window.trustedSessionIDs.contains(resolvedID) { return }
             let rows: [ChatMessage]
             switch appState.foregroundFreshnessVerdict(
                 outcome, localFrontier: frontier, localMessageIDs: messageIDs, lastLocalMessageID: last,
@@ -411,8 +439,10 @@ extension AppState {
                 rows = newRows
             case .inconclusive where last == nil && wasEmpty:
                 // A previously validated empty chat can take a complete first page.
+                // Every normalized row comes from the page, tool cards and
+                // reasoning rows (derived ids) included.
                 guard let page = transcript.page, !page.mayHaveOlderRows(fetchedRowCount: page.rawReturned) else { return }
-                rows = transcript.messages.filter { transcript.durableRowIDs.contains($0.id) }
+                rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
             default:
                 return
             }

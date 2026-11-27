@@ -219,6 +219,54 @@ struct CatalogChangeSignal {
     }
 }
 
+/// The open Bot Chat's stored tail read a `sessions.changed` asks for.
+/// Bot Chats are outside the workspace registry, so the change is owed to
+/// the chat on screen until one read of its tail lands: kept through a
+/// read or turn under way, an older page loading, or a transient failure
+/// (retried 5 s after it, three times at most).
+struct BotChatTailRead {
+    static let retryInterval: TimeInterval = 5
+    static let maximumFailures = 3
+
+    private(set) var owedSessionID: String?
+    /// Bumped by each change, so a read that started before it never
+    /// settles the newer one.
+    private(set) var generation = 0
+    private(set) var failures = 0
+    private var lastFailureAt: Date?
+
+    mutating func noteChanged(sessionID: String) {
+        if owedSessionID != sessionID { failures = 0; lastFailureAt = nil }
+        owedSessionID = sessionID
+        generation += 1
+    }
+
+    /// Whether the tail of this chat may be read now.
+    func isDue(sessionID: String, now: Date) -> Bool {
+        guard owedSessionID == sessionID else { return false }
+        guard let lastFailureAt else { return true }
+        return now.timeIntervalSince(lastFailureAt) >= Self.retryInterval
+    }
+
+    /// A read that started at `generation` landed (or can never land):
+    /// the change is settled unless a newer one came meanwhile.
+    mutating func noteRead(generation read: Int) {
+        guard read == generation else { return }
+        owedSessionID = nil
+        failures = 0
+        lastFailureAt = nil
+    }
+
+    /// A transient failure: tried again after the retry wait, until the
+    /// last allowed failure gives the change up.
+    mutating func noteFailed(generation read: Int, at now: Date) {
+        guard read == generation else { return }
+        failures += 1
+        lastFailureAt = now
+        if failures >= Self.maximumFailures { noteRead(generation: read) }
+    }
+}
+
 /// The open chat as this device holds it, for one check.
 struct OpenChatLocalTurn: Equatable {
     var sessionID: String

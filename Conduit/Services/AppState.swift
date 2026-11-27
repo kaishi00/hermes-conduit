@@ -3281,6 +3281,8 @@ final class AppState: ObservableObject {
         set { shownRuntime.chatListCatalogFreshness = newValue }
     }
     var openChatSync = OpenChatSync()
+    /// The open Bot Chat's stored tail owed to a `sessions.changed`.
+    var botChatTailRead = BotChatTailRead()
     /// Hermes' `sessions.changed` waiting for its catalog read, and the
     /// wait for one held back by the quiet-read wait (5 s, up to 60 s).
     var catalogChangeSignal: CatalogChangeSignal {
