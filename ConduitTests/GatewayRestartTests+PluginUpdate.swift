@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import Conduit
 
 /// The one-tap Conduit plugin update (NotifierPluginUpdate.swift) and the
@@ -418,6 +419,31 @@ extension GatewayRestartTests {
         // The next update's restart asks again.
         appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.65.0", boot: "a"))
         XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+    }
+
+    func testAPluginReportWritesTheStatusOnceAndNotAgainWhenTheSame() throws {
+        // Each write of the status redraws whatever reads AppState, and a
+        // read after every turn answers the same (#828): one write per new
+        // report, none for a repeat.
+        let suite = "GatewayRestartTests.oneWrite.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        var writes = 0
+        let watch = appState.notifierPluginValues.dropFirst().sink { _ in writes += 1 }
+        defer { watch.cancel() }
+        let report = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+        appState.applyNotifierPluginReport(report)
+        XCTAssertEqual(writes, 1)
+        appState.applyNotifierPluginReport(report)
+        XCTAssertEqual(writes, 1)
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.64.0", boot: "a"))
+        XCTAssertEqual(writes, 2)
     }
 
     func testFinishSetupPendingHoldsTheNoticeUntilItEnds() throws {

@@ -1353,7 +1353,7 @@ private struct SettingsHome: View {
                     // the runtime worked out that type (build 264).
                     ForEach(homeGroups) { group in
                         if v2Layout {
-                            V2SettingsHomeGroupCard(group: group, perform: perform)
+                            V2SettingsHomeGroupCard(group: group, perform: perform).equatable()
                         } else {
                             SettingsHomeGroupSection(group: group, perform: perform)
                         }
@@ -1658,7 +1658,7 @@ private struct SettingsHome: View {
 }
 
 /// One row on Settings home: a page it opens, or a sheet.
-private struct SettingsHomeRow: Identifiable {
+private struct SettingsHomeRow: Identifiable, Equatable {
     enum Action: Hashable {
         case open(SettingsDestination)
         case profiles
@@ -1685,7 +1685,7 @@ private struct SettingsHomeRow: Identifiable {
 }
 
 /// A named group of rows on Settings home.
-private struct SettingsHomeGroup: Identifiable {
+private struct SettingsHomeGroup: Identifiable, Equatable {
     let id: String
     let title: String
     let symbol: String
@@ -1694,10 +1694,15 @@ private struct SettingsHomeGroup: Identifiable {
 }
 
 /// A V2 group: its name over one card of rows, with a hairline above every
-/// row but the first.
-private struct V2SettingsHomeGroupCard: View {
+/// row but the first. It draws again only when its rows change: Settings
+/// home rebuilds every group on each AppState update, and a closure never
+/// compares equal, so each card redrew with it (#828). `perform` reads
+/// only state boxes and AppState, so an earlier copy acts the same.
+private struct V2SettingsHomeGroupCard: View, Equatable {
     let group: SettingsHomeGroup
     let perform: (SettingsHomeRow.Action) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.group == rhs.group }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
