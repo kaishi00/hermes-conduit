@@ -1034,6 +1034,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
+            (textView as? MarkdownSelectionTextView)?.keepWordUnderTouchDown()
             ChatTextSelection.note(textView)
             guard
                 let selectionCoordinator,
@@ -1109,6 +1110,21 @@ enum ChatTextSelection {
     static func showsSelection(_ textView: UITextView) -> Bool {
         textView.window?.isKeyWindow == true && textView.isFirstResponder && textView.selectedRange.length > 0
     }
+
+    /// How long after the finger lands a new selection still counts as
+    /// that touch's: a long press, a double tap, with room to spare.
+    static let touchDownWordWindow: TimeInterval = 2
+
+    /// The word to select instead of `selected`, or nil to keep it: only a
+    /// selection that is one whole word, without the touched character,
+    /// gives way, and only to the word holding that character.
+    static func wordUnderTouchDown(selected: NSRange, touched: Int, word: (Int) -> NSRange?) -> NSRange? {
+        guard selected.length > 0, !NSLocationInRange(touched, selected),
+              word(selected.location) == selected,
+              let touchedWord = word(touched), touchedWord.length > 0
+        else { return nil }
+        return touchedWord
+    }
 }
 
 private final class MarkdownSelectionTextView: UITextView {
@@ -1128,9 +1144,78 @@ private final class MarkdownSelectionTextView: UITextView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         if let touch = touches.first {
+            noteTouchDown(touch)
             onTouchBegan?(self, touch.location(in: self))
         }
         super.touchesBegan(touches, with: event)
+    }
+
+    /// The character a finger landed on, read as it landed, for the word a
+    /// long press or double tap then selects (issue 3378). UIKit picks
+    /// that word only once the press is recognized, by then against a
+    /// layout that may have moved: with the keyboard up, the text view
+    /// taking the selection closes it and the transcript shifts under the
+    /// finger, so the word that ended up there was selected instead.
+    private var touchDown: (touch: ObjectIdentifier, character: Int, time: TimeInterval)?
+
+    private func noteTouchDown(_ touch: UITouch) {
+        // The selection gesture delivers a touch it takes over a second
+        // time; where it is by then isn't where it landed.
+        guard touchDown?.touch != ObjectIdentifier(touch) else { return }
+        // A touch on a selection already showing (its handles, its menu)
+        // adjusts that one: only a touch that can start a selection counts.
+        guard !ChatTextSelection.showsSelection(self) else {
+            touchDown = nil
+            return
+        }
+        touchDown = characterIndex(at: touch.location(in: self)).map {
+            (touch: ObjectIdentifier(touch), character: $0, time: touch.timestamp)
+        }
+    }
+
+    /// The first selection after a finger landed, one word that isn't the
+    /// one under it, becomes that word. Once per touch, so dragging a
+    /// handle afterwards is the user's.
+    func keepWordUnderTouchDown() {
+        guard selectedRange.length > 0, let touchDown,
+              selectionCoordinator?.isApplyingNativeSelectionRanges != true
+        else { return }
+        self.touchDown = nil
+        guard ProcessInfo.processInfo.systemUptime - touchDown.time < ChatTextSelection.touchDownWordWindow,
+              let word = ChatTextSelection.wordUnderTouchDown(
+                selected: selectedRange,
+                touched: touchDown.character,
+                word: { [weak self] in self?.wordRange(enclosing: $0) }
+              )
+        else { return }
+        selectedRange = word
+    }
+
+    /// The word holding the character at `index`, or nil off a word
+    /// (spaces, punctuation).
+    func wordRange(enclosing index: Int) -> NSRange? {
+        guard
+            index >= 0, index < textStorage.length,
+            let position = position(from: beginningOfDocument, offset: index),
+            let range = tokenizer.rangeEnclosingPosition(
+                position,
+                with: .word,
+                inDirection: UITextDirection(rawValue: UITextStorageDirection.forward.rawValue)
+            )
+        else { return nil }
+        let location = offset(from: beginningOfDocument, to: range.start)
+        return NSRange(location: location, length: offset(from: range.start, to: range.end))
+    }
+
+    /// The character drawn under `localPoint`, or nil between lines, past
+    /// a line's end or off the text.
+    func characterIndex(at localPoint: CGPoint) -> Int? {
+        guard textStorage.length > 0 else { return nil }
+        let point = CGPoint(x: localPoint.x - textContainerInset.left, y: localPoint.y - textContainerInset.top)
+        let glyph = layoutManager.glyphIndex(for: point, in: textContainer, fractionOfDistanceThroughGlyph: nil)
+        let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
+        guard glyphRect.contains(point) else { return nil }
+        return layoutManager.characterIndexForGlyph(at: glyph)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -1177,9 +1262,15 @@ private final class MarkdownSelectionTextView: UITextView {
         onTouchBegan?(self, localPoint)
     }
 
+    /// A finger landing on `character` now, as `noteTouchDown` reads one.
+    func simulateTouchDownForTesting(character: Int) {
+        touchDown = (touch: ObjectIdentifier(self), character: character, time: ProcessInfo.processInfo.systemUptime)
+    }
+
     /// Clears what a touch in progress left behind, before the pool hands
     /// this view to another block.
     func prepareForReuse() {
+        touchDown = nil
         gestureRecognizers?
             .compactMap { $0 as? MarkdownSelectionObserverGestureRecognizer }
             .forEach { $0.prepareForReuse() }
@@ -1188,7 +1279,7 @@ private final class MarkdownSelectionTextView: UITextView {
     func coordinatedCopiedAttributedText() -> NSAttributedString? {
         guard
             let selectionCoordinator,
-            selectionCoordinator.hasCrossSegmentSelection
+            selectionCoordinator.drawsSelectionChrome
         else { return nil }
 
         let copied = selectionCoordinator.copiedAttributedTextForActiveSelection()
@@ -1536,6 +1627,15 @@ final class SelectableTextViewHostView: UIView {
 
     func simulateTouchBeganForTesting(at localPoint: CGPoint) {
         (mountedTextView as? MarkdownSelectionTextView)?.simulateTouchBeganForTesting(localPoint)
+    }
+
+    func simulateTouchDownForTesting(character: Int) {
+        (mountedTextView as? MarkdownSelectionTextView)?.simulateTouchDownForTesting(character: character)
+    }
+
+    /// The character drawn under `localPoint` in the mounted text view.
+    func characterIndexForTesting(at localPoint: CGPoint) -> Int? {
+        (mountedTextView as? MarkdownSelectionTextView)?.characterIndex(at: localPoint)
     }
 
     func coordinatedCopiedAttributedTextForTesting() -> NSAttributedString? {

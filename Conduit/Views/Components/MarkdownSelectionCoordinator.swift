@@ -215,6 +215,12 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     /// text view with a programmatic range renders nothing. The overlay
     /// draws every span in that state.
     private var isOwnerNativeChromeSuppressed = false
+    /// True once the selection has spanned blocks: from then on the
+    /// coordinator's handles and pill show it until it ends, even after a
+    /// handle drag brings it back inside one block (the owner no longer
+    /// draws it then). Ending it there instead cleared it under the finger
+    /// (issue 3378).
+    private var selectionHasSpannedSegments = false
     /// Segments drawn without a text view so far (SelectableTextCanvas),
     /// each with what mounts it, keyed by segment and owned by their host.
     private var deferredMounts: [String: DeferredMount] = [:]
@@ -604,6 +610,20 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         activeSpans.count > 1
     }
 
+    /// Whether the selection's anchor comes before its focus in the
+    /// reply, so its handle is the start one on screen.
+    var anchorComesFirst: Bool {
+        guard let activeSelectionState else { return true }
+        return orderedEndpoints(from: activeSelectionState.anchor, to: activeSelectionState.focus).start == activeSelectionState.anchor
+    }
+
+    /// The coordinator draws the selection, its highlight, handles and pill:
+    /// one across blocks, or one that spanned blocks and was dragged back
+    /// into one.
+    var drawsSelectionChrome: Bool {
+        hasCrossSegmentSelection || (selectionHasSpannedSegments && activeSelectionState != nil)
+    }
+
     var activeSpans: [MarkdownSelectionSpan] {
         guard let activeSelectionState else { return [] }
         return spans(from: activeSelectionState.anchor, to: activeSelectionState.focus)
@@ -903,6 +923,13 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             applySelectionRanges()
         }
 
+        // A drawn selection whose handles were dragged onto one another
+        // has nothing left to show or copy: it ends as a tap would.
+        if drawsSelectionChrome, !activeSpans.contains(where: { $0.range.length > 0 }) {
+            resetSelectionState()
+            clearSelectionRanges()
+        }
+
         publishIfVisibleSelectionChanged(from: before)
     }
 
@@ -940,7 +967,11 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         guard activeSelectionState != nil else { return false }
         let shownViews = activeSpans.compactMap { recordsByID[$0.segmentID]?.textView }
             .filter { $0.window?.isKeyWindow == true }
-        if hasCrossSegmentSelection { return !shownViews.isEmpty }
+        if drawsSelectionChrome {
+            return activeSpans.contains { span in
+                span.range.length > 0 && recordsByID[span.segmentID]?.textView?.window?.isKeyWindow == true
+            }
+        }
         return shownViews.contains { $0.isFirstResponder && $0.selectedRange.length > 0 }
     }
 
@@ -1102,7 +1133,12 @@ final class MarkdownSelectionCoordinator: ObservableObject {
     /// cross-block instant — a non-first-responder text view renders no
     /// native selection at all, while the gesture machinery (recognizer and
     /// delegate reports, not first-responder based) keeps driving the drag.
+    /// A handle drag that brings the selection back inside one block keeps
+    /// it, drawn by the coordinator (`drawsSelectionChrome`): the owner
+    /// stays resigned, and ending the selection there cleared it under the
+    /// finger mid-drag (issue 3378).
     private func updateOwnerNativeChromeSuppression() {
+        if hasCrossSegmentSelection { selectionHasSpannedSegments = true }
         guard let ownerID = nativeSelectionOwnerSegmentID,
               let owner = recordsByID[ownerID]?.textView
         else { return }
@@ -1110,13 +1146,6 @@ final class MarkdownSelectionCoordinator: ObservableObject {
         if hasCrossSegmentSelection, !isOwnerNativeChromeSuppressed, owner.isFirstResponder {
             isOwnerNativeChromeSuppressed = true
             owner.resignFirstResponder()
-        } else if isOwnerNativeChromeSuppressed, !hasCrossSegmentSelection {
-            // A handle drag shrank the selection back into a single block:
-            // the owner is no longer first responder (no native handles or
-            // menu) and single-segment state shows no coordinator chrome
-            // either, which would strand a selection with no affordances.
-            // End the selection instead — the same outcome as a tap.
-            clearSelection()
         }
     }
 
@@ -1210,6 +1239,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             MarkdownSelectionChromeLocator.shared.selectionOwnerDidChange()
         }
         isOwnerNativeChromeSuppressed = false
+        selectionHasSpannedSegments = false
     }
 
     /// The coordinator owning the currently visible selection, used by the

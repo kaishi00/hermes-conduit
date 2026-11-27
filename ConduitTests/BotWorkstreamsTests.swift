@@ -1551,6 +1551,44 @@ extension BotModeTests {
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: -120, height: 0)), "the other way")
     }
 
+    /// The swipe back is decided from how the drag starts and what it went
+    /// through (issue 3378): a scroll that drifts sideways stays a scroll,
+    /// and a selection seen at any step holds it, though the drag ends with
+    /// none showing (a handle let go).
+    func testTheSwipeBackIsDecidedFromTheDragsStartAndWhatItWentThrough() {
+        var swipe = BackSwipeDrag()
+        swipe.moved(CGSize(width: 20, height: 4), held: false)
+        swipe.moved(CGSize(width: 90, height: 20), held: false)
+        XCTAssertTrue(swipe.follows)
+        XCTAssertEqual(swipe.shift(for: CGSize(width: 90, height: 20)), 90, "the chat follows the finger")
+        XCTAssertTrue(swipe.goesBack(CGSize(width: 120, height: 30)))
+        XCTAssertFalse(swipe.goesBack(CGSize(width: 60, height: 10)), "let go short of the line: it comes back")
+        XCTAssertEqual(swipe.shift(for: CGSize(width: -30, height: 0)), 0, "never past its place")
+
+        var scroll = BackSwipeDrag()
+        scroll.moved(CGSize(width: 4, height: 20), held: false)
+        scroll.moved(CGSize(width: 100, height: 55), held: false)
+        XCTAssertFalse(scroll.follows)
+        XCTAssertEqual(scroll.shift(for: CGSize(width: 100, height: 55)), 0)
+        XCTAssertFalse(scroll.goesBack(CGSize(width: 100, height: 55)), "a scroll that drifted right")
+
+        var handle = BackSwipeDrag()
+        handle.moved(CGSize(width: 20, height: 0), held: true)
+        handle.moved(CGSize(width: 120, height: 0), held: false)
+        XCTAssertFalse(handle.goesBack(CGSize(width: 120, height: 0)), "a selection showed during the drag")
+
+        var selectedMidway = BackSwipeDrag()
+        selectedMidway.moved(CGSize(width: 20, height: 0), held: false)
+        selectedMidway.moved(CGSize(width: 60, height: 0), held: true)
+        XCTAssertFalse(selectedMidway.follows, "the chat stops following")
+        XCTAssertFalse(selectedMidway.goesBack(CGSize(width: 120, height: 0)))
+
+        XCTAssertTrue(BackSwipeDrag.startsSideways(CGSize(width: 20, height: 15)))
+        XCTAssertFalse(BackSwipeDrag.startsSideways(CGSize(width: 14, height: 15)), "past 45°")
+        XCTAssertFalse(BackSwipeDrag.startsSideways(CGSize(width: -20, height: 0)), "toward the leading edge")
+        XCTAssertFalse(BackSwipeDrag().goesBack(CGSize(width: 120, height: 0)), "never moved")
+    }
+
     /// The slide is the transcript's own, asked for by the screen: the
     /// chat on screen leaves as Back is tapped, and the one opened comes in
     /// with its rows, whichever of the screen and the transcript hears of

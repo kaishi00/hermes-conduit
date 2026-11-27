@@ -810,7 +810,11 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         XCTAssertEqual(secondTextView.selectedRange, NSRange(location: 0, length: 3), "Programmatic spans must survive the resign")
     }
 
-    func testSelectionCollapsedBackToOneSegmentEndsTheSelection() {
+    /// A handle dragged back into one block keeps the selection, drawn by
+    /// the coordinator with its handles and pill, rather than clearing it
+    /// under the finger (issue 3378); one dragged onto the other ends at the
+    /// drop, with nothing left to copy.
+    func testSelectionDraggedBackIntoOneSegmentKeepsItsChrome() {
         let descriptors = [
             MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
             MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
@@ -820,7 +824,7 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
         let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
 
-        coordinator.replaceSegments(descriptors, revision: "collapse-clears-v1")
+        coordinator.replaceSegments(descriptors, revision: "collapse-keeps-v1")
         coordinator.register(descriptor: descriptors[0], textView: firstTextView)
         coordinator.register(descriptor: descriptors[1], textView: secondTextView)
 
@@ -832,14 +836,68 @@ final class MarkdownSelectionCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.hasCrossSegmentSelection)
         XCTAssertFalse(firstTextView.isFirstResponder)
 
-        // A handle drag pulls the anchor into the focus's segment, leaving a
-        // single-segment selection with no native chrome (owner resigned)
-        // and no coordinator chrome — the selection ends instead of
-        // stranding itself without handles or a menu.
-        coordinator.updateAnchorSelection(segmentID: "second", offset: 4, windowPoint: .zero)
+        // A handle drag pulls the anchor into the focus's segment.
+        coordinator.updateAnchorSelection(segmentID: "second", offset: 1, windowPoint: .zero)
 
-        XCTAssertFalse(coordinator.hasActiveSelection)
+        XCTAssertTrue(coordinator.hasActiveSelection, "kept under the finger")
         XCTAssertFalse(coordinator.hasCrossSegmentSelection)
+        XCTAssertTrue(coordinator.drawsSelectionChrome, "the coordinator's handles and pill still show it")
+        XCTAssertFalse(firstTextView.isFirstResponder)
+        XCTAssertEqual(coordinator.activeSpans, [MarkdownSelectionSpan(segmentID: "second", range: NSRange(location: 1, length: 2))])
+        XCTAssertFalse(coordinator.highlightRects(in: window).isEmpty, "drawn by the overlay")
+        coordinator.endSelection()
+        XCTAssertTrue(coordinator.hasActiveSelection, "still there after the drop")
+        XCTAssertEqual(coordinator.copiedAttributedTextForActiveSelection().string, "oc")
+
+        // Dragged onto the other handle: nothing left, so the drop ends it.
+        coordinator.updateAnchorSelection(segmentID: "second", offset: 3, windowPoint: .zero)
+        XCTAssertTrue(coordinator.hasActiveSelection, "not mid-drag")
+        coordinator.endSelection()
+        XCTAssertFalse(coordinator.hasActiveSelection)
+        XCTAssertFalse(coordinator.drawsSelectionChrome)
+    }
+
+    /// The handles are named by where they sit: a selection dragged
+    /// backward has its anchor at the end.
+    func testAnchorComesFirstFollowsReadingOrder() {
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        let coordinator = MarkdownSelectionCoordinator()
+        let window = makeSelectionWindow()
+        let firstTextView = mountedTextView(text: "Anchor", frame: CGRect(x: 10, y: 10, width: 180, height: 40), in: window)
+        let secondTextView = mountedTextView(text: "Focus", frame: CGRect(x: 10, y: 80, width: 180, height: 40), in: window)
+        coordinator.replaceSegments(descriptors, revision: "anchor-order-v1")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: .zero)
+        XCTAssertTrue(coordinator.anchorComesFirst)
+
+        coordinator.clearSelection()
+        coordinator.beginSelection(segmentID: "second", offset: 3, windowPoint: .zero)
+        coordinator.updateSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        XCTAssertFalse(coordinator.anchorComesFirst)
+    }
+
+    /// Where both handles' touch areas reach, the nearer knob takes the
+    /// touch, not the one laid on top; a drag moves its endpoint by the
+    /// finger's travel from where it landed, not to the finger itself
+    /// (issue 3378).
+    func testHandleGrabbedIsTheNearerOneAndMovesByTheFingersTravel() {
+        let anchorKnob = CGPoint(x: 100, y: 200)
+        let focusKnob = CGPoint(x: 130, y: 200)
+        XCTAssertTrue(MarkdownSelectionHandleContainerView.anchorIsNearer(to: CGPoint(x: 105, y: 215), anchorKnob: anchorKnob, focusKnob: focusKnob))
+        XCTAssertFalse(MarkdownSelectionHandleContainerView.anchorIsNearer(to: CGPoint(x: 126, y: 190), anchorKnob: anchorKnob, focusKnob: focusKnob))
+        XCTAssertFalse(MarkdownSelectionHandleContainerView.anchorIsNearer(to: CGPoint(x: 115, y: 200), anchorKnob: anchorKnob, focusKnob: focusKnob), "a tie goes to the focus")
+
+        // The finger lands 20 pt under a caret on a line from y 180 to 200.
+        let caret = CGRect(x: 99, y: 180, width: 2, height: 20)
+        let offset = MarkdownSelectionHandleContainerView.grabOffset(touchDown: CGPoint(x: 104, y: 210), caret: caret)
+        XCTAssertEqual(offset.dx, -4, accuracy: 0.001)
+        XCTAssertEqual(offset.dy, -20, accuracy: 0.001)
     }
 
     func testRevisionChangeClearsActiveSelectionState() {

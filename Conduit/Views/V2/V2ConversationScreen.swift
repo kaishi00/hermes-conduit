@@ -178,6 +178,8 @@ struct V2ConversationScreen: View {
     /// wait for the main thread the swap keeps busy.
     @State private var swapMotion = TranscriptSwapMotion()
     @State private var coverFade = BotChatCoverFade()
+    /// The swipe back in progress, which the chat follows (`ChatBackSwipe`).
+    @State private var backSwipe = ChatBackSwipe()
     /// This Bot Chat grew out of its portrait on Bots Home.
     @Environment(\.botChatZoomed) private var botChatZoomed
     @Environment(\.dismiss) private var dismiss
@@ -535,6 +537,8 @@ struct V2ConversationScreen: View {
                 // widens with the window, its text a size or more larger as
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
+                // With the finger, while a swipe back is the drag's.
+                .modifier(ChatBackSwipeFollow(swipe: backSwipe))
                 // Under the cover, VoiceOver doesn't reach it either: while
                 // the open is out, and while the cover waits for the coming
                 // chat's rows after it.
@@ -560,9 +564,13 @@ struct V2ConversationScreen: View {
                 shell: shell
             )
         }
-        // The chat's column only: a drag in a panel beside it (Artifacts,
-        // its divider, the Work panel's swipes) is that panel's.
-        .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
+        .modifier(ChatBackSwipeGesture(
+            enabled: swipesBack,
+            swipe: backSwipe,
+            reduceMotion: reduceMotion,
+            held: { backSwipeHeld },
+            goBack: goBackBySwipe
+        ))
     }
 
     /// The bot whose Bot Chat a workstream's Back returns to; nil for any
@@ -598,24 +606,27 @@ struct V2ConversationScreen: View {
             && (appState.chatBotChatProfile != nil || appState.activeRoomSurface != nil))
     }
 
-    private var backSwipe: some Gesture {
-        DragGesture(minimumDistance: 20).onEnded { drag in
-            // Nor while text in the chat is selected: a handle dragged
-            // toward the trailing edge read as this swipe, and the chat
-            // closed under the finger (issue 1948). Asked as the drag ends,
-            // since a selection doesn't redraw the screen.
-            // Nor when it started on something that scrolls sideways and
-            // could scroll back (cards, a wide table or code block, chips):
-            // the drag is that scroller's, as iOS's own swipe lets it be.
-            // From the screen's leading edge it's still the swipe back.
-            guard swipesBack, BotChatSwap.isBackSwipe(drag.translation),
-                  !ChatTextSelection.isShowing,
-                  !SidewaysScrollTouch.lastTouchCouldScrollBack else { return }
-            if workstreamGoesBack != nil {
-                backToCoordinator()
-            } else {
-                dismiss()
-            }
+    /// Whether something else has the drag the swipe back would take: the
+    /// swipe is off (the composer in use), text in the chat is selected or
+    /// a selection is being dragged (a handle dragged toward the trailing
+    /// edge read as the swipe and closed the chat, issue 1948), or it
+    /// started on something that scrolls sideways and could scroll back
+    /// (cards, a wide table or code block, chips), as iOS's own swipe lets
+    /// it be; from the screen's leading edge it's still the swipe back.
+    /// Asked at each step of the drag, not only as it ends: a handle let
+    /// go could read as no selection on that same touch-up (issue 3378).
+    private var backSwipeHeld: Bool {
+        !swipesBack || ChatTextSelection.isShowing
+            || MarkdownSelectionCoordinator.activeCoordinator?.isSelectionGestureActive == true
+            || SidewaysScrollTouch.lastTouchCouldScrollBack
+    }
+
+    private func goBackBySwipe() {
+        guard swipesBack else { return }
+        if workstreamGoesBack != nil {
+            backToCoordinator()
+        } else {
+            dismiss()
         }
     }
 
