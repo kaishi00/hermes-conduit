@@ -4612,8 +4612,8 @@ reaches the phone's notification, and the Watch shows it as one)
 - Desktop: `desktop/src/main/pcControl.ts` (state, the ask, the bar, Stop), `desktop/src/main/pcDriver.ts` (the pinned driver: download, SHA-256 check, unpack, its MCP client), `desktop/src/main/pcExecutor.ts` (computer_use's actions on the driver's tools), `desktop/src/renderer/src/state/pcControl.ts` (the poll per allowed bot, askEverywhere), `desktop/src/renderer/src/state/presented.ts` (another computer's ask), `desktop/src/renderer/src/components/PcControlSetting.tsx`, `desktop/test/pcExecutor.test.ts`, `desktop/test/pcAsk.test.ts`
 
 **Rulings**
-- Each chat asks once, on the computer and the phone, and keeps it until Stop or another chat takes over; one chat drives a computer at a time (Eric 2026-11-27, picked "Ask once per chat, on PC or phone"). The first answer counts: the phone's closes the computer's dialog, and the dialog's late answer can't overturn it. Only Allow lets a chat in; anything else, an ask that ran out included, is a no (notifier #1128, desktop#699, #3412).
-- The phone's line shows only while the chat's turn runs, since a bot acts only in a turn, and a chat counts as controlling while it acted in the last minute, as long as the computer's bar stays (#3412).
+- Each chat asks once, on the computer and the phone, and keeps it until Stop or another chat takes over; one chat drives a computer at a time (Eric 2026-11-27, picked "Ask once per chat, on PC or phone"). The first answer counts: the phone's closes the computer's dialog, and the dialog's late answer can't overturn it. Only Allow lets a chat in; anything else, an ask that ran out included, is a no (notifier #1128, desktop#699, #3416).
+- The phone's line shows only while the chat's turn runs, since a bot acts only in a turn, and a chat counts as controlling while it acted in the last minute, as long as the computer's bar stays (#3416).
 - Off until the user turns it on, and only the bots ticked there can ask. Turning it on downloads the driver, since not everyone wants it; it isn't bundled (Eric 2026-11-27, notifier #1123, desktop#692).
 - A separate tool, not a `computer_use` backend: Hermes takes one backend per profile, and swapping it would take Bot Screen away (notifier #1123, the plugin's choice).
 - The plugin queues computer_use-level actions and the desktop maps them to its pinned driver, so the driver and its mapping move together (desktop#692, the desktop's choice).
@@ -4625,7 +4625,7 @@ reaches the phone's notification, and the Watch shows it as one)
 - The desktop polls only the current dashboard's bots, not another combined dashboard's.
 - The phone's line shows in the chat that's controlling; there's no line elsewhere (the chats list, another chat) while a bot controls a computer.
 
-**Checked:** 2026-11-27, #3412 (the phone: notifier #1128, desktop#699)
+**Checked:** 2026-11-27, #3416 (the phone: notifier #1128, desktop#699)
 
 ## Composer Return key
 
