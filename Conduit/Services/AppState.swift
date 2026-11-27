@@ -467,6 +467,9 @@ final class AppState: ObservableObject {
     /// Tests answer the Desktop group projection's read and write
     /// (removeDesktopGroupChat); nil goes through the client.
     var desktopGroupProjectionForTesting: DesktopGroupProjectionAccess?
+    /// Test seam: a bot category write (AppState+BotCategories), by
+    /// profile name.
+    var botCategoryWriterForTesting: ((String, BotCategoryTag?) async -> Bool)?
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).
@@ -748,6 +751,11 @@ final class AppState: ObservableObject {
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
     @Published var botOrder = BotOrder()
+    /// Bots Home's categories' order, by name (BotCategories), per
+    /// dashboard, synced as `bots.categories`.
+    @Published var botCategoryOrder = BotOrder()
+    /// Group chats filed under a category, room id to name (BotCategories).
+    @Published var groupRoomCategories: [String: String] = [:]
     /// The group chats' order on Bots Home and every list of rooms, by room
     /// id (AppState+BotOrder).
     @Published var groupRoomOrder = BotOrder.rooms

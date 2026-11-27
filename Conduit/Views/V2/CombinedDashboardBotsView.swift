@@ -9,7 +9,8 @@
 //  dashboard, the portrait staying put) and moves by drag;
 //  held over another's face, or another held over its, it starts a room
 //  that brings it from its own Hermes. The bot's menu is its own
-//  dashboard's, on its own Bots Home.
+//  dashboard's, on its own Bots Home; here it has only Category, which
+//  files it on its own Hermes (BotCategories).
 //
 
 import SwiftUI
@@ -49,6 +50,9 @@ struct CombinedDashboardBotPortrait: View {
     /// VoiceOver's way to arrange the grid, as a drag does.
     var onMoveEarlier: (() -> Void)?
     var onMoveLater: (() -> Void)?
+    /// Its Category submenu, filing it on its own Hermes (BotCategories):
+    /// the one thing of its menu Bots Home offers here.
+    var categoryMenu: BotCategoryMenu?
 
     @Environment(\.v2Shell) private var shell
     @Environment(\.v2OpenBeside) private var openBeside
@@ -148,6 +152,7 @@ struct CombinedDashboardBotPortrait: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle())
+            .botCategoryContextMenu(categoryMenu)
             // Its pill on the face's lower edge, as this dashboard's.
             .overlay(alignment: .bottom) {
                 if !typeSize.isAccessibilitySize { statusLine(status, onFace: true) }

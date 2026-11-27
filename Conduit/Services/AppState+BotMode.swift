@@ -1394,6 +1394,9 @@ extension AppState {
         // Its starter face, so every phone shows the same one, and the
         // face's color for Desktop's initial when no color was picked.
         meta[StarterFaces.metaKey] = face
+        if let filed = BotCategories.editPatch(current: nil, to: draft.category, among: botRoster) {
+            for case let (key, value?) in filed { meta[key] = value }
+        }
         if draft.color == nil { meta["color"] = StarterFaces.face(face).hex }
         if draft.newAvatarPNG != nil, photoSaved {
             meta["imageKind"] = "photo"
@@ -1548,6 +1551,9 @@ extension AppState {
         }
         if let face = draft.face, face != StarterFaces.storedFace(in: bot.botMeta) {
             patch[StarterFaces.metaKey] = face
+        }
+        if let filed = BotCategories.editPatch(current: bot.category, to: draft.category, among: botRoster) {
+            patch.merge(filed) { _, new in new }
         }
         let changesNameOrColor = !patch.isEmpty
         if uploaded {

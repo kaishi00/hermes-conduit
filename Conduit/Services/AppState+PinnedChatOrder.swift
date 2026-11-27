@@ -256,6 +256,8 @@ extension AppState {
         pinnedChatOrder = PinnedChatOrder(defaults: defaults, scope: scope)
         botOrder = BotOrder(defaults: defaults, key: BotOrder.storageKey(scope: scope))
         groupRoomOrder = BotOrder(defaults: defaults, key: BotOrder.roomStorageKey(scope: scope), kind: .rooms)
+        botCategoryOrder = BotOrder(defaults: defaults, key: BotCategories.storageKey(scope: scope))
+        groupRoomCategories = BotCategories.roomCategories(defaults.dictionary(forKey: BotCategories.roomStorageKey(scope: scope)))
     }
 
     /// Drops a dashboard's stars, saved orders and hidden projects (Sign
@@ -274,6 +276,8 @@ extension AppState {
             PinnedChatOrder.mixedStorageKey(scope: scope),
             BotOrder.storageKey(scope: scope),
             BotOrder.roomStorageKey(scope: scope),
+            BotCategories.storageKey(scope: scope),
+            BotCategories.roomStorageKey(scope: scope),
         ] {
             defaults.removeObject(forKey: key)
         }
@@ -328,6 +332,7 @@ extension AppState {
 
     /// The synced keys whose values belong to one dashboard.
     static let dashboardScopedSyncKeys: Set<String> = [
-        "bots.order", "groups.order", "chats.pinned_order", "app.hidden_chat_projects",
+        "bots.order", "groups.order", "chats.pinned_order", "app.hidden_chat_projects", BotCategories.syncKey,
+        BotCategories.roomSyncKey,
     ]
 }

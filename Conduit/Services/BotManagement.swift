@@ -616,6 +616,8 @@ struct BotEditorDraft: Equatable {
     var newAvatarPNG: Data?
     /// The user removed the existing picture.
     var removesAvatar = false
+    /// The category the bot is filed under (BotCategories), nil for none.
+    var category: String?
 
     // Advanced (Desktop's New Bot "Advanced" section).
     /// The profile a new bot copies its settings from: the main profile

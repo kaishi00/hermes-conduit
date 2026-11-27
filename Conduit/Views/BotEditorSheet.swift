@@ -55,6 +55,9 @@ struct BotEditorSheet: View {
     @State private var showsAdvanced = false
     /// The gateway's message for a model pick it wants confirmed.
     @State private var modelConfirmation: String?
+    /// New Category…'s name prompt (BotCategories).
+    @State private var namingCategory = false
+    @State private var categoryName = ""
     @State private var capabilitiesLoadFailed = false
     /// The Start From profile the staged lists were read from.
     @State private var capabilitiesSource: String?
@@ -115,6 +118,7 @@ struct BotEditorSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2...5)
                 }
+                categorySection
                 personalitySection
                 workSection
                 pluginSection
@@ -157,6 +161,14 @@ struct BotEditorSheet: View {
             }
         } message: { message in
             Text(verbatim: message)
+        }
+        .alert(AppLocalization.string("New Category", table: .bots), isPresented: $namingCategory) {
+            TextField(AppLocalization.string("Category name", table: .bots), text: $categoryName)
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            Button(AppLocalization.string("Create")) {
+                if let name = BotCategories.clean(categoryName) { draft.category = name }
+            }
+            .disabled(BotCategories.clean(categoryName) == nil)
         }
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(image: $pickedImage)
@@ -559,6 +571,38 @@ struct BotEditorSheet: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(name))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The category the bot is filed under on Bots Home (BotCategories):
+    /// None, one Bots Home shows, or a new one.
+    private var categorySection: some View {
+        let newChoice = "\u{1}new"
+        var names = appState.shownBotCategoryNames()
+        if let current = draft.category, !names.contains(where: { BotCategories.same($0, current) }) {
+            names.append(current)
+        }
+        let value = names.first { BotCategories.same($0, draft.category) } ?? ""
+        return ConduitSettingsSection(title: AppLocalization.string("Category"), symbol: "folder", tint: .orange) {
+            ConduitMenuPicker(
+                value: value,
+                choices: [(id: "", title: AppLocalization.string("None"))]
+                    + names.map { (id: $0, title: $0) }
+                    + [(id: newChoice, title: AppLocalization.string("New Category…", table: .bots))],
+                onSelect: { picked in
+                    if picked == newChoice {
+                        categoryName = ""
+                        namingCategory = true
+                    } else {
+                        draft.category = picked.isEmpty ? nil : picked
+                    }
+                }
+            ) {
+                Text(AppLocalization.string("Category")).foregroundStyle(.secondary)
+            }
+            Text(AppLocalization.string("Bots Home shows the bot under this heading.", table: .bots))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -1044,6 +1088,7 @@ struct BotEditorSheet: View {
         draft.name = bot.botTitle ?? ""
         draft.description = bot.profileDescription
         draft.color = bot.appearanceColor
+        draft.category = bot.category?.name
         keptDetails = appState.keptBotDetails(bot)
     }
 

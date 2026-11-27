@@ -182,6 +182,8 @@ struct GroupRoomTileActions {
     /// pictures.
     var picture: ((GroupRoomPictureRequest) -> Void)?
     let reorder: () -> Void
+    /// Its Category submenu (BotCategories), where rooms can be filed.
+    var category: BotCategoryMenu?
     /// Asks first (the dialog is Bots Home's, not the menu's).
     var disband: (() -> Void)?
     /// Another room's tile held over this one, or dropped on it: it takes
@@ -325,6 +327,9 @@ struct GroupRoomPortrait: View {
                     Label(AppLocalization.string("Remove Group Picture"), systemImage: "photo.badge.minus")
                 }
             }
+        }
+        if let category = actions.category {
+            category
         }
         Button(action: actions.reorder) {
             Label(AppLocalization.string("Reorder Group Chats", table: .bots), systemImage: "arrow.up.arrow.down")
@@ -743,6 +748,9 @@ struct BotPortraitGrid<Item: Identifiable, Cell: View>: View {
     let items: [Item]
     /// A portrait dropped past the last one.
     var onDropAtEnd: ((String) -> Void)?
+    /// How many bots the size is chosen for: under category headings, all
+    /// of Bots Home's, so every heading's faces are one size.
+    var sizedFor: Int?
     @ViewBuilder let cell: (Item) -> Cell
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -752,15 +760,17 @@ struct BotPortraitGrid<Item: Identifiable, Cell: View>: View {
     init(
         items: [Item],
         onDropAtEnd: ((String) -> Void)? = nil,
+        sizedFor: Int? = nil,
         @ViewBuilder cell: @escaping (Item) -> Cell
     ) {
         self.items = items
         self.onDropAtEnd = onDropAtEnd
+        self.sizedFor = sizedFor
         self.cell = cell
     }
 
     var body: some View {
-        let step = BotPortraitStep.of(count: items.count)
+        let step = BotPortraitStep.of(count: sizedFor ?? items.count)
         let columns: [GridItem] = if typeSize.isAccessibilitySize {
             [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         } else if sizeClass == .compact {
@@ -793,9 +803,10 @@ extension BotPortraitGrid where Item == BotProfile {
     init(
         bots: [BotProfile],
         onDropAtEnd: ((String) -> Void)? = nil,
+        sizedFor: Int? = nil,
         @ViewBuilder cell: @escaping (BotProfile) -> Cell
     ) {
-        self.init(items: bots, onDropAtEnd: onDropAtEnd, cell: cell)
+        self.init(items: bots, onDropAtEnd: onDropAtEnd, sizedFor: sizedFor, cell: cell)
     }
 }
 
