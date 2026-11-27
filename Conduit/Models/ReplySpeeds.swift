@@ -45,9 +45,7 @@ struct ReplySpeeds: Equatable {
         self.chatID = chatID
         let replies = (response["replies"] as? [[String: Any]]) ?? []
         for (index, reply) in replies.enumerated() {
-            guard let number = reply["tokens_per_s"] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { continue }
-            let rate = number.doubleValue
-            guard rate.isFinite, rate > 0 else { continue }
+            guard let rate = Self.nonBool(reply["tokens_per_s"])?.doubleValue, rate.isFinite, rate > 0 else { continue }
             if let row = Self.rowID(reply["row_id"]) {
                 byRow[row] = rate
             } else if index == replies.count - 1 {
@@ -58,9 +56,14 @@ struct ReplySpeeds: Equatable {
 
     /// Hermes' message id: a whole positive number, never a Bool.
     private static func rowID(_ value: Any?) -> Int? {
-        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
-              let row = Int(exactly: number.doubleValue), row > 0 else { return nil }
+        guard let number = nonBool(value), let row = Int(exactly: number.doubleValue), row > 0 else { return nil }
         return row
+    }
+
+    /// A JSON number, never a Bool (which NSNumber also carries).
+    private static func nonBool(_ value: Any?) -> NSNumber? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        return number
     }
 
     /// "42 tok/s"; one decimal under 10 ("4.5 tok/s").
