@@ -62,6 +62,17 @@ extension AppState {
                 settled = true
             }
         }
+        // A message the last read listed whose turn runs now, that nothing here
+        // holds (the chat was reopened while it waited, or another app sent it):
+        // its words come in once, from the queue, as a held one would.
+        for row in previous?.queued ?? [] where work.startedAdmissions.contains(row.admissionID)
+            && !shownChat.startedAdmissionIDs.contains(row.admissionID)
+            && !shownChat.queuedSendOrder.contains(row.admissionID)
+            && !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            holdQueuedSendRow(localUserRow(row.text), admissionID: row.admissionID)
+            noteQueuedTurnStarted(sessionID: chatID, admissionID: row.admissionID)
+            shownChat.readStartedAdmissions = Array((shownChat.readStartedAdmissions + [row.admissionID]).suffix(8))
+        }
         // No turn runs there: no unnamed start is still to come.
         if !work.running { shownChat.readStartedAdmissions = [] }
         let held = authorityQueue.sessionID == chatID

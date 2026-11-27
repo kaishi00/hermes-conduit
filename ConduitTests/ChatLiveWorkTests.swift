@@ -114,6 +114,22 @@ final class ChatLiveWorkTests: XCTestCase {
         XCTAssertTrue(appState.shownChat.readStartedAdmissions.isEmpty, "No turn runs: no start is still to come")
     }
 
+    func testAQueuedMessageNothingHoldsComesInFromItsWordsWhenItsTurnStarts() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        // Reopened while it waited: the dock row came from the read, no bubble is held.
+        let listed = ChatLiveWork(running: true, queued: [QueuedPrompt(admissionID: "adm-7", text: "from before", status: .queued, sequence: 1)])
+        appState.applyChatLiveWork(listed, previous: nil, for: "api-1")
+        XCTAssertTrue(appState.messages.isEmpty)
+        let turn = ChatLiveWork(running: true, startedAdmissions: ["adm-7"])
+        appState.applyChatLiveWork(turn, previous: listed, for: "api-1")
+        XCTAssertEqual(appState.messages.map(\.content), ["from before"])
+        // Once: the next read naming it again draws nothing more.
+        appState.applyChatLiveWork(turn, previous: listed, for: "api-1")
+        XCTAssertEqual(appState.messages.map(\.content), ["from before"])
+        XCTAssertTrue(appState.authorityQueue.isEmpty)
+    }
+
     func testADashboardTurnStartNamesTheOldestForwardedMessage() {
         let appState = makeAppState()
         appState.activeSessionId = "api-1"
