@@ -321,13 +321,16 @@ extension AppState {
             guard !command.argument.isEmpty else { break }
             let kind: SideAgentKind = command.name == "btw" ? .btw : .background
             cancelChatResumeRestoration()
+            // Recorded before the start returns: its answer can come first.
+            // Kept when the start fails: no answer comes for it, and another
+            // start on the session may own the entry by then.
+            sideAgentProfilesBySession[sessionId] = submissionContext.profile
             do {
                 if let startSideAgent = chatResumeLifecycleOperations.startSideAgent {
                     _ = try await startSideAgent(client, kind, sessionId, command.argument)
                 } else {
                     _ = try await client.startSideAgent(kind, sessionId: sessionId, text: command.argument)
                 }
-                sideAgentProfilesBySession[sessionId] = submissionContext.profile
                 appendSlashOutput(
                     kind == .btw
                         ? AppLocalization.string("Answering from a snapshot of this chat. The answer will appear here.")
@@ -1413,7 +1416,7 @@ extension AppState {
         guard case .sideAgentComplete(let sessionID, let kind, let taskId, let text, let question) = event,
               let profile = sideAgentProfilesBySession[sessionID],
               !eventBelongsToActiveSession(sessionID),
-              reconciliation?.accepts(sessionID) != true else { return false }
+              !sideAgentSessionIsTheChatBeingOpened(sessionID) else { return false }
         persistLeftChatNote(
             Self.sideAgentNote(kind: kind, taskId: taskId, text: text, question: question),
             id: "slash-\(UUID().uuidString)",
@@ -1422,6 +1425,15 @@ extension AppState {
             runtimeSessionID: sessionID
         )
         return true
+    }
+
+    /// Whether a side agent's session is the chat on screen's, still being
+    /// opened: its answer is held for that open. A reconcile that takes any
+    /// session (another chat's open or send) doesn't make it this chat's.
+    private func sideAgentSessionIsTheChatBeingOpened(_ sessionID: String) -> Bool {
+        guard let reconciliation, reconciliation.accepts(sessionID), let activeSessionId else { return false }
+        return reconciliation.reboundSessionIDs[sessionID] == activeSessionId
+            || knownSessionIDs(for: activeSessionId).contains(sessionID)
     }
 
     func appendSlashOutput(
@@ -1439,7 +1451,11 @@ extension AppState {
             // The runtime id it was typed under, or the durable id Hermes
             // confirmed for it; never the scroll identity's canonical id,
             // which can still name the chat open before a new one.
-            if let sessionID = context.sessionID {
+            // Only while the connection it ran on is still this one: after a
+            // switch to another server, its ids could name another chat.
+            if let sessionID = context.sessionID,
+               context.clientIdentity == client.map(ObjectIdentifier.init),
+               context.clientEpoch == activeClientEpoch {
                 persistLeftChatNote(text, id: id, timestamp: timestamp, profile: context.profile, runtimeSessionID: sessionID)
             }
             return

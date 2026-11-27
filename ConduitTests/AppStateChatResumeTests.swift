@@ -1160,6 +1160,38 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(appState.cachedLocalNoteRowsForTesting("chat-a").first?.content.contains("Ship on Friday.") == true)
     }
 
+    /// Another chat's open takes any session's events while it settles; a
+    /// left chat's answer is still saved for that chat, not held for it.
+    func testALateSideAgentAnswerDuringAnotherChatsOpenIsSavedForItsChat() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-b"
+        appState.messages = []
+        appState.sideAgentProfilesBySession["chat-a"] = appState.activeProfile
+        _ = appState.beginReconciliation()
+
+        appState.handleStreamEvent(.sideAgentComplete(
+            sessionId: "chat-a", kind: .background, taskId: "bg_1", text: "Logs are clean.", question: nil
+        ))
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-a").count, 1)
+    }
+
+    /// A note whose command ran on a connection since replaced (another
+    /// server) isn't saved: its ids could name another chat there.
+    func testALateNoteFromAnEarlierConnectionIsNotSaved() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.sessions = [session("chat-a"), session("chat-b")]
+        appState.activeSessionId = "chat-a"
+        let context = appState.composerSubmissionContext()
+        appState.activeSessionId = "chat-b"
+        appState.activeClientEpoch = UUID()
+
+        appState.appendSlashOutput("⚠️ Command failed: connection closed", context: context)
+        XCTAssertEqual(appState.cachedLocalNoteRowsForTesting("chat-a"), [])
+    }
+
     /// Saved notes are kept to the newest within a count and a size, and
     /// the newest one always stays.
     func testSavedLocalNotesKeepTheNewest() {
