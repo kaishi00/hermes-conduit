@@ -40,6 +40,9 @@ struct ChatLiveWork: Equatable {
     /// oldest first. The dashboard serves none of the queue's verbs, so
     /// they carry none.
     var queued: [QueuedPrompt] = []
+    /// The admissions whose turn runs now: a message that left the queue
+    /// for one started; any other was withdrawn or its turn already ended.
+    var startedAdmissions: Set<String> = []
 
     /// Something still to follow: a turn running there, or a message waiting.
     var isActive: Bool { running || !queued.isEmpty }
@@ -51,11 +54,13 @@ struct ChatLiveWork: Equatable {
         return "\(path)?session_id=\(id)"
     }
 
-    init(running: Bool = false, step: BotLiveStep? = nil, agents: [Agent] = [], queued: [QueuedPrompt] = []) {
+    init(running: Bool = false, step: BotLiveStep? = nil, agents: [Agent] = [], queued: [QueuedPrompt] = [],
+         startedAdmissions: Set<String> = []) {
         self.running = running
         self.step = step
         self.agents = agents
         self.queued = queued
+        self.startedAdmissions = startedAdmissions
     }
 
     init(response: [String: Any]) {
@@ -79,6 +84,7 @@ struct ChatLiveWork: Equatable {
             )
         }
         .sorted { $0.sequence < $1.sequence }
+        startedAdmissions = Set((response["started"] as? [String] ?? []).filter { !$0.isEmpty })
     }
 
     /// A step as GET /live-steps writes it; nil for a phase it doesn't know.

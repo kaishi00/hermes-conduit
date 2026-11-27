@@ -71,9 +71,33 @@ final class ChatLiveWorkTests: XCTestCase {
         let waiting = QueuedPrompt(admissionID: "adm-2", text: "did you start them?", status: .queued, sequence: 2)
         appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [waiting]), previous: nil, for: "api-1")
         XCTAssertEqual(appState.messages.map(\.id), ["a-1"], "Shown once: in the dock while it waits")
-        appState.applyChatLiveWork(ChatLiveWork(running: true), previous: ChatLiveWork(running: true, queued: [waiting]), for: "api-1")
+        appState.applyChatLiveWork(ChatLiveWork(running: true, startedAdmissions: ["adm-2"]),
+                                   previous: ChatLiveWork(running: true, queued: [waiting]), for: "api-1")
         XCTAssertEqual(appState.messages.map(\.id), ["a-1", "local-1"], "Its turn started there")
         XCTAssertTrue(appState.authorityQueue.isEmpty)
+    }
+
+    func testAForwardedSendStaysInTheDockUntilAReadListsItAndItLeaves() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        let other = QueuedPrompt(admissionID: "adm-1", text: "another app's", status: .queued, sequence: 1)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [other]), previous: nil, for: "api-1")
+        appState.messages = [ChatMessage(id: "local-2", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-2", rowID: "local-2", text: "mine", sessionID: "api-1")
+        XCTAssertEqual(appState.messages.map(\.id), [], "In the dock, not the chat")
+        XCTAssertEqual(appState.authorityQueue.queued.map(\.admissionID), ["adm-1", "adm-2"], "Behind the rows already waiting")
+        // A read asked before the send can't list it: it stays held, its row kept.
+        let stale = ChatLiveWork(running: true, queued: [other])
+        appState.applyChatLiveWork(stale, previous: stale, for: "api-1")
+        XCTAssertEqual(appState.messages.map(\.id), [])
+        XCTAssertEqual(appState.authorityQueue.queued.map(\.admissionID), ["adm-1", "adm-2"])
+        // Listed, then withdrawn in the Webapp behind a turn still running: it never comes back.
+        let listed = ChatLiveWork(running: true, queued: [other, QueuedPrompt(admissionID: "adm-2", text: "mine", status: .queued, sequence: 2)])
+        appState.applyChatLiveWork(listed, previous: stale, for: "api-1")
+        appState.applyChatLiveWork(stale, previous: listed, for: "api-1")
+        XCTAssertEqual(appState.messages.map(\.id), [])
+        XCTAssertEqual(appState.authorityQueue.queued.map(\.admissionID), ["adm-1"])
+        XCTAssertTrue(appState.shownChat.queuedSendOrder.isEmpty)
     }
 
     func testADashboardTurnStartNamesTheOldestForwardedMessage() {

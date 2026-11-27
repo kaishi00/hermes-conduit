@@ -49,11 +49,15 @@ struct ChatLiveWorkDock: View {
             guard let chatID = openChatID, isShowing else { return }
             repeat {
                 let previous = work
-                guard let answer = await appState.loadOpenChatLiveWork(), !Task.isCancelled,
-                      openChatID == chatID else { return }
-                work = answer
-                appState.applyChatLiveWork(answer, previous: previous, for: chatID)
-                guard answer.isActive else { return }
+                let answer = await appState.loadOpenChatLiveWork()
+                guard !Task.isCancelled, openChatID == chatID else { return }
+                if let answer {
+                    work = answer
+                    appState.applyChatLiveWork(answer, previous: previous, for: chatID)
+                }
+                // A failed read (a blip, the plugin restarting) tries again while
+                // the last one still had something to follow, as the Kanban dock does.
+                guard work?.isActive == true || waits else { return }
                 try? await Task.sleep(for: ChatLiveWork.refreshInterval)
             } while !Task.isCancelled
         }
@@ -75,8 +79,13 @@ struct ChatLiveWorkDock: View {
                         .lineLimit(1)
                 }
             }
-            ForEach(work.agents.prefix(3)) { agent in
-                agentRow(agent)
+            // One clock for every row's run time, counting up each second.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(work.agents.prefix(3)) { agent in
+                        agentRow(agent, at: context.date)
+                    }
+                }
             }
         }
         .padding(.horizontal, 14)
@@ -87,7 +96,7 @@ struct ChatLiveWorkDock: View {
         .accessibilityAddTraits(.updatesFrequently)
     }
 
-    private func agentRow(_ agent: ChatLiveWork.Agent) -> some View {
+    private func agentRow(_ agent: ChatLiveWork.Agent, at now: Date) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "person.2")
                 .scaledFont(.caption.weight(.semibold))
@@ -98,13 +107,11 @@ struct ChatLiveWorkDock: View {
                     .scaledFont(.footnote.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
-                // Its step, and how long it has run, counting up each second.
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(verbatim: subtitle(agent, at: context.date))
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                // Its step, and how long it has run.
+                Text(verbatim: subtitle(agent, at: now))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
     }

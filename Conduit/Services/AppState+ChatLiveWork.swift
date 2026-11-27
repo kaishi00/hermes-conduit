@@ -41,14 +41,33 @@ extension AppState {
     /// the turn it followed there has ended.
     func applyChatLiveWork(_ work: ChatLiveWork, previous: ChatLiveWork?, for chatID: String) {
         guard activeSessionId == chatID, client?.speaksSessionAuthority != true else { return }
-        authorityQueue.apply(work.queued, for: chatID, readOnly: true)
-        // A message of the user's that left the queue started its turn there.
+        // Only a message an earlier read listed can have left the queue: a read
+        // asked before a send was forwarded doesn't know it yet.
+        let listed = Set(previous?.queued.map(\.admissionID) ?? [])
         let waiting = Set(work.queued.map(\.admissionID))
-        for admissionID in shownChat.queuedSendOrder where !waiting.contains(admissionID) {
-            noteQueuedTurnStarted(sessionID: chatID, admissionID: admissionID)
+        var ended = false
+        for admissionID in shownChat.queuedSendOrder where listed.contains(admissionID) && !waiting.contains(admissionID) {
+            if work.startedAdmissions.contains(admissionID) || !work.running {
+                // Its turn runs now, or ran and ended (the chat's rows tell which).
+                noteQueuedTurnStarted(sessionID: chatID, admissionID: admissionID)
+                ended = ended || !work.startedAdmissions.contains(admissionID)
+            } else {
+                // Withdrawn in the Webapp or Hermes Desktop behind a turn still
+                // running: it never runs, so it doesn't come back.
+                _ = takeQueuedSendRow(admissionID: admissionID)
+                authorityQueue.drop(admissionID)
+            }
         }
+        // A send this app holds that no read has listed yet keeps its row.
+        let held = authorityQueue.sessionID == chatID
+            ? authorityQueue.rows.filter {
+                !waiting.contains($0.admissionID) && !listed.contains($0.admissionID)
+                    && shownChat.queuedSendOrder.contains($0.admissionID)
+            }
+            : []
+        authorityQueue.apply(work.queued + held, for: chatID, readOnly: true)
         // Its rows are stored now: the chat shows what the turn did.
-        if previous?.running == true, !work.running, !isBusy {
+        if (previous?.running == true && !work.running) || ended, !isBusy {
             Task { await refreshActiveSession() }
         }
     }
@@ -58,14 +77,23 @@ extension AppState {
     /// in the dock until its turn starts, as on the gateway's own listener,
     /// where the plugin's reads keep it (Eric, 2026-11-27).
     func holdForwardedSend(rowID: String, text: String, sessionID: String) {
-        guard let admissionID = HermesClient.admittedAdmissionID(for: sessionID),
-              activeSessionId == sessionID || knownSessionIDs(for: sessionID).contains(activeSessionId ?? "") else { return }
-        moveQueuedSendToDock(rowID: rowID, sessionID: sessionID)
+        guard let admissionID = HermesClient.admittedAdmissionID(for: sessionID) else { return }
+        holdForwardedSend(admissionID: admissionID, rowID: rowID, text: text, sessionID: sessionID)
+    }
+
+    func holdForwardedSend(admissionID: String, rowID: String, text: String, sessionID: String) {
+        guard let chatID = activeSessionId,
+              chatID == sessionID || knownSessionIDs(for: sessionID).contains(chatID),
+              !shownChat.startedAdmissionIDs.contains(admissionID) else { return }
+        if let index = messages.firstIndex(where: { $0.id == rowID }) {
+            holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
+            cacheMessagePresentation()
+        }
         guard authorityQueue.row(admissionID) == nil else { return }
+        let rows = authorityQueue.sessionID == chatID ? authorityQueue.rows : []
         let row = QueuedPrompt(admissionID: admissionID, text: text, status: .queued,
-                               sequence: (authorityQueue.rows.map(\.sequence).max() ?? 0) + 1)
-        let rows = authorityQueue.sessionID == activeSessionId ? authorityQueue.rows : []
-        authorityQueue.apply(rows + [row], for: activeSessionId ?? sessionID, readOnly: true)
+                               sequence: (rows.map(\.sequence).max() ?? 0) + 1)
+        authorityQueue.apply(rows + [row], for: chatID, readOnly: true)
     }
 
     /// The queued message a `message.start` begins: the one Hermes names on
