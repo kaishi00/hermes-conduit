@@ -8710,7 +8710,7 @@ app's sign-in screen and Settings > Add another Hermes (Pair with your iPhone;
 src/main/pairCrypto.ts and src/main/pairing.ts in hermes-conduit-desktop
 seal and open the same box) · the rooms mailbox (`notifier/mailbox/src/server.mjs`, used
 as it is: one inbox, one `phone` sender) · Face ID for saved dashboards
-(sending asks the device owner first, whatever that setting) · the text that
+(sending asks the device owner first, whatever that setting) · Each app points to the other (its section links Get Conduit for desktop, and a pairing marks the phone as having a computer, so Chats never offers it) · the text that
 describes it (the page's captions, README.md's feature list, the desktop
 app's pairing panel) · Watch, CarPlay, widgets and the notifier (not needed:
 nothing there signs a computer in)
@@ -8734,7 +8734,34 @@ nothing there signs a computer in)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-23, #3138 (the desktop app runs on Linux too, so the entry and README name Mac, Windows and Linux; no behavior change); 2026-11-22, #3116 (the mailbox counts new inboxes per network, not per address, notifier #1024; the code keeps its inbox as before, so neither app changes); 2026-11-18, #2743 (the Code line names proxyHeaders, from #2738's reviews); 2026-11-18, #2738 (#2734's review leftovers: the Cloudflare token wins over a same-named extra header in any case, merged in ComputerPairing.proxyHeaders and tested; README's feature line names the headers); 2026-11-18, #2734 (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
+**Checked:** 2026-11-28, #3453 (the section links Get Conduit for desktop; a sent pairing marks the phone as having a computer, OtherAppOffer.notePairedComputer); 2026-11-23, #3138 (the desktop app runs on Linux too, so the entry and README name Mac, Windows and Linux; no behavior change); 2026-11-22, #3116 (the mailbox counts new inboxes per network, not per address, notifier #1024; the code keeps its inbox as before, so neither app changes); 2026-11-18, #2743 (the Code line names proxyHeaders, from #2738's reviews); 2026-11-18, #2738 (#2734's review leftovers: the Cloudflare token wins over a same-named extra header in any case, merged in ComputerPairing.proxyHeaders and tested; README's feature line names the headers); 2026-11-18, #2734 (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
+
+## Each app points to the other
+
+The iPhone app offers Conduit for desktop, and the desktop offers Conduit on
+iPhone, only where the other hasn't used the host: the plugin notes which
+Conduit apps reach it.
+
+**Siblings:** the phone's Settings > About > Conduit for desktop (V2 and classic homes) · the phone's one-time card under the last chat in V2 Chats · Pair a Computer's Get Conduit for desktop link (see Pairing a computer) · the desktop's Settings > Support > Conduit on iPhone, its sign-in screen link and its one-time chat list card · Calls from Hermes' iPhone notice on the desktop · the plugin's `/link-status` `clients` and Hermes' Conduit card · the website's home hero and closing calls to action · the text that describes it (README.md here and in the notifier, the Settings captions) · the legacy (non-V2) Chats list, Watch, CarPlay and widgets (not needed: the card is V2 Chats' and nothing there offers an app)
+
+**Desktop app:** has it: Settings > Support > Conduit on iPhone with the App Store code, the sign-in screen's link, the one-time chat list card and the platform header (src/renderer/src/state/otherApp.ts and components/IPhoneApp.tsx in hermes-conduit-desktop, desktop#747).
+
+**Code**
+- `Conduit/Services/OtherAppOffer.swift` (hostClients, offersDesktop, noteDayUsed, retire, notePairedComputer, shouldOfferDesktop), `Conduit/Views/ConduitDesktopViews.swift` (ConduitDesktopSettingsDetail, ConduitDesktopCard), `Conduit/Views/V2/V2ChatsView.swift` (offersDesktop), `Conduit/Views/AuxiliaryViews.swift` (SettingsDestination.conduitDesktop, the About rows, Pair a Computer's link), `Conduit/Views/PairComputerViews.swift` (a pairing marks the phone), `Conduit/Services/HermesClient.swift` (the socket's X-Conduit-Platform)
+- Plugin: `notifier/link_status.py` (client_seen, ios_seen_at, desktop_seen_at in the root home), `notifier/dashboard/api/link_status.py` (_platform, the route's `clients`), `notifier/dashboard/api/desktop_views.py` (a Conduit socket's platform), `notifier/dashboard/dist/index.js` (the card's rows)
+- Tests: `ConduitTests/OtherAppOfferTests.swift`, `notifier/tests/test_link_status.py`
+
+**Rulings**
+- Each app names itself in `X-Conduit-Platform: ios|desktop`, a header of its own beside `X-Conduit-Client: conduit`, so older plugins and every check of `X-Conduit-Client` are unchanged; the plugin reads it only beside `X-Conduit-Client` (2026-11-28, #3453).
+- The host keeps only which kind of app reached it and when, once per host in the root Hermes home, whichever profile was used; never a device's name.
+- A card shows once per device: only after the app was used on three separate days, only where the other app hasn't reached the host and nothing else says the person has it (the phone: it never paired a computer; the desktop: the host isn't paired with the push relay, which only the phone pairs), and its button or × retires it for good. Never a push, never in Pulse, never in the reply row (Eric, 2026-11-28, option C).
+- The settings pages are there at any time, whatever the host says.
+- Hermes' Conduit card lists the two apps only once a named app has connected, since older builds don't say which they are.
+
+**Open gaps**
+- Stage 2 of Eric's option C: the desktop signs a new phone in (pairing in the other direction).
+
+**Checked:** 2026-11-28, #3453 (added: the phone's page and card, notifier#1151, desktop#747, website#19)
 
 ## Another saved dashboard's address
 
