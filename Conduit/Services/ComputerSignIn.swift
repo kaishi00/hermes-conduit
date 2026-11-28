@@ -53,6 +53,7 @@ enum ComputerSignIn {
         let method: String
         var username: String?
         var password: String?
+        var token: String?
         var name: String?
         var headers: [String: String]?
 
@@ -63,17 +64,19 @@ enum ComputerSignIn {
             return given.isEmpty ? (URL(string: url)?.host ?? url) : given
         }
 
-        /// The sign-in code sheet's link: the address, the password sign-in
-        /// and the Cloudflare Access service token when it has them. Anything
-        /// else is signed in on the sign-in step.
+        /// The sign-in code sheet's link: the address, the password sign-in,
+        /// Hermes' session token (filled into its form) and the Cloudflare
+        /// Access service token when it has them. Anything else is signed in
+        /// on the sign-in step.
         var connectLink: DashboardConnectLink {
             let password = method == "password" ? self.password : nil
+            let sessionToken = method == "token" ? token.flatMap { $0.isEmpty ? nil : $0 } : nil
             let lowered = (headers ?? [:]).reduce(into: [String: String]()) { $0[$1.key.lowercased()] = $1.value }
             var cloudflare: LoginCloudflareState?
             if let id = lowered["cf-access-client-id"], let secret = lowered["cf-access-client-secret"], !id.isEmpty, !secret.isEmpty {
                 cloudflare = LoginCloudflareState(isEnabled: true, clientID: id, clientSecret: secret)
             }
-            return DashboardConnectLink(address: url, username: password == nil ? nil : username, password: password, cloudflare: cloudflare)
+            return DashboardConnectLink(address: url, username: password == nil ? nil : username, password: password, cloudflare: cloudflare, sessionToken: sessionToken)
         }
     }
 
@@ -195,7 +198,8 @@ enum ComputerSignIn {
                 throw CancellationError()
             } catch {
                 failures += 1
-                if failures >= 5 { throw Failure.lost }
+                // Five in a row: a mailbox that kept saying "too many" says so.
+                if failures >= 5 { throw (error as? Failure) == .rateLimited ? Failure.rateLimited : Failure.lost }
                 try await Task.sleep(nanoseconds: UInt64(failures) * 2_000_000_000)
             }
         }

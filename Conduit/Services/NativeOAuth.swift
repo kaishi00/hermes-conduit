@@ -1130,6 +1130,8 @@ struct NativeOAuthSignInSheet: View {
     let dashboardID: UUID
     let onSuccess: (NativeOAuthLoginResult) -> Void
     let onError: (Error) -> Void
+    /// Hermes' session token a computer sent, for the session token's form.
+    var sessionToken: String? = nil
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = NativeOAuthLoginModel()
     /// Whether Hermes takes its session token, asked only for a server with
@@ -1183,7 +1185,8 @@ struct NativeOAuthSignInSheet: View {
                     onError(error)
                     dismiss()
                 },
-                onCancel: { dismiss() }
+                onCancel: { dismiss() },
+                initialToken: sessionToken
             )
         case .browser:
             browserSignIn
@@ -1228,6 +1231,8 @@ struct SessionTokenSignInForm: View {
     let onSuccess: (NativeOAuthLoginResult) -> Void
     let onError: (Error) -> Void
     let onCancel: () -> Void
+    /// A token a computer sent: the form starts with it, and still waits for Sign In.
+    var initialToken: String? = nil
     @State private var token = ""
     @State private var isWorking = false
     @State private var problem: String?
@@ -1321,6 +1326,9 @@ struct SessionTokenSignInForm: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            if token.isEmpty, let initialToken { token = initialToken }
         }
         .onDisappear { signInTask?.cancel() }
     }

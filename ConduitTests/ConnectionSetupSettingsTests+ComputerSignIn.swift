@@ -46,8 +46,46 @@ extension ConnectionSetupSettingsTests {
         XCTAssertNil(open.cloudflare)
     }
 
+    func testASessionTokenHostFillsTheSessionTokensForm() throws {
+        let data = Data(#"{"v":1,"hosts":[{"url":"https://token.example","method":"token","token":"tk-1","name":"Lab"},{"url":"https://empty.example","method":"token","token":""}]}"#.utf8)
+        let hosts = ComputerSignIn.hosts(from: data)
+        XCTAssertEqual(hosts.map(\.url), ["https://token.example", "https://empty.example"])
+        let link = hosts[0].connectLink
+        XCTAssertEqual(link.sessionToken, "tk-1")
+        XCTAssertNil(link.password)
+        XCTAssertNil(link.username)
+        XCTAssertFalse(link.description.contains("tk-1"), "the token never shows in a description")
+        XCTAssertNil(hosts[1].connectLink.sessionToken)
+    }
+
+    @MainActor
+    func testOpeningASignInCodeOpensSignInFromYourComputerAndNothingElse() throws {
+        let suite = "ConnectionSetupSettingsTests.SignIn.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let url = try XCTUnwrap(URL(string: signInLinkText()))
+
+        XCTAssertTrue(appState.routeComputerSignInLink(url))
+        XCTAssertEqual(appState.pendingComputerSignIn?.mailbox.absoluteString, "https://rooms.example")
+        // Pair a Computer doesn't take it, nor does anything else.
+        XCTAssertFalse(appState.routeComputerPairingLink(url))
+        XCTAssertNil(ConduitAppLink(url: url))
+        XCTAssertFalse(appState.routeConnectLink(url))
+
+        // A code Conduit can't read is still a code: it opens nothing.
+        appState.pendingComputerSignIn = nil
+        XCTAssertTrue(appState.routeComputerSignInLink(try XCTUnwrap(URL(string: "conduit://signin?v=1"))))
+        XCTAssertNil(appState.pendingComputerSignIn)
+        // Other links, a pairing code included, aren't sign-in codes.
+        for other in ["conduit://pair?v=1", "conduit://connect?url=example.com", "https://signin?v=1"] {
+            XCTAssertFalse(appState.routeComputerSignInLink(try XCTUnwrap(URL(string: other))), other)
+        }
+        XCTAssertNil(appState.pendingComputerSignIn)
+    }
+
     func testComputerSignInRequestNamesThisPhonesInboxAndKey() throws {
-        let inbox = ComputerSignIn.Inbox(mailbox: URL(string: "https://rooms.example")!)
+        let inbox = ComputerSignIn.Inbox(mailbox: try XCTUnwrap(URL(string: "https://rooms.example")))
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: ComputerSignIn.request(inbox)) as? [String: Any])
         XCTAssertEqual(body["v"] as? Int, 1)
         XCTAssertEqual(body["want"] as? String, "signins")

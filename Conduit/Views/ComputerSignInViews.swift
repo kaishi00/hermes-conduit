@@ -95,6 +95,7 @@ struct ComputerSignInSheet: View {
                             .accessibilityIdentifier("computerSignIn.signIn")
                         }
                     }
+                    .accessibilityElement(children: .combine)
                 }
                 Text(AppLocalization.string("Each one asks before it signs in. Nothing is saved until the sign-in works.", table: .connection))
                     .scaledFont(.footnote)
@@ -176,6 +177,9 @@ struct ComputerSignInSheet: View {
             } catch is CancellationError {
                 return
             } catch {
+                // As a failed start: the inbox goes now, so a retry leaves none behind.
+                await ComputerSignIn.finish(inbox)
+                self.inbox = nil
                 words = nil
                 failure = ComputerSignInText.failure(error)
             }

@@ -61,7 +61,8 @@ struct ConnectLinkSheet: View {
                 address: link.address,
                 username: link.username ?? "",
                 password: link.password ?? "",
-                cloudflare: link.cloudflare ?? LoginSeed.blank.cloudflare
+                cloudflare: link.cloudflare ?? LoginSeed.blank.cloudflare,
+                sessionToken: link.sessionToken
             ))
         }
         .onChange(of: scenePhase) { _, phase in

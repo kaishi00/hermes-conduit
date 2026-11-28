@@ -24,14 +24,19 @@ struct DashboardConnectLink: Identifiable, CustomStringConvertible, CustomDebugS
     /// A Cloudflare Access service token, from a computer that signed this
     /// phone in (ComputerSignIn.swift); a code Hermes made never has one.
     var cloudflare: LoginCloudflareState?
+    /// Hermes' session token, from a computer that signed in with it
+    /// (ComputerSignIn.swift): it fills the session token's form, which
+    /// still asks first. A code Hermes made never has one.
+    var sessionToken: String?
 
     static let host = "connect"
 
-    init(address: String, username: String?, password: String?, cloudflare: LoginCloudflareState? = nil) {
+    init(address: String, username: String?, password: String?, cloudflare: LoginCloudflareState? = nil, sessionToken: String? = nil) {
         self.address = address
         self.username = username
         self.password = password
         self.cloudflare = cloudflare
+        self.sessionToken = sessionToken
     }
 
     /// Reads a `conduit://connect` link. An address is required; a name
@@ -60,7 +65,7 @@ struct DashboardConnectLink: Identifiable, CustomStringConvertible, CustomDebugS
     }
 
     var description: String {
-        "DashboardConnectLink(address: \(address), username: \(username == nil ? "none" : "set"), password: \(password == nil ? "none" : "set"), cloudflare: \(cloudflare == nil ? "none" : "set"))"
+        "DashboardConnectLink(address: \(address), username: \(username == nil ? "none" : "set"), password: \(password == nil ? "none" : "set"), cloudflare: \(cloudflare == nil ? "none" : "set"), sessionToken: \(sessionToken == nil ? "none" : "set"))"
     }
 
     var debugDescription: String { description }

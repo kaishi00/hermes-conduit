@@ -91,6 +91,9 @@ struct LoginSeed: Identifiable {
     var username: String
     var password: String
     var cloudflare: LoginCloudflareState
+    /// Hermes' session token a computer sent (ComputerSignIn.swift), for the
+    /// session token's form.
+    var sessionToken: String? = nil
 
     /// Nothing filled in.
     static var blank: LoginSeed {
@@ -175,6 +178,9 @@ enum LoginAddress {
 @MainActor
 @Observable
 final class LoginFlowModel {
+    /// Hermes' session token a computer sent with its sign-in code: the
+    /// session token's form starts with it. Never logged, gone with the flow.
+    var seededSessionToken: String? = nil
     private static let logger = Logger(subsystem: "com.milim.relay", category: "login")
 
     // The address step. An edit makes any answer still on its way for the
@@ -322,6 +328,7 @@ final class LoginFlowModel {
         address = seed.address
         username = seed.username
         password = seed.password
+        seededSessionToken = seed.sessionToken
         prefilledUsername = nil
         clearFailure()
     }
