@@ -279,10 +279,18 @@ final class HealthSyncEngine: ObservableObject {
 
     /// Records a pause found outside a pass (another dashboard in use).
     /// Health was just asked for types it hadn't been: a pass before that
-    /// read them as empty, so their history goes again (issue 3459).
+    /// read them as empty, so their history goes again (issue 3459). That
+    /// covers the windows and the event streams of the types this release
+    /// added, whose anchors such a pass moved past their history. The host
+    /// keeps events by id, so a stream read again lands once.
     func walkHistoryAgain() {
-        guard readStateIfNeeded(), state.backfilledMetrics != [] else { return }
+        guard readStateIfNeeded() else { return }
+        let added = Set(HealthMetric.allCases).subtracting(HealthMetric.keptByEveryHost)
+        let streams = Set([HealthEventStream.cycle.key] + added.map { HealthEventStream.samples($0).key })
+        let anchors = state.anchors.filter { !streams.contains($0.key) }
+        guard state.backfilledMetrics != [] || anchors.count != state.anchors.count else { return }
         state.backfilledMetrics = []
+        state.anchors = anchors
         store.save(state)
     }
 

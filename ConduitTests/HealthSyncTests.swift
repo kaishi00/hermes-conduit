@@ -433,18 +433,31 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testHistoryGoesAgainOnceHealthIsAskedForNewTypes() async throws {
         // A background pass read types Health hadn't been asked about yet as
-        // empty; once asked on screen, their history is walked again.
+        // empty; once asked on screen, their history is walked again, the
+        // new types' event streams from the start too.
         let host = FakeHealthHost()
+        host.metrics = HealthMetric.allCases.map(\.rawValue) + ["sleep", "workout", "menstrual_flow"]
         let engine = makeHealthEngine(source: FakeHealthSource())
-        let preferences = healthPreferences(history: .days30)
+        var preferences = healthPreferences(history: .days30)
+        preferences.categories.insert(.cycle)
+        func events(since count: Int, _ kind: String) -> Int {
+            host.batches.dropFirst(count).flatMap { $0["events"] as? [[String: Any]] ?? [] }
+                .filter { $0["kind"] as? String == kind }.count
+        }
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+        XCTAssertEqual(events(since: 0, "cycle"), 1)
+        XCTAssertNotNil(engine.state.anchors["cycle"])
         engine.walkHistoryAgain()
+        XCTAssertNil(engine.state.anchors["cycle"], "A new type's stream reads from the start again")
+        XCTAssertNotNil(engine.state.anchors["workouts"], "Streams Health was asked for before keep their place")
         let sent = host.batches.count
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         let days = host.batches.dropFirst(sent).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
             .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }
         XCTAssertGreaterThan(days.count, 1, "The recent days and the history walked again")
+        XCTAssertEqual(events(since: sent, "cycle"), 1, "The period days read again")
+        XCTAssertEqual(events(since: sent, "workout"), 0)
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
     }
 
