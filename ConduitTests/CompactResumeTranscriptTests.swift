@@ -3187,6 +3187,33 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(app.messages.last?.content, "The example job is complete.")
     }
 
+    /// #3444: the result arrives on a read that adds no row (no reply after
+    /// it yet): the card still takes it.
+    func testAToolResultOnAReadAddingNoRowStillAnswersItsCard() async throws {
+        var tail = [transcriptRow(1, role: "user", content: "Run the example job")]
+        let clock = TestClock()
+        let app = try await openBotChat(expecting: ["Run the example job"]) { sessionID in
+            self.tailPagePayload(sessionId: sessionID, rows: tail, offset: 0)
+        }
+        app.chatSyncNow = { clock.now }
+        tail.append([
+            "id": 2, "role": "assistant", "content": "", "timestamp": "2026-09-01T10:00:02Z",
+            "tool_calls": [["id": "call_1", "type": "function",
+                            "function": ["name": "read_file", "arguments": "{\"path\": \"/tmp/job.log\"}"]]]
+        ])
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        XCTAssertEqual(app.messages.filter { $0.role == .tool }.count, 1, "The call's card, unanswered")
+
+        clock.now += 60
+        tail.append(["id": 3, "role": "tool", "tool_call_id": "call_1", "content": "done", "timestamp": "2026-09-01T10:00:03Z"])
+        app.handleStreamEvent(.sessionsChanged)
+        try await XCTUnwrap(app.openChatSyncRead).value
+        let cards = app.messages.filter { $0.role == .tool }
+        XCTAssertEqual(cards.count, 1)
+        XCTAssertEqual(cards.first?.tool?.output, "done", "The card takes its result")
+    }
+
     func testABotChatShowingOnlyToolCardsStillTakesTheNextStoredReply() async throws {
         var tail: [[String: Any]] = []
         let clock = TestClock()

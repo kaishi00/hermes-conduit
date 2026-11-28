@@ -649,15 +649,7 @@ extension AppState {
         // A call card shown unanswered whose result the page now holds
         // (normalized into the same card, by the same id, so never a new
         // row) takes that result.
-        var answered: [String: ToolActivity] = [:]
-        for row in transcript.messages where row.role == .tool {
-            if let tool = row.tool, !(tool.output?.isEmpty ?? true) { answered[row.id] = tool }
-        }
-        for index in merged.indices where merged[index].role == .tool {
-            guard let shown = merged[index].tool, shown.output?.isEmpty ?? true,
-                  let tool = answered[merged[index].id] else { continue }
-            merged[index].tool = tool
-        }
+        _ = Self.answerShownCalls(&merged, from: transcript)
         merged.reserveCapacity(merged.count + fresh.count)
         for row in fresh {
             // The persisted twin of a steer Conduit already confirmed
@@ -702,6 +694,26 @@ extension AppState {
                 loadedPageStarts: priorOwned?.pageStartsCarried(into: page.rawReturned) ?? []
             )
         }
+    }
+
+    /// Gives each call card in `rows` shown without a result the result
+    /// `transcript` holds for it (normalized into the same card, by the same
+    /// id); true when any card took one.
+    @discardableResult
+    static func answerShownCalls(_ rows: inout [ChatMessage], from transcript: PersistedSessionTranscript) -> Bool {
+        var answered: [String: ToolActivity] = [:]
+        for row in transcript.messages where row.role == .tool {
+            if let tool = row.tool, !(tool.output?.isEmpty ?? true) { answered[row.id] = tool }
+        }
+        guard !answered.isEmpty else { return false }
+        var changed = false
+        for index in rows.indices where rows[index].role == .tool {
+            guard let shown = rows[index].tool, shown.output?.isEmpty ?? true,
+                  let tool = answered[rows[index].id] else { continue }
+            rows[index].tool = tool
+            changed = true
+        }
+        return changed
     }
 
     func verifyChatResumeTransportHealth(_ client: HermesClient) async throws {

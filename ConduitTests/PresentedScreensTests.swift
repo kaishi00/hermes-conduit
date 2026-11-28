@@ -666,4 +666,31 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(PcControlling.forChat(list, sessionIDs: ["runtime-1", "durable-1"])?.name, "Asuka")
         XCTAssertNil(PcControlling.forChat(list, sessionIDs: ["other"]))
     }
+
+    /// Issue 3424: a Stop's answer counts only in the chat, dashboard and
+    /// turn it was pressed in, and a failed Stop's note stays on its computer.
+    func testAStopsAnswerCountsOnlyWhereItWasPressed() {
+        let home = UUID()
+        let pressed = PcControlling.Moment(chat: "chat-1", dashboard: home, turn: 3, busy: true)
+        let land = { (now: PcControlling.Moment, stopped: Bool) in
+            PcControlling.stopLanding(stopped: stopped, computer: "asuka-1", pressed: pressed, now: now)
+        }
+        XCTAssertEqual(land(pressed, true), .hide)
+        XCTAssertEqual(land(pressed, false), .failed(computer: "asuka-1"))
+        // Another chat opened meanwhile.
+        XCTAssertEqual(land(PcControlling.Moment(chat: "chat-2", dashboard: home, turn: 3, busy: true), false), .ignore)
+        // The turn ended.
+        XCTAssertEqual(land(PcControlling.Moment(chat: "chat-1", dashboard: home, turn: 3, busy: false), false), .ignore)
+        // It ended and another started in the same chat.
+        XCTAssertEqual(land(PcControlling.Moment(chat: "chat-1", dashboard: home, turn: 4, busy: true), false), .ignore)
+        // Another dashboard.
+        XCTAssertEqual(land(PcControlling.Moment(chat: "chat-1", dashboard: UUID(), turn: 3, busy: true), true), .ignore)
+
+        let asuka = PcControlling(computer: "asuka-1", name: "Asuka", session: "s", chat: "")
+        let gridania = PcControlling(computer: "gridania-1", name: "Gridania", session: "s", chat: "")
+        XCTAssertEqual(PcControlling.failedStop("asuka-1", after: asuka), "asuka-1")
+        XCTAssertNil(PcControlling.failedStop("asuka-1", after: gridania), "another computer's line doesn't say it")
+        XCTAssertNil(PcControlling.failedStop("asuka-1", after: nil))
+        XCTAssertNil(PcControlling.failedStop(nil, after: asuka))
+    }
 }

@@ -226,11 +226,13 @@ enum ReplyHTML {
         // A `</details>` in code (a fence, a code span) or a comment closes nothing.
         var codeFence = CodeFence()
         let inCode = lines.map { codeFence.isCode($0) }
+        // Nor one on a line inside a comment opened on an earlier line (#3349).
+        let inComment = commentLines(lines)
         // More `</details>` after it than folds opened after it: one is left over for this line's.
         var closes = 0
         for index in lines.indices.reversed() {
             closedAfter[index] = closes > 0
-            guard !inCode[index] else { continue }
+            guard !inCode[index], !inComment[index] else { continue }
             // Only a `</details>` ending its line closes a fold, as fold(in:at:) reads it (one per line, nothing after
             // it, not even a comment or a code span); one in prose doesn't. Read with the same tests as the pass
             // below, so a fold this counts as closed is closed there too (#3349, #3388).
@@ -246,7 +248,7 @@ enum ReplyHTML {
             }
         }
         for (index, line) in lines.enumerated() {
-            if fence.isCode(line) {
+            if fence.isCode(line) || inComment[index] {
                 out.append(line)
                 continue
             }
@@ -298,6 +300,32 @@ enum ReplyHTML {
         let filler = "\u{1}"
         let closed = replacing(comment, in: withoutCodeSpans(line, filler: filler), with: filler)
         return replacing(unfinishedComment, in: closed, with: filler)
+    }
+
+    /// Whether each line lies wholly inside a comment opened on an earlier
+    /// line, its `-->` still to come: a `</details>` there closes nothing
+    /// (#3349). The line holding the `-->` isn't, since a close ending it
+    /// comes after the comment. Comments in code spans and fenced blocks don't count.
+    static func commentLines(_ lines: [String]) -> [Bool] {
+        var inside = [Bool](repeating: false, count: lines.count)
+        var open = false
+        var fence = CodeFence()
+        for (index, line) in lines.enumerated() {
+            var rest = line
+            if open {
+                guard let end = line.range(of: "-->") else {
+                    inside[index] = true
+                    continue
+                }
+                rest = String(line[end.upperBound...])
+                open = false
+            } else if fence.isCode(line) {
+                continue
+            }
+            let filler = "\u{1}"
+            open = matches(unfinishedComment, replacing(comment, in: withoutCodeSpans(rest, filler: filler), with: filler))
+        }
+        return inside
     }
 
     /// Whether `text` ends in a `</details>` that closes a fold: one ending
@@ -360,9 +388,10 @@ enum ReplyHTML {
         var body: [String] = []
         var depth = 0
         var fence = CodeFence()
+        let inComment = commentLines(lines)
         while index < lines.count {
             let line = lines[index]
-            if !fence.isCode(line) {
+            if !inComment[index], !fence.isCode(line) {
                 if opensFold(line) { depth += 1 }
                 else if matches(foldClosing, line) {
                     if depth == 0 {

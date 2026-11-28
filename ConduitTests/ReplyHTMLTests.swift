@@ -134,6 +134,16 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.foldsApart(lines), lines)
     }
 
+    func testACloseInsideACommentOverLinesClosesNothing() {
+        // #3349: a `</details>` inside a comment that runs over lines closes nothing.
+        let spanning = ["<details>", "<summary>S</summary>", "Body <!-- a note", "</details>", "-->", "More.", "</details>", "After."]
+        XCTAssertEqual(ReplyHTML.commentLines(spanning), [false, false, false, true, false, false, false, false])
+        XCTAssertEqual(ReplyHTML.foldsApart(spanning), spanning)
+        XCTAssertEqual(ReplyHTML.fold(in: spanning, at: 0)?.end, 7)
+        XCTAssertEqual(ReplyHTML.commentLines(["`<!--` in code", "</details>"]), [false, false])
+        XCTAssertEqual(ReplyHTML.commentLines(["<!-- closed -->", "</details>"]), [false, false])
+    }
+
     func testACloseInsideACodeSpanInTheBodyStillFolds() {
         // #3349: a `</details>` in a code span closes nothing, so it doesn't keep the line as written.
         XCTAssertEqual(

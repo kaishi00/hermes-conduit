@@ -182,17 +182,29 @@ extension AppState {
             shownChat.forwardedSendChats.removeValue(forKey: admissionID)
             return admissionID
         }
-        guard let admissionID = shownChat.queuedSendOrder.first(where: into) else { return nil }
+        let othersAhead = { (before: Int?) -> QueuedPrompt? in
+            guard let queue = self.authorityQueue.sessionID, known.contains(queue) else { return nil }
+            return self.authorityQueue.queued
+                .filter { row in before.map { row.sequence < $0 } ?? true
+                    && !self.shownChat.queuedSendOrder.contains(row.admissionID)
+                    && self.shownChat.forwardedSendChats[row.admissionID] == nil
+                    && !self.shownChat.otherAppStartsSeen.contains(row.admissionID) }
+                .min { $0.sequence < $1.sequence }
+        }
+        guard let admissionID = shownChat.queuedSendOrder.first(where: into) else {
+            // Nothing held: the start is the oldest message another app queued
+            // there, so a send held after it, and the read that brings its words
+            // in, don't wait for its start again (#3444).
+            if let ahead = othersAhead(nil) {
+                shownChat.otherAppStartsSeen = Array((shownChat.otherAppStartsSeen + [ahead.admissionID]).suffix(8))
+            }
+            return nil
+        }
         // The last read listed a message nothing here holds ahead of it
         // (another app's): the gateway starts that one first, so this start
         // is its turn, not this send's. The next read brings its words in
         // and names this send's start when it comes (#3420).
-        if let queue = authorityQueue.sessionID, known.contains(queue),
-           let mine = authorityQueue.row(admissionID),
-           let ahead = authorityQueue.queued.first(where: { $0.sequence < mine.sequence
-               && !shownChat.queuedSendOrder.contains($0.admissionID)
-               && shownChat.forwardedSendChats[$0.admissionID] == nil
-               && !shownChat.otherAppStartsSeen.contains($0.admissionID) }) {
+        if let mine = authorityQueue.row(admissionID), let ahead = othersAhead(mine.sequence) {
             shownChat.otherAppStartsSeen = Array((shownChat.otherAppStartsSeen + [ahead.admissionID]).suffix(8))
             return nil
         }

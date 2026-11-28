@@ -56,4 +56,38 @@ struct PcControlling: Equatable, Identifiable {
     static func forChat(_ list: [PcControlling], sessionIDs: Set<String>) -> PcControlling? {
         list.first { sessionIDs.contains($0.session) }
     }
+
+    /// Where the chat's line stood: its chat, its dashboard, which of the
+    /// chat's turns (counted by the line, from each time one starts), and
+    /// whether a turn runs.
+    struct Moment: Equatable {
+        let chat: String?
+        let dashboard: UUID?
+        let turn: Int
+        let busy: Bool
+    }
+
+    /// What a Stop's answer does to the line.
+    enum StopLanding: Equatable {
+        /// The chat, the dashboard or the turn changed meanwhile: left alone.
+        case ignore
+        /// Stopped: the line stays away.
+        case hide
+        /// Couldn't reach the host: the line comes back for that computer, saying so.
+        case failed(computer: String)
+    }
+
+    /// A Stop's answer counts only for the chat it was pressed in, on the
+    /// same dashboard and in the same turn (issue 3424): a turn that ended,
+    /// or another that started since, is left alone.
+    static func stopLanding(stopped: Bool, computer: String, pressed: Moment, now: Moment) -> StopLanding {
+        guard now.busy, now.chat == pressed.chat, now.dashboard == pressed.dashboard, now.turn == pressed.turn else { return .ignore }
+        return stopped ? .hide : .failed(computer: computer)
+    }
+
+    /// The computer whose failed Stop the line still names after a read:
+    /// kept only while the read still shows that computer.
+    static func failedStop(_ failedOn: String?, after read: PcControlling?) -> String? {
+        read?.computer == failedOn ? failedOn : nil
+    }
 }

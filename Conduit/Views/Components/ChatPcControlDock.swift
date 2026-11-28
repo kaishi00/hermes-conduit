@@ -26,8 +26,17 @@ struct ChatPcControlDock: View {
     /// The computer whose Stop didn't reach the host: its line says so, and
     /// no other computer's line does.
     @State private var stopFailedOn: String?
+    /// Counts the chat's turns as they start, so a Stop answered after its
+    /// turn ended and another started is left alone (issue 3424).
+    @State private var turn = 0
 
     private var shows: Bool { controlling != nil && isShowing }
+
+    /// Where the line stands now, read from the app rather than this view's
+    /// copy, so a Stop answered later sees the chat as it is then.
+    private var moment: PcControlling.Moment {
+        PcControlling.Moment(chat: appState.activeSessionId, dashboard: appState.activeDashboardID, turn: turn, busy: appState.isBusy)
+    }
 
     var body: some View {
         Group {
@@ -44,6 +53,9 @@ struct ChatPcControlDock: View {
             controlling = nil
             stopFailedOn = nil
         }
+        .onChange(of: isBusy) { _, busy in
+            if busy { turn += 1 }
+        }
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
             guard openChatID != nil, isShowing, isBusy else {
                 controlling = nil
@@ -57,7 +69,7 @@ struct ChatPcControlDock: View {
                 guard !Task.isCancelled, openChatID == asked else { return }
                 if revision == started {
                     controlling = now
-                    if now?.computer != stopFailedOn { stopFailedOn = nil }
+                    stopFailedOn = PcControlling.failedStop(stopFailedOn, after: now)
                 }
                 try? await Task.sleep(for: PcControlling.refreshInterval)
             } while !Task.isCancelled
@@ -86,24 +98,23 @@ struct ChatPcControlDock: View {
                 revision += 1
                 controlling = nil
                 stopFailedOn = nil
-                let asked = openChatID
-                let askedDashboard = appState.activeDashboardID
+                let pressed = moment
                 Task {
                     let stopped = await appState.stopPcControl(item)
                     // Only for the chat Stop was pressed in, still on the same
                     // dashboard and still in its turn: another chat's reads, or
-                    // a turn that ended, are left alone.
-                    guard appState.activeSessionId == asked, appState.activeDashboardID == askedDashboard,
-                          appState.isBusy else { return }
+                    // a turn that ended (another one started included), are left alone.
+                    let landing = PcControlling.stopLanding(stopped: stopped, computer: item.computer, pressed: pressed, now: moment)
+                    guard landing != .ignore else { return }
                     // A read that started while Stop was on its way can't bring the line back.
                     revision += 1
-                    if stopped {
+                    if case .failed(let computer) = landing {
+                        // Couldn't reach the host: the line comes back, saying so, for another try.
+                        controlling = item
+                        stopFailedOn = computer
+                    } else {
                         controlling = nil
-                        return
                     }
-                    // Couldn't reach the host: the line comes back, saying so, for another try.
-                    controlling = item
-                    stopFailedOn = item.computer
                 }
             } label: {
                 Label(AppLocalization.string("Stop"), systemImage: "stop.fill")

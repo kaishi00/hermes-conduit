@@ -206,6 +206,13 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         XCTAssertFalse(document.references.containsDefinitions)
     }
 
+    func testADefinitionAfterAFoldWithAnUnclosedPageIsStillOne() {
+        // #3444: the page inside the fold ran to the reply's end in the scan, so the definition after it stayed text.
+        let source = "<details>\n<summary>S</summary>\n<div>\ntext\n</details>\n\nSee [docs].\n\n[docs]: https://example.com/after"
+        let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: false)
+        XCTAssertTrue(document.references.containsDefinitions)
+    }
+
     func testParseDocumentKeepsACSSRuleShapedLikeADefinitionInAPage() {
         let document = MarkdownParser.parseDocument("<style>\n[data-theme=\"dark\"]:hover{color:red}\n</style>\n\nAfter.", recognizesGatewayMedia: false)
         guard case .htmlPage(let html, _) = document.blocks.first else {
