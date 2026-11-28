@@ -62,7 +62,8 @@ struct ConduitDesktopSettingsDetail: View {
             }
         }
         .navigationTitle(ConduitDesktopText.title)
-        .task(id: appState.activeDashboardID) {
+        // Again once the connection lands, for a page opened before it did.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)") {
             clients = await OtherAppOffer.readHostClients(appState.dashboardTicketBridge)
         }
         .sheet(isPresented: $pairingComputer) {
@@ -106,11 +107,17 @@ struct ConduitDesktopCard: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            ShareLink(item: OtherAppOffer.desktopURL) {
+            // A button rather than a ShareLink, so the card retires in the
+            // action itself (VoiceOver too) and leaves the list at once: the
+            // share sheet anchors to the screen, not to the card.
+            Button {
+                OtherAppOffer.retire()
+                MediaPreviewPresenter.shared.presentShare(link: OtherAppOffer.desktopURL)
+                onDone()
+            } label: {
                 Label(ConduitDesktopText.shareLink, systemImage: "square.and.arrow.up")
             }
             .buttonStyle(.settings)
-            .simultaneousGesture(TapGesture().onEnded { OtherAppOffer.retire() })
             .accessibilityIdentifier("chats.conduit-desktop.share")
         }
         .padding(.leading, 16)

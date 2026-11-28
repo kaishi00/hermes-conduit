@@ -55,7 +55,7 @@ enum OtherAppOffer {
     static func noteDayUsed(now: Date = Date(), calendar: Calendar = .current, defaults: UserDefaults = .standard) -> Int {
         var days = defaults.stringArray(forKey: daysKey) ?? []
         let parts = calendar.dateComponents([.year, .month, .day], from: now)
-        let today = "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
+        let today = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         if !days.contains(today), days.count < daysBeforeOffer {
             days.append(today)
             defaults.set(days, forKey: daysKey)
