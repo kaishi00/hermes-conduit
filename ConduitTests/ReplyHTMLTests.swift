@@ -182,6 +182,8 @@ final class ReplyHTMLTests: XCTestCase {
         // Prose naming a script, or an attribute holding one, opens no script text: a comment after it still counts.
         XCTAssertEqual(ReplyHTML.commentLines(["The <script> tag runs JavaScript.", "<!-- note", "</details>", "-->"]), [false, false, true, false])
         XCTAssertEqual(ReplyHTML.commentLines(["<div title=\"<script>\"> <!-- note", "</details>", "-->"]), [false, true, false])
+        // A custom element named after one (`<script-src>`, `<title-card>`) is an ordinary element (#3465 review).
+        XCTAssertEqual(ReplyHTML.commentLines(["<title-card>", "<details>", "</details>"]), [false, false, false])
     }
 
     func testACloseInsideACodeSpanInTheBodyStillFolds() {

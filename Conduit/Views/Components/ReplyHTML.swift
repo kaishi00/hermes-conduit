@@ -375,7 +375,7 @@ enum ReplyHTML {
         }
     }
 
-    private static let rawTextOpening = compiled(#"<(script|style|textarea|title)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#, [.caseInsensitive])
+    private static let rawTextOpening = compiled(#"<(script|style|textarea|title)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>"#, [.caseInsensitive])
 
     /// The offset just past `name`'s closing tag in `text`, reading from `start`, or nil while it's still to come.
     private static func rawTextEnd(of name: String, in text: NSString, from start: Int) -> Int? {
