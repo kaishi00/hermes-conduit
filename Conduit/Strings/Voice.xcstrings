@@ -47853,84 +47853,84 @@
         }
       }
     },
-    "Calls play on the headset, AirPods or car that's connected, otherwise on the speaker; calls from Hermes start on the earpiece, like a phone call. Both pickers are on the call screen too." : {
+    "Calls play on the headset, AirPods or car that's connected, otherwise on the speaker; calls from Hermes start on the earpiece, like a phone call, or on the speaker when they answer automatically. Both pickers are on the call screen too." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anrufe laufen über das verbundene Headset, die AirPods oder das Auto, sonst über den Lautsprecher; Anrufe von Hermes beginnen wie ein Telefonat an der Hörmuschel. Beide Auswahlen gibt es auch im Anrufbildschirm."
+            "value" : "Anrufe laufen über das verbundene Headset, die AirPods oder das Auto, sonst über den Lautsprecher; Anrufe von Hermes beginnen wie ein Telefonat an der Hörmuschel, oder über den Lautsprecher, wenn sie automatisch angenommen werden. Beide Auswahlen gibt es auch im Anrufbildschirm."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las llamadas suenan en los auriculares, los AirPods o el coche que estén conectados y, si no, en el altavoz; las llamadas de Hermes empiezan en el auricular del teléfono, como una llamada normal. Ambos selectores también están en la pantalla de llamada."
+            "value" : "Las llamadas suenan en los auriculares, los AirPods o el coche que estén conectados y, si no, en el altavoz; las llamadas de Hermes empiezan en el auricular del teléfono, como una llamada normal, o en el altavoz cuando se contestan automáticamente. Ambos selectores también están en la pantalla de llamada."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les appels passent par le casque, les AirPods ou la voiture connectés, sinon par le haut-parleur ; les appels de Hermes commencent sur l'écouteur, comme un appel téléphonique. Les deux sélecteurs sont aussi sur l'écran d'appel."
+            "value" : "Les appels passent par le casque, les AirPods ou la voiture connectés, sinon par le haut-parleur ; les appels de Hermes commencent sur l'écouteur, comme un appel téléphonique, ou sur le haut-parleur quand ils répondent automatiquement. Les deux sélecteurs sont aussi sur l'écran d'appel."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Panggilan diputar di headset, AirPods, atau mobil yang terhubung, atau di speaker jika tidak ada; panggilan dari Hermes dimulai di speaker telinga, seperti panggilan telepon. Kedua pemilih juga ada di layar panggilan."
+            "value" : "Panggilan diputar di headset, AirPods, atau mobil yang terhubung, atau di speaker jika tidak ada; panggilan dari Hermes dimulai di speaker telinga, seperti panggilan telepon, atau di speaker saat dijawab otomatis. Kedua pemilih juga ada di layar panggilan."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le chiamate si sentono dalle cuffie, dagli AirPods o dall'auto collegati, altrimenti dall'altoparlante; le chiamate da Hermes iniziano dall'auricolare, come una telefonata. Entrambi i selettori sono anche nella schermata di chiamata."
+            "value" : "Le chiamate si sentono dalle cuffie, dagli AirPods o dall'auto collegati, altrimenti dall'altoparlante; le chiamate da Hermes iniziano dall'auricolare, come una telefonata, o dall'altoparlante quando rispondono automaticamente. Entrambi i selettori sono anche nella schermata di chiamata."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通話は接続中のヘッドセット、AirPods、車で再生され、なければスピーカーで再生されます。Hermesからの通話は電話と同じように受話口で始まります。どちらの選択も通話画面にあります。"
+            "value" : "通話は接続中のヘッドセット、AirPods、車で再生され、なければスピーカーで再生されます。Hermesからの通話は電話と同じように受話口で始まり、自動で応答したときはスピーカーで始まります。どちらの選択も通話画面にあります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "통화는 연결된 헤드셋, AirPods 또는 차량으로 재생되고, 없으면 스피커로 재생됩니다. Hermes에서 온 통화는 전화처럼 수화부에서 시작합니다. 두 선택기는 통화 화면에도 있습니다."
+            "value" : "통화는 연결된 헤드셋, AirPods 또는 차량으로 재생되고, 없으면 스피커로 재생됩니다. Hermes에서 온 통화는 전화처럼 수화부에서 시작하며, 자동으로 받으면 스피커에서 시작합니다. 두 선택기는 통화 화면에도 있습니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rozmowy grają w podłączonym zestawie słuchawkowym, AirPods lub samochodzie, a w przeciwnym razie z głośnika; rozmowy od Hermesa zaczynają się w słuchawce, jak połączenie telefoniczne. Oba wybory są też na ekranie rozmowy."
+            "value" : "Rozmowy grają w podłączonym zestawie słuchawkowym, AirPods lub samochodzie, a w przeciwnym razie z głośnika; rozmowy od Hermesa zaczynają się w słuchawce, jak połączenie telefoniczne, albo z głośnika, gdy odbierają się automatycznie. Oba wybory są też na ekranie rozmowy."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As chamadas tocam no fone, nos AirPods ou no carro conectado, ou então no alto-falante; chamadas do Hermes começam no receptor, como uma ligação. Os dois seletores também estão na tela da chamada."
+            "value" : "As chamadas tocam no fone, nos AirPods ou no carro conectado, ou então no alto-falante; chamadas do Hermes começam no receptor, como uma ligação, ou no alto-falante quando atendidas automaticamente. Os dois seletores também estão na tela da chamada."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Звонки звучат в подключённой гарнитуре, AirPods или машине, а если их нет — в динамике; звонки от Hermes начинаются в разговорном динамике, как обычный звонок. Оба выбора есть и на экране звонка."
+            "value" : "Звонки звучат в подключённой гарнитуре, AirPods или машине, а если их нет — в динамике; звонки от Hermes начинаются в разговорном динамике, как обычный звонок, или в громкоговорителе, если ответ автоматический. Оба выбора есть и на экране звонка."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aramalar bağlı kulaklıkta, AirPods'ta veya araçta, yoksa hoparlörde çalar; Hermes'ten gelen aramalar telefon araması gibi ahizede başlar. İki seçici arama ekranında da var."
+            "value" : "Aramalar bağlı kulaklıkta, AirPods'ta veya araçta, yoksa hoparlörde çalar; Hermes'ten gelen aramalar telefon araması gibi ahizede, otomatik yanıtlandığında ise hoparlörde başlar. İki seçici arama ekranında da var."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通话在已连接的耳机、AirPods 或汽车上播放，否则用扬声器；来自 Hermes 的通话像电话一样从听筒开始。两个选择在通话界面上也有。"
+            "value" : "通话在已连接的耳机、AirPods 或汽车上播放，否则用扬声器；来自 Hermes 的通话像电话一样从听筒开始，自动接听时则从扬声器开始。两个选择在通话界面上也有。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通話會在已連接的耳機、AirPods 或汽車上播放，否則使用揚聲器；來自 Hermes 的通話會像電話一樣從聽筒開始。兩個選擇在通話畫面上也有。"
+            "value" : "通話會在已連接的耳機、AirPods 或汽車上播放，否則使用揚聲器；來自 Hermes 的通話會像電話一樣從聽筒開始，自動接聽時則從揚聲器開始。兩個選擇在通話畫面上也有。"
           }
         }
       }
@@ -51047,6 +51047,416 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已儲存，但無法移除舊的閘道路由（%1$@.use_gateway）：%2$@"
+          }
+        }
+      }
+    },
+    "Answer automatically" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch annehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contestar automáticamente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Répondre automatiquement"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawab otomatis"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rispondi automaticamente"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動で応答"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동으로 받기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odbieraj automatycznie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atender automaticamente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отвечать автоматически"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otomatik yanıtla"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动接听"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動接聽"
+          }
+        }
+      }
+    },
+    "After 3 seconds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach 3 Sekunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tras 3 segundos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Après 3 secondes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setelah 3 detik"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopo 3 secondi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3秒後"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3초 후"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po 3 sekundach"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Após 3 segundos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Через 3 секунды"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 saniye sonra"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 秒后"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 秒後"
+          }
+        }
+      }
+    },
+    "After 5 seconds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach 5 Sekunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tras 5 segundos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Après 5 secondes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setelah 5 detik"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopo 5 secondi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5秒後"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5초 후"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po 5 sekundach"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Após 5 segundos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Через 5 секунд"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 saniye sonra"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 秒后"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 秒後"
+          }
+        }
+      }
+    },
+    "After 10 seconds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach 10 Sekunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tras 10 segundos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Après 10 secondes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setelah 10 detik"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopo 10 secondi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10秒後"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10초 후"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po 10 sekundach"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Após 10 segundos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Через 10 секунд"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 saniye sonra"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 秒后"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 秒後"
+          }
+        }
+      }
+    },
+    "Calls from %@ connect on their own after the wait, on the speaker unless headphones or a car are connected. Decline while it rings to stop it. A call never answers while you're on another call, or when a Focus silences it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe von %@ werden nach der Wartezeit von selbst verbunden, über den Lautsprecher, außer Kopfhörer oder ein Auto sind verbunden. Lehne während des Klingelns ab, um das zu verhindern. Ein Anruf wird nie angenommen, während du in einem anderen Gespräch bist oder wenn ein Fokus ihn stummschaltet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas de %@ se conectan solas tras la espera, por el altavoz salvo que haya auriculares o un coche conectados. Recházala mientras suena para evitarlo. Una llamada nunca se contesta mientras estás en otra llamada ni cuando un modo de concentración la silencia."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels de %@ se connectent seuls après le délai, sur le haut-parleur sauf si des écouteurs ou une voiture sont connectés. Refusez pendant la sonnerie pour l'empêcher. Un appel ne répond jamais pendant que vous êtes en communication, ni quand un mode de concentration le met en silence."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dari %@ tersambung sendiri setelah jeda, lewat speaker kecuali headphone atau mobil tersambung. Tolak saat berdering untuk mencegahnya. Panggilan tidak pernah dijawab saat Anda sedang dalam panggilan lain, atau saat Fokus membisukannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate di %@ si collegano da sole dopo l'attesa, in vivavoce a meno che non siano collegati auricolari o un'auto. Rifiuta mentre squilla per evitarlo. Una chiamata non risponde mai mentre sei in un'altra chiamata, né quando una modalità Full immersion la silenzia."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@からの通話は待ち時間のあと自動でつながり、ヘッドフォンや車が接続されていなければスピーカーで流れます。鳴っている間に拒否すれば止められます。ほかの通話中や、集中モードで消音された通話には自動で応答しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 통화는 대기 시간 후 저절로 연결되며, 헤드폰이나 차량이 연결되어 있지 않으면 스피커로 재생됩니다. 울리는 동안 거절하면 막을 수 있습니다. 다른 통화 중이거나 집중 모드가 무음 처리한 통화는 자동으로 받지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia od %@ łączą się same po czasie oczekiwania, przez głośnik, chyba że podłączone są słuchawki lub samochód. Odrzuć, gdy dzwoni, aby temu zapobiec. Połączenie nigdy nie odbiera się samo, gdy rozmawiasz przez telefon ani gdy tryb skupienia je wycisza."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas de %@ se conectam sozinhas após a espera, no alto-falante, a menos que fones ou um carro estejam conectados. Recuse enquanto toca para impedir. Uma chamada nunca é atendida enquanto você está em outra chamada ou quando um Foco a silencia."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки от %@ соединяются сами после ожидания, через динамик, если не подключены наушники или автомобиль. Отклоните звонок, пока он звонит, чтобы этого не произошло. Звонок никогда не принимается сам, пока вы говорите по другому звонку или когда режим фокусирования его заглушает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aramaları bekleme süresinden sonra kendiliğinden bağlanır; kulaklık veya araç bağlı değilse hoparlörden çalar. Durdurmak için çalarken reddedin. Başka bir aramadayken ya da bir Odak modu sessize aldığında arama asla kendiliğinden yanıtlanmaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自 %@ 的通话会在等待后自动接通，除非连接了耳机或车载设备，否则使用扬声器。响铃时拒绝即可阻止。你正在通话时，或被专注模式静音的通话，都不会自动接听。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來自 %@ 的通話會在等待後自動接通，除非連接了耳機或車用裝置，否則使用揚聲器。響鈴時拒絕即可阻止。你正在通話時，或被專注模式靜音的通話，都不會自動接聽。"
           }
         }
       }

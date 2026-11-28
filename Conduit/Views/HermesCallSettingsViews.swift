@@ -211,6 +211,8 @@ struct HermesCallSettingsSection: View {
     @State private var ringtoneForAll: HermesRingtone
     @State private var ringtoneOwn: HermesRingtone?
     @State private var ringtonePreview = HermesRingtonePreview()
+    /// This bot's "Answer automatically" on this iPhone (issue 3421).
+    @State private var autoAnswer: HermesAutoAnswer
     @State private var saveTask: Task<Void, Never>?
     /// Whose settings the draft holds, and how they're saved: a switch of
     /// profile or server can hand this view another's model before it
@@ -231,6 +233,7 @@ struct HermesCallSettingsSection: View {
         let ringtones = HermesRingtoneStore()
         _ringtoneForAll = State(initialValue: ringtones.forAll)
         _ringtoneOwn = State(initialValue: ringtones.own(profile: model.profile))
+        _autoAnswer = State(initialValue: HermesAutoAnswerStore().choice(profile: model.profile))
         _pluginPairsEveryDevice = State(initialValue: Self.pairsEveryDevice)
         _pairsEveryDeviceChanges = State(initialValue: Self.makePairsEveryDeviceChanges())
     }
@@ -368,6 +371,26 @@ struct HermesCallSettingsSection: View {
             .foregroundStyle(.secondary)
     }
 
+    /// "Answer automatically" (issue 3421): this bot's calls connect on
+    /// their own after a short wait, on this iPhone only.
+    @ViewBuilder
+    private var autoAnswerRow: some View {
+        ConduitMenuPicker(
+            value: autoAnswer,
+            choices: HermesAutoAnswer.allCases.map { (id: $0, title: $0.title) },
+            onSelect: { choice in
+                autoAnswer = choice
+                HermesAutoAnswerStore().set(choice, profile: model.profile)
+            }
+        ) {
+            Text(AppLocalization.string("Answer automatically", table: .voice)).foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("hermesCalls.autoAnswer")
+        Text(AppLocalization.string("Calls from \(model.botName) connect on their own after the wait, on the speaker unless headphones or a car are connected. Decline while it rings to stop it. A call never answers while you're on another call, or when a Focus silences it.", table: .voice))
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Calls from Hermes"), symbol: "phone.arrow.down.left", tint: .green) {
             if let status = model.status {
@@ -406,6 +429,7 @@ struct HermesCallSettingsSection: View {
                         }
                         if ringsLikeCall {
                             ringtoneRows
+                            autoAnswerRow
                             focusContactRow
                         }
                     }

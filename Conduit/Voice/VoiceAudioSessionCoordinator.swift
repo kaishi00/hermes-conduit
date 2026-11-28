@@ -473,6 +473,12 @@ final class VoiceAudioSessionCoordinator {
         if nativeCallSpeaker.isOn != isOn { nativeCallSpeaker.isOn = isOn }
     }
 
+    /// A call from Hermes playing on the earpiece: where a call Conduit
+    /// answered by itself (issue 3421) would go unheard.
+    var isNativeCallOnEarpiece: Bool {
+        isInNativeCall && session.isOutputOnBuiltInReceiver
+    }
+
     /// The call screen's Speaker button: the loudspeaker, or back to the
     /// route's own output (the earpiece, or a headset that is on). The
     /// same override CallKit's button makes; a category change in the

@@ -172,6 +172,13 @@ final class HermesNativeCalls: NSObject {
         /// The voice conversation the answer opened is running.
         var voiceStarted = false
         var unanswered: Task<Void, Never>?
+        /// "Answer automatically" (issue 3421): answers it once its wait
+        /// is over, unless the user answered or declined first.
+        var autoAnswer: Task<Void, Never>? = nil
+        /// Conduit answered it by itself and its audio hasn't started: it
+        /// goes on the speaker if it would start on the earpiece, as no one
+        /// is holding the phone to their ear.
+        var answeredItself = false
         var work: Task<Void, Never>?
         /// Answered on the Watch with a headset on here, and kept here
         /// (#1204): the Watch's call screen controls it through the ring's
@@ -466,9 +473,42 @@ final class HermesNativeCalls: NSObject {
                 guard self.calls[id]?.answered == false else { return }
                 self.finish(id, reason: .unanswered, notice: .missed)
             }
+            if let delay = HermesAutoAnswerStore().choice(profile: calls[id]?.target.profile).delay {
+                HermesCallTrace.shared.note("Answers by itself in \(delay.components.seconds) s")
+                calls[id]?.autoAnswer = Task { await self.answerByItself(id, after: delay) }
+            }
             // Hermes' connection starts coming up while it rings.
             AppStateRuntimeRegistry.shared.appState.setNativeHermesCallActive(true)
         }
+    }
+
+    /// "Answer automatically" (issue 3421): the call answers through
+    /// CallKit, as a tap on Answer does, once it has rung for `delay`. A
+    /// call already answered (here or on the Watch), declined or ended
+    /// meanwhile is left alone.
+    private func answerByItself(_ id: UUID, after delay: Duration) async {
+        do { try await Task.sleep(for: delay) } catch { return }
+        guard let call = calls[id], !call.answered, !call.keptFromWatch else { return }
+        // A phone call of any app's, a cellular one included: answering
+        // would put it on hold, so this call rings on for a tap.
+        if Self.otherCallBlocksAutoAnswer(id, calls: callController.callObserver.calls.map { (uuid: $0.uuid, hasEnded: $0.hasEnded) }) {
+            HermesCallTrace.shared.note("Not answering by itself: another call is on")
+            return
+        }
+        calls[id]?.answeredItself = true
+        HermesCallTrace.shared.note("Answering by itself")
+        do {
+            try await callController.request(CXTransaction(action: CXAnswerCallAction(call: id)))
+        } catch {
+            calls[id]?.answeredItself = false
+            HermesCallTrace.shared.note("Couldn't answer by itself: \(LogRedaction.message(error))")
+        }
+    }
+
+    /// Whether another call on the phone (any app's, a cellular one too)
+    /// keeps a call from answering by itself.
+    nonisolated static func otherCallBlocksAutoAnswer(_ id: UUID, calls: [(uuid: UUID, hasEnded: Bool)]) -> Bool {
+        calls.contains { $0.uuid != id && !$0.hasEnded }
     }
 
     /// Whether a push is reported to CallKit: every one that rings, and
@@ -509,6 +549,7 @@ final class HermesNativeCalls: NSObject {
         // Taken here: a stop for its ring that comes later leaves no missed call.
         noticed(calls[action.callUUID]?.ring?.id)
         calls[action.callUUID]?.unanswered?.cancel()
+        calls[action.callUUID]?.autoAnswer?.cancel()
         // CallKit activates the session once the action is fulfilled.
         VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
         action.fulfill()
@@ -706,6 +747,7 @@ final class HermesNativeCalls: NSObject {
         guard let call = calls.removeValue(forKey: id) else { return }
         HermesCallTrace.shared.note("Call ended (\(Self.traceLabel(reason)))")
         call.unanswered?.cancel()
+        call.autoAnswer?.cancel()
         call.work?.cancel()
         endOnWatch(call)
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
@@ -937,6 +979,7 @@ final class HermesNativeCalls: NSObject {
         HermesCallTrace.shared.note("Answered on the Watch with a headset on here: keeping it here")
         calls[id]?.keptFromWatch = true
         calls[id]?.unanswered?.cancel()
+        calls[id]?.autoAnswer?.cancel()
         let end = BackgroundTaskHold.begin("conduit.hermesCall.keepFromWatch")
         Task {
             defer { end() }
@@ -1101,6 +1144,7 @@ final class HermesNativeCalls: NSObject {
             let id = match.key
             HermesCallTrace.shared.note("Answered on the Watch, waiting for the relay's stop")
             match.value.unanswered?.cancel()
+            match.value.autoAnswer?.cancel()
             calls[id]?.unanswered = Task {
                 do { try await Task.sleep(for: Self.watchStopWait) } catch { return }
                 guard self.calls[id]?.answered == false else { return }
@@ -1138,6 +1182,7 @@ final class HermesNativeCalls: NSObject {
         }
         HermesCallTrace.shared.note(call.answered ? "Hung up" : "Declined")
         call.unanswered?.cancel()
+        call.autoAnswer?.cancel()
         call.work?.cancel()
         endOnWatch(call)
         action.fulfill()
@@ -1281,6 +1326,7 @@ extension HermesNativeCalls: CXProviderDelegate {
             let answered = self.calls.values.filter(\.answered).map(\.target)
             for call in self.calls.values {
                 call.unanswered?.cancel()
+                call.autoAnswer?.cancel()
                 call.work?.cancel()
                 self.endOnWatch(call)
                 // A call still ringing leaves its trace, as on every other end.
@@ -1324,6 +1370,17 @@ extension HermesNativeCalls: CXProviderDelegate {
             HermesCallTrace.shared.note("CallKit audio on")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
             HermesCallTrace.shared.note("Audio route: \(HermesCallAudioRoute.describe(audioSession))")
+            // A call answered by itself (issue 3421) goes on the speaker
+            // once, when it would start on the earpiece: headphones, a car
+            // or a Bluetooth speaker keep it, and audio coming back later
+            // leaves wherever the user put it.
+            if let itself = self.calls.first(where: { $0.value.answered && $0.value.answeredItself })?.key {
+                self.calls[itself]?.answeredItself = false
+                if VoiceAudioSessionCoordinator.shared.isNativeCallOnEarpiece {
+                    HermesCallTrace.shared.note("Answered by itself: on the speaker")
+                    VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(true)
+                }
+            }
             self.audioActive = true
             self.observeRoute()
             self.resumeAudioWaiters()

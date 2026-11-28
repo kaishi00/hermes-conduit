@@ -250,7 +250,7 @@ struct VoiceAudioDeviceSettingsSection: View {
                     .accessibilityHidden(true)
                     .overlay(VoiceOutputPickerOverlay(device: names.output))
                     .accessibilityIdentifier("voice.audioDevices.output")
-                caption(AppLocalization.string("Calls play on the headset, AirPods or car that's connected, otherwise on the speaker; calls from Hermes start on the earpiece, like a phone call. Both pickers are on the call screen too.", table: .voice))
+                caption(AppLocalization.string("Calls play on the headset, AirPods or car that's connected, otherwise on the speaker; calls from Hermes start on the earpiece, like a phone call, or on the speaker when they answer automatically. Both pickers are on the call screen too.", table: .voice))
                 caption(AppLocalization.string("There is no level to set for when the microphone opens. Classic voice listens for your voice above the room's noise and adjusts as the room changes; in the live modes the provider decides when you start and stop speaking.", table: .voice))
             }
             .onAppear { names.refresh() }
