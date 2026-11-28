@@ -242,6 +242,14 @@ final class HermesNativeCalls: NSObject {
             // Where CallKit isn't allowed, calls on end too. Once the
             // setting has turned ringing off, a call still on carries on.
             stopRinging(endingCalls: isRinging)
+            // A call the user started ends where CallKit isn't allowed,
+            // whatever the ringing setting.
+            if !HermesNativeCallStorefront.allowsCalls(known) {
+                for id in Array(outgoing.keys) {
+                    AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+                    endOutgoing(id, reason: .failed)
+                }
+            }
         }
     }
 
@@ -796,7 +804,10 @@ final class HermesNativeCalls: NSObject {
     func startCall(profile: String) async -> StartCallResult {
         guard Self.offersRinging else { return .unavailable }
         ensureProvider()
-        guard calls.isEmpty, outgoing.isEmpty, !callController.callObserver.calls.contains(where: { !$0.hasEnded }) else { return .busy }
+        // Voice already running (here or a Watch call) isn't the call's:
+        // its open would find voice in use, and a hang up would end it.
+        let voiceBusy = AppStateRuntimeRegistry.shared.existing.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
+        guard !voiceBusy, calls.isEmpty, outgoing.isEmpty, !callController.callObserver.calls.contains(where: { !$0.hasEnded }) else { return .busy }
         let id = UUID()
         outgoing[id] = OutgoingCall(profile: profile)
         HermesCallTrace.shared.begin("Call started from Siri")
@@ -859,7 +870,13 @@ final class HermesNativeCalls: NSObject {
             endOutgoing(id, reason: .failed)
             return
         }
-        guard outgoing[id] != nil else { return }
+        // Hung up while it opened: the voice it opened goes too (voice
+        // wasn't in use when it began, so what runs now is this call's).
+        guard outgoing[id] != nil else {
+            HermesCallTrace.shared.note("Voice opened after the call ended: ending it")
+            appState.endVoiceForNativeCall()
+            return
+        }
         provider?.reportOutgoingCall(with: id, connectedAt: Date())
         // Until the voice it opened ends, as an answered call's.
         var started = false
