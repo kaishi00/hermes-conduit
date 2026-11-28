@@ -314,32 +314,69 @@ enum ReplyHTML {
 
     /// Whether each line lies wholly inside a comment opened on an earlier
     /// line, its `-->` still to come: a `</details>` there closes nothing
-    /// (#3349). The line holding the `-->` isn't, since a close ending it
-    /// comes after the comment. Comments in code spans and fenced blocks don't count.
+    /// (#3349), and a `<details>` there opens nothing. The line holding the
+    /// `-->` isn't, since a close ending it comes after the comment. Comments
+    /// in code spans and fenced blocks don't count, nor a `<!--` in a
+    /// script's, a style's, a textarea's or a title's text, which a page reads
+    /// as text (`closingOffset`, #3460 review).
     static func commentLines(_ lines: [String]) -> [Bool] {
-        var scan = CommentScan()
-        return lines.map { scan.inside($0) }
-    }
-
-    /// `commentLines` read a line at a time.
-    struct CommentScan {
-        private var open = false
-        private var fence = CodeFence()
-
-        /// Whether `line`, read after the lines before it, lies wholly inside a comment.
-        mutating func inside(_ line: String) -> Bool {
-            var rest = line
+        var open = false
+        var raw: String?
+        var fence = CodeFence()
+        return lines.map { (line: String) -> Bool in
+            var rest = line as NSString
             if open {
-                guard let end = line.range(of: "-->") else { return true }
-                rest = String(line[end.upperBound...])
+                let end = rest.range(of: "-->")
+                guard end.location != NSNotFound else { return true }
+                rest = rest.substring(from: end.location + end.length) as NSString
                 open = false
+            } else if let name = raw {
+                guard let after = rawTextEnd(of: name, in: rest, from: 0) else { return false }
+                rest = rest.substring(from: after) as NSString
+                raw = nil
             } else if fence.isCode(line) {
                 return false
             }
-            let filler = "\u{1}"
-            open = ReplyHTML.matches(ReplyHTML.unfinishedComment, ReplyHTML.replacing(ReplyHTML.comment, in: ReplyHTML.withoutCodeSpans(rest, filler: filler), with: filler))
+            let text = withoutCodeSpans(rest as String, filler: "\u{1}") as NSString
+            // Read left to right: whichever opens first, a comment or a raw-text element, holds what follows.
+            var at = 0
+            while at < text.length {
+                let comment = text.range(of: "<!--", range: NSRange(location: at, length: text.length - at))
+                let element = rawTextOpening.firstMatch(in: text as String, range: NSRange(location: at, length: text.length - at))
+                if comment.location != NSNotFound, element.map({ comment.location < $0.range.location }) ?? true {
+                    let from = comment.location + comment.length
+                    let end = text.range(of: "-->", range: NSRange(location: from, length: text.length - from))
+                    guard end.location != NSNotFound else {
+                        open = true
+                        break
+                    }
+                    at = end.location + end.length
+                } else if let element {
+                    at = element.range.location + element.range.length
+                    // `<script/>` holds no text.
+                    if text.substring(with: element.range).hasSuffix("/>") { continue }
+                    let name = text.substring(with: element.range(at: 1)).lowercased()
+                    guard let after = rawTextEnd(of: name, in: text, from: at) else {
+                        raw = name
+                        break
+                    }
+                    at = after
+                } else {
+                    break
+                }
+            }
             return false
         }
+    }
+
+    private static let rawTextOpening = compiled(#"<(script|style|textarea|title)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#, [.caseInsensitive])
+
+    /// The offset just past `name`'s closing tag in `text`, reading from `start`, or nil while it's still to come.
+    private static func rawTextEnd(of name: String, in text: NSString, from start: Int) -> Int? {
+        let end = text.range(of: "</\(name)", options: .caseInsensitive, range: NSRange(location: start, length: text.length - start))
+        guard end.location != NSNotFound else { return nil }
+        let close = text.range(of: ">", range: NSRange(location: end.location, length: text.length - end.location))
+        return close.location == NSNotFound ? nil : close.location + 1
     }
 
     /// Whether `text` ends in a `</details>` that closes a fold: one ending

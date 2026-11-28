@@ -166,6 +166,14 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.fold(in: spanning, at: 0)?.end, 7)
         XCTAssertEqual(ReplyHTML.commentLines(["`<!--` in code", "</details>"]), [false, false])
         XCTAssertEqual(ReplyHTML.commentLines(["<!-- closed -->", "</details>"]), [false, false])
+        // A `<!--` in a script's or a style's text is text, as a page reads it (#3460 review).
+        XCTAssertEqual(ReplyHTML.commentLines(["<script>var marker = \"<!--\";</script>", "<details>"]), [false, false])
+        XCTAssertEqual(ReplyHTML.commentLines(["<script>", "const m = \"<!--\";", "</script>", "<details>"]), [false, false, false, false])
+        XCTAssertEqual(ReplyHTML.commentLines(["<style>/* <!-- */</style> <!-- real", "<details>", "-->"]), [false, true, false])
+        // A script inside a comment is the comment's.
+        XCTAssertEqual(ReplyHTML.commentLines(["<!-- <script>", "<details>", "-->", "After."]), [false, true, false, false])
+        let script = ["<script>var marker = \"<!--\";</script>", "<details>", "<summary>Log</summary>", "line", "</details>"]
+        XCTAssertEqual(ReplyHTML.fold(in: script, at: 1)?.end, 5)
     }
 
     func testACloseInsideACodeSpanInTheBodyStillFolds() {
