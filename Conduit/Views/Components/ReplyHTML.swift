@@ -318,7 +318,9 @@ enum ReplyHTML {
     /// `-->` isn't, since a close ending it comes after the comment. Comments
     /// in code spans and fenced blocks don't count, nor a `<!--` in a
     /// script's, a style's, a textarea's or a title's text, which a page reads
-    /// as text (`closingOffset`, #3460 review).
+    /// as text (`closingOffset`, #3460 review). A line wholly inside such
+    /// text counts too: a page reads a `</details>` there as text, so it
+    /// closes nothing (desktop#759 review).
     static func commentLines(_ lines: [String]) -> [Bool] {
         var open = false
         var raw: String?
@@ -331,7 +333,8 @@ enum ReplyHTML {
                 rest = rest.substring(from: end.location + end.length) as NSString
                 open = false
             } else if let name = raw {
-                guard let after = rawTextEnd(of: name, in: rest, from: 0) else { return false }
+                // Wholly a script's text: a `</details>` there closes nothing either, as a page reads it.
+                guard let after = rawTextEnd(of: name, in: rest, from: 0) else { return true }
                 rest = rest.substring(from: after) as NSString
                 raw = nil
             } else if fence.isCode(line) {
@@ -353,8 +356,11 @@ enum ReplyHTML {
                     at = end.location + end.length
                 } else if let element {
                     at = element.range.location + element.range.length
-                    // `<script/>` holds no text.
-                    if text.substring(with: element.range).hasSuffix("/>") { continue }
+                    // `<script/>` holds no text. Only an element where a page's tags go counts: starting the line
+                    // or right after another tag, never prose naming it (`The <script> tag`) or an attribute's
+                    // value (`title="<script>"`) (#3464 review).
+                    let before = text.substring(to: element.range.location).trimmingCharacters(in: .whitespaces)
+                    if text.substring(with: element.range).hasSuffix("/>") || (!before.isEmpty && !before.hasSuffix(">")) { continue }
                     let name = text.substring(with: element.range(at: 1)).lowercased()
                     guard let after = rawTextEnd(of: name, in: text, from: at) else {
                         raw = name

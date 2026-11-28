@@ -168,12 +168,20 @@ final class ReplyHTMLTests: XCTestCase {
         XCTAssertEqual(ReplyHTML.commentLines(["<!-- closed -->", "</details>"]), [false, false])
         // A `<!--` in a script's or a style's text is text, as a page reads it (#3460 review).
         XCTAssertEqual(ReplyHTML.commentLines(["<script>var marker = \"<!--\";</script>", "<details>"]), [false, false])
-        XCTAssertEqual(ReplyHTML.commentLines(["<script>", "const m = \"<!--\";", "</script>", "<details>"]), [false, false, false, false])
+        XCTAssertEqual(ReplyHTML.commentLines(["<script>", "const m = \"<!--\";", "</script>", "<details>"]), [false, true, false, false])
         XCTAssertEqual(ReplyHTML.commentLines(["<style>/* <!-- */</style> <!-- real", "<details>", "-->"]), [false, true, false])
         // A script inside a comment is the comment's.
         XCTAssertEqual(ReplyHTML.commentLines(["<!-- <script>", "<details>", "-->", "After."]), [false, true, false, false])
         let script = ["<script>var marker = \"<!--\";</script>", "<details>", "<summary>Log</summary>", "line", "</details>"]
         XCTAssertEqual(ReplyHTML.fold(in: script, at: 1)?.end, 5)
+        // A `</details>` in a script's text closes nothing (desktop#759 review).
+        let inScript = ["<details>", "<summary>S</summary>", "<script>", "var m = \"<!--\";", "</details>", "</script>", "</details>", "After."]
+        XCTAssertEqual(ReplyHTML.commentLines(inScript), [false, false, false, true, true, false, false, false])
+        XCTAssertEqual(ReplyHTML.fold(in: inScript, at: 0)?.end, 7)
+        XCTAssertEqual(ReplyHTML.commentLines(["<textarea>", "<!--", "</textarea>", "<title><!--</title>", "<details>"]), [false, true, false, false, false])
+        // Prose naming a script, or an attribute holding one, opens no script text: a comment after it still counts.
+        XCTAssertEqual(ReplyHTML.commentLines(["The <script> tag runs JavaScript.", "<!-- note", "</details>", "-->"]), [false, false, true, false])
+        XCTAssertEqual(ReplyHTML.commentLines(["<div title=\"<script>\"> <!-- note", "</details>", "-->"]), [false, true, false])
     }
 
     func testACloseInsideACodeSpanInTheBodyStillFolds() {
