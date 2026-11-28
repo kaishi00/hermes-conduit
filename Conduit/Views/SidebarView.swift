@@ -2953,7 +2953,10 @@ struct CronRunOutputRow: View {
             }
             .buttonStyle(.plain)
             .disabled(output == nil)
-            .accessibilityHint(output == nil ? "" : AppLocalization.string("Shows this run's output. It has no chat.", table: .chat))
+            // Named by its title and time: the output is read as its own
+            // text once open, not as the toggle's name.
+            .accessibilityLabel([name, run.timeLabel()].filter { !$0.isEmpty }.joined(separator: ", "))
+            .accessibilityHint(output == nil ? "" : expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows this run's output. It has no chat.", table: .chat))
             .accessibilityValue(output == nil ? "" : expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
             if expanded {
                 outputText.textSelection(.enabled)
