@@ -177,6 +177,8 @@ enum ReplyHTML {
         // The `</details>` line of each fold open here: a page left open in a
         // fold ends there, as the chat and its reference scan read it (#3444).
         var foldCloses: [Int] = []
+        // Read once for the whole reply, so each fold's look-ahead doesn't rescan it.
+        let inComment = commentLines(lines)
         while index < lines.count {
             let line = lines[index]
             foldCloses.removeAll { $0 < index }
@@ -185,8 +187,8 @@ enum ReplyHTML {
                 index += 1
                 continue
             }
-            if opensFold(line), let fold = fold(in: lines, at: index), fold.end > index + 1,
-               lines[fold.end - 1].trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("</details") {
+            if opensFold(line), let fold = fold(in: lines, at: index, comments: inComment), fold.end > index + 1,
+               closesFoldLine(lines[fold.end - 1]) {
                 foldCloses.append(fold.end - 1)
             }
             if startsPage(in: lines, at: index) {
@@ -319,8 +321,7 @@ enum ReplyHTML {
         return lines.map { scan.inside($0) }
     }
 
-    /// `commentLines` read a line at a time, so a fold scans only its own
-    /// lines rather than the whole reply for each fold.
+    /// `commentLines` read a line at a time.
     struct CommentScan {
         private var open = false
         private var fence = CodeFence()
@@ -381,8 +382,21 @@ enum ReplyHTML {
         line.contains("<") && matches(foldOpening, line)
     }
 
+    /// Whether `line` is a fold's `</details>` close, whole: a `</details`
+    /// still streaming in isn't one yet.
+    static func closesFoldLine(_ line: String) -> Bool {
+        matches(foldClosing, line)
+    }
+
     /// The fold opening at line `start`, or nil when it doesn't open one.
-    static func fold(in lines: [String], at start: Int) -> Fold? {
+    /// A `<details>` inside a comment opens none, as a `</details>` there
+    /// closes none (#3349). `comments` is `commentLines(lines)`: a caller
+    /// reading many folds in the same lines reads it once and passes it in.
+    /// It's read for the whole reply, so a comment opened before the fold
+    /// still hides what it covers, the fold's opening included.
+    static func fold(in lines: [String], at start: Int, comments: [Bool]? = nil) -> Fold? {
+        let inComment = comments ?? commentLines(lines)
+        guard !inComment[start] else { return nil }
         let opening = lines[start] as NSString
         guard let match = foldOpening.firstMatch(in: lines[start], range: NSRange(location: 0, length: opening.length)) else { return nil }
         let isOpen = match.range(at: 1).length > 0
@@ -401,12 +415,9 @@ enum ReplyHTML {
         var body: [String] = []
         var depth = 0
         var fence = CodeFence()
-        // Comments read from the fold's own opening: its body only, once.
-        var comments = CommentScan()
-        for line in lines[start..<index] { _ = comments.inside(line) }
         while index < lines.count {
             let line = lines[index]
-            if !comments.inside(line), !fence.isCode(line) {
+            if !inComment[index], !fence.isCode(line) {
                 if opensFold(line) { depth += 1 }
                 else if matches(foldClosing, line) {
                     if depth == 0 {

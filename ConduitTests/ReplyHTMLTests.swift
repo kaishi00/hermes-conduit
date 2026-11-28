@@ -102,10 +102,16 @@ final class ReplyHTMLTests: XCTestCase {
                        "<details><summary>S</summary>\nPage\n</details>")
     }
 
-    func testAFoldReadsCommentsFromItsOwnOpening() {
-        // #3446 review: a fold opened inside a comment ends at its own close, not the reply's end.
+    func testADetailsInsideACommentOpensNoFold() {
+        // #3446 review: a fold opened inside a comment mustn't run to the reply's end.
+        // It opens none at all, as a close there closes none (#3448 review).
         let lines = ["<!--", "<details>", "Body", "</details>", "-->", "After."]
-        XCTAssertEqual(ReplyHTML.fold(in: lines, at: 1)?.end, 4)
+        XCTAssertNil(ReplyHTML.fold(in: lines, at: 1))
+        let nested = ["<!--", "<details>", "<details>", "-->", "</details>", "After."]
+        XCTAssertNil(ReplyHTML.fold(in: nested, at: 1))
+        // A fold after the comment reads it from the reply, once, passed in.
+        let after = ["<!-- a", "</details>", "-->", "<details>", "Body", "</details>", "After."]
+        XCTAssertEqual(ReplyHTML.fold(in: after, at: 3, comments: ReplyHTML.commentLines(after))?.end, 6)
         // A comment opened in the body still hides a close until its end (#3349).
         let body = ["<details>", "<!-- a", "</details>", "-->", "</details>", "After."]
         XCTAssertEqual(ReplyHTML.fold(in: body, at: 0)?.end, 5)
@@ -114,6 +120,10 @@ final class ReplyHTMLTests: XCTestCase {
     func testAPageLeftOpenInAFoldIsSaidOnlyToTheFoldsClose() {
         let reply = "<details>\n<summary>S</summary>\n<div>\nA\n</details>\n\nAfter."
         XCTAssertEqual(ReplyHTML.pagesSaid(reply, as: "Page"), "<details>\n<summary>S</summary>\nPage\n</details>\n\nAfter.")
+        // A `</details` still streaming in isn't the fold's close yet, so the page runs on (#3448 review).
+        XCTAssertFalse(ReplyHTML.closesFoldLine("</details"))
+        XCTAssertTrue(ReplyHTML.closesFoldLine("</details>"))
+        XCTAssertEqual(ReplyHTML.pagesSaid("<details>\n<div>\nA\n</details", as: "Page"), "<details>\nPage")
     }
 
     func testProseStartingWithDetailsStaysProseWhenLaterClosesAreOtherFoldsOrCode() {
