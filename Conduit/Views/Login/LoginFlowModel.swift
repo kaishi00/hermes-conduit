@@ -347,7 +347,9 @@ final class LoginFlowModel {
             address: handoff.serverURL,
             username: leavesTheCodesDashboard ? "" : handoff.username,
             password: leavesTheCodesDashboard ? "" : handoff.password,
-            cloudflare: handoff.cloudflare
+            cloudflare: handoff.cloudflare,
+            // A computer-sent session token stays with its dashboard, as the code's password does.
+            sessionToken: leavesTheCodesDashboard ? nil : seededSessionToken
         ))
     }
 

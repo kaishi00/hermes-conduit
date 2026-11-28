@@ -186,6 +186,17 @@ struct ConnectLinkSheet: View {
                 .accessibilityIdentifier("connect-link.username")
                 .overlay(alignment: .top) { V2RowDivider(leadingInset: 56) }
             }
+            if link.sessionToken != nil {
+                LoginRowLabel(
+                    icon: "key",
+                    title: AppLocalization.string("Session token", table: .connection),
+                    detail: AppLocalization.string("The code includes the session token.", table: .connection),
+                    accessory: .hidden
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("connect-link.session-token")
+                .overlay(alignment: .top) { V2RowDivider(leadingInset: 56) }
+            }
         }
         .settingsCard()
     }
