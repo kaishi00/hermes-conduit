@@ -912,7 +912,11 @@ extension AppState {
             errorMessage = AppLocalization.string("End the call before starting another voice conversation.")
             return true
         }
-        if intent.source != .hermesCall { keepVoiceFromHermesCallCleanup() }
+        if let generation = intent.callGeneration {
+            hermesCallOpenGeneration = generation
+        } else if intent.source != .hermesCall {
+            keepVoiceFromHermesCallCleanup()
+        }
         handBackEndedCallJobsNow()
         voiceLaunchesInFlight += 1
         defer {

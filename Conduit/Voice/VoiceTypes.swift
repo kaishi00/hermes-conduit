@@ -630,6 +630,11 @@ struct PendingVoiceIntent: Equatable {
     /// there first (`handledVoiceLaunchOnFarDashboard`).
     var dashboardID: UUID? = nil
 
+    /// A call the user started with Siri (issue 3421): its open owns the
+    /// call's cleanup fence (`hermesCallOpenGeneration`), so a hang up
+    /// during the open ends only what this open started.
+    var callGeneration: UUID? = nil
+
     /// `newCall`: the sidebar's New voice call, never attached to a chat.
     /// `screenQuestion`: the Ask Hermes About Screen action.
     /// `hermesCall`: Talk on a "Hermes wants to talk" notification (#449),

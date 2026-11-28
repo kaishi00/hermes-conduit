@@ -56,6 +56,13 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: false, watchCall: true), "a Watch call is on", "The trace says which")
     }
 
+    func testASiriCallEndsOnlyTheVoiceItOpened() {
+        let open = UUID()
+        XCTAssertTrue(HermesNativeCalls.openStillOwnsVoice(open, current: open), "Hung up while it opened: its voice goes too")
+        XCTAssertFalse(HermesNativeCalls.openStillOwnsVoice(open, current: nil), "Voice started another way since cleared the fence")
+        XCTAssertFalse(HermesNativeCalls.openStillOwnsVoice(open, current: UUID()), "Another call's open owns it now")
+    }
+
     func testARecentsCallFindsItsBot() {
         let bots = ["default", "Furina", "nova.dev"]
         XCTAssertEqual(HermesNativeCalls.profile(calling: "hermes+furina@hermesconduit.app", among: bots), "Furina", "The address folds case: matched to the bot, not read back")

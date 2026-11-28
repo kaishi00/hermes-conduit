@@ -864,17 +864,23 @@ final class HermesNativeCalls: NSObject {
         let connected = await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: Self.connectionTimeout)
         HermesCallTrace.shared.note(connected ? "Connected" : "Not connected in time", since: connectionWait)
         guard outgoing[id] != nil, !Task.isCancelled else { return }
-        guard connected, !appState.isVoiceInUse,
-              await appState.openVoiceConversation(PendingVoiceIntent(profile: profile, startsFreshConversation: true, source: .siri)) else {
+        let generation = UUID()
+        var intent = PendingVoiceIntent(profile: profile, startsFreshConversation: true, source: .siri)
+        intent.callGeneration = generation
+        guard connected, !appState.isVoiceInUse, await appState.openVoiceConversation(intent) else {
             HermesCallTrace.shared.note("Voice not opened")
             endOutgoing(id, reason: .failed)
             return
         }
-        // Hung up while it opened: the voice it opened goes too (voice
-        // wasn't in use when it began, so what runs now is this call's).
+        let ownsVoice = Self.openStillOwnsVoice(generation, current: appState.hermesCallOpenGeneration)
+        if ownsVoice { appState.keepVoiceFromHermesCallCleanup() }
+        // Hung up while it opened: the voice it opened goes too, unless
+        // voice started another way since (that start took the fence).
         guard outgoing[id] != nil else {
-            HermesCallTrace.shared.note("Voice opened after the call ended: ending it")
-            appState.endVoiceForNativeCall()
+            if ownsVoice {
+                HermesCallTrace.shared.note("Voice opened after the call ended: ending it")
+                appState.endVoiceForNativeCall()
+            }
             return
         }
         provider?.reportOutgoingCall(with: id, connectedAt: Date())
@@ -894,6 +900,12 @@ final class HermesNativeCalls: NSObject {
         HermesCallTrace.shared.note(started ? "Voice ended" : "Voice not in use in time")
         if !started { appState.endVoiceForNativeCall() }
         endOutgoing(id, reason: started ? .remoteEnded : .failed)
+    }
+
+    /// Whether a Siri call's voice open may still end what it opened: no
+    /// voice started another way since it began.
+    nonisolated static func openStillOwnsVoice(_ generation: UUID, current: UUID?) -> Bool {
+        current == generation
     }
 
     private func endOutgoing(_ id: UUID, reason: CXCallEndedReason) {
