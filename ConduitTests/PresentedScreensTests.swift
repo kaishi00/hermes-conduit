@@ -693,4 +693,15 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(PcControlling.failedStop("asuka-1", after: nil))
         XCTAssertNil(PcControlling.failedStop(nil, after: asuka))
     }
+
+    /// #3446 review: a turn counts for its own chat only. Another chat's
+    /// turn, or coming back to a chat whose turn still runs, starts none.
+    func testOnlyTheOpenChatsOwnTurnStartingCounts() {
+        let turn = { (chat: String?, busy: Bool) in PcControlling.ChatTurn(chat: chat, busy: busy) }
+        XCTAssertEqual(PcControlling.turnStarts(from: turn("a", false), to: turn("a", true)), 1)
+        XCTAssertEqual(PcControlling.turnStarts(from: turn("b", false), to: turn("a", true)), 0, "opening a chat whose turn runs")
+        XCTAssertEqual(PcControlling.turnStarts(from: turn("a", true), to: turn("a", true)), 0)
+        XCTAssertEqual(PcControlling.turnStarts(from: turn("a", true), to: turn("a", false)), 0)
+        XCTAssertEqual(PcControlling.turnStarts(from: turn(nil, false), to: turn(nil, true)), 0)
+    }
 }

@@ -102,6 +102,20 @@ final class ReplyHTMLTests: XCTestCase {
                        "<details><summary>S</summary>\nPage\n</details>")
     }
 
+    func testAFoldReadsCommentsFromItsOwnOpening() {
+        // #3446 review: a fold opened inside a comment ends at its own close, not the reply's end.
+        let lines = ["<!--", "<details>", "Body", "</details>", "-->", "After."]
+        XCTAssertEqual(ReplyHTML.fold(in: lines, at: 1)?.end, 4)
+        // A comment opened in the body still hides a close until its end (#3349).
+        let body = ["<details>", "<!-- a", "</details>", "-->", "</details>", "After."]
+        XCTAssertEqual(ReplyHTML.fold(in: body, at: 0)?.end, 5)
+    }
+
+    func testAPageLeftOpenInAFoldIsSaidOnlyToTheFoldsClose() {
+        let reply = "<details>\n<summary>S</summary>\n<div>\nA\n</details>\n\nAfter."
+        XCTAssertEqual(ReplyHTML.pagesSaid(reply, as: "Page"), "<details>\n<summary>S</summary>\nPage\n</details>\n\nAfter.")
+    }
+
     func testProseStartingWithDetailsStaysProseWhenLaterClosesAreOtherFoldsOrCode() {
         let other = ["<details> makes a section.", "", "<details>", "<summary>S</summary>", "body", "</details>"]
         XCTAssertEqual(ReplyHTML.foldsApart(other), other)
