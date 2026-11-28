@@ -431,6 +431,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
     }
 
+    func testHistoryGoesAgainOnceHealthIsAskedForNewTypes() async throws {
+        // A background pass read types Health hadn't been asked about yet as
+        // empty; once asked on screen, their history is walked again.
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        let preferences = healthPreferences(history: .days30)
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+        engine.walkHistoryAgain()
+        let sent = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        let days = host.batches.dropFirst(sent).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+            .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }
+        XCTAssertGreaterThan(days.count, 1, "The recent days and the history walked again")
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+    }
+
     func testLowDataModeLeavesOlderHistoryForLater() async throws {
         let host = FakeHealthHost()
         let engine = makeHealthEngine(source: FakeHealthSource())
@@ -747,7 +764,7 @@ private final class FakeHealthSource: HealthDataSource {
     /// A metric's sum other than 100, as when a reading arrives.
     var sums: [HealthMetric: Double] = [:]
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws {}
-    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async {}
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async -> Bool { false }
 
     /// A locked phone: HealthKit refuses every read.
     var locked = false

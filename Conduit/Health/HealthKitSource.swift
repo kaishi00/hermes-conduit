@@ -25,7 +25,8 @@ protocol HealthDataSource: AnyObject {
     /// Asks only when some type the shared categories read hasn't been
     /// asked about yet: an update that reads more (issue 3459) asks for the
     /// new types alone. Foreground only, as it may show Health's sheet.
-    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async
+    /// True when it asked.
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async -> Bool
     /// Hourly or daily buckets for `metric` in [from, to).
     func buckets(_ metric: HealthMetric, grain: HealthGrain, from: Date, to: Date, calendar: Calendar) async throws -> [HealthBucket]
     func sleepSegments(from: Date, to: Date) async throws -> [HealthSleepSegment]
@@ -179,14 +180,16 @@ final class HealthKitDataSource: HealthDataSource {
         try await store.requestAuthorization(toShare: [], read: Self.readTypes(for: categories))
     }
 
-    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async {
-        guard isAvailable else { return }
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async -> Bool {
+        guard isAvailable else { return false }
         let types = Self.readTypes(for: categories)
-        guard (try? await store.statusForAuthorizationRequest(toShare: [], read: types)) == .shouldRequest else { return }
+        guard (try? await store.statusForAuthorizationRequest(toShare: [], read: types)) == .shouldRequest else { return false }
         do {
             try await store.requestAuthorization(toShare: [], read: types)
+            return true
         } catch {
             Self.log.error("Health authorization failed: \(LogRedaction.message(error), privacy: .public)")
+            return false
         }
     }
 

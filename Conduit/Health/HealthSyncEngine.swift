@@ -278,6 +278,14 @@ final class HealthSyncEngine: ObservableObject {
     }
 
     /// Records a pause found outside a pass (another dashboard in use).
+    /// Health was just asked for types it hadn't been: a pass before that
+    /// read them as empty, so their history goes again (issue 3459).
+    func walkHistoryAgain() {
+        guard readStateIfNeeded(), state.backfilledMetrics != [] else { return }
+        state.backfilledMetrics = []
+        store.save(state)
+    }
+
     func note(_ pause: HealthSyncPause?) {
         guard readStateIfNeeded(), state.pause != pause else { return }
         state.pause = pause
