@@ -388,6 +388,27 @@ final class LoginFlowSignInDecisionTests: XCTestCase {
         XCTAssertEqual(transport.signIns, [], "No password went to the address set in Connection Setup")
         XCTAssertTrue(flow.showsCredentials, "The new address gets its own sign-in step")
     }
+
+    /// A computer-sent session token fills the form only for the dashboard
+    /// it came with: not after the address is edited, and not after a
+    /// same-dashboard setup followed by one that moves elsewhere.
+    func testAComputerSentSessionTokenStaysWithItsDashboard() {
+        let flow = LoginFlowModel()
+        flow.attach(makeAppState())
+        var seed = LoginSeed.blank
+        seed.address = "https://code.example.test"
+        seed.sessionToken = "token-fixture"
+        flow.apply(seed)
+        XCTAssertEqual(flow.seededSessionToken(for: "https://code.example.test"), "token-fixture")
+        XCTAssertNil(flow.seededSessionToken(for: "https://other.example.test"))
+
+        flow.applySetupResult(ConnectionSetupResult(serverURL: "https://code.example.test", username: "", password: ""))
+        XCTAssertEqual(flow.seededSessionToken(for: "https://code.example.test"), "token-fixture", "Same dashboard keeps it")
+        flow.address = "https://code.example.test/edited"
+        flow.applySetupResult(ConnectionSetupResult(serverURL: "https://other.example.test", username: "", password: ""))
+        XCTAssertNil(flow.seededSessionToken, "The token never moves to another dashboard")
+        XCTAssertNil(flow.seededSessionToken(for: "https://other.example.test"))
+    }
 }
 
 // MARK: - Scripted transport

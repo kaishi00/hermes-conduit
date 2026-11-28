@@ -179,8 +179,11 @@ enum LoginAddress {
 @Observable
 final class LoginFlowModel {
     /// Hermes' session token a computer sent with its sign-in code: the
-    /// session token's form starts with it. Never logged, gone with the flow.
-    var seededSessionToken: String? = nil
+    /// session token's form starts with it, only for the code's own
+    /// dashboard. Never logged, gone with the flow.
+    private(set) var seededSessionToken: String? = nil
+    /// The address the session token came with: the token goes to no other.
+    @ObservationIgnored private var seededSessionTokenOrigin: String? = nil
     private static let logger = Logger(subsystem: "com.milim.relay", category: "login")
 
     // The address step. An edit makes any answer still on its way for the
@@ -329,6 +332,7 @@ final class LoginFlowModel {
         username = seed.username
         password = seed.password
         seededSessionToken = seed.sessionToken
+        seededSessionTokenOrigin = seed.sessionToken == nil ? nil : seed.address
         prefilledUsername = nil
         clearFailure()
     }
@@ -347,8 +351,20 @@ final class LoginFlowModel {
             address: handoff.serverURL,
             username: leavesTheCodesDashboard ? "" : handoff.username,
             password: leavesTheCodesDashboard ? "" : handoff.password,
-            cloudflare: handoff.cloudflare
+            cloudflare: handoff.cloudflare,
+            // A computer-sent session token stays with the dashboard it came
+            // with, whatever was edited since.
+            sessionToken: seededSessionToken(for: handoff.serverURL)
         ))
+    }
+
+    /// The computer-sent session token, when `baseURL` is the dashboard it
+    /// came with.
+    func seededSessionToken(for baseURL: String) -> String? {
+        guard let token = seededSessionToken, let origin = seededSessionTokenOrigin,
+              LoginCloudflareHandoff.sameOrigin(LoginAddress.bestGuess(origin), LoginAddress.bestGuess(baseURL))
+        else { return nil }
+        return token
     }
 
     func clearFailure() {
