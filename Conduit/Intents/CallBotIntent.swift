@@ -20,7 +20,7 @@ import Foundation
 @available(iOS 16.0, *)
 struct CallBotIntent: AppIntent {
     static let title: LocalizedStringResource = "Call a Bot"
-    static let description = IntentDescription("Call a bot like a phone call, with your iPhone locked too.")
+    static let description = IntentDescription("Call a bot like a phone call, even from the lock screen.")
 
     /// iOS 17–25 declaration; see `StartVoiceConversationIntent`. Must stay
     /// a boolean literal for the App Intents metadata processor.

@@ -200958,84 +200958,84 @@
         }
       }
     },
-    "Call a bot like a phone call, with your iPhone locked too." : {
+    "Call a bot like a phone call, even from the lock screen." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einen Bot wie bei einem Telefonanruf anrufen, auch bei gesperrtem iPhone."
+            "value" : "Einen Bot wie bei einem Telefonanruf anrufen, auch vom Sperrbildschirm aus."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Llama a un bot como en una llamada telefónica, también con el iPhone bloqueado."
+            "value" : "Llama a un bot como en una llamada telefónica, incluso desde la pantalla bloqueada."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appelez un bot comme un appel téléphonique, même avec l'iPhone verrouillé."
+            "value" : "Appelez un bot comme un appel téléphonique, même depuis l'écran verrouillé."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Panggil bot seperti panggilan telepon, juga saat iPhone terkunci."
+            "value" : "Panggil bot seperti panggilan telepon, bahkan dari layar kunci."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chiama un bot come una telefonata, anche con l'iPhone bloccato."
+            "value" : "Chiama un bot come una telefonata, anche dalla schermata di blocco."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iPhoneがロック中でも、電話のようにボットに発信します。"
+            "value" : "ロック画面からでも、電話のようにボットに発信します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iPhone이 잠겨 있어도 전화처럼 봇에게 전화를 겁니다."
+            "value" : "잠금 화면에서도 전화처럼 봇에게 전화를 겁니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zadzwoń do bota jak przez telefon, także przy zablokowanym iPhonie."
+            "value" : "Zadzwoń do bota jak przez telefon, także z ekranu blokady."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ligue para um bot como numa ligação telefônica, também com o iPhone bloqueado."
+            "value" : "Ligue para um bot como numa ligação telefônica, até pela tela bloqueada."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Позвоните боту, как по телефону, даже когда iPhone заблокирован."
+            "value" : "Позвоните боту, как по телефону, даже с экрана блокировки."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iPhone kilitliyken bile bir botu telefon araması gibi arayın."
+            "value" : "Kilit ekranından bile bir botu telefon araması gibi arayın."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "像打电话一样呼叫机器人，iPhone 锁定时也可以。"
+            "value" : "像打电话一样呼叫机器人，在锁定屏幕上也可以。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "像打電話一樣撥打給機器人，iPhone 鎖定時也可以。"
+            "value" : "像打電話一樣撥打給機器人，在鎖定畫面上也可以。"
           }
         }
       }
