@@ -332,6 +332,8 @@ struct V2ChatsView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The one-time Conduit for desktop card under the last chat (OtherAppOffer).
     @State private var offersDesktop = false
+    /// A computer paired from Settings, beside Chats on iPad too, takes the card away at once.
+    @AppStorage(OtherAppOffer.pairedComputerKey) private var pairedComputer = false
     @State private var searchText = ""
     /// The nest tree the list last showed, reused while its inputs stand
     /// still (see `nestedSections`).
@@ -1625,7 +1627,7 @@ struct V2ChatsView: View {
 
             // Once, under the last chat: Conduit for desktop, where it
             // hasn't used this host (OtherAppOffer).
-            if offersDesktop && layout.liveSections && !isSearching {
+            if offersDesktop && !pairedComputer && layout.liveSections && !isSearching {
                 ConduitDesktopCard {
                     withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { offersDesktop = false }
                 }
@@ -1659,9 +1661,13 @@ struct V2ChatsView: View {
             revealActiveNestAncestors()
             revealActiveSection()
         }
-        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)") {
-            guard appState.isConnected else { return }
-            offersDesktop = await OtherAppOffer.shouldOfferDesktop(appState.dashboardTicketBridge)
+        // Again on coming back to the app, so a later day counts in a long session.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)|\(scenePhase == .active)") {
+            guard appState.isConnected, scenePhase == .active else { return }
+            let offer = await OtherAppOffer.shouldOfferDesktop(appState.dashboardTicketBridge)
+            // Only the check still current decides.
+            guard !Task.isCancelled else { return }
+            offersDesktop = offer
         }
         .onChange(of: contentSearchKey, initial: true) { _, _ in updateContentSearch() }
         .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }

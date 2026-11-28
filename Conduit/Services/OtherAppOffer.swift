@@ -53,14 +53,28 @@ enum OtherAppOffer {
     /// makes. Counting stops at the threshold, so the list stays tiny.
     @discardableResult
     static func noteDayUsed(now: Date = Date(), calendar: Calendar = .current, defaults: UserDefaults = .standard) -> Int {
-        var days = defaults.stringArray(forKey: daysKey) ?? []
+        // Days kept unpadded by the first build ("2026-1-5") read as padded,
+        // so a day isn't counted twice across the update.
+        var days: [String] = []
+        for day in (defaults.stringArray(forKey: daysKey) ?? []).map(padded) where !days.contains(day) {
+            days.append(day)
+        }
         let parts = calendar.dateComponents([.year, .month, .day], from: now)
-        let today = "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
+        let today = dayKey(parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
         if !days.contains(today), days.count < daysBeforeOffer {
             days.append(today)
             defaults.set(days, forKey: daysKey)
         }
         return days.count
+    }
+
+    private static func dayKey(_ year: Int, _ month: Int, _ day: Int) -> String {
+        String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
+    static func padded(_ key: String) -> String {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        return parts.count == 3 ? dayKey(parts[0], parts[1], parts[2]) : key
     }
 
     static func isDone(defaults: UserDefaults = .standard) -> Bool {

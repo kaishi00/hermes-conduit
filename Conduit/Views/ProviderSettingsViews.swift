@@ -345,7 +345,7 @@ enum ProviderText {
     static func status(_ entry: ProviderEntry) -> String {
         switch entry.status {
         case .customEndpoint: return AppLocalization.string("Custom endpoint")
-        case .signedIn: return AppLocalization.string("Signed in", table: .settings)
+        case .signedIn: return AppLocalization.string("Signed in")
         case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key", table: .settings)
         case .ownKey: return AppLocalization.string("This profile's own key", table: .settings)
         case .oldCopy: return AppLocalization.string("Old copy of the shared key", table: .settings)
@@ -1435,7 +1435,7 @@ private struct ProviderSignInView: View {
         if account.signedIn {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle.badge.checkmark").foregroundStyle(.green).accessibilityHidden(true)
-                Text(AppLocalization.string("Signed in", table: .settings)).scaledFont(.subheadline.weight(.semibold))
+                Text(AppLocalization.string("Signed in")).scaledFont(.subheadline.weight(.semibold))
                 Spacer(minLength: 8)
             }
             if !account.signsOutHere, let command = account.command {

@@ -1332,7 +1332,8 @@ struct LoginFlowPresentations: ViewModifier {
                     },
                     onError: { error in
                         flow.nativeOAuthFailed(error)
-                    }
+                    },
+                    sessionToken: flow.seededSessionToken
                 )
             }
             .sheet(isPresented: $flow.showsDiagnostics) {

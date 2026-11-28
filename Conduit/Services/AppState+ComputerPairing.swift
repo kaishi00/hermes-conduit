@@ -84,4 +84,17 @@ extension AppState {
         }
         return true
     }
+
+    /// Conduit for desktop's code to sign this phone in, read by the Camera:
+    /// RootView asks about it.
+    func routeComputerSignInLink(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == ConduitAppLink.scheme,
+              URLComponents(url: url, resolvingAgainstBaseURL: false)?.host?.lowercased() == ComputerPairingLink.Kind.signIn.rawValue else {
+            return false
+        }
+        if let link = ComputerPairingLink(url: url, kind: .signIn) {
+            pendingComputerSignIn = link
+        }
+        return true
+    }
 }

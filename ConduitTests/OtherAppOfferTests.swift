@@ -59,6 +59,15 @@ final class OtherAppOfferTests: XCTestCase {
         XCTAssertEqual(OtherAppOffer.noteDayUsed(now: day(10), calendar: calendar, defaults: defaults), 3)
     }
 
+    func testADayKeptUnpaddedIsntCountedAgain() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        defaults.set(["2026-11-1", "2026-11-01"], forKey: OtherAppOffer.daysKey)
+        let first = calendar.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 9))!
+        XCTAssertEqual(OtherAppOffer.noteDayUsed(now: first, calendar: calendar, defaults: defaults), 1)
+        XCTAssertEqual(OtherAppOffer.padded("2026-1-5"), "2026-01-05")
+    }
+
     func testTheCardStaysRetiredAndAPairedComputerCounts() {
         XCTAssertFalse(OtherAppOffer.isDone(defaults: defaults))
         OtherAppOffer.retire(defaults: defaults)
