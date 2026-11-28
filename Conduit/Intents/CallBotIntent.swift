@@ -47,7 +47,7 @@ struct CallBotIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         // Siri's list holds the other combined dashboards' bots too.
-        guard let id = try SendToHermesIntent.profileOnScreen(profile.id).profile else { return .result() }
+        guard let id = try SendToHermesIntent.profileOnScreen(profile.id).profile else { throw ShortcutSendError.callNotStarted }
         switch await HermesNativeCalls.shared.startCall(profile: id) {
         case .started: return .result()
         case .unavailable: throw ShortcutSendError.callsUnavailable

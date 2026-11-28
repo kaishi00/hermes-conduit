@@ -244,11 +244,9 @@ final class HermesNativeCalls: NSObject {
             stopRinging(endingCalls: isRinging)
             // A call the user started ends where CallKit isn't allowed,
             // whatever the ringing setting.
-            if !HermesNativeCallStorefront.allowsCalls(known) {
-                for id in Array(outgoing.keys) {
-                    AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
-                    endOutgoing(id, reason: .failed)
-                }
+            if !HermesNativeCallStorefront.allowsCalls(known), !outgoing.isEmpty {
+                AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+                for id in Array(outgoing.keys) { endOutgoing(id, reason: .failed) }
             }
         }
     }
@@ -357,7 +355,7 @@ final class HermesNativeCalls: NSObject {
         // Never created here: reporting comes first.
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
-        let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
+        let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty || !outgoing.isEmpty)
         // Read once, as the call arrives: CarPlay coming up while it rings
         // leaves the Watch ringing too.
         let inCar = CarPlayVoiceCoordinator.shared.isConnected || WakeRoutePolicy.currentRouteIsCarPlay()
@@ -784,6 +782,8 @@ final class HermesNativeCalls: NSObject {
         var movesToSpeaker = true
         /// Its voice conversation is running (`isCallVoiceRunning`).
         var voiceStarted = false
+        /// Its voice open's cleanup fence (`hermesCallOpenGeneration`).
+        let generation = UUID()
         var work: Task<Void, Never>? = nil
     }
     private var outgoing: [UUID: OutgoingCall] = [:]
@@ -864,7 +864,7 @@ final class HermesNativeCalls: NSObject {
         let connected = await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: Self.connectionTimeout)
         HermesCallTrace.shared.note(connected ? "Connected" : "Not connected in time", since: connectionWait)
         guard outgoing[id] != nil, !Task.isCancelled else { return }
-        let generation = UUID()
+        guard let generation = outgoing[id]?.generation else { return }
         var intent = PendingVoiceIntent(profile: profile, startsFreshConversation: true, source: .siri)
         intent.callGeneration = generation
         guard connected, !appState.isVoiceInUse, await appState.openVoiceConversation(intent) else {
@@ -873,14 +873,21 @@ final class HermesNativeCalls: NSObject {
             return
         }
         let ownsVoice = Self.openStillOwnsVoice(generation, current: appState.hermesCallOpenGeneration)
-        if ownsVoice { appState.keepVoiceFromHermesCallCleanup() }
         // Hung up while it opened: the voice it opened goes too, unless
         // voice started another way since (that start took the fence).
         guard outgoing[id] != nil else {
             if ownsVoice {
                 HermesCallTrace.shared.note("Voice opened after the call ended: ending it")
                 appState.endVoiceForNativeCall()
+                appState.keepVoiceFromHermesCallCleanup()
             }
+            return
+        }
+        // Voice started another way while it opened: that voice is the
+        // user's, so the call ends and leaves it.
+        guard ownsVoice else {
+            HermesCallTrace.shared.note("Voice started another way: ending the call")
+            endOutgoing(id, reason: .failed)
             return
         }
         provider?.reportOutgoingCall(with: id, connectedAt: Date())
@@ -908,8 +915,18 @@ final class HermesNativeCalls: NSObject {
         current == generation
     }
 
+    /// The call is over: its fence no longer marks anything as its own.
+    /// Kept while its open may still be running, so that open's late
+    /// return can still end what it opened.
+    private func releaseFence(of call: OutgoingCall) {
+        guard call.voiceStarted, let appState = AppStateRuntimeRegistry.shared.existing,
+              Self.openStillOwnsVoice(call.generation, current: appState.hermesCallOpenGeneration) else { return }
+        appState.keepVoiceFromHermesCallCleanup()
+    }
+
     private func endOutgoing(_ id: UUID, reason: CXCallEndedReason) {
         guard let call = outgoing.removeValue(forKey: id) else { return }
+        releaseFence(of: call)
         HermesCallTrace.shared.note("Call ended (\(Self.traceLabel(reason)))")
         call.work?.cancel()
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
@@ -1384,7 +1401,12 @@ final class HermesNativeCalls: NSObject {
             HermesCallTrace.shared.note("Hung up")
             call.work?.cancel()
             action.fulfill()
-            AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+            // Only the voice this call opened, or the open still running.
+            if let appState = AppStateRuntimeRegistry.shared.existing,
+               call.voiceStarted || Self.openStillOwnsVoice(call.generation, current: appState.hermesCallOpenGeneration) {
+                appState.endVoiceForNativeCall()
+            }
+            releaseFence(of: call)
             settle()
             return
         }
