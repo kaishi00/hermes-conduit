@@ -867,6 +867,7 @@ final class HermesNativeCalls: NSObject {
         guard let generation = outgoing[id]?.generation else { return }
         var intent = PendingVoiceIntent(profile: profile, startsFreshConversation: true, source: .siri)
         intent.callGeneration = generation
+        let errorBefore = appState.errorMessage
         guard connected, !appState.isVoiceInUse, await appState.openVoiceConversation(intent) else {
             HermesCallTrace.shared.note("Voice not opened")
             endOutgoing(id, reason: .failed)
@@ -890,6 +891,15 @@ final class HermesNativeCalls: NSObject {
             endOutgoing(id, reason: .failed)
             return
         }
+        // Its preparation failed (the error is on screen): no voice to wait for.
+        if !appState.isVoiceInUse, appState.errorMessage != nil, appState.errorMessage != errorBefore {
+            HermesCallTrace.shared.note("Voice not prepared")
+            endOutgoing(id, reason: .failed)
+            return
+        }
+        // Off screen (locked) the sheet may not run its own auto-listen;
+        // the call starts it from here, as an answered call's does.
+        appState.startDeferredVoiceSheetAutoListen()
         provider?.reportOutgoingCall(with: id, connectedAt: Date())
         // Until the voice it opened ends, as an answered call's.
         var started = false
