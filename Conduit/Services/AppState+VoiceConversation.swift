@@ -1004,8 +1004,9 @@ extension AppState {
         // A connected car shows its voice screen before the sheet's
         // auto-listen opens the microphone.
         CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-        // A call muted in CallKit before its voice opened keeps the mic off.
-        voiceSheetShouldAutoListen = !(intent.source == .hermesCall && isNativeHermesCallMuted)
+        // A call muted in CallKit before its voice opened keeps the mic off:
+        // one from Hermes, or one the user started with Siri (issue 3421).
+        voiceSheetShouldAutoListen = !((intent.source == .hermesCall || isNativeHermesCallActive) && isNativeHermesCallMuted)
         showVoiceSheet = true
         // The sheet is now the presenting Voice surface: re-assert the gate
         // before the sheet's auto-listen runs (with CarPlay absent the gate

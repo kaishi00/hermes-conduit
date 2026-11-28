@@ -55,10 +55,11 @@ extension AppState {
     /// same call: one card, one transcript.
     static let chatCallReconnectWindow: TimeInterval = 120
 
-    /// A call from Hermes muted in CallKit before its live voice was
-    /// running: that voice starts muted, as classic voice does (#558).
+    /// A call from Hermes, or one the user started with Siri, muted in
+    /// CallKit before its live voice was running: that voice starts muted,
+    /// as classic voice does (#558, issue 3421).
     var hermesCallStartsMuted: Bool {
-        (liveHermesCall != nil || pendingHermesCall != nil) && isNativeHermesCallMuted
+        (liveHermesCall != nil || pendingHermesCall != nil || isNativeHermesCallActive) && isNativeHermesCallMuted
     }
 
     /// Keys whose host refused the last outbox save as unsupported. Kept
