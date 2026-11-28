@@ -49,4 +49,14 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(HermesNativeCalls.otherCallBlocksAutoAnswer(id, calls: [(uuid: id, hasEnded: false), (uuid: UUID(), hasEnded: true)]), "An ended call doesn't either")
         XCTAssertTrue(HermesNativeCalls.otherCallBlocksAutoAnswer(id, calls: [(uuid: id, hasEnded: false), (uuid: UUID(), hasEnded: false)]), "A cellular call would go on hold")
     }
+
+    func testARecentsCallFindsItsBot() {
+        let bots = ["default", "Furina", "nova.dev"]
+        XCTAssertEqual(HermesNativeCalls.profile(calling: "hermes+furina@hermesconduit.app", among: bots), "Furina", "The address folds case: matched to the bot, not read back")
+        XCTAssertEqual(HermesNativeCalls.profile(calling: " HERMES+default@hermesconduit.app ", among: bots), "default")
+        XCTAssertEqual(HermesNativeCalls.profile(calling: "hermes+nova.dev@hermesconduit.app", among: bots), "nova.dev")
+        XCTAssertNil(HermesNativeCalls.profile(calling: "hermes@hermesconduit.app", among: bots), "A call naming no bot")
+        XCTAssertNil(HermesNativeCalls.profile(calling: "hermes+atlas@hermesconduit.app", among: bots), "A bot not on this dashboard")
+        XCTAssertNil(HermesNativeCalls.profile(calling: "furina@example.com", among: bots))
+    }
 }

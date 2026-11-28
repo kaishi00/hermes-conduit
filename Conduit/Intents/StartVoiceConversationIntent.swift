@@ -161,6 +161,17 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             shortTitle: "Talk to Conduit",
             systemImageName: "mic.fill"
         )
+        // A phone call to a bot, with the iPhone locked too (issue 3421).
+        AppShortcut(
+            intent: CallBotIntent(),
+            phrases: [
+                "Call \(\.$profile) in \(.applicationName)",
+                "Call \(\.$profile) on \(.applicationName)",
+                "Call a bot in \(.applicationName)"
+            ],
+            shortTitle: "Call a Bot",
+            systemImageName: "phone.fill"
+        )
         // Siri asks what to send, and speaks Hermes's answer.
         AppShortcut(
             intent: SendToHermesIntent(),
