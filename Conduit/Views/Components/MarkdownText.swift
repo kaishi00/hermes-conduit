@@ -3678,11 +3678,15 @@ enum MarkdownParser {
         var definitions: [String] = []
         var openFence: MarkdownFence?
         var mathClose: String?
+        // The `</details>` line of each fold open here: the walker draws a
+        // fold's body apart, so a page in it ends there at the latest (#3444).
+        var foldCloses: [Int] = []
 
         var index = 0
         while index < lines.count {
             let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            foldCloses.removeAll { $0 < index }
 
             // Fenced code and math blocks are raw content — the same regions
             // the block walker below consumes wholesale — so a
@@ -3721,8 +3725,15 @@ enum MarkdownParser {
             // so its lines stay as written here too, a definition-looking line
             // (`[docs]: https://…`, a `[data-x]:hover{…}` CSS rule) included
             // (#3398). The same span both passes read, so they agree.
+            if ReplyHTML.opensFold(line), let fold = ReplyHTML.fold(in: lines, at: index), fold.end > index + 1,
+               lines[fold.end - 1].trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("</details") {
+                foldCloses.append(fold.end - 1)
+            }
             if ReplyHTML.startsPage(in: lines, at: index) {
-                let end = ReplyHTML.page(in: lines, at: index).end
+                // A page with an element left open inside a fold runs to the
+                // fold's close, as the walker reads the fold's body, not to the
+                // reply's end, so a definition after the fold is still one.
+                let end = max(index + 1, min(ReplyHTML.page(in: lines, at: index).end, foldCloses.min() ?? lines.count))
                 while index < end {
                     visibleLines.append(lines[index])
                     index += 1

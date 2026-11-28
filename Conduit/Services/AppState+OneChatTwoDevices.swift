@@ -454,8 +454,14 @@ extension AppState {
             case let .advanced(_, newRows):
                 rows = newRows
             case .unchanged:
-                appState.botChatTailRead.noteRead(generation: generation)
-                return
+                // A call card shown unanswered whose result came on a read that
+                // adds no row still takes it (#3444); otherwise nothing to do.
+                var shown = appState.messages
+                guard AppState.answerShownCalls(&shown, from: transcript) else {
+                    appState.botChatTailRead.noteRead(generation: generation)
+                    return
+                }
+                rows = []
             case .inconclusive where anchor == nil && (wasEmpty || !frontier.isEmpty) && !transcript.messages.isEmpty:
                 // A chat proven empty (local display rows aside) has nothing to
                 // anchor on and every row of the newest page is new: all of
@@ -482,7 +488,8 @@ extension AppState {
                 return
             }
             appState.botChatTailRead.noteRead(generation: generation)
-            guard !rows.isEmpty else { return }
+            var answers = appState.messages
+            guard !rows.isEmpty || AppState.answerShownCalls(&answers, from: transcript) else { return }
             appState.applyPersistedForegroundAdvancement(
                 requestedSessionID: storedID, transcript: transcript, newRows: rows,
                 runtimeSessionID: sessionID, profile: profile

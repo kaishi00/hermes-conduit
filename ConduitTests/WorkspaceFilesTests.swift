@@ -229,6 +229,26 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(named, "/srv/reports\\/")
     }
 
+    /// Issue 3438: where a folder a reply names goes.
+    func testAFolderARepliesNamesGoesToTheFolderHoldingIt() {
+        let roots = ["/Users/r/project", "/Users/r/project/sub", "C:\\dev\\app"]
+        // Held by a chat's or project's folder: the first one holding it, by containment.
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("/Users/r/project/sub/x", roots: roots), .inside(root: "/Users/r/project"))
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("C:\\dev\\app\\src", roots: roots), .inside(root: "C:\\dev\\app"))
+        // A prefix that isn't a folder of it doesn't hold it.
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("/Users/r/projects", roots: roots), .own)
+        // One of the folders itself, with or without its separator: it opens.
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("/Users/r/project/", roots: roots), .root("/Users/r/project"))
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("C:\\dev\\app", roots: roots), .root("C:\\dev\\app"))
+        // Absolute and outside them all: a folder of its own, a share's too.
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("/srv/reports", roots: roots), .own)
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("\\\\nas\\share", roots: roots), .own)
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("/srv/reports", roots: []), .own)
+        // A relative name nothing placed: not found, named by its last part.
+        XCTAssertEqual(WorkspaceFolderView.folderRoute(".agents/skills/x", roots: roots), .notFound(name: "x"))
+        XCTAssertEqual(WorkspaceFolderView.folderRoute("reports", roots: []), .notFound(name: "reports"))
+    }
+
     func testWorkspaceSaveSendsTheDateItWasReadAt() async throws {
         var sent: [String: Any]?
         var path = ""

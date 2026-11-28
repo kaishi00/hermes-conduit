@@ -186,6 +186,28 @@ final class ChatLiveWorkTests: XCTestCase {
         XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-2")
     }
 
+    /// #3444: another app's start with no send held is recorded too, so a
+    /// send held after it keeps its own start once the read brings the
+    /// other app's words in.
+    func testAnotherAppsStartWithNoSendHeldLeavesTheNextStartToALaterSend() {
+        let appState = makeAppState()
+        appState.activeSessionId = "api-1"
+        let other = QueuedPrompt(admissionID: "adm-1", text: "another app's", status: .queued, sequence: 1)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [other]), previous: nil, for: "api-1")
+        // adm-1's unnamed start, with nothing held here.
+        XCTAssertNil(appState.forwardedSendStarting(in: "api-1"))
+        XCTAssertEqual(appState.shownChat.otherAppStartsSeen, ["adm-1"])
+        // A send forwarded after it, then the read naming adm-1 started.
+        appState.messages = [ChatMessage(id: "local-2", role: .user, content: "mine", timestamp: "1")]
+        appState.holdForwardedSend(admissionID: "adm-2", rowID: "local-2", text: "mine", sessionID: "api-1")
+        let mine = QueuedPrompt(admissionID: "adm-2", text: "mine", status: .queued, sequence: 2)
+        appState.applyChatLiveWork(ChatLiveWork(running: true, queued: [mine], startedAdmissions: ["adm-1"]),
+                                   previous: ChatLiveWork(running: true, queued: [other]), for: "api-1")
+        XCTAssertTrue(appState.shownChat.readStartedAdmissions.isEmpty, "adm-1's start already came")
+        // The next unnamed start is adm-2's.
+        XCTAssertEqual(appState.forwardedSendStarting(in: "api-1"), "adm-2")
+    }
+
     func testAnUnheldQueuedMessageThatLeftUnrunReadsTheChatAgainOnceNoTurnRuns() {
         let appState = makeAppState()
         appState.activeSessionId = "api-1"

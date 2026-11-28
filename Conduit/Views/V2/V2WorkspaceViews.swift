@@ -1051,16 +1051,46 @@ struct WorkspaceFolderView: View {
         return folder
     }
 
+    /// Where a folder a reply named goes (issue 3438).
+    enum FolderRoute: Equatable {
+        /// Shown open in the tree of the chat's or project's folder holding it.
+        case inside(root: String)
+        /// It is one of those folders: that folder opens.
+        case root(String)
+        /// An absolute path outside them: opened as a folder of its own and kept in the profile's list.
+        case own
+        /// A relative name nothing placed: not found, and not kept.
+        case notFound(name: String)
+    }
+
+    /// The route for `folder` among the folders already offered, picked by
+    /// containment, then by being one of them, then by the path's own form.
+    static func folderRoute(_ folder: String, roots: [String]) -> FolderRoute {
+        let normalized = AppState.normalizedWorkspacePath(folder)
+        if let holder = roots.first(where: { path(folder, isIn: $0) }), normalized != AppState.normalizedWorkspacePath(holder) {
+            return .inside(root: holder)
+        }
+        if let same = roots.first(where: { AppState.normalizedWorkspacePath($0) == normalized }) {
+            return .root(same)
+        }
+        // A relative name nothing placed (no lookup, no chat folder) isn't a
+        // folder to keep in the profile's list: say it wasn't found.
+        guard AppState.isAbsoluteWorkspacePath(folder) || folder.hasPrefix("\\\\") else {
+            return .notFound(name: folder.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? folder)
+        }
+        return .own
+    }
+
     /// A folder a reply named: shown open in the tree of the chat's or a
     /// project's folder holding it, else opened as a folder of its own, as
     /// Open Folder… opens one (kept in its list for this profile).
     private func showFolder(_ folder: String) async {
         query = ""
         let profile = appState.workspaceProfile(far: far)
-        if let holder = roots.first(where: { Self.path(folder, isIn: $0.path) }),
-           AppState.normalizedWorkspacePath(folder) != AppState.normalizedWorkspacePath(holder.path) {
-            if root?.path != holder.path { rootPath = holder.path }
-            await explorer.open(root: holder.path, profile: profile)
+        switch Self.folderRoute(folder, roots: roots.map(\.path)) {
+        case .inside(let holder):
+            if root?.path != holder { rootPath = holder }
+            await explorer.open(root: holder, profile: profile)
             // Another profile opened meanwhile: this folder isn't its.
             guard !Task.isCancelled, appState.workspaceProfile(far: far) == profile else { return }
             let scope = explorer.scope
@@ -1069,23 +1099,16 @@ struct WorkspaceFolderView: View {
             guard !Task.isCancelled, explorer.scope == scope else { return }
             entry.isDirectory = true
             open(entry)
-            return
-        }
-        if let same = roots.first(where: { AppState.normalizedWorkspacePath($0.path) == AppState.normalizedWorkspacePath(folder) }) {
-            rootPath = same.path
-            await explorer.open(root: same.path, profile: profile)
-            return
-        }
-        // A relative name nothing placed (no lookup, no chat folder) isn't a
-        // folder to keep in the profile's list: say it wasn't found.
-        guard AppState.isAbsoluteWorkspacePath(folder) || folder.hasPrefix("\\\\") else {
-            let name = folder.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? folder
+        case .root(let same):
+            rootPath = same
+            await explorer.open(root: same, profile: profile)
+        case .notFound(let name):
             failure = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.", table: .chat)
-            return
+        case .own:
+            appState.rememberOpenedWorkspaceFolder(folder, profile: profile, far: far)
+            rootPath = folder
+            await explorer.open(root: folder, profile: profile)
         }
-        appState.rememberOpenedWorkspaceFolder(folder, profile: profile, far: far)
-        rootPath = folder
-        await explorer.open(root: folder, profile: profile)
     }
 
     // MARK: - Changing
