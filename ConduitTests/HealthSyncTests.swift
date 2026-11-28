@@ -454,15 +454,22 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(engine.state.anchors["samples.basal_energy"])
         XCTAssertNotNil(engine.state.anchors["samples.steps"], "A kept metric's readings keep their place")
         XCTAssertNotNil(engine.state.anchors["workouts"], "Streams Health was asked for before keep their place")
+        func stepDays(since count: Int) -> Int {
+            host.batches.dropFirst(count).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+                .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }.count
+        }
         let sent = host.batches.count
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
-        let days = host.batches.dropFirst(sent).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
-            .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }
-        XCTAssertGreaterThan(days.count, 1, "The recent days and the history walked again")
+        // The recent days went already and are unchanged; the fake answers
+        // one bucket per range, so the history walked again is one window.
+        XCTAssertEqual(stepDays(since: sent), 1, "The history walked again")
         XCTAssertEqual(events(since: sent, "cycle"), 1, "The period days read again")
         XCTAssertEqual(events(since: sent, "sample"), 1, "The new metric's readings read again")
         XCTAssertEqual(events(since: sent, "workout"), 0)
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+        let again = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(stepDays(since: again), 0, "Without an ask, nothing walks again")
     }
 
     func testAnOlderPluginsHistoryStaysPutWhenHealthIsAsked() async throws {
