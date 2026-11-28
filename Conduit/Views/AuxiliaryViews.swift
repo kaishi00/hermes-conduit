@@ -4519,6 +4519,9 @@ private struct NotificationsSettingsDetail: View {
     /// Bumped by a pairing, so the list of paired devices reads again.
     @State private var pairedDevicesRefresh = 0
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
+    /// What the app icon's number counts (issue 3458), kept in the App
+    /// Group for the notification extension.
+    @State private var badgeMode = AppIconBadge.mode
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4620,6 +4623,31 @@ private struct NotificationsSettingsDetail: View {
                     }
                     .tint(.conduitAccent)
                     .accessibilityIdentifier("notifications.live-activities")
+                }
+            }
+
+            // The number on Conduit's icon (issue 3458). Counted by Conduit
+            // too, so it shows with notifications off; with them on it moves
+            // while Conduit isn't running.
+            ConduitSettingsSection(title: AppLocalization.string("Badge", table: .settings), symbol: "app.badge", tint: .conduitAccent) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ConduitMenuPicker(
+                        value: badgeMode,
+                        choices: AppIconBadge.Mode.allCases.map { (id: $0, title: $0.title) },
+                        onSelect: { choice in
+                            guard choice != badgeMode else { return }
+                            Haptics.selection()
+                            badgeMode = choice
+                            AppIconBadge.mode = choice
+                            appState.scheduleAppIconBadgeRefresh()
+                        }
+                    ) {
+                        Text(AppLocalization.string("App icon badge", table: .settings))
+                    }
+                    .accessibilityIdentifier("notifications.badge")
+                    Text(badgeMode.caption)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 

@@ -188,10 +188,35 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     override func serviceExtensionTimeWillExpire() {
-        if let fallback = lock.withLock({ fallback }) { deliver(fallback) }
+        if let fallback = lock.withLock({ fallback }) { deliver(fallback, counting: false) }
     }
 
-    private func deliver(_ content: UNNotificationContent) {
+    /// Hands the notification to iOS with the app icon's number counting
+    /// its chat in (issue 3458): the chats Conduit last counted and those
+    /// still in Notification Center, each once. A push that names no chat,
+    /// or doesn't count, leaves the number as it is.
+    private func deliver(_ content: UNNotificationContent, counting: Bool = true) {
+        let mode = AppIconBadge.mode
+        guard counting, let counted = content as? UNMutableNotificationContent,
+              let arriving = AppIconBadge.chat(userInfo: counted.userInfo, mode: mode) else { return hand(content) }
+        UNUserNotificationCenter.current().getDeliveredNotifications { [weak self] delivered in
+            let stored = AppIconBadge.ledger
+            let ledger = AppIconBadge.arrived(arriving, in: stored)
+            // Only a change is written: a locked iPhone that can't read the
+            // App Group reads an empty ledger, which mustn't replace it.
+            if ledger != stored { AppIconBadge.ledger = ledger }
+            counted.badge = NSNumber(value: AppIconBadge.count(
+                known: ledger.known,
+                delivered: delivered.compactMap { AppIconBadge.chat(userInfo: $0.request.content.userInfo, mode: mode) },
+                cleared: ledger.cleared,
+                arriving: arriving,
+                mode: mode
+            ))
+            self?.hand(counted)
+        }
+    }
+
+    private func hand(_ content: UNNotificationContent) {
         let handler: ((UNNotificationContent) -> Void)? = lock.withLock {
             defer { contentHandler = nil }
             return contentHandler

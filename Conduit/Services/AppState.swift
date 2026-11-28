@@ -2990,6 +2990,11 @@ final class AppState: ObservableObject {
     var voiceLaunchesInFlight = 0
     var lastAppliedWakeSnapshot: WakeLifecycleSnapshot?
     var wakeObservations: [AnyCancellable] = []
+    /// What moves the app icon's number (AppState+AppIconBadge.swift).
+    var appIconBadgeUpdates: AnyCancellable?
+    var appIconBadgeRefresh: Task<Void, Never>?
+    /// The number last set, so an unchanged count isn't set again.
+    var appIconBadgeShown: Int?
     var isWakeRefreshScheduled = false
     /// Cached `WakeRoutePolicy.currentRouteIsCarPlay()`: reading the audio
     /// route is too costly for every publish, so it refreshes only on route
@@ -3617,6 +3622,7 @@ final class AppState: ObservableObject {
             .map { $0.objectWillChange }
             .switchToLatest()
             .sink { [weak self] _ in self?.objectWillChange.send() }
+        appIconBadgeUpdates = appIconBadgeChanges()
         // The profile pictures' starter faces (ProfileAvatarView).
         botFaceDirectoryUpdates = shownBotRosterChanged.sink { [weak self] _ in
             guard let self else { return }

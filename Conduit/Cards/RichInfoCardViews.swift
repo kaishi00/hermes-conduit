@@ -899,7 +899,7 @@ final class RichStepsMemory: ObservableObject {
                 let center = UNUserNotificationCenter.current()
                 switch await center.notificationSettings().authorizationStatus {
                 case .notDetermined:
-                    return (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+                    return (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) ?? false
                 case .authorized, .provisional, .ephemeral:
                     return true
                 default:

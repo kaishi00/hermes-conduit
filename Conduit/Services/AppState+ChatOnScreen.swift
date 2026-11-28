@@ -109,7 +109,10 @@ extension AppState {
                 savedDashboardIDs: savedDashboardIDs,
                 activeDashboardGatewayIDs: gatewayIDs
             )
-            if !read.isEmpty { center.removeDeliveredNotifications(withIdentifiers: read) }
+            if !read.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: read)
+                self.scheduleAppIconBadgeRefresh()
+            }
         }
     }
 
