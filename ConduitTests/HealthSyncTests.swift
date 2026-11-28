@@ -747,6 +747,7 @@ private final class FakeHealthSource: HealthDataSource {
     /// A metric's sum other than 100, as when a reading arrives.
     var sums: [HealthMetric: Double] = [:]
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws {}
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async {}
 
     /// A locked phone: HealthKit refuses every read.
     var locked = false

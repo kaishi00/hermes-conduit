@@ -86,6 +86,9 @@ extension AppState {
             return .paused(.otherDashboard)
         }
         guard let bridge = dashboardTicketBridge else { return .unfinished }
+        // A Conduit update that reads more of a shared category (issue
+        // 3459) asks Health for the new types on screen; nothing otherwise.
+        if !inBackground { await engine.source.requestAuthorizationIfNeeded(for: preferences.categories) }
         // About half a minute in the background in all, waiting for the
         // connection included, as iOS allows; longer on screen so a first
         // sync can bring in a good part of the history.
