@@ -26,6 +26,8 @@ enum HealthCategory: String, CaseIterable, Identifiable, Codable {
     case body
     case vitals
     case fitness
+    case mobility
+    case cycle
 
     var id: String { rawValue }
 
@@ -38,18 +40,22 @@ enum HealthCategory: String, CaseIterable, Identifiable, Codable {
         case .body: return AppLocalization.string("Body measurements", table: .phone)
         case .vitals: return AppLocalization.string("Vitals", table: .phone)
         case .fitness: return AppLocalization.string("Fitness", table: .phone)
+        case .mobility: return AppLocalization.string("Mobility", table: .phone)
+        case .cycle: return AppLocalization.string("Cycle tracking", table: .phone)
         }
     }
 
     var summary: String {
         switch self {
-        case .activity: return AppLocalization.string("Steps, distance, active energy, exercise and stand time, flights climbed", table: .phone)
+        case .activity: return AppLocalization.string("Steps, distance, active and resting energy, exercise and stand time, flights climbed, time in daylight, physical effort", table: .phone)
         case .heart: return AppLocalization.string("Heart rate, resting and walking heart rate, heart rate variability", table: .phone)
         case .sleep: return AppLocalization.string("Time asleep and in bed, sleep stages", table: .phone)
         case .workouts: return AppLocalization.string("Each workout: type, time, duration, energy, distance, heart rate", table: .phone)
         case .body: return AppLocalization.string("Weight, body fat, height", table: .phone)
         case .vitals: return AppLocalization.string("Blood oxygen, respiratory rate, blood pressure, sleeping wrist temperature", table: .phone)
-        case .fitness: return AppLocalization.string("Cardio fitness (VO2 max), walking speed, six-minute walk", table: .phone)
+        case .fitness: return AppLocalization.string("Cardio fitness (VO2 max), walking speed, six-minute walk, running speed, stride length, ground contact time, vertical oscillation and power", table: .phone)
+        case .mobility: return AppLocalization.string("Step length, double support time, walking asymmetry, stair speed, walking steadiness", table: .phone)
+        case .cycle: return AppLocalization.string("Each day of a period you log, with its flow", table: .phone)
         }
     }
 
@@ -62,14 +68,16 @@ enum HealthCategory: String, CaseIterable, Identifiable, Codable {
         case .body: return "scalemass"
         case .vitals: return "waveform.path.ecg"
         case .fitness: return "lungs"
+        case .mobility: return "figure.walk.motion"
+        case .cycle: return "drop"
         }
     }
 
-    /// Whether raw readings exist to share for this category. Sleep and
-    /// workouts are always sent as their own events.
+    /// Whether raw readings exist to share for this category. Sleep,
+    /// workouts and the days of a period are always sent as their own events.
     var hasDetailedReadings: Bool {
         switch self {
-        case .sleep, .workouts: return false
+        case .sleep, .workouts, .cycle: return false
         default: return true
         }
     }
@@ -109,10 +117,35 @@ enum HealthMetric: String, CaseIterable, Codable {
     case vo2Max = "vo2_max"
     case walkingSpeed = "walking_speed"
     case sixMinuteWalkDistance = "six_minute_walk_distance"
+    // Plugin 0.208.0+ (issue 3459): sent only to a host that lists them.
+    case basalEnergy = "basal_energy"
+    case timeInDaylight = "time_in_daylight"
+    case physicalEffort = "physical_effort"
+    case runningSpeed = "running_speed"
+    case runningStrideLength = "running_stride_length"
+    case runningGroundContactTime = "running_ground_contact_time"
+    case runningVerticalOscillation = "running_vertical_oscillation"
+    case runningPower = "running_power"
+    case walkingStepLength = "walking_step_length"
+    case walkingDoubleSupport = "walking_double_support"
+    case walkingAsymmetry = "walking_asymmetry"
+    case stairAscentSpeed = "stair_ascent_speed"
+    case stairDescentSpeed = "stair_descent_speed"
+    case walkingSteadiness = "walking_steadiness"
+
+    /// What every plugin with health sync keeps: a host whose status lists
+    /// no metrics (before 0.208.0) gets only these.
+    static let keptByEveryHost: Set<HealthMetric> = [
+        .steps, .distanceWalkingRunning, .distanceCycling, .activeEnergy, .exerciseTime, .standTime, .flightsClimbed,
+        .heartRate, .restingHeartRate, .walkingHeartRateAverage, .heartRateVariability, .oxygenSaturation,
+        .respiratoryRate, .bloodPressureSystolic, .bloodPressureDiastolic, .wristTemperature, .bodyMass,
+        .bodyFatPercentage, .height, .vo2Max, .walkingSpeed, .sixMinuteWalkDistance,
+    ]
 
     var category: HealthCategory {
         switch self {
-        case .steps, .distanceWalkingRunning, .distanceCycling, .activeEnergy, .exerciseTime, .standTime, .flightsClimbed:
+        case .steps, .distanceWalkingRunning, .distanceCycling, .activeEnergy, .exerciseTime, .standTime, .flightsClimbed,
+             .basalEnergy, .timeInDaylight, .physicalEffort:
             return .activity
         case .heartRate, .restingHeartRate, .walkingHeartRateAverage, .heartRateVariability:
             return .heart
@@ -120,30 +153,40 @@ enum HealthMetric: String, CaseIterable, Codable {
             return .vitals
         case .bodyMass, .bodyFatPercentage, .height:
             return .body
-        case .vo2Max, .walkingSpeed, .sixMinuteWalkDistance:
+        case .vo2Max, .walkingSpeed, .sixMinuteWalkDistance, .runningSpeed, .runningStrideLength,
+             .runningGroundContactTime, .runningVerticalOscillation, .runningPower:
             return .fitness
+        case .walkingStepLength, .walkingDoubleSupport, .walkingAsymmetry, .stairAscentSpeed, .stairDescentSpeed,
+             .walkingSteadiness:
+            return .mobility
         }
     }
 
+    /// As health_store.py's METRICS says: totals for what adds up over a
+    /// day, min/avg/max for the rest (physical effort is a rate).
     var aggregation: HealthAggregation {
-        category == .activity ? .sum : .stats
+        category == .activity && self != .physicalEffort ? .sum : .stats
     }
 
     /// The unit the host stores, as health_store.py spells it.
     var unit: String {
         switch self {
         case .steps, .flightsClimbed: return "count"
-        case .distanceWalkingRunning, .distanceCycling, .height, .sixMinuteWalkDistance: return "m"
-        case .activeEnergy: return "kcal"
-        case .exerciseTime, .standTime: return "min"
+        case .distanceWalkingRunning, .distanceCycling, .height, .sixMinuteWalkDistance, .runningStrideLength,
+             .walkingStepLength: return "m"
+        case .activeEnergy, .basalEnergy: return "kcal"
+        case .exerciseTime, .standTime, .timeInDaylight: return "min"
         case .heartRate, .restingHeartRate, .walkingHeartRateAverage, .respiratoryRate: return "count/min"
-        case .heartRateVariability: return "ms"
-        case .oxygenSaturation, .bodyFatPercentage: return "%"
+        case .heartRateVariability, .runningGroundContactTime: return "ms"
+        case .oxygenSaturation, .bodyFatPercentage, .walkingDoubleSupport, .walkingAsymmetry, .walkingSteadiness: return "%"
         case .bloodPressureSystolic, .bloodPressureDiastolic: return "mmHg"
         case .wristTemperature: return "degC"
         case .bodyMass: return "kg"
         case .vo2Max: return "mL/(kg*min)"
-        case .walkingSpeed: return "m/s"
+        case .walkingSpeed, .runningSpeed, .stairAscentSpeed, .stairDescentSpeed: return "m/s"
+        case .physicalEffort: return "kcal/(hr*kg)"
+        case .runningVerticalOscillation: return "cm"
+        case .runningPower: return "W"
         }
     }
 
