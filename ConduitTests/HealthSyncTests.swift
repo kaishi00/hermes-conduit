@@ -440,6 +440,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let engine = makeHealthEngine(source: FakeHealthSource())
         var preferences = healthPreferences(history: .days30)
         preferences.categories.insert(.cycle)
+        preferences.detailed = [.activity]
         func events(since count: Int, _ kind: String) -> Int {
             host.batches.dropFirst(count).flatMap { $0["events"] as? [[String: Any]] ?? [] }
                 .filter { $0["kind"] as? String == kind }.count
@@ -450,6 +451,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(engine.state.anchors["cycle"])
         engine.walkHistoryAgain()
         XCTAssertNil(engine.state.anchors["cycle"], "A new type's stream reads from the start again")
+        XCTAssertNil(engine.state.anchors["samples.basal_energy"])
+        XCTAssertNotNil(engine.state.anchors["samples.steps"], "A kept metric's readings keep their place")
         XCTAssertNotNil(engine.state.anchors["workouts"], "Streams Health was asked for before keep their place")
         let sent = host.batches.count
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
@@ -457,8 +460,22 @@ extension HermesVoiceGatewayTimeoutTests {
             .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }
         XCTAssertGreaterThan(days.count, 1, "The recent days and the history walked again")
         XCTAssertEqual(events(since: sent, "cycle"), 1, "The period days read again")
+        XCTAssertEqual(events(since: sent, "sample"), 1, "The new metric's readings read again")
         XCTAssertEqual(events(since: sent, "workout"), 0)
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+    }
+
+    func testAnOlderPluginsHistoryStaysPutWhenHealthIsAsked() async throws {
+        // An older plugin takes none of the new types: asking Health for them
+        // doesn't send its whole history again.
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        let preferences = healthPreferences(history: .days30)
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        let walked = engine.state.backfilledMetrics
+        XCTAssertNotNil(walked)
+        engine.walkHistoryAgain()
+        XCTAssertEqual(engine.state.backfilledMetrics, walked)
     }
 
     func testLowDataModeLeavesOlderHistoryForLater() async throws {
@@ -795,6 +812,11 @@ private final class FakeHealthSource: HealthDataSource {
 
     func changes(_ stream: HealthEventStream, since: Date, anchor: Data?, limit: Int) async throws -> HealthEventChanges {
         limits.append(limit)
+        if stream == .samples(.basalEnergy), anchor == nil {
+            let reading = HealthEvent(id: "B1", kind: .sample, metric: "basal_energy", start: since,
+                                      end: since.addingTimeInterval(60), value: 1.2, unit: "kcal")
+            return HealthEventChanges(added: [reading], deleted: [], anchor: Data("b-anchor".utf8), more: false)
+        }
         if stream == .cycle, anchor == nil {
             let day = HealthEvent(id: "C1", kind: .cycle, metric: "menstrual_flow", start: since,
                                   end: since.addingTimeInterval(86_399),

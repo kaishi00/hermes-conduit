@@ -277,15 +277,17 @@ final class HealthSyncEngine: ObservableObject {
         return outcome
     }
 
-    /// Records a pause found outside a pass (another dashboard in use).
     /// Health was just asked for types it hadn't been: a pass before that
     /// read them as empty, so their history goes again (issue 3459). That
     /// covers the windows and the event streams of the types this release
     /// added, whose anchors such a pass moved past their history. The host
-    /// keeps events by id, so a stream read again lands once.
+    /// keeps events by id, so a stream read again lands once. A host on an
+    /// older plugin takes none of those types, so its history stays put: a
+    /// plugin update re-walks it then (sendHistory's walked set grows).
     func walkHistoryAgain() {
         guard readStateIfNeeded() else { return }
         let added = Set(HealthMetric.allCases).subtracting(HealthMetric.keptByEveryHost)
+        guard state.hostKeepsCycle || !state.hostKeeps.isDisjoint(with: added) else { return }
         let streams = Set([HealthEventStream.cycle.key] + added.map { HealthEventStream.samples($0).key })
         let anchors = state.anchors.filter { !streams.contains($0.key) }
         guard state.backfilledMetrics != [] || anchors.count != state.anchors.count else { return }
@@ -294,6 +296,7 @@ final class HealthSyncEngine: ObservableObject {
         store.save(state)
     }
 
+    /// Records a pause found outside a pass (another dashboard in use).
     func note(_ pause: HealthSyncPause?) {
         guard readStateIfNeeded(), state.pause != pause else { return }
         state.pause = pause
