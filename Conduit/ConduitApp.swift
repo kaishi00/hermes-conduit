@@ -467,6 +467,8 @@ struct ConduitApp: App {
                 if appState.routeRoomLink(url) { return .handled }
                 // And a computer's pairing code, before sending anything.
                 if appState.routeComputerPairingLink(url) { return .handled }
+                // And a computer's code to sign this phone in.
+                if appState.routeComputerSignInLink(url) { return .handled }
                 guard let link = ConduitAppLink(url: url) else {
                     // The scheme is registered, so the system would hand a
                     // conduit link Conduit can't read straight back to it.
@@ -496,6 +498,8 @@ struct ConduitApp: App {
                 if appState.routeRoomLink(url) { return }
                 // A computer's pairing code read by the Camera.
                 if appState.routeComputerPairingLink(url) { return }
+                // Conduit for desktop's code to sign this phone in, read by the Camera.
+                if appState.routeComputerSignInLink(url) { return }
                 guard let link = ConduitAppLink(externalURL: url) else { return }
                 // A new chat link is the New Chat shortcut's launch, which
                 // waits for the connection itself (issue 3389).

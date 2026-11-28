@@ -38,7 +38,7 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.2), value: appState.showLogin)
         // A sign-in code link asks here, above both the sign-in screen and
         // the app, so it survives the sign-in screen giving way to the app
-        // while a saved dashboard connects at launch. These five show over a
+        // while a saved dashboard connects at launch. These six show over a
         // sheet that's already up (sheetAboveAll), rather than waiting
         // unseen until it closes.
         .sheetAboveAll(item: $appState.pendingConnectLink) { link in
@@ -55,6 +55,12 @@ struct RootView: View {
         // asks before it sends anything.
         .sheetAboveAll(item: $appState.pendingComputerPairing) { link in
             PairComputerSheet(link: link)
+                .environmentObject(appState)
+        }
+        // Conduit for desktop's code to sign this phone in: it asks before
+        // anything is sent, over the sign-in screen too.
+        .sheetAboveAll(item: $appState.pendingComputerSignIn) { link in
+            ComputerSignInSheet(link: link)
                 .environmentObject(appState)
         }
         // An invite to a room whose notification was tapped: its join card.

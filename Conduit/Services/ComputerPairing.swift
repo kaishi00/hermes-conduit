@@ -23,8 +23,10 @@
 import CryptoKit
 import Foundation
 
-/// A computer's pairing code, read from its QR code. The send token is a
-/// secret: it never shows in a description or a log.
+/// A computer's pairing code, read from its QR code: conduit://pair for Pair
+/// a Computer, or conduit://signin for the computer signing this phone in
+/// (ComputerSignIn.swift). The send token is a secret: it never shows in a
+/// description or a log.
 struct ComputerPairingLink: Identifiable, Equatable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     @EqualityIgnored var id = UUID()
     let mailbox: URL
@@ -34,13 +36,24 @@ struct ComputerPairingLink: Identifiable, Equatable, CustomStringConvertible, Cu
     let key: Data
     let expires: Date
 
-    static let host = "pair"
-    static let prefix = "conduit://pair?"
+    /// What the code is for: which way the sign-ins go.
+    enum Kind: String {
+        /// This phone sends its sign-ins to the computer.
+        case pair
+        /// The computer sends its sign-ins to this phone.
+        case signIn = "signin"
 
-    init?(_ string: String) {
+        var prefix: String { "conduit://\(rawValue)?" }
+    }
+
+    static let host = Kind.pair.rawValue
+    static let prefix = Kind.pair.prefix
+
+    init?(_ string: String, kind: Kind = .pair) {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count <= 2_048, trimmed.prefix(Self.prefix.count).lowercased() == Self.prefix,
-              let components = URLComponents(string: Self.prefix + trimmed.dropFirst(Self.prefix.count)) else { return nil }
+        let prefix = kind.prefix
+        guard trimmed.count <= 2_048, trimmed.prefix(prefix.count).lowercased() == prefix,
+              let components = URLComponents(string: prefix + trimmed.dropFirst(prefix.count)) else { return nil }
         var query: [String: String] = [:]
         for item in components.queryItems ?? [] {
             if let value = item.value { query[item.name] = value }
@@ -59,8 +72,8 @@ struct ComputerPairingLink: Identifiable, Equatable, CustomStringConvertible, Cu
         self.expires = Date(timeIntervalSince1970: seconds)
     }
 
-    init?(url: URL) {
-        self.init(url.absoluteString)
+    init?(url: URL, kind: Kind = .pair) {
+        self.init(url.absoluteString, kind: kind)
     }
 
     func hasExpired(now: Date = Date()) -> Bool { now >= expires }
@@ -73,9 +86,9 @@ struct ComputerPairingLink: Identifiable, Equatable, CustomStringConvertible, Cu
 }
 
 enum ComputerPairing {
-    private static let salt = Data("conduit-pair-v1".utf8)
+    static let salt = Data("conduit-pair-v1".utf8)
     private static let info = Data("conduit-pair-v1 phone-to-computer".utf8)
-    private static let aadPrefix = "conduit-pair/1\n"
+    static let aadPrefix = "conduit-pair/1\n"
     private static let wordsLabel = Data("conduit-pair-words-v1\n".utf8)
 
     /// One sign-in the computer is sent. Only what the desktop app reads.
@@ -178,6 +191,11 @@ enum ComputerPairing {
         default: throw SendError.unreachable
         }
     }
+}
+
+extension ComputerPairing {
+    static func base64URL(_ data: Data) -> String { data.base64URLEncoded() }
+    static func data(base64URL text: String) -> Data? { Data(base64URL: text) }
 }
 
 fileprivate extension Data {

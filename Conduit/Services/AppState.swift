@@ -1721,6 +1721,9 @@ final class AppState: ObservableObject {
     /// A computer's pairing code that opened Conduit (ComputerPairing.swift):
     /// RootView shows Pair a Computer for it, which asks before sending.
     @Published var pendingComputerPairing: ComputerPairingLink?
+    /// Conduit for desktop's code to sign this phone in (ComputerSignIn.swift):
+    /// RootView shows Sign In from Your Computer for it.
+    @Published var pendingComputerSignIn: ComputerPairingLink?
     /// An invite to a room whose notification was tapped (RoomInvites.swift):
     /// RootView shows its join card.
     @Published var presentedRoomInvite: RoomInvite?

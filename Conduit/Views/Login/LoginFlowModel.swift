@@ -693,6 +693,10 @@ final class LoginFlowModel {
         switch result {
         case .link(let link):
             pendingLink = link
+        case .computerSignIn(let link):
+            // Conduit for desktop signing this phone in: its own sheet, over
+            // the sign-in screen (RootView).
+            appState?.pendingComputerSignIn = link
         case .address(let scanned):
             address = scanned
             if LoginAddress.isOnlyOnHermesComputer(scanned) {

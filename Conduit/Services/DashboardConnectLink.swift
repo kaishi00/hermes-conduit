@@ -21,8 +21,18 @@ struct DashboardConnectLink: Identifiable, CustomStringConvertible, CustomDebugS
     let address: String
     let username: String?
     let password: String?
+    /// A Cloudflare Access service token, from a computer that signed this
+    /// phone in (ComputerSignIn.swift); a code Hermes made never has one.
+    var cloudflare: LoginCloudflareState?
 
     static let host = "connect"
+
+    init(address: String, username: String?, password: String?, cloudflare: LoginCloudflareState? = nil) {
+        self.address = address
+        self.username = username
+        self.password = password
+        self.cloudflare = cloudflare
+    }
 
     /// Reads a `conduit://connect` link. An address is required; a name
     /// given twice makes the link unreadable rather than picking one.
@@ -50,7 +60,7 @@ struct DashboardConnectLink: Identifiable, CustomStringConvertible, CustomDebugS
     }
 
     var description: String {
-        "DashboardConnectLink(address: \(address), username: \(username == nil ? "none" : "set"), password: \(password == nil ? "none" : "set"))"
+        "DashboardConnectLink(address: \(address), username: \(username == nil ? "none" : "set"), password: \(password == nil ? "none" : "set"), cloudflare: \(cloudflare == nil ? "none" : "set"))"
     }
 
     var debugDescription: String { description }
@@ -63,6 +73,8 @@ struct DashboardConnectLink: Identifiable, CustomStringConvertible, CustomDebugS
         case link(DashboardConnectLink)
         /// A plain dashboard address.
         case address(String)
+        /// Conduit for desktop's code to sign this phone in (ComputerSignIn.swift).
+        case computerSignIn(ComputerPairingLink)
         /// Not something Conduit can sign in to.
         case unreadable
     }
@@ -72,6 +84,7 @@ struct DashboardConnectLink: Identifiable, CustomStringConvertible, CustomDebugS
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains(where: \.isWhitespace) else { return .unreadable }
         if let url = URL(string: trimmed), url.scheme?.lowercased() == ConduitAppLink.scheme {
+            if let signIn = ComputerPairingLink(trimmed, kind: .signIn) { return .computerSignIn(signIn) }
             return DashboardConnectLink(url: url).map(Scan.link) ?? .unreadable
         }
         guard LoginAddress.candidates(trimmed).contains(where: { (try? ConnectionURLPolicy.normalizedBaseURL($0)) != nil }) else {
