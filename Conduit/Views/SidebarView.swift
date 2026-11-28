@@ -2938,7 +2938,7 @@ struct CronRunOutputRow: View {
             }
             .buttonStyle(.plain)
             .disabled(output == nil)
-            .accessibilityHint(AppLocalization.string("Shows this run's output. A script ran it, so it has no chat.", table: .chat))
+            .accessibilityHint(AppLocalization.string("Shows this run's output. It has no chat.", table: .chat))
             Group {
                 if let output {
                     Text(output)

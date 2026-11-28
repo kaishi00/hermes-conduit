@@ -266,8 +266,8 @@ extension SidebarLayoutTests {
             "runs": [
                 ["id": "local-409c9669", "source": "cron", "title": "IPv6 sweep", "started_at": 1795830764.98],
                 ["id": "cron_output:4f00afd560b2:2026-11-28_10-10-45", "source": "cron_output", "title": "COMPLETED · # Cron Job: backfill", "preview": "**Status:** silent (empty output)", "started_at": 1795831845.0],
-                // Nested in `session`, the outer row's source still counts.
-                ["source": "cron_output", "session": ["id": "cron_output:4f00afd560b2:exec:3"]],
+                // Nested in `session`, the outer row's source counts when the session's is null.
+                ["source": "cron_output", "session": ["id": "cron_output:4f00afd560b2:exec:3", "source": NSNull()]],
                 // A row that doesn't say is a session, as before.
                 ["id": "cron_4f00afd560b2_20261128_095300"],
                 // A kind this app doesn't know is no chat.
