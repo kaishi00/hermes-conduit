@@ -369,9 +369,9 @@ final class HermesNativeCalls: NSObject {
             let settling = settleRing(ring, outcome: .declined)
             if plan == .ring { carSettling = settling }
         }
-        // A push while a call is live ends at once: the live call keeps
-        // its trace.
-        let traced = plan.startsTrace && calls.isEmpty
+        // A push while a call is live, or while a Siri call is on, ends at
+        // once: the live call keeps its trace.
+        let traced = plan.startsTrace && calls.isEmpty && outgoing.isEmpty
         if traced {
             HermesCallTrace.shared.begin(
                 "Push received: \(plan.traceLabel) (app \(appState == nil ? "starting" : "running"), voice busy: \(busy), in the car: \(inCar))"
@@ -871,6 +871,7 @@ final class HermesNativeCalls: NSObject {
         guard connected, !appState.isVoiceInUse, await appState.openVoiceConversation(intent) else {
             HermesCallTrace.shared.note("Voice not opened")
             endOutgoing(id, reason: .failed)
+            clearFence(generation, of: appState)
             return
         }
         let ownsVoice = Self.openStillOwnsVoice(generation, current: appState.hermesCallOpenGeneration)
@@ -895,6 +896,7 @@ final class HermesNativeCalls: NSObject {
         if !appState.isVoiceInUse, appState.errorMessage != nil, appState.errorMessage != errorBefore {
             HermesCallTrace.shared.note("Voice not prepared")
             endOutgoing(id, reason: .failed)
+            clearFence(generation, of: appState)
             return
         }
         // Off screen (locked) the sheet may not run its own auto-listen;
@@ -917,6 +919,8 @@ final class HermesNativeCalls: NSObject {
         HermesCallTrace.shared.note(started ? "Voice ended" : "Voice not in use in time")
         if !started { appState.endVoiceForNativeCall() }
         endOutgoing(id, reason: started ? .remoteEnded : .failed)
+        // Its open has returned, so its fence goes even with no voice.
+        if !started { clearFence(generation, of: appState) }
     }
 
     /// Whether a Siri call's voice open may still end what it opened: no
@@ -931,6 +935,12 @@ final class HermesNativeCalls: NSObject {
     private func releaseFence(of call: OutgoingCall) {
         guard call.voiceStarted, let appState = AppStateRuntimeRegistry.shared.existing,
               Self.openStillOwnsVoice(call.generation, current: appState.hermesCallOpenGeneration) else { return }
+        appState.keepVoiceFromHermesCallCleanup()
+    }
+
+    /// Clears a finished open's fence, if no other start took it since.
+    private func clearFence(_ generation: UUID, of appState: AppState) {
+        guard Self.openStillOwnsVoice(generation, current: appState.hermesCallOpenGeneration) else { return }
         appState.keepVoiceFromHermesCallCleanup()
     }
 
