@@ -330,6 +330,8 @@ struct V2ChatsView: View {
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    /// The one-time Conduit for desktop card under the last chat (OtherAppOffer).
+    @State private var offersDesktop = false
     @State private var searchText = ""
     /// The nest tree the list last showed, reused while its inputs stand
     /// still (see `nestedSections`).
@@ -1620,6 +1622,17 @@ struct V2ChatsView: View {
                     contentSearchHeader
                 }
             }
+
+            // Once, under the last chat: Conduit for desktop, where it
+            // hasn't used this host (OtherAppOffer).
+            if offersDesktop && layout.liveSections && !isSearching {
+                ConduitDesktopCard {
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { offersDesktop = false }
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -1645,6 +1658,10 @@ struct V2ChatsView: View {
         .onAppear {
             revealActiveNestAncestors()
             revealActiveSection()
+        }
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)") {
+            guard appState.isConnected else { return }
+            offersDesktop = await OtherAppOffer.shouldOfferDesktop(appState.dashboardTicketBridge)
         }
         .onChange(of: contentSearchKey, initial: true) { _, _ in updateContentSearch() }
         .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }

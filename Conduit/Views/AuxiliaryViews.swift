@@ -549,7 +549,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, credentialVault, people, pulse, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, shortcutInbox, screenQuestion, about
+    case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, credentialVault, people, pulse, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, shortcutInbox, screenQuestion, about, conduitDesktop
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -1186,6 +1186,8 @@ struct SettingsView: View {
                 .navigationTitle("Ask Hermes About Screen")
         case .about:
             AboutSettingsDetail(profile: snapshot.profile)
+        case .conduitDesktop:
+            ConduitDesktopSettingsDetail()
         }
     }
 
@@ -1534,6 +1536,7 @@ private struct SettingsHome: View {
         ]))
         groups.append(SettingsHomeGroup(id: "about", title: AppLocalization.string("About", table: .settings), symbol: "info.circle", rows: [
             SettingsHomeRow(.open(.about), icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling", table: .settings)),
+            SettingsHomeRow(.open(.conduitDesktop), icon: "desktopcomputer", title: ConduitDesktopText.title, detail: ConduitDesktopText.platforms, identifier: "settings.conduit-desktop"),
         ]))
         return groups
     }
@@ -1591,6 +1594,7 @@ private struct SettingsHome: View {
         device += [
             SettingsHomeRow(.open(.screenQuestion), icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots", table: .settings), identifier: "settings.screen-question"),
             SettingsHomeRow(.open(.about), icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling", table: .settings)),
+            SettingsHomeRow(.open(.conduitDesktop), icon: "desktopcomputer", title: ConduitDesktopText.title, detail: ConduitDesktopText.platforms, identifier: "settings.conduit-desktop"),
         ]
         return [
             SettingsHomeGroup(id: "profile", title: AppLocalization.string("Profile"), symbol: "person.crop.circle", tint: .conduitAccent, rows: [
@@ -4018,6 +4022,14 @@ private struct GatewaySettingsDetail: View {
                 Button(PairComputerText.title) { pairingComputer = true }
                     .buttonStyle(.settings)
                     .accessibilityIdentifier("settings.gateway.pairComputer")
+                Link(destination: OtherAppOffer.desktopURL) {
+                    HStack {
+                        Text(AppLocalization.string("Get Conduit for desktop", table: .settings))
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square").scaledFont(.caption).foregroundStyle(.conduitTertiary)
+                    }
+                }
+                .accessibilityIdentifier("settings.gateway.getDesktop")
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
                 Toggle("Use service token", isOn: Binding(get: { cloudflareEnabled }, set: { enabled in
