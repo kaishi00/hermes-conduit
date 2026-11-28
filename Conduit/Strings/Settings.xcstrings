@@ -43272,6 +43272,826 @@
           }
         }
       }
+    },
+    "Conduit for desktop" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit für den Computer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit para ordenador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit pour ordinateur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit untuk desktop"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit per computer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップ版 Conduit"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데스크톱용 Conduit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na komputer"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit para computador"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit для компьютера"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masaüstü için Conduit"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "桌面版 Conduit"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "桌面版 Conduit"
+          }
+        }
+      }
+    },
+    "Windows, Mac and Linux" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac und Linux"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac y Linux"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac et Linux"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac, dan Linux"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac e Linux"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows、Mac、Linux"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac 및 Linux"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac i Linux"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac e Linux"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac и Linux"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac ve Linux"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows、Mac 和 Linux"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows、Mac 和 Linux"
+          }
+        }
+      }
+    },
+    "Send the Link to Your Computer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link an deinen Computer senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar el enlace a tu ordenador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyer le lien à votre ordinateur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim Tautan ke Komputer Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia il link al computer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクをコンピュータに送信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "컴퓨터로 링크 보내기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyślij link na komputer"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar o link para o computador"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправить ссылку на компьютер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantıyı Bilgisayarınıza Gönderin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将链接发送到电脑"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將連結傳送到電腦"
+          }
+        }
+      }
+    },
+    "The same chats, bots and calls on your Windows PC, Mac or Linux computer, with a coding workspace." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieselben Chats, Bots und Anrufe auf deinem Windows-PC, Mac oder Linux-Computer, mit einem Arbeitsbereich zum Programmieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los mismos chats, bots y llamadas en tu PC con Windows, Mac u ordenador con Linux, con un espacio de trabajo para programar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les mêmes discussions, bots et appels sur votre PC Windows, Mac ou ordinateur Linux, avec un espace de travail pour coder."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan, bot, dan panggilan yang sama di PC Windows, Mac, atau komputer Linux Anda, dengan ruang kerja untuk coding."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le stesse chat, gli stessi bot e le stesse chiamate sul tuo PC Windows, Mac o computer Linux, con uno spazio di lavoro per programmare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows PC、Mac、Linux コンピュータで同じチャット、ボット、通話を使え、コーディング用のワークスペースもあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows PC, Mac 또는 Linux 컴퓨터에서 같은 채팅, 봇, 통화를 사용할 수 있고 코딩 작업 공간도 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te same czaty, boty i połączenia na komputerze z Windows, Macu lub Linuksie, z przestrzenią roboczą do programowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As mesmas conversas, bots e chamadas no seu PC com Windows, Mac ou computador com Linux, com um espaço de trabalho para programar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Те же чаты, боты и звонки на ПК с Windows, Mac или компьютере с Linux, а ещё рабочее пространство для кода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows PC, Mac veya Linux bilgisayarınızda aynı sohbetler, botlar ve aramalar; kodlama için bir çalışma alanıyla."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Windows PC、Mac 或 Linux 电脑上使用同样的聊天、机器人和通话，还有编程工作区。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Windows PC、Mac 或 Linux 電腦上使用同樣的聊天、機器人和通話，還有程式設計工作區。"
+          }
+        }
+      }
+    },
+    "Conduit for desktop has used this Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit für den Computer wurde schon mit diesem Hermes verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit para ordenador ya se ha usado con este Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit pour ordinateur a déjà été utilisé avec ce Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit untuk desktop sudah digunakan dengan Hermes ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit per computer è già stato usato con questo Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップ版 Conduit はこの Hermes で使われています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데스크톱용 Conduit이 이 Hermes에서 사용된 적이 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na komputer był już używany z tym Hermesem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit para computador já foi usado com este Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit для компьютера уже подключался к этому Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masaüstü için Conduit bu Hermes ile kullanıldı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "桌面版 Conduit 已在此 Hermes 上使用过。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "桌面版 Conduit 已在此 Hermes 上使用過。"
+          }
+        }
+      }
+    },
+    "Conduit for desktop hasn't used this Hermes yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit für den Computer wurde mit diesem Hermes noch nicht verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit para ordenador aún no se ha usado con este Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit pour ordinateur n’a pas encore été utilisé avec ce Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit untuk desktop belum digunakan dengan Hermes ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit per computer non è ancora stato usato con questo Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップ版 Conduit はまだこの Hermes で使われていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데스크톱용 Conduit이 아직 이 Hermes에서 사용되지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na komputer nie był jeszcze używany z tym Hermesem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit para computador ainda não foi usado com este Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit для компьютера ещё не подключался к этому Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masaüstü için Conduit bu Hermes ile henüz kullanılmadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "桌面版 Conduit 尚未在此 Hermes 上使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "桌面版 Conduit 尚未在此 Hermes 上使用。"
+          }
+        }
+      }
+    },
+    "Once it's installed, choose Pair with your iPhone on the computer and scan its code from here. It signs in with this phone's sign-ins." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle nach der Installation auf dem Computer „Mit deinem iPhone koppeln“ und scanne den Code von hier aus. Er meldet sich mit den Anmeldungen dieses iPhones an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando esté instalado, elige «Vincular con tu iPhone» en el ordenador y escanea su código desde aquí. Inicia sesión con los accesos de este iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une fois installé, choisissez « Associer avec votre iPhone » sur l’ordinateur et scannez son code d’ici. Il se connecte avec les identifiants de cet iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setelah terpasang, pilih “Pasangkan dengan iPhone Anda” di komputer dan pindai kodenya dari sini. Komputer masuk dengan info masuk iPhone ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una volta installato, scegli “Abbina con il tuo iPhone” sul computer e scansiona il codice da qui. Accede con le credenziali di questo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストールしたら、コンピュータで「iPhone とペアリング」を選び、ここからコードをスキャンします。この iPhone のサインイン情報でサインインします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설치한 후 컴퓨터에서 “iPhone과 페어링”을 선택하고 여기에서 코드를 스캔하세요. 이 iPhone의 로그인 정보로 로그인합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po instalacji wybierz na komputerze „Sparuj z iPhone’em” i zeskanuj kod stąd. Komputer zaloguje się danymi logowania z tego iPhone’a."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depois de instalar, escolha “Parear com seu iPhone” no computador e escaneie o código daqui. Ele entra com os acessos deste iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После установки выберите на компьютере «Подключить через iPhone» и отсканируйте код отсюда. Компьютер войдёт с данными входа этого iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yüklendikten sonra bilgisayarda “iPhone’unuzla eşleyin” seçeneğini seçin ve kodunu buradan tarayın. Bu iPhone’un oturum bilgileriyle giriş yapar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装后，在电脑上选择“与 iPhone 配对”，然后从这里扫描它的二维码。它会使用这台 iPhone 的登录信息登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安裝後，在電腦上選擇「與 iPhone 配對」，然後從這裡掃描它的條碼。它會使用這台 iPhone 的登入資訊登入。"
+          }
+        }
+      }
+    },
+    "Conduit is on your computer too" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit gibt es auch für deinen Computer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit también está en tu ordenador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit existe aussi sur ordinateur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit juga ada untuk komputer Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit c’è anche per il computer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit はコンピュータでも使えます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 컴퓨터에서도 쓸 수 있습니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit jest też na komputer"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit também está no computador"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit есть и для компьютера"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bilgisayarınızda da var"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 也有电脑版"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 也有電腦版"
+          }
+        }
+      }
+    },
+    "The same chats and bots on Windows, Mac or Linux. Once it's installed, pair it from Settings in a few seconds." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieselben Chats und Bots unter Windows, Mac oder Linux. Nach der Installation koppelst du ihn in wenigen Sekunden in den Einstellungen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los mismos chats y bots en Windows, Mac o Linux. Cuando esté instalado, vincúlalo desde Ajustes en unos segundos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les mêmes discussions et bots sur Windows, Mac ou Linux. Une fois installé, associez-le depuis les Réglages en quelques secondes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan dan bot yang sama di Windows, Mac, atau Linux. Setelah terpasang, pasangkan dari Pengaturan dalam beberapa detik."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le stesse chat e gli stessi bot su Windows, Mac o Linux. Una volta installato, abbinalo dalle Impostazioni in pochi secondi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows、Mac、Linux で同じチャットとボットが使えます。インストールしたら、「設定」から数秒でペアリングできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac, Linux에서 같은 채팅과 봇을 사용하세요. 설치한 후 설정에서 몇 초 만에 페어링할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te same czaty i boty na Windows, Macu lub Linuksie. Po instalacji sparujesz go w Ustawieniach w kilka sekund."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As mesmas conversas e bots no Windows, Mac ou Linux. Depois de instalar, pareie pelos Ajustes em poucos segundos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Те же чаты и боты на Windows, Mac или Linux. После установки подключите его в настройках за несколько секунд."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows, Mac veya Linux’ta aynı sohbetler ve botlar. Yükledikten sonra Ayarlar’dan birkaç saniyede eşleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Windows、Mac 或 Linux 上使用同样的聊天和机器人。安装后，几秒钟即可在“设置”中配对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Windows、Mac 或 Linux 上使用同樣的聊天和機器人。安裝後，幾秒鐘即可在「設定」中配對。"
+          }
+        }
+      }
+    },
+    "Get Conduit for desktop" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit für den Computer holen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obtener Conduit para ordenador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obtenir Conduit pour ordinateur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dapatkan Conduit untuk desktop"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scarica Conduit per computer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップ版 Conduit を入手"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데스크톱용 Conduit 받기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pobierz Conduit na komputer"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obter o Conduit para computador"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Установить Conduit для компьютера"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masaüstü için Conduit edinin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "获取桌面版 Conduit"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取得桌面版 Conduit"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

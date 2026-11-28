@@ -1780,6 +1780,8 @@ final class HermesClient: ObservableObject {
         request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
         // Lets the notifier plugin tell Conduit's opens from Desktop's (#454).
         request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
+        // Which Conduit: the plugin notes the apps that reach a host (OtherAppOffer).
+        request.setValue(OtherAppOffer.platform, forHTTPHeaderField: OtherAppOffer.platformHeader)
         guard let requestAuthorizer else { return request }
         let authorized = try await requestAuthorizer.authorizeUpgrade(request)
         try ensureCurrentConnect(generation)
@@ -2991,6 +2993,8 @@ final class HermesClient: ObservableObject {
         var request = URLRequest(url: url)
         request = request.applyingProxyHeaders(cloudflare: cloudflareAccess)
         request.setValue("conduit", forHTTPHeaderField: "X-Conduit-Client")
+        // Which Conduit: the plugin notes the apps that reach a host (OtherAppOffer).
+        request.setValue(OtherAppOffer.platform, forHTTPHeaderField: OtherAppOffer.platformHeader)
         guard let requestAuthorizer else { return request }
         return try await requestAuthorizer.authorizeUpgrade(request)
     }

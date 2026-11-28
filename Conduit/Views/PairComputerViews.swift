@@ -216,6 +216,8 @@ struct PairComputerSheet: View {
         do {
             let sealed = try ComputerPairing.seal(ComputerPairing.payload(hosts), to: link.key, inbox: link.inbox)
             try await ComputerPairing.send(sealed.envelope, link: link)
+            // That computer runs Conduit for desktop: Chats never offers it.
+            OtherAppOffer.notePairedComputer()
             Haptics.success()
             words = ComputerPairing.words(computerKey: link.key, ephemeralPublic: sealed.ephemeralPublic)
         } catch {
