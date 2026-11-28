@@ -492,15 +492,17 @@ final class HermesNativeCalls: NSObject {
     /// "Answer automatically" (issue 3421): the call answers through
     /// CallKit, as a tap on Answer does, once it has rung for `delay`. A
     /// call already answered (here or on the Watch), declined or ended
-    /// meanwhile is left alone.
+    /// meanwhile is left alone, and one rings on for a tap while voice is
+    /// in use or another call is on the phone.
     private func answerByItself(_ id: UUID, after delay: Duration) async {
         do { try await Task.sleep(for: delay) } catch { return }
         guard let call = calls[id], !call.answered, !call.keptFromWatch else { return }
         // Voice started here, or a Watch call, while it rang: the answer
         // would end it at once as "Hermes wants to talk" and move the
         // running conversation's audio, so it rings on for a tap.
-        if let appState = AppStateRuntimeRegistry.shared.existing, appState.isVoiceInUse || appState.isWatchVoiceCallActive {
-            HermesCallTrace.shared.note("Not answering by itself: voice is in use")
+        if let appState = AppStateRuntimeRegistry.shared.existing,
+           let busy = Self.voiceBlocksAutoAnswer(voiceInUse: appState.isVoiceInUse, watchCall: appState.isWatchVoiceCallActive) {
+            HermesCallTrace.shared.note("Not answering by itself: \(busy)")
             return
         }
         // A phone call of any app's, a cellular one included: answering
@@ -517,6 +519,12 @@ final class HermesNativeCalls: NSObject {
             calls[id]?.answeredItself = false
             HermesCallTrace.shared.note("Couldn't answer by itself: \(LogRedaction.message(error))")
         }
+    }
+
+    /// What keeps a call from answering by itself, for the trace: voice in
+    /// Conduit, or a call the Watch runs. Nil when neither is on.
+    nonisolated static func voiceBlocksAutoAnswer(voiceInUse: Bool, watchCall: Bool) -> String? {
+        voiceInUse ? "voice is in use" : watchCall ? "a Watch call is on" : nil
     }
 
     /// Whether another call on the phone (any app's, a cellular one too)

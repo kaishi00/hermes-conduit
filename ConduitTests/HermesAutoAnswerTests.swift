@@ -50,6 +50,12 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(HermesNativeCalls.otherCallBlocksAutoAnswer(id, calls: [(uuid: id, hasEnded: false), (uuid: UUID(), hasEnded: false)]), "A cellular call would go on hold")
     }
 
+    func testVoiceInUseKeepsACallFromAnsweringByItself() {
+        XCTAssertNil(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: false, watchCall: false))
+        XCTAssertEqual(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: true, watchCall: false), "voice is in use", "The answer would end at once as Hermes wants to talk")
+        XCTAssertEqual(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: false, watchCall: true), "a Watch call is on", "The trace says which")
+    }
+
     func testARecentsCallFindsItsBot() {
         let bots = ["default", "Furina", "nova.dev"]
         XCTAssertEqual(HermesNativeCalls.profile(calling: "hermes+furina@hermesconduit.app", among: bots), "Furina", "The address folds case: matched to the bot, not read back")
