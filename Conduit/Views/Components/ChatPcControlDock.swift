@@ -56,7 +56,9 @@ struct ChatPcControlDock: View {
             stopFailedOn = nil
         }
         .onChange(of: PcControlling.ChatTurn(chat: openChatID, busy: isBusy)) { old, new in
-            if let chat = new.chat { turns[chat, default: 0] += PcControlling.turnStarts(from: old, to: new) }
+            // Only a turn starting writes, so a chat opened idle adds no entry.
+            let started = PcControlling.turnStarts(from: old, to: new)
+            if let chat = new.chat, started > 0 { turns[chat, default: 0] += started }
         }
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
             guard openChatID != nil, isShowing, isBusy else {

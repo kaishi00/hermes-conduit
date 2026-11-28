@@ -3681,6 +3681,8 @@ enum MarkdownParser {
         // The `</details>` line of each fold open here: the walker draws a
         // fold's body apart, so a page in it ends there at the latest (#3444).
         var foldCloses: [Int] = []
+        // Read once for the whole reply, so each fold's look-ahead doesn't rescan it.
+        let inComment = ReplyHTML.commentLines(lines)
 
         var index = 0
         while index < lines.count {
@@ -3725,8 +3727,8 @@ enum MarkdownParser {
             // so its lines stay as written here too, a definition-looking line
             // (`[docs]: https://…`, a `[data-x]:hover{…}` CSS rule) included
             // (#3398). The same span both passes read, so they agree.
-            if ReplyHTML.opensFold(line), let fold = ReplyHTML.fold(in: lines, at: index), fold.end > index + 1,
-               lines[fold.end - 1].trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("</details") {
+            if ReplyHTML.opensFold(line), let fold = ReplyHTML.fold(in: lines, at: index, comments: inComment), fold.end > index + 1,
+               ReplyHTML.closesFoldLine(lines[fold.end - 1]) {
                 foldCloses.append(fold.end - 1)
             }
             if ReplyHTML.startsPage(in: lines, at: index) {
@@ -3772,6 +3774,8 @@ enum MarkdownParser {
 
     private static func parseBlocks(_ lines: [String], recognizesGatewayMedia: Bool) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
+        // Read once for these lines, so each fold doesn't rescan them.
+        let inComment = ReplyHTML.commentLines(lines)
         var index = 0
         // The indents of the lists open around the current one, outermost
         // first, for nesting a list under the item above it.
@@ -3811,7 +3815,7 @@ enum MarkdownParser {
                 index = page.end
                 continue
             }
-            if ReplyHTML.opensFold(line), let fold = ReplyHTML.fold(in: lines, at: index) {
+            if ReplyHTML.opensFold(line), let fold = ReplyHTML.fold(in: lines, at: index, comments: inComment) {
                 blocks.append(.fold(summary: fold.summary, body: fold.body, isOpen: fold.isOpen))
                 listIndents = []
                 outlineNumbers = [:]
