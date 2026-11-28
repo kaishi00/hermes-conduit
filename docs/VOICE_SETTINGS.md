@@ -104,8 +104,9 @@ iOS's own pickers (issue 2389):
   Control Center's Mic Mode. Apps can't set a Mic Mode themselves.
 - **Output**: iOS's route picker (speaker, earpiece, headsets, the car).
   Calls play on what's connected, otherwise on the speaker; calls from
-  Hermes start on the earpiece, and the call screen's Speaker button still
-  moves them.
+  Hermes start on the earpiece (on the speaker when they answer
+  automatically, see Calls from Hermes), and the call screen's Speaker
+  button still moves them.
 - **When the microphone opens**: there is no level to set. Classic voice
   learns the room's noise and listens for speech above it; the live modes'
   providers detect speech themselves. Settings says so.

@@ -489,6 +489,13 @@ final class HermesNativeCalls: NSObject {
     private func answerByItself(_ id: UUID, after delay: Duration) async {
         do { try await Task.sleep(for: delay) } catch { return }
         guard let call = calls[id], !call.answered, !call.keptFromWatch else { return }
+        // Voice started here, or a Watch call, while it rang: the answer
+        // would end it at once as "Hermes wants to talk" and move the
+        // running conversation's audio, so it rings on for a tap.
+        if let appState = AppStateRuntimeRegistry.shared.existing, appState.isVoiceInUse || appState.isWatchVoiceCallActive {
+            HermesCallTrace.shared.note("Not answering by itself: voice is in use")
+            return
+        }
         // A phone call of any app's, a cellular one included: answering
         // would put it on hold, so this call rings on for a tap.
         if Self.otherCallBlocksAutoAnswer(id, calls: callController.callObserver.calls.map { (uuid: $0.uuid, hasEnded: $0.hasEnded) }) {
@@ -1370,6 +1377,9 @@ extension HermesNativeCalls: CXProviderDelegate {
             HermesCallTrace.shared.note("CallKit audio on")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
             HermesCallTrace.shared.note("Audio route: \(HermesCallAudioRoute.describe(audioSession))")
+            // CallKit holds one call at a time here (maximumCallGroups 1,
+            // and a second push plans `.busy`), so the answered call is
+            // the one whose audio this is.
             // A call answered by itself (issue 3421) goes on the speaker
             // once, when it would start on the earpiece: headphones, a car
             // or a Bluetooth speaker keep it, and audio coming back later
