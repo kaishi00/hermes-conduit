@@ -4349,7 +4349,8 @@ final class HermesClient: ObservableObject {
     /// user's reaction. The row is named by its durable `row_id`; a live row
     /// that hasn't been reloaded yet names `newest_role` instead and Hermes
     /// resolves the newest row of that role. The reaction needs no turn of
-    /// its own: Hermes tells the agent about it with the next message.
+    /// its own: the plugin hands it to the agent at the start of the chat's
+    /// next turn (notifier reactions.py, issue 3439).
     func reactToMessage(
         sessionId: String,
         target: MessageReactionTarget,

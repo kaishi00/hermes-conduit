@@ -57,8 +57,9 @@ extension AppState {
     /// Tapback on an agent reply: paints at once, then saves with
     /// `message.react` and adopts the server's list. Picking the reaction
     /// the user already has retracts it. A failed save puts the old list
-    /// back and says why. Hermes passes the reaction to the agent with the
-    /// next message, so nothing is sent now.
+    /// back and says why. The plugin hands the reaction to the agent at the
+    /// start of the chat's next turn (notifier reactions.py, issue 3439), so
+    /// nothing else is sent now.
     func react(to messageId: String, with emoji: String) async {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
