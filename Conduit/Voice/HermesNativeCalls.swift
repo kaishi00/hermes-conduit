@@ -1586,10 +1586,11 @@ extension HermesNativeCalls: CXProviderDelegate {
                 self.report(HermesCallOutcome.of(.reset, answered: call.answered), for: call.target, sentAt: call.sentAt)
             }
             self.calls = [:]
-            let hadOutgoing = !self.outgoing.isEmpty
-            for call in self.outgoing.values { call.work?.cancel() }
+            let ended = Array(self.outgoing.values)
+            for call in ended { call.work?.cancel() }
             self.outgoing = [:]
-            if hadOutgoing { AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall() }
+            if !ended.isEmpty { AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall() }
+            for call in ended { self.releaseFence(of: call) }
             self.audioActive = false
             VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.stopObservingRoute()
