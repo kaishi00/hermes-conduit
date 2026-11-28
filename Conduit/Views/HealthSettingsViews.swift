@@ -239,6 +239,17 @@ struct HealthSettingsPage: View {
                     Text(category.summary)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                    // An older plugin on the host leaves out what it doesn't
+                    // know; known only once a pass has asked it (issue 3459).
+                    if preferences.isOn, categories.contains(category), engine.state.hostMetrics != nil,
+                       !engine.state.hostKeepsAll(of: category) {
+                        Text(PluginUpdateAsk.text(
+                            AppLocalization.string("Update the Conduit plugin on this host to share all of these.", table: .phone),
+                            lead: AppLocalization.string("This host doesn't take all of these yet.", table: .phone),
+                            managedBy: appState.pluginManagedBy(forDashboard: preferences.destination?.dashboardID)))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     if category.hasDetailedReadings, categories.contains(category) {
                         Toggle("Include detailed readings", isOn: detailedBinding(category))
                             .scaledFont(.subheadline)
@@ -247,7 +258,7 @@ struct HealthSettingsPage: View {
                     }
                 }
             }
-            Text("Hermes gets hourly and daily summaries computed by Apple Health, a summary of each night's sleep, and each workout. Detailed readings add every individual measurement, such as each heart rate reading.")
+            Text("Hermes gets hourly and daily summaries computed by Apple Health, a summary of each night's sleep, each workout, and each day of a period you log. Detailed readings add every individual measurement, such as each heart rate reading.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if preferences.isOn {

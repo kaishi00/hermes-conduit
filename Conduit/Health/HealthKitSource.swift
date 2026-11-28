@@ -22,6 +22,11 @@ protocol HealthDataSource: AnyObject {
     /// Detailed readings read the same types as the summaries, so `detailed`
     /// asks for nothing more today; it's passed for sources that differ.
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws
+    /// Asks only when some type the shared categories read hasn't been
+    /// asked about yet: an update that reads more (issue 3459) asks for the
+    /// new types alone. Foreground only, as it may show Health's sheet.
+    /// True when it asked.
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async -> Bool
     /// Hourly or daily buckets for `metric` in [from, to).
     func buckets(_ metric: HealthMetric, grain: HealthGrain, from: Date, to: Date, calendar: Calendar) async throws -> [HealthBucket]
     func sleepSegments(from: Date, to: Date) async throws -> [HealthSleepSegment]
@@ -42,12 +47,15 @@ protocol HealthDataSource: AnyObject {
 enum HealthEventStream: Hashable {
     case workouts
     case sleep
+    /// The logged days of a period (Cycle tracking).
+    case cycle
     case samples(HealthMetric)
 
     var key: String {
         switch self {
         case .workouts: return "workouts"
         case .sleep: return "sleep"
+        case .cycle: return "cycle"
         case .samples(let metric): return "samples.\(metric.rawValue)"
         }
     }
@@ -104,6 +112,20 @@ final class HealthKitDataSource: HealthDataSource {
         case .vo2Max: return HKQuantityType(.vo2Max)
         case .walkingSpeed: return HKQuantityType(.walkingSpeed)
         case .sixMinuteWalkDistance: return HKQuantityType(.sixMinuteWalkTestDistance)
+        case .basalEnergy: return HKQuantityType(.basalEnergyBurned)
+        case .timeInDaylight: return HKQuantityType(.timeInDaylight)
+        case .physicalEffort: return HKQuantityType(.physicalEffort)
+        case .runningSpeed: return HKQuantityType(.runningSpeed)
+        case .runningStrideLength: return HKQuantityType(.runningStrideLength)
+        case .runningGroundContactTime: return HKQuantityType(.runningGroundContactTime)
+        case .runningVerticalOscillation: return HKQuantityType(.runningVerticalOscillation)
+        case .runningPower: return HKQuantityType(.runningPower)
+        case .walkingStepLength: return HKQuantityType(.walkingStepLength)
+        case .walkingDoubleSupport: return HKQuantityType(.walkingDoubleSupportPercentage)
+        case .walkingAsymmetry: return HKQuantityType(.walkingAsymmetryPercentage)
+        case .stairAscentSpeed: return HKQuantityType(.stairAscentSpeed)
+        case .stairDescentSpeed: return HKQuantityType(.stairDescentSpeed)
+        case .walkingSteadiness: return HKQuantityType(.appleWalkingSteadiness)
         }
     }
 
@@ -123,6 +145,9 @@ final class HealthKitDataSource: HealthDataSource {
         case "kg": return (.gramUnit(with: .kilo), 1)
         case "mL/(kg*min)": return (HKUnit(from: "ml/kg*min"), 1)
         case "m/s": return (.meter().unitDivided(by: .second()), 1)
+        case "kcal/(hr*kg)": return (.kilocalorie().unitDivided(by: .hour().unitMultiplied(by: .gramUnit(with: .kilo))), 1)
+        case "cm": return (.meterUnit(with: .centi), 1)
+        case "W": return (.watt(), 1)
         default: return (.count(), 1)
         }
     }
@@ -133,6 +158,7 @@ final class HealthKitDataSource: HealthDataSource {
             for metric in category.metrics { types.insert(quantityType(metric)) }
             switch category {
             case .sleep: types.insert(HKCategoryType(.sleepAnalysis))
+            case .cycle: types.insert(HKCategoryType(.menstrualFlow))
             case .workouts:
                 types.insert(HKObjectType.workoutType())
                 // A workout's energy, distance and heart rate.
@@ -152,6 +178,19 @@ final class HealthKitDataSource: HealthDataSource {
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws {
         guard isAvailable else { throw HealthDataSourceError.unavailable }
         try await store.requestAuthorization(toShare: [], read: Self.readTypes(for: categories))
+    }
+
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async -> Bool {
+        guard isAvailable else { return false }
+        let types = Self.readTypes(for: categories)
+        guard (try? await store.statusForAuthorizationRequest(toShare: [], read: types)) == .shouldRequest else { return false }
+        do {
+            try await store.requestAuthorization(toShare: [], read: types)
+            return true
+        } catch {
+            Self.log.error("Health authorization failed: \(LogRedaction.message(error), privacy: .public)")
+            return false
+        }
     }
 
     func buckets(_ metric: HealthMetric, grain: HealthGrain, from: Date, to: Date, calendar: Calendar) async throws -> [HealthBucket] {
@@ -229,6 +268,16 @@ final class HealthKitDataSource: HealthDataSource {
                     deleted: result.deletedObjects.map { $0.uuid.uuidString },
                     anchor: Self.archived(result.newAnchor),
                     more: result.addedSamples.count + result.deletedObjects.count >= limit)
+            case .cycle:
+                let descriptor = HKAnchoredObjectQueryDescriptor(
+                    predicates: [.categorySample(type: HKCategoryType(.menstrualFlow), predicate: predicate)],
+                    anchor: previous, limit: limit)
+                let result = try await descriptor.result(for: store)
+                return HealthEventChanges(
+                    added: result.addedSamples.compactMap(Self.cycleEvent),
+                    deleted: result.deletedObjects.map { $0.uuid.uuidString },
+                    anchor: Self.archived(result.newAnchor),
+                    more: result.addedSamples.count + result.deletedObjects.count >= limit)
             case .samples(let metric):
                 let descriptor = HKAnchoredObjectQueryDescriptor(
                     predicates: [.quantitySample(type: Self.quantityType(metric), predicate: predicate)],
@@ -272,6 +321,7 @@ final class HealthKitDataSource: HealthDataSource {
         for category in categories {
             switch category {
             case .sleep: types.append(HKCategoryType(.sleepAnalysis))
+            case .cycle: types.append(HKCategoryType(.menstrualFlow))
             case .workouts: types.append(HKObjectType.workoutType())
             default:
                 // One type per category is enough to wake Conduit: a pass
@@ -366,6 +416,22 @@ final class HealthKitDataSource: HealthDataSource {
         return HealthSleepSegment(
             id: sample.uuid.uuidString, stage: stage, start: sample.startDate, end: sample.endDate,
             source: revision.source.name, fromWatch: revision.productType?.hasPrefix("Watch") == true)
+    }
+
+    /// A logged day of a period, as health_store.py keeps it: its flow and
+    /// whether it started a period. HealthKit's values, by number (their
+    /// type was renamed in iOS 18): 1 unspecified, 2 light, 3 medium,
+    /// 4 heavy, 5 none.
+    static func cycleEvent(_ sample: HKCategorySample) -> HealthEvent? {
+        let flows = [1: "unspecified", 2: "light", 3: "medium", 4: "heavy", 5: "none"]
+        guard let flow = flows[sample.value] else { return nil }
+        var data: [String: HealthValue] = ["flow": .text(flow)]
+        if (sample.metadata?[HKMetadataKeyMenstrualCycleStart] as? NSNumber)?.boolValue == true {
+            data["cycle_start"] = .number(1)
+        }
+        return HealthEvent(id: sample.uuid.uuidString, kind: .cycle, metric: HealthSyncState.cycleMetric,
+                           start: sample.startDate, end: sample.endDate, data: data,
+                           source: sample.sourceRevision.source.name)
     }
 
     static func event(_ segment: HealthSleepSegment) -> HealthEvent {

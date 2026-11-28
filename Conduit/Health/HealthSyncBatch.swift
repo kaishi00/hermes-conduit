@@ -58,9 +58,12 @@ enum HealthEventKind: String {
     case workout
     case sleep
     case sample
+    /// A logged day of a period (plugin 0.208.0+).
+    case cycle
 }
 
-/// A workout, a sleep stage segment or a raw reading, by its HealthKit id.
+/// A workout, a sleep stage segment, a logged day of a period or a raw
+/// reading, by its HealthKit id.
 struct HealthEvent: Equatable {
     var id: String
     var kind: HealthEventKind

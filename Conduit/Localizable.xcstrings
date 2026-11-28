@@ -67163,88 +67163,6 @@
         }
       }
     },
-    "Hermes gets hourly and daily summaries computed by Apple Health, a summary of each night's sleep, and each workout. Detailed readings add every individual measurement, such as each heart rate reading." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes erhält von Apple Health berechnete stündliche und tägliche Zusammenfassungen, eine Zusammenfassung jeder Nacht und jedes Training. Detaillierte Messwerte fügen jede einzelne Messung hinzu, etwa jeden Herzfrequenzwert."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes recibe resúmenes por hora y por día calculados por Salud, un resumen del sueño de cada noche y cada entrenamiento. Las lecturas detalladas añaden cada medición individual, como cada lectura de frecuencia cardiaca."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes reçoit des résumés horaires et quotidiens calculés par Santé, un résumé du sommeil de chaque nuit et chaque entraînement. Les mesures détaillées ajoutent chaque mesure individuelle, comme chaque relevé de fréquence cardiaque."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes mendapatkan ringkasan per jam dan harian yang dihitung oleh Kesehatan, ringkasan tidur setiap malam, dan setiap olahraga. Pembacaan mendetail menambahkan setiap pengukuran individual, seperti setiap pembacaan detak jantung."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes riceve riepiloghi orari e giornalieri calcolati da Salute, un riepilogo del sonno di ogni notte e ogni allenamento. Le misurazioni dettagliate aggiungono ogni singola misurazione, come ogni rilevazione della frequenza cardiaca."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesは、ヘルスケアが算出した1時間ごとと1日ごとの概要、毎晩の睡眠の概要、各ワークアウトを受け取ります。詳細な測定値をオンにすると、心拍数の各測定値など、個々の測定値もすべて追加されます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes는 Apple 건강이 계산한 시간별 및 일별 요약, 매일 밤의 수면 요약, 각 운동 기록을 받아요. 상세 측정값을 켜면 각 심박수 측정값 등 개별 측정값이 모두 추가돼요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes otrzymuje godzinowe i dzienne podsumowania obliczone przez aplikację Zdrowie, podsumowanie snu z każdej nocy oraz każdy trening. Szczegółowe odczyty dodają każdy pojedynczy pomiar, na przykład każdy odczyt tętna."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Hermes recebe resumos por hora e por dia calculados pelo app Saúde, um resumo do sono de cada noite e cada exercício. As leituras detalhadas adicionam cada medição individual, como cada leitura de frequência cardíaca."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes получает почасовые и ежедневные сводки, рассчитанные приложением «Здоровье», сводку сна за каждую ночь и каждую тренировку. Подробные показания добавляют каждое отдельное измерение, например каждый замер пульса."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes; Apple Sağlık tarafından hesaplanan saatlik ve günlük özetleri, her gecenin uyku özetini ve her antrenmanı alır. Ayrıntılı ölçümler, her nabız ölçümü gibi tek tek tüm ölçümleri de ekler."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 会收到由“健康”计算的每小时和每日摘要、每晚的睡眠摘要以及每次体能训练。开启详细读数后，还会加入每一项单独测量，例如每次心率读数。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 會收到由「健康」計算的每小時與每日摘要、每晚的睡眠摘要，以及每次體能訓練。開啟詳細讀數後，還會加入每一筆個別測量，例如每次心率讀數。"
-          }
-        }
-      }
-    },
     "Hermes guesses what you'll say next: replies to tap after an answer, words for a draft when you pause, and a follow-up of its own while you look at a chat." : {
       "localizations" : {
         "de" : {
@@ -201282,6 +201200,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已登入"
+          }
+        }
+      }
+    },
+    "Hermes gets hourly and daily summaries computed by Apple Health, a summary of each night's sleep, each workout, and each day of a period you log. Detailed readings add every individual measurement, such as each heart rate reading." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes erhält von Apple Health berechnete stündliche und tägliche Zusammenfassungen, eine Zusammenfassung jeder Nacht, jedes Training und jeden eingetragenen Tag einer Periode. Detaillierte Messwerte fügen jede einzelne Messung hinzu, etwa jeden Herzfrequenzwert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes recibe resúmenes por hora y por día calculados por Salud, un resumen del sueño de cada noche, cada entrenamiento y cada día de periodo que registras. Las lecturas detalladas añaden cada medición individual, como cada lectura de frecuencia cardiaca."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes reçoit des résumés horaires et quotidiens calculés par Santé, un résumé du sommeil de chaque nuit, chaque entraînement et chaque jour de règles que vous enregistrez. Les mesures détaillées ajoutent chaque mesure individuelle, comme chaque relevé de fréquence cardiaque."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mendapatkan ringkasan per jam dan harian yang dihitung oleh Kesehatan, ringkasan tidur setiap malam, setiap olahraga, dan setiap hari menstruasi yang Anda catat. Pembacaan mendetail menambahkan setiap pengukuran individual, seperti setiap pembacaan detak jantung."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes riceve riepiloghi orari e giornalieri calcolati da Salute, un riepilogo del sonno di ogni notte, ogni allenamento e ogni giorno di ciclo che registri. Le misurazioni dettagliate aggiungono ogni singola misurazione, come ogni rilevazione della frequenza cardiaca."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesは、ヘルスケアが算出した1時間ごとと1日ごとの概要、毎晩の睡眠の概要、各ワークアウト、記録した生理の各日を受け取ります。詳細な測定値をオンにすると、心拍数の各測定値など、個々の測定値もすべて追加されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes는 Apple 건강이 계산한 시간별 및 일별 요약, 매일 밤의 수면 요약, 각 운동 기록, 기록한 생리 기간의 각 날짜를 받아요. 상세 측정값을 켜면 각 심박수 측정값 등 개별 측정값이 모두 추가돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes otrzymuje godzinowe i dzienne podsumowania obliczone przez aplikację Zdrowie, podsumowanie snu z każdej nocy, każdy trening oraz każdy zapisany dzień miesiączki. Szczegółowe odczyty dodają każdy pojedynczy pomiar, na przykład każdy odczyt tętna."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes recebe resumos por hora e por dia calculados pelo app Saúde, um resumo do sono de cada noite, cada exercício e cada dia de menstruação que você registra. As leituras detalhadas adicionam cada medição individual, como cada leitura de frequência cardíaca."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes получает почасовые и ежедневные сводки, рассчитанные приложением «Здоровье», сводку сна за каждую ночь, каждую тренировку и каждый отмеченный день месячных. Подробные показания добавляют каждое отдельное измерение, например каждый замер пульса."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes; Apple Sağlık tarafından hesaplanan saatlik ve günlük özetleri, her gecenin uyku özetini, her antrenmanı ve kaydettiğiniz her regl gününü alır. Ayrıntılı ölçümler, her nabız ölçümü gibi tek tek tüm ölçümleri de ekler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 会收到由“健康”计算的每小时和每日摘要、每晚的睡眠摘要、每次体能训练以及你记录的每一个经期日。开启详细读数后，还会加入每一项单独测量，例如每次心率读数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 會收到由「健康」計算的每小時與每日摘要、每晚的睡眠摘要、每次體能訓練，以及你記錄的每一個經期日。開啟詳細讀數後，還會加入每一筆個別測量，例如每次心率讀數。"
           }
         }
       }

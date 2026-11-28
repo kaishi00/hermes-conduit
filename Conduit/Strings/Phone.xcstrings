@@ -2571,88 +2571,6 @@
         }
       }
     },
-    "Cardio fitness (VO2 max), walking speed, six-minute walk" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cardiofitness (VO2 max), Gehgeschwindigkeit, Sechs-Minuten-Gehtest"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Capacidad cardiorrespiratoria (VO2 max), velocidad al caminar, caminata de seis minutos"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forme cardio (VO2 max), vitesse de marche, marche de six minutes"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kebugaran kardio (VO2 max), kecepatan berjalan, jalan enam menit"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Capacità cardiorespiratoria (VO2 max), velocità della camminata, camminata di sei minuti"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "心肺機能（VO2 max）、歩行速度、6分間歩行"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "심폐 건강(VO2 max), 걷기 속도, 6분 걷기"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wydolność kardio (VO2 max), szybkość chodzenia, test sześciominutowego marszu"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Condicionamento cardiorrespiratório (VO2 max), velocidade da caminhada, caminhada de seis minutos"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Кардиотренированность (VO2 max), скорость ходьбы, шестиминутная ходьба"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kardiyo uygunluk (VO2 max), yürüme hızı, altı dakika yürüme"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有氧适能（VO2 max）、步行速度、六分钟步行"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有氧適能（VO2 max）、步行速度、六分鐘步行"
-          }
-        }
-      }
-    },
     "Checked where you are" : {
       "localizations" : {
         "de" : {
@@ -12107,88 +12025,6 @@
         }
       }
     },
-    "Steps, distance, active energy, exercise and stand time, flights climbed" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schritte, Distanz, aktive Energie, Trainings- und Stehzeit, gestiegene Etagen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pasos, distancia, energía activa, minutos de ejercicio y de pie, pisos subidos"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pas, distance, énergie active, temps d'exercice et de station debout, étages gravis"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Langkah, jarak, energi aktif, waktu latihan dan berdiri, lantai yang dinaiki"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passi, distanza, energia attiva, minuti di esercizio e in piedi, piani saliti"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "歩数、距離、アクティブエネルギー、エクササイズ時間とスタンド時間、上った階数"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "걸음 수, 거리, 활동 에너지, 운동 및 일어서기 시간, 오른 층수"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kroki, dystans, energia aktywna, czas ćwiczeń i stania, pokonane piętra"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passos, distância, energia ativa, tempo de exercício e em pé, lances de escada"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Шаги, расстояние, активная энергия, время упражнений и разминки, пройдено пролётов"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adımlar, mesafe, etkin enerji, egzersiz ve ayakta durma süresi, çıkılan kat"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "步数、距离、活动能量、锻炼和站立时间、已爬楼层"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "步數、距離、活動能量、運動和站立時間、爬升樓層"
-          }
-        }
-      }
-    },
     "Tap to open Apple Maps." : {
       "localizations" : {
         "de" : {
@@ -18797,6 +18633,662 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 無法開始通話。請再試一次。"
+          }
+        }
+      }
+    },
+    "Mobility" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobilität"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Movilidad"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobilité"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobilitas"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobilità"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이동성"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobilność"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobilidade"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мобильность"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hareketlilik"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动能力"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行動能力"
+          }
+        }
+      }
+    },
+    "Cycle tracking" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zyklusprotokoll"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguimiento del ciclo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suivi du cycle"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pelacakan Siklus"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitoraggio del ciclo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "周期記録"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "주기 추적"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitorowanie cyklu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitoramento do Ciclo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отслеживание цикла"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Döngü Takibi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经期追踪"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經期追蹤"
+          }
+        }
+      }
+    },
+    "Steps, distance, active and resting energy, exercise and stand time, flights climbed, time in daylight, physical effort" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritte, Distanz, aktive Energie und Ruheenergie, Trainings- und Stehzeit, gestiegene Etagen, Zeit bei Tageslicht, körperliche Anstrengung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasos, distancia, energía activa y en reposo, minutos de ejercicio y de pie, pisos subidos, tiempo con luz natural, esfuerzo físico"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas, distance, énergie active et au repos, temps d'exercice et de station debout, étages gravis, temps à la lumière du jour, effort physique"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langkah, jarak, energi aktif dan istirahat, waktu latihan dan berdiri, lantai yang dinaiki, waktu di bawah cahaya siang, usaha fisik"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passi, distanza, energia attiva e a riposo, minuti di esercizio e in piedi, piani saliti, tempo alla luce del giorno, sforzo fisico"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歩数、距離、アクティブエネルギーと安静時エネルギー、エクササイズ時間とスタンド時間、上った階数、日光を浴びた時間、運動強度"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "걸음 수, 거리, 활동 및 휴식 에너지, 운동 및 일어서기 시간, 오른 층수, 햇빛 노출 시간, 신체 활동 강도"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kroki, dystans, energia aktywna i spoczynkowa, czas ćwiczeń i stania, pokonane piętra, czas na świetle dziennym, wysiłek fizyczny"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passos, distância, energia ativa e em repouso, tempo de exercício e em pé, lances de escada, tempo à luz do dia, esforço físico"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шаги, расстояние, активная энергия и энергия покоя, время упражнений и разминки, пройдено пролётов, время при дневном свете, физическая нагрузка"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adımlar, mesafe, etkin ve dinlenme enerjisi, egzersiz ve ayakta durma süresi, çıkılan kat, gün ışığında geçen süre, fiziksel efor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步数、距离、活动能量和静息能量、锻炼和站立时间、已爬楼层、日光下时间、体能消耗"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步數、距離、活動能量與靜止能量、運動和站立時間、爬升樓層、日照時間、體能消耗"
+          }
+        }
+      }
+    },
+    "Cardio fitness (VO2 max), walking speed, six-minute walk, running speed, stride length, ground contact time, vertical oscillation and power" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cardiofitness (VO2 max), Gehgeschwindigkeit, Sechs-Minuten-Gehtest, Laufgeschwindigkeit, Schrittlänge, Bodenkontaktzeit, vertikale Bewegung und Leistung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capacidad cardiorrespiratoria (VO2 max), velocidad al caminar, caminata de seis minutos, velocidad de carrera, longitud de zancada, tiempo de contacto con el suelo, oscilación vertical y potencia"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forme cardio (VO2 max), vitesse de marche, marche de six minutes, vitesse de course, longueur de foulée, temps de contact au sol, oscillation verticale et puissance"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kebugaran kardio (VO2 max), kecepatan berjalan, jalan enam menit, kecepatan lari, panjang langkah, waktu kontak tanah, osilasi vertikal, dan daya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capacità cardiorespiratoria (VO2 max), velocità della camminata, camminata di sei minuti, velocità di corsa, lunghezza della falcata, tempo di contatto con il suolo, oscillazione verticale e potenza"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心肺機能（VO2 max）、歩行速度、6分間歩行、ランニング速度、ストライド、接地時間、上下動、パワー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "심폐 건강(VO2 max), 걷기 속도, 6분 걷기, 달리기 속도, 보폭, 지면 접촉 시간, 수직 진폭 및 파워"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wydolność kardio (VO2 max), szybkość chodzenia, test sześciominutowego marszu, szybkość biegu, długość kroku, czas kontaktu z podłożem, oscylacja pionowa i moc"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condicionamento cardiorrespiratório (VO2 max), velocidade da caminhada, caminhada de seis minutos, velocidade de corrida, comprimento da passada, tempo de contato com o solo, oscilação vertical e potência"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кардиотренированность (VO2 max), скорость ходьбы, шестиминутная ходьба, скорость бега, длина шага, время контакта с землёй, вертикальные колебания и мощность"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kardiyo uygunluk (VO2 max), yürüme hızı, altı dakika yürüme, koşu hızı, adım uzunluğu, yerle temas süresi, dikey salınım ve güç"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有氧适能（VO2 max）、步行速度、六分钟步行、跑步速度、步幅、触地时间、垂直振幅和功率"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有氧適能（VO2 max）、步行速度、六分鐘步行、跑步速度、步幅、觸地時間、垂直振幅和功率"
+          }
+        }
+      }
+    },
+    "Step length, double support time, walking asymmetry, stair speed, walking steadiness" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schrittlänge, Zeit mit beiden Füßen am Boden, Gangasymmetrie, Treppengeschwindigkeit, Gangstabilität"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Longitud del paso, tiempo con doble apoyo, asimetría al caminar, velocidad en escaleras, estabilidad al caminar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Longueur du pas, temps de double appui, asymétrie de la marche, vitesse dans les escaliers, stabilité de la marche"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panjang langkah, waktu tumpuan ganda, asimetri berjalan, kecepatan tangga, kestabilan berjalan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lunghezza del passo, tempo di doppio appoggio, asimmetria della camminata, velocità sulle scale, stabilità della camminata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歩幅、両脚支持時間、歩行非対称性、階段の速度、歩行安定性"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보폭, 양발 지지 시간, 보행 비대칭, 계단 속도, 보행 안정성"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Długość kroku, czas podwójnego podparcia, asymetria chodu, szybkość na schodach, stabilność chodu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprimento do passo, tempo de apoio duplo, assimetria da caminhada, velocidade na escada, estabilidade da caminhada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Длина шага, время двойной опоры, асимметрия ходьбы, скорость на лестнице, устойчивость ходьбы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adım uzunluğu, çift destek süresi, yürüme asimetrisi, merdiven hızı, yürüme dengesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步长、双支撑时间、步行不对称性、楼梯速度、步行稳定性"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步長、雙腳支撐時間、步行不對稱、樓梯速度、步行穩定度"
+          }
+        }
+      }
+    },
+    "Each day of a period you log, with its flow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Tag einer Periode, den du einträgst, mit seiner Blutungsstärke"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada día de periodo que registras, con su flujo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque jour de règles que vous enregistrez, avec son flux"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap hari menstruasi yang Anda catat, beserta alirannya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni giorno di ciclo che registri, con il suo flusso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録した生理の各日とその出血量"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기록한 생리 기간의 각 날짜와 생리량"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każdy zapisany dzień miesiączki wraz z obfitością krwawienia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada dia de menstruação que você registra, com o fluxo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый отмеченный день месячных и его обильность"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaydettiğiniz her regl günü ve akış miktarı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你记录的每一个经期日及其流量"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你記錄的每一個經期日及其流量"
+          }
+        }
+      }
+    },
+    "Update the Conduit plugin on this host to share all of these." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere das Conduit-Plugin auf diesem Host, um all das zu teilen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualiza el plugin de Conduit en este host para compartir todo esto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mettez à jour le plugin Conduit sur cet hôte pour partager tout cela."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui plugin Conduit di host ini untuk membagikan semuanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiorna il plugin Conduit su questo host per condividere tutto questo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらをすべて共有するには、このホストのConduitプラグインをアップデートしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 항목을 모두 공유하려면 이 호스트의 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaktualizuj wtyczkę Conduit na tym hoście, aby udostępniać to wszystko."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualize o plugin do Conduit neste host para compartilhar tudo isso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновите плагин Conduit на этом хосте, чтобы передавать всё это."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunların hepsini paylaşmak için bu sunucudaki Conduit eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新此主机上的 Conduit 插件即可共享全部内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新此主機上的 Conduit 外掛程式即可分享全部內容。"
+          }
+        }
+      }
+    },
+    "This host doesn't take all of these yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Host nimmt noch nicht all das an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este host aún no acepta todo esto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet hôte n'accepte pas encore tout cela."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host ini belum menerima semuanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo host non accetta ancora tutto questo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストはまだこれらすべてを受け付けていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트는 아직 이 항목을 모두 받지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten host nie przyjmuje jeszcze tego wszystkiego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este host ainda não aceita tudo isso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот хост пока принимает не всё из этого."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucu henüz bunların hepsini almıyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机暂不接收全部内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機暫不接收全部內容。"
           }
         }
       }

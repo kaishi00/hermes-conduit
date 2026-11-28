@@ -39,6 +39,15 @@ struct HealthSyncState: Codable, Equatable {
     /// categories on now). Nil in a state from before this was kept, or
     /// before the first walk: the next walk starts over to be safe.
     var backfilledCategories: Set<HealthCategory>?
+    /// What the history walk covers: the metrics it sends (and "sleep"), as
+    /// many as the host keeps. A plugin update that brings more starts the
+    /// walk over for them. Nil in a state from before it was kept: read from
+    /// `backfilledCategories` and what every host keeps.
+    var backfilledMetrics: Set<String>?
+    /// The metrics the host's status listed (plugin 0.208.0+), or what every
+    /// host keeps for an older plugin, which lists none. Nil before the
+    /// first status: sent as an older plugin's.
+    var hostMetrics: [String]?
     var anchors: [String: Data] = [:]
     /// Each recent window the host last took, by metric, grain and range,
     /// as a hash of what it carried (HealthBatch.windowPrints), and when
@@ -64,6 +73,29 @@ struct HealthSyncState: Codable, Equatable {
     var lastSync: Date?
     var lastAttempt: Date?
     var pause: HealthSyncPause?
+
+    /// The metrics this phone sends the host: only those it keeps, since a
+    /// window of one it doesn't know refuses the whole batch.
+    var hostKeeps: Set<HealthMetric> {
+        guard let hostMetrics else { return HealthMetric.keptByEveryHost }
+        return Set(hostMetrics.compactMap(HealthMetric.init(rawValue:)))
+    }
+
+    /// Whether the host keeps the logged days of a period (plugin 0.208.0+).
+    var hostKeepsCycle: Bool { hostMetrics?.contains(Self.cycleMetric) == true }
+
+    static let cycleMetric = "menstrual_flow"
+
+    /// Whether the host keeps everything `category` shares, as far as its
+    /// last status said (Settings asks for a plugin update otherwise).
+    func hostKeepsAll(of category: HealthCategory) -> Bool {
+        category == .cycle ? hostKeepsCycle : category.metrics.allSatisfy(hostKeeps.contains)
+    }
+
+    /// What an older plugin, whose status lists no metrics, keeps.
+    static var olderPluginMetrics: [String] {
+        HealthMetric.keptByEveryHost.map(\.rawValue).sorted() + ["sleep", "workout"]
+    }
 
     mutating func startOver(keepingDevice: Bool = true) {
         let device = deviceID
@@ -245,6 +277,25 @@ final class HealthSyncEngine: ObservableObject {
         return outcome
     }
 
+    /// Health was just asked for types it hadn't been: a pass before that
+    /// read them as empty, so their history goes again (issue 3459). That
+    /// covers the windows and the event streams of the types this release
+    /// added, whose anchors such a pass moved past their history. The host
+    /// keeps events by id, so a stream read again lands once. A host on an
+    /// older plugin takes none of those types, so its history stays put: a
+    /// plugin update re-walks it then (sendHistory's walked set grows).
+    func walkHistoryAgain() {
+        guard readStateIfNeeded() else { return }
+        let added = Set(HealthMetric.allCases).subtracting(HealthMetric.keptByEveryHost)
+        guard state.hostKeepsCycle || !state.hostKeeps.isDisjoint(with: added) else { return }
+        let streams = Set([HealthEventStream.cycle.key] + added.map { HealthEventStream.samples($0).key })
+        let anchors = state.anchors.filter { !streams.contains($0.key) }
+        guard state.backfilledMetrics != [] || anchors.count != state.anchors.count else { return }
+        state.backfilledMetrics = []
+        state.anchors = anchors
+        store.save(state)
+    }
+
     /// Records a pause found outside a pass (another dashboard in use).
     func note(_ pause: HealthSyncPause?) {
         guard readStateIfNeeded(), state.pause != pause else { return }
@@ -411,6 +462,9 @@ final class HealthSyncEngine: ObservableObject {
             // A new store on the host: everything goes again.
             restart()
         }
+        // What this host keeps, asked every pass so a plugin update brings
+        // the rest in (issue 3459).
+        state.hostMetrics = (status["metrics"] as? [String]) ?? HealthSyncState.olderPluginMetrics
         // A key agreed before voice reads existed is set up again, once:
         // the host then drops what it sent and this pass sends it all again.
         if let key = keys.load(), key.kid == hostKid, key.readsByVoice {
@@ -443,6 +497,7 @@ final class HealthSyncEngine: ObservableObject {
         state.backfillCursor = nil
         state.backfillFloor = nil
         state.backfilledCategories = nil
+        state.backfilledMetrics = nil
         state.historyStart = nil
         state.history = nil
         // A new key starts the host's copy over, its other profiles choice
@@ -533,6 +588,19 @@ private struct Session {
     var calendar: Calendar { engine.calendar }
     var categories: Set<HealthCategory> { preferences.categories }
 
+    /// The shared metrics in `category` that the host keeps.
+    func metrics(in category: HealthCategory) -> [HealthMetric] {
+        let kept = engine.state.hostKeeps
+        return category.metrics.filter(kept.contains)
+    }
+
+    /// What the history walk sends for the shared categories.
+    var walkedMetrics: Set<String> {
+        var walked = Set(HealthCategory.allCases.filter(categories.contains).flatMap(metrics(in:)).map(\.rawValue))
+        if categories.contains(.sleep) { walked.insert("sleep") }
+        return walked
+    }
+
     init(engine: HealthSyncEngine, key: HealthSyncCrypto.SessionKey, preferences: HealthSyncPreferences,
          options: HealthPassOptions, request: @escaping HealthSyncEngine.Request, deadline: Date) {
         self.engine = engine
@@ -615,7 +683,7 @@ private struct Session {
         let today = calendar.startOfDay(for: engine.currentNow)
         let hourlyFloor = calendar.date(byAdding: .day, value: -HealthSyncLimits.hourlyHistoryDays, to: today) ?? today
         for category in HealthCategory.allCases where categories.contains(category) {
-            for metric in category.metrics {
+            for metric in metrics(in: category) {
                 try checkTime()
                 let daily = try await engine.source.buckets(metric, grain: .day, from: from, to: to, calendar: calendar)
                 windows.append(HealthWindow(metric: metric.rawValue, grain: .day, unit: metric.unit,
@@ -671,8 +739,9 @@ private struct Session {
         var streams: [HealthEventStream] = []
         if categories.contains(.workouts) { streams.append(.workouts) }
         if categories.contains(.sleep) { streams.append(.sleep) }
+        if categories.contains(.cycle), engine.state.hostKeepsCycle { streams.append(.cycle) }
         for category in HealthCategory.allCases where categories.contains(category) && preferences.detailed.contains(category) {
-            streams.append(contentsOf: category.metrics.map(HealthEventStream.samples))
+            streams.append(contentsOf: metrics(in: category).map(HealthEventStream.samples))
         }
         for stream in streams {
             var more = true
@@ -702,12 +771,20 @@ private struct Session {
         // cursor goes back to the days the recent-days pass keeps fresh
         // (HealthSyncLimits.recomputedDays); nothing older is covered
         // anywhere else.
-        if categories != engine.state.backfilledCategories {
-            let missing = categories.subtracting(engine.state.backfilledCategories ?? [])
+        // The same for metrics a plugin update brought (issue 3459).
+        let walked = walkedMetrics
+        let before = engine.state.backfilledMetrics ?? engine.state.backfilledCategories.map { done in
+            var metrics = Set(done.flatMap(\.metrics).filter(HealthMetric.keptByEveryHost.contains).map(\.rawValue))
+            if done.contains(.sleep) { metrics.insert("sleep") }
+            return metrics
+        }
+        if categories != engine.state.backfilledCategories || walked != before {
+            let missing = walked.subtracting(before ?? [])
             let today = calendar.startOfDay(for: engine.currentNow)
             let from = calendar.date(byAdding: .day, value: -(HealthSyncLimits.recomputedDays - 1), to: today) ?? today
             engine.acknowledged { state in
                 state.backfilledCategories = categories
+                state.backfilledMetrics = walked
                 if !missing.isEmpty { state.backfillCursor = from }
             }
         }

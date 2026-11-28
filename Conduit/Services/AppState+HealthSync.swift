@@ -53,6 +53,14 @@ extension AppState {
            activeDashboardID == nil || activeDashboardID == destination.dashboardID {
             engine.note(nil)
         }
+        // A Conduit update that reads more of a shared category (issue
+        // 3459) asks Health for the new types on screen, before any spacing
+        // below can skip the pass; nothing otherwise. A background pass
+        // before it read them as empty, so their history goes again.
+        if PhoneScenePresence.isInForeground,
+           await engine.source.requestAuthorizationIfNeeded(for: preferences.categories) {
+            engine.walkHistoryAgain()
+        }
         // Coming back to the app often isn't news; Apple Health's own wakes
         // and the background refresh cover the rest. A voice call reuses a
         // pass from the last few minutes, and Low Power or Low Data Mode

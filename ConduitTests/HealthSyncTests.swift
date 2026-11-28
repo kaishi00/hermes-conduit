@@ -396,6 +396,95 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
     }
 
+    func testOnlyWhatTheHostKeepsGoesAndAPluginUpdateBringsTheRest() async throws {
+        // An older plugin lists no metrics and refuses a whole batch over a
+        // window of one it doesn't know (issue 3459).
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        func windows(since count: Int) -> [String] {
+            host.batches.dropFirst(count).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+                .map { "\($0["metric"] as? String ?? "")/\($0["grain"] as? String ?? "")" }
+        }
+        func events(since count: Int) -> [[String: Any]] {
+            host.batches.dropFirst(count).flatMap { $0["events"] as? [[String: Any]] ?? [] }
+        }
+        var preferences = healthPreferences(history: .days30)
+        preferences.categories = [.activity, .mobility, .cycle]
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(windows(since: 0).contains("steps/day"))
+        XCTAssertFalse(windows(since: 0).contains { $0.hasPrefix("basal_energy/") || $0.hasPrefix("walking_steadiness/") })
+        XCTAssertTrue(events(since: 0).isEmpty, "No period days to a host that doesn't keep them")
+        XCTAssertNil(engine.state.anchors["cycle"])
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+
+        // The plugin updated: the new metrics go, their history with them,
+        // and the logged days of a period.
+        host.metrics = HealthMetric.allCases.map(\.rawValue) + ["sleep", "workout", "menstrual_flow"]
+        let sent = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertGreaterThan(windows(since: sent).filter { $0 == "basal_energy/day" }.count, 1,
+                             "The recent days and the history walked again")
+        XCTAssertTrue(windows(since: sent).contains("walking_steadiness/day"))
+        let cycle = events(since: sent).filter { $0["kind"] as? String == "cycle" }
+        XCTAssertEqual(cycle.first?["metric"] as? String, "menstrual_flow")
+        XCTAssertEqual((cycle.first?["data"] as? [String: Any])?["flow"] as? String, "light")
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+    }
+
+    func testHistoryGoesAgainOnceHealthIsAskedForNewTypes() async throws {
+        // A background pass read types Health hadn't been asked about yet as
+        // empty; once asked on screen, their history is walked again, the
+        // new types' event streams from the start too.
+        let host = FakeHealthHost()
+        host.metrics = HealthMetric.allCases.map(\.rawValue) + ["sleep", "workout", "menstrual_flow"]
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        var preferences = healthPreferences(history: .days30)
+        preferences.categories.insert(.cycle)
+        preferences.detailed = [.activity]
+        func events(since count: Int, _ kind: String) -> Int {
+            host.batches.dropFirst(count).flatMap { $0["events"] as? [[String: Any]] ?? [] }
+                .filter { $0["kind"] as? String == kind }.count
+        }
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+        XCTAssertEqual(events(since: 0, "cycle"), 1)
+        XCTAssertNotNil(engine.state.anchors["cycle"])
+        engine.walkHistoryAgain()
+        XCTAssertNil(engine.state.anchors["cycle"], "A new type's stream reads from the start again")
+        XCTAssertNil(engine.state.anchors["samples.basal_energy"])
+        XCTAssertNotNil(engine.state.anchors["samples.steps"], "A kept metric's readings keep their place")
+        XCTAssertNotNil(engine.state.anchors["workouts"], "Streams Health was asked for before keep their place")
+        func stepDays(since count: Int) -> Int {
+            host.batches.dropFirst(count).flatMap { $0["windows"] as? [[String: Any]] ?? [] }
+                .filter { $0["metric"] as? String == "steps" && $0["grain"] as? String == "day" }.count
+        }
+        let sent = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        // The recent days went already and are unchanged; the fake answers
+        // one bucket per range, so the history walked again is one window.
+        XCTAssertEqual(stepDays(since: sent), 1, "The history walked again")
+        XCTAssertEqual(events(since: sent, "cycle"), 1, "The period days read again")
+        XCTAssertEqual(events(since: sent, "sample"), 1, "The new metric's readings read again")
+        XCTAssertEqual(events(since: sent, "workout"), 0)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart)
+        let again = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(stepDays(since: again), 0, "Without an ask, nothing walks again")
+    }
+
+    func testAnOlderPluginsHistoryStaysPutWhenHealthIsAsked() async throws {
+        // An older plugin takes none of the new types: asking Health for them
+        // doesn't send its whole history again.
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        let preferences = healthPreferences(history: .days30)
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        let walked = engine.state.backfilledMetrics
+        XCTAssertNotNil(walked)
+        engine.walkHistoryAgain()
+        XCTAssertEqual(engine.state.backfilledMetrics, walked)
+    }
+
     func testLowDataModeLeavesOlderHistoryForLater() async throws {
         let host = FakeHealthHost()
         let engine = makeHealthEngine(source: FakeHealthSource())
@@ -712,6 +801,7 @@ private final class FakeHealthSource: HealthDataSource {
     /// A metric's sum other than 100, as when a reading arrives.
     var sums: [HealthMetric: Double] = [:]
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws {}
+    func requestAuthorizationIfNeeded(for categories: Set<HealthCategory>) async -> Bool { false }
 
     /// A locked phone: HealthKit refuses every read.
     var locked = false
@@ -729,6 +819,17 @@ private final class FakeHealthSource: HealthDataSource {
 
     func changes(_ stream: HealthEventStream, since: Date, anchor: Data?, limit: Int) async throws -> HealthEventChanges {
         limits.append(limit)
+        if stream == .samples(.basalEnergy), anchor == nil {
+            let reading = HealthEvent(id: "B1", kind: .sample, metric: "basal_energy", start: since,
+                                      end: since.addingTimeInterval(60), value: 1.2, unit: "kcal")
+            return HealthEventChanges(added: [reading], deleted: [], anchor: Data("b-anchor".utf8), more: false)
+        }
+        if stream == .cycle, anchor == nil {
+            let day = HealthEvent(id: "C1", kind: .cycle, metric: "menstrual_flow", start: since,
+                                  end: since.addingTimeInterval(86_399),
+                                  data: ["flow": .text("light"), "cycle_start": .number(1)])
+            return HealthEventChanges(added: [day], deleted: [], anchor: Data("c-anchor".utf8), more: false)
+        }
         guard stream == .workouts, anchor == nil else { return HealthEventChanges(added: [], deleted: [], anchor: anchor ?? Data("\(stream.key)".utf8), more: false) }
         let workout = HealthEvent(id: "W1", kind: .workout, metric: "workout", start: since, end: since.addingTimeInterval(1800),
                                   data: ["activity": .text("running")])
@@ -775,6 +876,8 @@ private final class FakeHealthHost {
     var onIngest: (() -> Void)?
     /// The host's store: a new one starts the phone's copy over.
     var generation = "g1"
+    /// The metrics its status lists (plugin 0.208.0+); nil as an older plugin.
+    var metrics: [String]?
 
     func forgetKey() {
         session = nil
@@ -786,6 +889,7 @@ private final class FakeHealthHost {
         if path.hasPrefix("\(base)/status") {
             var answer: [String: Any] = ["generation": generation]
             if let kid { answer["device"] = ["kid": kid] }
+            if let metrics { answer["metrics"] = metrics }
             return answer
         }
         if path == "\(base)/key" {
