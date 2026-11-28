@@ -343,7 +343,10 @@ extension AppState {
             title: text(object["title"]) ?? text(object["name"]),
             // The first that names a job, as the strict decode reads it: an
             // empty or non-string one doesn't.
-            jobID: ["job_id", "cron_job_id"].lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty }
+            jobID: ["job_id", "cron_job_id"].lazy.compactMap { object[$0] as? String }.first { !$0.isEmpty },
+            // An agent run or a script's output-only fire (issue 3455), from
+            // the outer row when a nested `session` doesn't say.
+            source: stringValue(object["source"]) ?? stringValue(rawObject["source"])
         )
     }
 
