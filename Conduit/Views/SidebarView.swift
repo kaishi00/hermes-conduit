@@ -2919,19 +2919,32 @@ struct CronRunOutputRow: View {
         return text.isEmpty ? nil : text
     }
 
+    /// Its title, never its output: the output shows below, once.
+    private var name: String {
+        let title = run.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? AppLocalization.string("Run") : title
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Collapsed, the whole row is the tap; open, the header closes it
+            // and the output below can be selected.
             Button { withAnimation(.snappy) { expanded.toggle() } } label: {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(run.displayName).lineLimit(1)
-                    Spacer()
-                    Text(run.timeLabel()).scaledFont(.caption2).foregroundStyle(.conduitTertiary)
-                    if output != nil {
-                        Image(systemName: "chevron.down")
-                            .scaledFont(.caption2.weight(.semibold))
-                            .foregroundStyle(.conduitTertiary)
-                            .rotationEffect(.degrees(expanded ? 180 : 0))
-                            .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(name).lineLimit(1)
+                        Spacer()
+                        Text(run.timeLabel()).scaledFont(.caption2).foregroundStyle(.conduitTertiary)
+                        if output != nil {
+                            Image(systemName: "chevron.down")
+                                .scaledFont(.caption2.weight(.semibold))
+                                .foregroundStyle(.conduitTertiary)
+                                .rotationEffect(.degrees(expanded ? 180 : 0))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    if !expanded {
+                        outputText.lineLimit(2)
                     }
                 }
                 .contentShape(Rectangle())
@@ -2939,19 +2952,18 @@ struct CronRunOutputRow: View {
             .buttonStyle(.plain)
             .disabled(output == nil)
             .accessibilityHint(AppLocalization.string("Shows this run's output. It has no chat.", table: .chat))
-            Group {
-                if let output {
-                    Text(output)
-                        .lineLimit(expanded ? nil : 2)
-                        .textSelection(.enabled)
-                } else {
-                    Text(AppLocalization.string("No output recorded.", table: .chat))
-                }
+            .accessibilityValue(output == nil ? "" : expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+            if expanded {
+                outputText.textSelection(.enabled)
             }
+        }
+    }
+
+    private var outputText: some View {
+        Text(output ?? AppLocalization.string("No output recorded.", table: .chat))
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 
