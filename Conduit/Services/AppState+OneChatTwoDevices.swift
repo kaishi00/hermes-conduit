@@ -466,10 +466,12 @@ extension AppState {
                 // of tool steps only): the rows it already shows are held back.
                 // A page of hidden rows only is asked again like any unproven one.
                 rows = appState.persistedRowsAfter(nil, in: transcript, heldIDs: messageIDs)
-            case .inconclusive where unstoredUserRow && transcript.messages.isEmpty:
+            case .inconclusive where unstoredUserRow
+                && AppState.orderingFrontier(from: transcript).isPositivelyEmpty:
                 // Nothing stored yet, an unconfirmed send shown: no row for a
                 // retry to add beside it, and the store's next change asks
-                // again (#3425).
+                // again (#3425). A page of hidden rows only proves nothing
+                // and is asked again like any unproven one.
                 appState.botChatTailRead.noteRead(generation: generation)
                 return
             default:

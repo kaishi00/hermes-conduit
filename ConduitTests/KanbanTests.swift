@@ -793,6 +793,28 @@ final class KanbanTests: XCTestCase {
         }
     }
 
+    /// A board the caller named that fails isn't passed over for another
+    /// board's task with the same id (#3437).
+    func testFindTaskOnANamedBoardThatFailsDoesNotTakeAnotherBoardsTask() async throws {
+        var responses = standardKanbanResponses()
+        responses["/api/plugins/kanban/tasks/t1?board=default"] = ["task": ["id": "t1", "title": "On default", "status": "todo"]]
+        let requester = MockKanbanRequester(responsesByPath: responses, errorsByPath: [
+            "/api/plugins/kanban/tasks/t1?board=beta": DashboardTicketBridgeError.http(status: 503, detail: "down")
+        ])
+        let store = makeStore(requester: requester)
+        await store.refresh()
+
+        do {
+            _ = try await store.findTask(id: "t1", onBoard: "beta")
+            XCTFail("the named board's failure must throw")
+        } catch DashboardTicketBridgeError.http(let status, _) {
+            XCTAssertEqual(status, 503)
+        }
+        // Unnamed, the search goes on past a failure.
+        let found = try await store.findTask(id: "t1")
+        XCTAssertEqual(found?.board, "default")
+    }
+
     func testDotSegmentIdentifiersFailBeforeTransport() async throws {
         let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses())
         let service = KanbanService(requester: requester)

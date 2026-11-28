@@ -514,6 +514,60 @@ final class NativeOAuthTests: XCTestCase {
         XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.refreshToken, "new-refresh")
     }
 
+    /// A Keychain left behind by this session's own failed save is behind,
+    /// not moved on: an invalidated refresh still writes its grant over it.
+    @MainActor
+    func testARefreshOutWhenItsSessionIsInvalidatedHealsAKeychainAFailedSaveLeftBehind() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        let failing = WriteFailingKeychainBackend()
+        KeychainHelper.useBackendForTesting(failing)
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        failing.failWrites = true
+        let secondRefreshSent = expectation(description: "second refresh sent")
+        let release = DispatchSemaphore(value: 0)
+        var refreshCalls = 0
+        var apiCalls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshCalls += 1
+                if refreshCalls == 2 {
+                    secondRefreshSent.fulfill()
+                    _ = release.wait(timeout: .now() + 5)
+                }
+                return (200, [
+                    "access_token": "access-\(refreshCalls)", "refresh_token": "refresh-\(refreshCalls)",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/status":
+                apiCalls += 1
+                // The first call and the third find their token expired.
+                if apiCalls == 1 || apiCalls == 3 { return (401, ["detail": "expired"]) }
+                return (200, ["ok": true])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+
+        // The first refresh rotates, and its save fails: the Keychain keeps the retired grant.
+        _ = try await session.requestJSON(path: "/api/status")
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
+
+        failing.failWrites = false
+        let request = Task { @MainActor in try? await session.requestJSON(path: "/api/status") }
+        await fulfillment(of: [secondRefreshSent], timeout: 5)
+        session.invalidate()
+        release.signal()
+        _ = await request.value
+
+        for _ in 0..<200 where KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.refreshToken != "refresh-2" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.refreshToken, "refresh-2")
+    }
+
     /// A sign-out or a new sign-in meanwhile wins over the late grant.
     @MainActor
     func testALateRefreshNeverWritesOverAGrantThatMovedOn() async throws {

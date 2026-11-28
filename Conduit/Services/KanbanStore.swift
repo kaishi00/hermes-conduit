@@ -384,7 +384,8 @@ final class KanbanStore {
     /// Nil when no board has it. One board's failure (anything but its
     /// 404) doesn't stop the search, but when no board has the task the
     /// first failure is thrown, so a lost connection doesn't read as a
-    /// missing task.
+    /// missing task. A board the caller named that fails (anything but its
+    /// 404) throws at once: another board's task with the same id isn't it.
     func findTask(id: String, onBoard named: String? = nil) async throws -> (board: String, task: KanbanTask)? {
         guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
         var order = KanbanStore.findOrder(named: named, loaded: loadedBoardSlug ?? resolvedSelectedBoardSlug, boards: boards.map(\.slug))
@@ -399,6 +400,7 @@ final class KanbanStore {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                if let named, slug == named { throw error }
                 if failure == nil { failure = error }
             }
         }
