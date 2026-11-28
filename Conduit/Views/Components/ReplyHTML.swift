@@ -174,15 +174,23 @@ enum ReplyHTML {
         var fence = CodeFence()
         var index = 0
         var changed = false
+        // The `</details>` line of each fold open here: a page left open in a
+        // fold ends there, as the chat and its reference scan read it (#3444).
+        var foldCloses: [Int] = []
         while index < lines.count {
             let line = lines[index]
+            foldCloses.removeAll { $0 < index }
             if fence.isCode(line) {
                 out.append(line)
                 index += 1
                 continue
             }
+            if opensFold(line), let fold = fold(in: lines, at: index), fold.end > index + 1,
+               lines[fold.end - 1].trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("</details") {
+                foldCloses.append(fold.end - 1)
+            }
             if startsPage(in: lines, at: index) {
-                index = page(in: lines, at: index).end
+                index = max(index + 1, min(page(in: lines, at: index).end, foldCloses.min() ?? lines.count))
                 if let said { out.append(said) }
                 changed = true
                 continue
@@ -307,25 +315,30 @@ enum ReplyHTML {
     /// (#3349). The line holding the `-->` isn't, since a close ending it
     /// comes after the comment. Comments in code spans and fenced blocks don't count.
     static func commentLines(_ lines: [String]) -> [Bool] {
-        var inside = [Bool](repeating: false, count: lines.count)
-        var open = false
-        var fence = CodeFence()
-        for (index, line) in lines.enumerated() {
+        var scan = CommentScan()
+        return lines.map { scan.inside($0) }
+    }
+
+    /// `commentLines` read a line at a time, so a fold scans only its own
+    /// lines rather than the whole reply for each fold.
+    struct CommentScan {
+        private var open = false
+        private var fence = CodeFence()
+
+        /// Whether `line`, read after the lines before it, lies wholly inside a comment.
+        mutating func inside(_ line: String) -> Bool {
             var rest = line
             if open {
-                guard let end = line.range(of: "-->") else {
-                    inside[index] = true
-                    continue
-                }
+                guard let end = line.range(of: "-->") else { return true }
                 rest = String(line[end.upperBound...])
                 open = false
             } else if fence.isCode(line) {
-                continue
+                return false
             }
             let filler = "\u{1}"
-            open = matches(unfinishedComment, replacing(comment, in: withoutCodeSpans(rest, filler: filler), with: filler))
+            open = ReplyHTML.matches(ReplyHTML.unfinishedComment, ReplyHTML.replacing(ReplyHTML.comment, in: ReplyHTML.withoutCodeSpans(rest, filler: filler), with: filler))
+            return false
         }
-        return inside
     }
 
     /// Whether `text` ends in a `</details>` that closes a fold: one ending
@@ -388,10 +401,12 @@ enum ReplyHTML {
         var body: [String] = []
         var depth = 0
         var fence = CodeFence()
-        let inComment = commentLines(lines)
+        // Comments read from the fold's own opening: its body only, once.
+        var comments = CommentScan()
+        for line in lines[start..<index] { _ = comments.inside(line) }
         while index < lines.count {
             let line = lines[index]
-            if !inComment[index], !fence.isCode(line) {
+            if !comments.inside(line), !fence.isCode(line) {
                 if opensFold(line) { depth += 1 }
                 else if matches(foldClosing, line) {
                     if depth == 0 {

@@ -26,16 +26,18 @@ struct ChatPcControlDock: View {
     /// The computer whose Stop didn't reach the host: its line says so, and
     /// no other computer's line does.
     @State private var stopFailedOn: String?
-    /// Counts the chat's turns as they start, so a Stop answered after its
-    /// turn ended and another started is left alone (issue 3424).
-    @State private var turn = 0
+    /// Counts each chat's turns as they start, so a Stop answered after its
+    /// turn ended and another started is left alone (issue 3424). Per chat:
+    /// another chat's turn, or opening a chat whose turn runs, counts nothing here.
+    @State private var turns: [String: Int] = [:]
 
     private var shows: Bool { controlling != nil && isShowing }
 
     /// Where the line stands now, read from the app rather than this view's
     /// copy, so a Stop answered later sees the chat as it is then.
     private var moment: PcControlling.Moment {
-        PcControlling.Moment(chat: appState.activeSessionId, dashboard: appState.activeDashboardID, turn: turn, busy: appState.isBusy)
+        PcControlling.Moment(chat: appState.activeSessionId, dashboard: appState.activeDashboardID,
+                             turn: turns[appState.activeSessionId ?? "", default: 0], busy: appState.isBusy)
     }
 
     var body: some View {
@@ -53,8 +55,8 @@ struct ChatPcControlDock: View {
             controlling = nil
             stopFailedOn = nil
         }
-        .onChange(of: isBusy) { _, busy in
-            if busy { turn += 1 }
+        .onChange(of: PcControlling.ChatTurn(chat: openChatID, busy: isBusy)) { old, new in
+            if let chat = new.chat { turns[chat, default: 0] += PcControlling.turnStarts(from: old, to: new) }
         }
         .task(id: "\(openChatID ?? "")|\(isBusy)|\(isShowing)") {
             guard openChatID != nil, isShowing, isBusy else {

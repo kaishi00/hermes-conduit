@@ -67,6 +67,18 @@ struct PcControlling: Equatable, Identifiable {
         let busy: Bool
     }
 
+    /// The open chat and whether its turn runs, as the dock sees them.
+    struct ChatTurn: Equatable {
+        let chat: String?
+        let busy: Bool
+    }
+
+    /// 1 when the open chat's turn started between `old` and `new`, else 0.
+    /// Opening a chat whose turn already runs starts nothing.
+    static func turnStarts(from old: ChatTurn, to new: ChatTurn) -> Int {
+        new.busy && !old.busy && old.chat == new.chat && new.chat != nil ? 1 : 0
+    }
+
     /// What a Stop's answer does to the line.
     enum StopLanding: Equatable {
         /// The chat, the dashboard or the turn changed meanwhile: left alone.
