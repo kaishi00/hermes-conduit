@@ -535,7 +535,14 @@ extension HermesVoiceGatewayTimeoutTests {
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
 
-        XCTAssertEqual(appState.projectFolderPickerRoot, "", "no chat and no projects yet")
+        XCTAssertEqual(appState.projectFolderPickerRoot, "~", "no chat and no projects yet: the host's home folder (desktop issue 763)")
+        XCTAssertEqual(AppState.listedFolder(asked: "~", entries: [
+            WorkspaceEntry(name: "Desktop", path: "/Users/ruan/Desktop", isDirectory: true),
+        ]), "/Users/ruan", "shown by its own path once Hermes lists it")
+        XCTAssertEqual(AppState.listedFolder(asked: "~", entries: []), "~", "an empty home folder keeps ~, which can't be chosen")
+        XCTAssertEqual(AppState.listedFolder(asked: "/srv", entries: [
+            WorkspaceEntry(name: "site", path: "/srv/site", isDirectory: true),
+        ]), "/srv")
         appState.setProjectsForTesting([
             ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: []),
         ])

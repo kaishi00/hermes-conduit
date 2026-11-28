@@ -2174,10 +2174,6 @@ struct ProjectCreateSheet: View {
                     }
                     Button {
                         validationMessage = nil
-                        guard !appState.projectFolderPickerRoot.isEmpty else {
-                            validationMessage = AppLocalization.string("Open a chat with a workspace before choosing a project folder.", table: .chat)
-                            return
-                        }
                         showFolderPicker = true
                     } label: {
                         Label(AppLocalization.string("Add folder", table: .chat), systemImage: "plus")
@@ -2305,6 +2301,12 @@ struct ProjectFolderPickerSheet: View {
         currentPath.isEmpty ? nil : AppState.parentWorkspacePath(currentPath)
     }
 
+    /// No folder yet, or the host's home folder whose path Hermes hasn't
+    /// named (an empty one): nothing to choose or make a folder in.
+    private var unsettled: Bool {
+        currentPath.isEmpty || currentPath == AppState.hostHomeFolder
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -2351,7 +2353,7 @@ struct ProjectFolderPickerSheet: View {
                             }
                             .foregroundStyle(.primary)
                         }
-                        if appState.supportsWorkspaceFiles(far: far), !currentPath.isEmpty {
+                        if appState.supportsWorkspaceFiles(far: far), !unsettled {
                             Button {
                                 newFolderName = ""
                                 asksFolderName = true
@@ -2374,7 +2376,7 @@ struct ProjectFolderPickerSheet: View {
                         onChoose(currentPath)
                         dismiss()
                     }
-                    .disabled(currentPath.isEmpty || isLoading)
+                    .disabled(unsettled || isLoading)
                 }
             }
             .alert(AppLocalization.string("New Folder", table: .chat), isPresented: $asksFolderName) {
@@ -2406,7 +2408,7 @@ struct ProjectFolderPickerSheet: View {
                 try await appState.workspaceDirectoryEntries(at: path)
             }
             guard mine == opened else { return }
-            currentPath = path
+            currentPath = AppState.listedFolder(asked: path, entries: listed)
             entries = listed
         } catch {
             guard mine == opened else { return }

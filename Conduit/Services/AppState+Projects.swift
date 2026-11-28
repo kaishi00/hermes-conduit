@@ -479,21 +479,36 @@ extension AppState {
 
     /// The project folder picker starts at the same live workspace the chat
     /// browser uses, else at Home's folder, so a project can be made with no
-    /// chat open (issue 1661). Folder paths are selected from Hermes'
-    /// filesystem listing, not entered as arbitrary strings by the phone.
+    /// chat open (issue 1661), else at the host's home folder, which
+    /// Hermes' listing takes as `~` (desktop issue 763). Folder paths are
+    /// selected from Hermes' filesystem listing, not entered as arbitrary
+    /// strings by the phone.
     var projectFolderPickerRoot: String {
         // runtime.cwd outlives the chat that set it.
         if let session = activeSessionId, !session.isEmpty, let folder = chatWorkspaceFolder { return folder }
-        return projects.first(where: \.isHome)?.primaryPath?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let home = projects.first(where: \.isHome)?.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return home.isEmpty ? Self.hostHomeFolder : home
     }
 
     /// Where a far chat's (another combined dashboard's, open in place)
     /// folder picker starts: its own folder there, as the projects are the
-    /// bot on screen's.
+    /// bot on screen's, else its host's home folder.
     func projectFolderPickerRoot(far: FarChatOwner?) -> String {
         guard workspaceFarDashboardID(far) != nil else { return projectFolderPickerRoot }
-        return chatWorkspaceFolder(far: far) ?? ""
+        return chatWorkspaceFolder(far: far) ?? Self.hostHomeFolder
+    }
+
+    /// The Hermes host's home folder as Hermes' listing takes it: it expands
+    /// `~` on the host, an SSH profile's machine included.
+    static let hostHomeFolder = "~"
+
+    /// The folder a listing of `asked` showed: for the host's home folder,
+    /// its own path once Hermes names an entry in it, so a project keeps a
+    /// real path; otherwise `asked` (desktop issue 763).
+    static func listedFolder(asked: String, entries: [WorkspaceEntry]) -> String {
+        guard asked == hostHomeFolder, let first = entries.first,
+              let parent = parentWorkspacePath(first.path) else { return asked }
+        return parent
     }
 
     /// Why a new project can't be made as it stands, or nil: Hermes would
