@@ -22640,13 +22640,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "代码中包含会话令牌。"
+            "value" : "登录码包含会话令牌。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "代碼中包含工作階段權杖。"
+            "value" : "登入碼包含工作階段權杖。"
           }
         }
       }
