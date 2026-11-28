@@ -34,6 +34,7 @@
 import AVFAudio
 import CallKit
 import Foundation
+import Intents
 import OSLog
 import PushKit
 import StoreKit
@@ -241,6 +242,12 @@ final class HermesNativeCalls: NSObject {
             // Where CallKit isn't allowed, calls on end too. Once the
             // setting has turned ringing off, a call still on carries on.
             stopRinging(endingCalls: isRinging)
+            // A call the user started ends where CallKit isn't allowed,
+            // whatever the ringing setting.
+            if !HermesNativeCallStorefront.allowsCalls(known), !outgoing.isEmpty {
+                AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall()
+                for id in Array(outgoing.keys) { endOutgoing(id, reason: .failed) }
+            }
         }
     }
 
@@ -257,24 +264,30 @@ final class HermesNativeCalls: NSObject {
         }
     }
 
+    /// The CallKit provider, made once: ringing needs it, and so does a
+    /// call the user starts (Siri, Recents), with ringing off too.
+    private func ensureProvider() {
+        guard provider == nil else { return }
+        let configuration = CXProviderConfiguration()
+        configuration.supportsVideo = false
+        configuration.maximumCallGroups = 1
+        configuration.maximumCallsPerCallGroup = 1
+        // An address a contact can hold, so a Focus can allow Hermes.
+        configuration.supportedHandleTypes = HermesCallerName.handleTypes
+        // In the Phone app's Recents, where a tap opens Conduit with an
+        // INStartCallIntent that starts the bot's voice (issue 3421).
+        configuration.includesCallsInRecents = true
+        let provider = CXProvider(configuration: configuration)
+        // On the main queue, like the PushKit registry: the delegate
+        // methods below assume it.
+        provider.setDelegate(self, queue: .main)
+        self.provider = provider
+    }
+
     private func startRinging() {
         guard !isRinging else { return }
         isRinging = true
-        if provider == nil {
-            let configuration = CXProviderConfiguration()
-            configuration.supportsVideo = false
-            configuration.maximumCallGroups = 1
-            configuration.maximumCallsPerCallGroup = 1
-            // An address a contact can hold, so a Focus can allow Hermes.
-            configuration.supportedHandleTypes = HermesCallerName.handleTypes
-            // A Hermes call can't be called back from the Phone app.
-            configuration.includesCallsInRecents = false
-            let provider = CXProvider(configuration: configuration)
-            // On the main queue, like the PushKit registry: the delegate
-            // methods below assume it.
-            provider.setDelegate(self, queue: .main)
-            self.provider = provider
-        }
+        ensureProvider()
         if let registry {
             registry.desiredPushTypes = [.voIP]
             // Ringing again: the token PushKit already gave goes back to
@@ -342,7 +355,7 @@ final class HermesNativeCalls: NSObject {
         // Never created here: reporting comes first.
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
-        let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
+        let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty || !outgoing.isEmpty)
         // Read once, as the call arrives: CarPlay coming up while it rings
         // leaves the Watch ringing too.
         let inCar = CarPlayVoiceCoordinator.shared.isConnected || WakeRoutePolicy.currentRouteIsCarPlay()
@@ -485,15 +498,17 @@ final class HermesNativeCalls: NSObject {
     /// "Answer automatically" (issue 3421): the call answers through
     /// CallKit, as a tap on Answer does, once it has rung for `delay`. A
     /// call already answered (here or on the Watch), declined or ended
-    /// meanwhile is left alone.
+    /// meanwhile is left alone, and one rings on for a tap while voice is
+    /// in use or another call is on the phone.
     private func answerByItself(_ id: UUID, after delay: Duration) async {
         do { try await Task.sleep(for: delay) } catch { return }
         guard let call = calls[id], !call.answered, !call.keptFromWatch else { return }
         // Voice started here, or a Watch call, while it rang: the answer
         // would end it at once as "Hermes wants to talk" and move the
         // running conversation's audio, so it rings on for a tap.
-        if let appState = AppStateRuntimeRegistry.shared.existing, appState.isVoiceInUse || appState.isWatchVoiceCallActive {
-            HermesCallTrace.shared.note("Not answering by itself: voice is in use")
+        if let appState = AppStateRuntimeRegistry.shared.existing,
+           let busy = Self.voiceBlocksAutoAnswer(voiceInUse: appState.isVoiceInUse, watchCall: appState.isWatchVoiceCallActive) {
+            HermesCallTrace.shared.note("Not answering by itself: \(busy)")
             return
         }
         // A phone call of any app's, a cellular one included: answering
@@ -510,6 +525,12 @@ final class HermesNativeCalls: NSObject {
             calls[id]?.answeredItself = false
             HermesCallTrace.shared.note("Couldn't answer by itself: \(LogRedaction.message(error))")
         }
+    }
+
+    /// What keeps a call from answering by itself, for the trace: voice in
+    /// Conduit, or a call the Watch runs. Nil when neither is on.
+    nonisolated static func voiceBlocksAutoAnswer(voiceInUse: Bool, watchCall: Bool) -> String? {
+        voiceInUse ? "voice is in use" : watchCall ? "a Watch call is on" : nil
     }
 
     /// Whether another call on the phone (any app's, a cellular one too)
@@ -656,7 +677,9 @@ final class HermesNativeCalls: NSObject {
     /// An answered call's own voice conversation is running. Until then,
     /// voice an interruption ended isn't the call's, and restarting it
     /// would take the call's place (its open finds voice in use).
-    var isCallVoiceRunning: Bool { calls.values.contains { $0.voiceStarted } }
+    var isCallVoiceRunning: Bool {
+        calls.values.contains { $0.voiceStarted } || outgoing.values.contains { $0.voiceStarted }
+    }
 
     /// Opens the call as its notification's Talk button would, then keeps
     /// the CallKit call while the voice it opens runs.
@@ -744,6 +767,207 @@ final class HermesNativeCalls: NSObject {
         let waiters = audioWaiters
         audioWaiters = []
         for waiter in waiters { waiter.resume() }
+    }
+
+    // MARK: Calls the user starts
+
+    /// A call the user started with Siri (issue 3421): "Call <bot> in
+    /// Conduit". Nothing rang, so nothing is settled or told to Hermes
+    /// when it ends.
+    private struct OutgoingCall {
+        let profile: String
+        /// No one holds the phone to their ear, so a call that would start
+        /// on the earpiece goes on the speaker once, as one that answers
+        /// automatically does.
+        var movesToSpeaker = true
+        /// Its voice conversation is running (`isCallVoiceRunning`).
+        var voiceStarted = false
+        /// Its voice open's cleanup fence (`hermesCallOpenGeneration`).
+        let generation = UUID()
+        var work: Task<Void, Never>? = nil
+    }
+    private var outgoing: [UUID: OutgoingCall] = [:]
+
+    enum StartCallResult: Equatable {
+        case started
+        /// CallKit isn't offered here (the storefront, or a build without it).
+        case unavailable
+        /// A call from Hermes, or one the user started, is already on.
+        case busy
+        case failed
+    }
+
+    /// Starts a call to a bot through CallKit, so it works with the iPhone
+    /// locked: Hermes connects, a fresh voice conversation with the bot
+    /// starts as Siri's "Talk to Conduit" does, and the CallKit call lasts
+    /// as long as it runs.
+    func startCall(profile: String) async -> StartCallResult {
+        guard Self.offersRinging else { return .unavailable }
+        ensureProvider()
+        // Voice already running (here or a Watch call) isn't the call's:
+        // its open would find voice in use, and a hang up would end it.
+        let voiceBusy = AppStateRuntimeRegistry.shared.existing.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
+        guard !voiceBusy, calls.isEmpty, outgoing.isEmpty, !callController.callObserver.calls.contains(where: { !$0.hasEnded }) else { return .busy }
+        let id = UUID()
+        outgoing[id] = OutgoingCall(profile: profile)
+        HermesCallTrace.shared.begin("Call started from Siri")
+        let action = CXStartCallAction(call: id, handle: HermesCallerName.callHandle(profile: profile))
+        do {
+            try await callController.request(CXTransaction(action: action))
+            return .started
+        } catch {
+            outgoing[id] = nil
+            HermesCallTrace.shared.note("CallKit didn't start it: \(LogRedaction.message(error))")
+            return .failed
+        }
+    }
+
+    private func startOutgoing(_ action: CXStartCallAction) {
+        let id = action.callUUID
+        guard let call = outgoing[id] else {
+            action.fail()
+            return
+        }
+        VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
+        action.fulfill()
+        provider?.reportOutgoingCall(with: id, startedConnectingAt: Date())
+        let update = CXCallUpdate()
+        update.remoteHandle = action.handle
+        update.localizedCallerName = Self.outgoingName(profile: call.profile)
+        update.hasVideo = false
+        update.supportsHolding = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsDTMF = false
+        provider?.reportCall(with: id, updated: update)
+        let appState = AppStateRuntimeRegistry.shared.appState
+        appState.setNativeHermesCallActive(true)
+        // The user asked for it: its voice may listen with the phone
+        // locked, as an answered call's does.
+        appState.setNativeHermesCallAnswered(true)
+        outgoing[id]?.work = Task { await self.connectOutgoing(id) }
+    }
+
+    /// The bot's name, as a call from it would show it.
+    private static func outgoingName(profile id: String) -> String {
+        let names = UserDefaults.standard.dictionary(forKey: "conduit.knownProfileNames.v1") as? [String: String]
+        let mainName = ProfileAppearanceStore().loadDefaultName(dashboardID: AppStateRuntimeRegistry.shared.existing?.activeDashboardID)
+        return HermesCallerName.name(profile: id, mainName: mainName, profileName: names?[id])
+    }
+
+    private func connectOutgoing(_ id: UUID) async {
+        guard let profile = outgoing[id].map({ $0.profile }) else { return }
+        let appState = AppStateRuntimeRegistry.shared.appState
+        await waitForAudio()
+        guard outgoing[id] != nil, !Task.isCancelled else { return }
+        let connectionWait = Date()
+        let connected = await CarPlayVoiceCoordinator.awaitConnection(of: appState, timeout: Self.connectionTimeout)
+        HermesCallTrace.shared.note(connected ? "Connected" : "Not connected in time", since: connectionWait)
+        guard outgoing[id] != nil, !Task.isCancelled else { return }
+        guard let generation = outgoing[id]?.generation else { return }
+        var intent = PendingVoiceIntent(profile: profile, startsFreshConversation: true, source: .siri)
+        intent.callGeneration = generation
+        let errorBefore = appState.errorMessage
+        guard connected, !appState.isVoiceInUse, await appState.openVoiceConversation(intent) else {
+            HermesCallTrace.shared.note("Voice not opened")
+            endOutgoing(id, reason: .failed)
+            return
+        }
+        let ownsVoice = Self.openStillOwnsVoice(generation, current: appState.hermesCallOpenGeneration)
+        // Hung up while it opened: the voice it opened goes too, unless
+        // voice started another way since (that start took the fence).
+        guard outgoing[id] != nil else {
+            if ownsVoice {
+                HermesCallTrace.shared.note("Voice opened after the call ended: ending it")
+                appState.endVoiceForNativeCall()
+                appState.keepVoiceFromHermesCallCleanup()
+            }
+            return
+        }
+        // Voice started another way while it opened: that voice is the
+        // user's, so the call ends and leaves it.
+        guard ownsVoice else {
+            HermesCallTrace.shared.note("Voice started another way: ending the call")
+            endOutgoing(id, reason: .failed)
+            return
+        }
+        // Its preparation failed (the error is on screen): no voice to wait for.
+        if !appState.isVoiceInUse, appState.errorMessage != nil, appState.errorMessage != errorBefore {
+            HermesCallTrace.shared.note("Voice not prepared")
+            endOutgoing(id, reason: .failed)
+            return
+        }
+        // Off screen (locked) the sheet may not run its own auto-listen;
+        // the call starts it from here, as an answered call's does.
+        appState.startDeferredVoiceSheetAutoListen()
+        provider?.reportOutgoingCall(with: id, connectedAt: Date())
+        // Until the voice it opened ends, as an answered call's.
+        var started = false
+        let startBy = ContinuousClock.now + Self.voiceStartTimeout
+        while outgoing[id] != nil, !Task.isCancelled {
+            if appState.isVoiceInUse {
+                started = true
+                outgoing[id]?.voiceStarted = true
+            } else if started || ContinuousClock.now > startBy {
+                break
+            }
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+        }
+        guard outgoing[id] != nil else { return }
+        HermesCallTrace.shared.note(started ? "Voice ended" : "Voice not in use in time")
+        if !started { appState.endVoiceForNativeCall() }
+        endOutgoing(id, reason: started ? .remoteEnded : .failed)
+    }
+
+    /// Whether a Siri call's voice open may still end what it opened: no
+    /// voice started another way since it began.
+    nonisolated static func openStillOwnsVoice(_ generation: UUID, current: UUID?) -> Bool {
+        current == generation
+    }
+
+    /// The call is over: its fence no longer marks anything as its own.
+    /// Kept while its open may still be running, so that open's late
+    /// return can still end what it opened.
+    private func releaseFence(of call: OutgoingCall) {
+        guard call.voiceStarted, let appState = AppStateRuntimeRegistry.shared.existing,
+              Self.openStillOwnsVoice(call.generation, current: appState.hermesCallOpenGeneration) else { return }
+        appState.keepVoiceFromHermesCallCleanup()
+    }
+
+    private func endOutgoing(_ id: UUID, reason: CXCallEndedReason) {
+        guard let call = outgoing.removeValue(forKey: id) else { return }
+        releaseFence(of: call)
+        HermesCallTrace.shared.note("Call ended (\(Self.traceLabel(reason)))")
+        call.work?.cancel()
+        provider?.reportCall(with: id, endedAt: Date(), reason: reason)
+        settle()
+    }
+
+    /// A tap on a Hermes call in the Phone app's Recents opens Conduit
+    /// with an INStartCallIntent naming the bot it was with. Its voice
+    /// starts as Siri's "Talk to Conduit" with it does: Conduit is on
+    /// screen, so no CallKit call is needed. False for a call naming none
+    /// of the dashboard in use's bots.
+    @discardableResult
+    func callBack(_ activity: NSUserActivity) -> Bool {
+        guard let intent = activity.interaction?.intent as? INStartCallIntent,
+              let handle = intent.contacts?.first?.personHandle?.value,
+              let profile = Self.profile(calling: handle, among: ConduitProfileEntityQuery.localProfiles().map(\.id)) else {
+            nativeCallsLogger.notice("Recents call back named no bot here")
+            return false
+        }
+        PendingVoiceIntentStore.shared.enqueue(PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: profile))
+        return true
+    }
+
+    /// Which of `profiles` a Hermes call in the Phone app's Recents (or a
+    /// saved bot contact) names, by the address its calls ring from: the
+    /// address folds case and drops characters, so it's matched, not read
+    /// back. Nil for one that names none of them.
+    nonisolated static func profile(calling handle: String, among profiles: [String]) -> String? {
+        let address = handle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard address.hasPrefix("hermes+") else { return nil }
+        return profiles.first { HermesCallerName.contactAddress(profile: $0) == address }
     }
 
     // MARK: Ending
@@ -1183,6 +1407,19 @@ final class HermesNativeCalls: NSObject {
 
     /// The user declined or hung up in CallKit.
     private func end(_ action: CXEndCallAction) {
+        if let call = outgoing.removeValue(forKey: action.callUUID) {
+            HermesCallTrace.shared.note("Hung up")
+            call.work?.cancel()
+            action.fulfill()
+            // Only the voice this call opened, or the open still running.
+            if let appState = AppStateRuntimeRegistry.shared.existing,
+               call.voiceStarted || Self.openStillOwnsVoice(call.generation, current: appState.hermesCallOpenGeneration) {
+                appState.endVoiceForNativeCall()
+            }
+            releaseFence(of: call)
+            settle()
+            return
+        }
         guard let call = calls.removeValue(forKey: action.callUUID) else {
             action.fulfill()
             return
@@ -1243,7 +1480,7 @@ final class HermesNativeCalls: NSObject {
     }
 
     private func settle() {
-        guard calls.isEmpty else { return }
+        guard calls.isEmpty, outgoing.isEmpty else { return }
         stopObservingRoute()
         VoiceAudioSessionCoordinator.shared.nativeCallEnded()
         AppStateRuntimeRegistry.shared.existing?.setNativeHermesCallActive(false)
@@ -1342,6 +1579,10 @@ extension HermesNativeCalls: CXProviderDelegate {
                 self.report(HermesCallOutcome.of(.reset, answered: call.answered), for: call.target, sentAt: call.sentAt)
             }
             self.calls = [:]
+            let hadOutgoing = !self.outgoing.isEmpty
+            for call in self.outgoing.values { call.work?.cancel() }
+            self.outgoing = [:]
+            if hadOutgoing { AppStateRuntimeRegistry.shared.existing?.endVoiceForNativeCall() }
             self.audioActive = false
             VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.stopObservingRoute()
@@ -1356,13 +1597,17 @@ extension HermesNativeCalls: CXProviderDelegate {
         MainActor.assumeIsolated { self.answer(action) }
     }
 
+    nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        MainActor.assumeIsolated { self.startOutgoing(action) }
+    }
+
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         MainActor.assumeIsolated { self.end(action) }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         MainActor.assumeIsolated {
-            guard self.calls[action.callUUID]?.answered == true else {
+            guard self.calls[action.callUUID]?.answered == true || self.outgoing[action.callUUID] != nil else {
                 action.fail()
                 return
             }
@@ -1384,6 +1629,13 @@ extension HermesNativeCalls: CXProviderDelegate {
             // once, when it would start on the earpiece: headphones, a car
             // or a Bluetooth speaker keep it, and audio coming back later
             // leaves wherever the user put it.
+            if let started = self.outgoing.first(where: { $0.value.movesToSpeaker })?.key {
+                self.outgoing[started]?.movesToSpeaker = false
+                if VoiceAudioSessionCoordinator.shared.isNativeCallOnEarpiece {
+                    HermesCallTrace.shared.note("Started from Siri: on the speaker")
+                    VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(true)
+                }
+            }
             if let itself = self.calls.first(where: { $0.value.answered && $0.value.answeredItself })?.key {
                 self.calls[itself]?.answeredItself = false
                 if VoiceAudioSessionCoordinator.shared.isNativeCallOnEarpiece {

@@ -18554,6 +18554,252 @@
           }
         }
       }
+    },
+    "Conduit can't make phone calls here. Say \"Talk to Conduit\" to talk to a bot instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit kann hier keine Telefonanrufe führen. Sag stattdessen „Mit Conduit sprechen“, um mit einem Bot zu sprechen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no puede hacer llamadas aquí. Di «Hablar con Conduit» para hablar con un bot."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ne peut pas passer d'appels ici. Dites « Parler à Conduit » pour parler à un bot."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat melakukan panggilan telepon di sini. Ucapkan \"Bicara dengan Conduit\" untuk berbicara dengan bot."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non può fare telefonate qui. Di' «Parla con Conduit» per parlare con un bot."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここではConduitから電話をかけられません。代わりに「Conduitと話す」と言ってボットと話してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기서는 Conduit으로 전화를 걸 수 없습니다. 대신 \"Conduit과 대화하기\"라고 말해 봇과 대화하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie może tu dzwonić. Powiedz „Porozmawiaj z Conduit”, aby porozmawiać z botem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não pode fazer ligações aqui. Diga \"Falar com o Conduit\" para falar com um bot."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Здесь Conduit не может звонить. Скажите «Поговорить с Conduit», чтобы поговорить с ботом."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit burada telefon araması yapamıyor. Bir botla konuşmak için \"Conduit ile Konuş\" deyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在这里无法拨打电话。请改说“与 Conduit 对话”来和机器人交谈。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在這裡無法撥打電話。請改說「與 Conduit 對話」來和機器人交談。"
+          }
+        }
+      }
+    },
+    "There's already a call on. End it, then call again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es läuft schon ein Anruf. Beende ihn und ruf dann noch einmal an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya hay una llamada en curso. Termínala y vuelve a llamar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appel est déjà en cours. Terminez-le, puis rappelez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sudah ada panggilan yang berlangsung. Akhiri dulu, lalu panggil lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "C'è già una chiamata in corso. Chiudila, poi chiama di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでに通話中です。終了してから、もう一度かけてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이미 통화 중입니다. 통화를 끝낸 뒤 다시 걸어 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trwa już połączenie. Zakończ je i zadzwoń ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Já há uma ligação em andamento. Encerre-a e ligue de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уже идёт звонок. Завершите его и позвоните снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaten devam eden bir arama var. Onu bitirip yeniden arayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已有通话正在进行。请先结束，再重新拨打。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已有通話正在進行。請先結束，再重新撥打。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't start the call. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte den Anruf nicht starten. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo iniciar la llamada. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu lancer l'appel. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat memulai panggilan. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito ad avviare la chiamata. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは通話を開始できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 통화를 시작하지 못했습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł rozpocząć połączenia. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu iniciar a ligação. Tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не смог начать звонок. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit aramayı başlatamadı. Yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法开始通话。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法開始通話。請再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -49,4 +49,27 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(HermesNativeCalls.otherCallBlocksAutoAnswer(id, calls: [(uuid: id, hasEnded: false), (uuid: UUID(), hasEnded: true)]), "An ended call doesn't either")
         XCTAssertTrue(HermesNativeCalls.otherCallBlocksAutoAnswer(id, calls: [(uuid: id, hasEnded: false), (uuid: UUID(), hasEnded: false)]), "A cellular call would go on hold")
     }
+
+    func testVoiceInUseKeepsACallFromAnsweringByItself() {
+        XCTAssertNil(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: false, watchCall: false))
+        XCTAssertEqual(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: true, watchCall: false), "voice is in use", "The answer would end at once as Hermes wants to talk")
+        XCTAssertEqual(HermesNativeCalls.voiceBlocksAutoAnswer(voiceInUse: false, watchCall: true), "a Watch call is on", "The trace says which")
+    }
+
+    func testASiriCallEndsOnlyTheVoiceItOpened() {
+        let open = UUID()
+        XCTAssertTrue(HermesNativeCalls.openStillOwnsVoice(open, current: open), "Hung up while it opened: its voice goes too")
+        XCTAssertFalse(HermesNativeCalls.openStillOwnsVoice(open, current: nil), "Voice started another way since cleared the fence")
+        XCTAssertFalse(HermesNativeCalls.openStillOwnsVoice(open, current: UUID()), "Another call's open owns it now")
+    }
+
+    func testARecentsCallFindsItsBot() {
+        let bots = ["default", "Furina", "nova.dev"]
+        XCTAssertEqual(HermesNativeCalls.profile(calling: "hermes+furina@hermesconduit.app", among: bots), "Furina", "The address folds case: matched to the bot, not read back")
+        XCTAssertEqual(HermesNativeCalls.profile(calling: " HERMES+default@hermesconduit.app ", among: bots), "default")
+        XCTAssertEqual(HermesNativeCalls.profile(calling: "hermes+nova.dev@hermesconduit.app", among: bots), "nova.dev")
+        XCTAssertNil(HermesNativeCalls.profile(calling: "hermes@hermesconduit.app", among: bots), "A call naming no bot")
+        XCTAssertNil(HermesNativeCalls.profile(calling: "hermes+atlas@hermesconduit.app", among: bots), "A bot not on this dashboard")
+        XCTAssertNil(HermesNativeCalls.profile(calling: "furina@example.com", among: bots))
+    }
 }

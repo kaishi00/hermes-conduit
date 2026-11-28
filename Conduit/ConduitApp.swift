@@ -452,6 +452,11 @@ struct ConduitApp: App {
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
             .modifier(ScreenshotCallFixtureModifier(appState: appState))
 #endif
+            // A Hermes call in the Phone app's Recents, tapped: the bot's
+            // voice starts (issue 3421).
+            .onContinueUserActivity("INStartCallIntent") { activity in
+                HermesNativeCalls.shared.callBack(activity)
+            }
             // Links Conduit writes into chats (a voice call's job link)
             // open inside the app; every other link goes to the system.
             .environment(\.openURL, OpenURLAction { url in
