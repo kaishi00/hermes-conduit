@@ -177,6 +177,8 @@ extension AppState {
     @discardableResult
     func handleScenePhase(_ phase: ScenePhase) -> Task<Void, Never>? {
         HermesCallTrace.shared.note("App \(phase)")
+        // What Notification Center holds changed while Conduit was away.
+        scheduleAppIconBadgeRefresh()
         if phase != .active {
             responseHapticConclusionTask?.cancel()
             responseHapticConclusionTask = nil

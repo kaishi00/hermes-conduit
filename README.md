@@ -88,6 +88,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 **Notifications and control**
 
 - Approve tools and answer questions straight from a notification, end-to-end encrypted between your host and your phone
+- A number on the app icon for the chats waiting on you: unread replies and approvals or questions, or only those in Settings > Notifications > Badge, kept current while Conduit is closed
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
 - Home Screen widgets in three sizes to resume a chat, start one or talk in one tap, and a Pulse widget whose cards you can mark done, put off or send to Hermes without opening Conduit (its small size, with Done and Not now, is made for Apple HomeView too, not yet tried on one), and a Plan limits widget with how much of your subscription's limits you've used and when they reset
 - Provider, model and reasoning effort switching mid-conversation
