@@ -2913,23 +2913,25 @@ struct CronJobDetailSheet: View {
 struct CronRunOutputRow: View {
     let run: CronRun
     @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var output: String? {
         let text = run.preview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return text.isEmpty ? nil : text
     }
 
-    /// Its title, never its output: the output shows below, once.
+    /// Its title, never its output: the output shows below, once. An
+    /// untitled run is "Output" (a noun in every language; "Run" is the verb).
     private var name: String {
         let title = run.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return title.isEmpty ? AppLocalization.string("Run") : title
+        return title.isEmpty ? AppLocalization.string("Output") : title
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Collapsed, the whole row is the tap; open, the header closes it
             // and the output below can be selected.
-            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+            Button { withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { expanded.toggle() } } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(name).lineLimit(1)
@@ -2951,7 +2953,7 @@ struct CronRunOutputRow: View {
             }
             .buttonStyle(.plain)
             .disabled(output == nil)
-            .accessibilityHint(AppLocalization.string("Shows this run's output. It has no chat.", table: .chat))
+            .accessibilityHint(output == nil ? "" : AppLocalization.string("Shows this run's output. It has no chat.", table: .chat))
             .accessibilityValue(output == nil ? "" : expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
             if expanded {
                 outputText.textSelection(.enabled)
