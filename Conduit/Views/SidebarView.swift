@@ -2863,10 +2863,14 @@ struct CronJobDetailSheet: View {
                                 Text("This job has not run yet.").scaledFont(.footnote).foregroundStyle(.secondary)
                             }
                             ForEach(appState.cronRunsJobID == job.id ? appState.cronRuns : []) { run in
-                                Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
-                                    HStack { VStack(alignment: .leading) { Text(run.displayName).lineLimit(1); Text(run.model ?? "Hermes").scaledFont(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.timeLabel()).scaledFont(.caption2).foregroundStyle(.conduitTertiary) }
+                                if run.opensChat {
+                                    Button { appState.dismissSidebarDrawer(); dismiss(); appState.requestOpenSession(run.id) } label: {
+                                        HStack { VStack(alignment: .leading) { Text(run.displayName).lineLimit(1); Text(run.model ?? "Hermes").scaledFont(.caption).foregroundStyle(.secondary) }; Spacer(); Text(run.timeLabel()).scaledFont(.caption2).foregroundStyle(.conduitTertiary) }
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    CronRunOutputRow(run: run)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -2898,6 +2902,55 @@ struct CronJobDetailSheet: View {
             async let runs: Void = appState.loadCronRuns(for: job)
             async let notifications: Void = appState.refreshCronNotifications()
             _ = await (runs, notifications)
+        }
+    }
+}
+
+/// A Run history row with no chat behind it (issue 3455): a script job's
+/// fire, which Hermes records only as an output document. Opening its id
+/// would fail with "session not found", so it shows the output instead:
+/// two lines of it, and all of it on a tap.
+struct CronRunOutputRow: View {
+    let run: CronRun
+    @State private var expanded = false
+
+    private var output: String? {
+        let text = run.preview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(run.displayName).lineLimit(1)
+                    Spacer()
+                    Text(run.timeLabel()).scaledFont(.caption2).foregroundStyle(.conduitTertiary)
+                    if output != nil {
+                        Image(systemName: "chevron.down")
+                            .scaledFont(.caption2.weight(.semibold))
+                            .foregroundStyle(.conduitTertiary)
+                            .rotationEffect(.degrees(expanded ? 180 : 0))
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(output == nil)
+            .accessibilityHint(AppLocalization.string("Shows this run's output. A script ran it, so it has no chat.", table: .chat))
+            Group {
+                if let output {
+                    Text(output)
+                        .lineLimit(expanded ? nil : 2)
+                        .textSelection(.enabled)
+                } else {
+                    Text(AppLocalization.string("No output recorded.", table: .chat))
+                }
+            }
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

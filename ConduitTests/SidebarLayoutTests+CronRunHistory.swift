@@ -4,7 +4,8 @@
 //
 //  A scheduled job's Run history sheet (#1707): the dashboard's per-job
 //  route is the answer, an empty one included, and a list of every job's
-//  runs only lends a job the runs it can tell are that job's.
+//  runs only lends a job the runs it can tell are that job's. Only a run
+//  with a session opens a chat (issue 3455).
 //
 
 import XCTest
@@ -253,6 +254,36 @@ extension SidebarLayoutTests {
         XCTAssertEqual(state.cronRuns.map(\.lastActive), [1_795_700_095, nil, 1_795_700_095, 1_795_700_095, 1_795_700_095, nil])
         XCTAssertEqual(state.cronRuns.map(\.startedAt), [nil, 1_795_700_095, nil, nil, nil, nil])
         XCTAssertEqual(state.cronRuns[3].preview, "Run summary")
+    }
+
+    func testOnlyASessionRunOpensAChat() async throws {
+        // A script job's fire has no session, only its output document, and
+        // Hermes says so in `source` (issue 3455). Its id would only fail
+        // to open with "session not found".
+        let state = cronRunHistoryState()
+        let requester = CronRunsRequester()
+        requester.responsesByPath["/api/cron/jobs/4f00afd560b2/runs"] = [
+            "runs": [
+                ["id": "local-409c9669", "source": "cron", "title": "IPv6 sweep", "started_at": 1795830764.98],
+                ["id": "cron_output:4f00afd560b2:2026-11-28_10-10-45", "source": "cron_output", "title": "COMPLETED · # Cron Job: backfill", "preview": "**Status:** silent (empty output)", "started_at": 1795831845.0],
+                // Nested in `session`, the outer row's source still counts.
+                ["source": "cron_output", "session": ["id": "cron_output:4f00afd560b2:exec:3"]],
+                // A row that doesn't say is a session, as before.
+                ["id": "cron_4f00afd560b2_20261128_095300"],
+                // A kind this app doesn't know is no chat.
+                ["id": "future-row", "source": "something_new"],
+            ],
+        ]
+        await state.loadCronRuns(for: CronJob(enabled: true, id: "4f00afd560b2"), dashboard: requester, gateway: nil)
+        XCTAssertEqual(state.cronRuns.map(\.opensChat), [true, false, false, true, false])
+        XCTAssertEqual(state.cronRuns[1].preview, "**Status:** silent (empty output)")
+
+        // The gateway's rows, read without a dashboard, decode the same.
+        let strict = try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"cron_output:4f00afd560b2:exec:1","source":"cron_output"}"#.utf8))
+        XCTAssertFalse(strict.opensChat)
+        XCTAssertTrue(try JSONDecoder().decode(CronRun.self, from: Data(#"{"id":"local-1","source":"cron"}"#.utf8)).opensChat)
+        let roundTrip = try JSONDecoder().decode(CronRun.self, from: JSONEncoder().encode(strict))
+        XCTAssertEqual(roundTrip.source, "cron_output")
     }
 
     func testARunsTimeReadsAsADateNotAnEpoch() {

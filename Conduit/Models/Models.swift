@@ -1440,9 +1440,13 @@ struct CronRun: Codable, Identifiable {
     var title: String?
     /// The job the gateway says ran it (`job_id` or `cron_job_id`), when it says.
     var jobID: String?
+    /// What kind of run Hermes says this is: `cron` for an agent run, a
+    /// session; `cron_output` for a fire with no session, only its output
+    /// document (a script job's every run). Nil when the row doesn't say.
+    var source: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, model, preview, profile
+        case id, model, preview, profile, source
         case lastActive = "last_active"
         case startedAt = "started_at"
         case title
@@ -1450,7 +1454,7 @@ struct CronRun: Codable, Identifiable {
         case cronJobID = "cron_job_id"
     }
 
-    init(id: String, lastActive: Int?, model: String?, preview: String?, profile: String?, startedAt: Int?, title: String?, jobID: String? = nil) {
+    init(id: String, lastActive: Int?, model: String?, preview: String?, profile: String?, startedAt: Int?, title: String?, jobID: String? = nil, source: String? = nil) {
         self.id = id
         self.lastActive = lastActive
         self.model = model
@@ -1459,6 +1463,7 @@ struct CronRun: Codable, Identifiable {
         self.startedAt = startedAt
         self.title = title
         self.jobID = jobID
+        self.source = source
     }
 
     init(from decoder: Decoder) throws {
@@ -1477,6 +1482,18 @@ struct CronRun: Codable, Identifiable {
         jobID = [CodingKeys.jobID, .cronJobID].lazy
             .compactMap { try? container.decodeIfPresent(String.self, forKey: $0) }
             .first { !$0.isEmpty }
+        source = try? container.decodeIfPresent(String.self, forKey: .source)
+    }
+
+    /// Whether the run has a chat to open (issue 3455): an agent run
+    /// (`source` "cron"), or a row that doesn't say. A `cron_output` row is
+    /// a fire with no session, so opening its id only fails with "session
+    /// not found"; it shows its output instead. A source this app doesn't
+    /// know is no chat either, so a new kind of row never becomes a tap that
+    /// fails.
+    var opensChat: Bool {
+        guard let source = source?.trimmingCharacters(in: .whitespacesAndNewlines), !source.isEmpty else { return true }
+        return source == "cron"
     }
 
     /// An epoch in whole seconds: an integer, or a float truncated.
@@ -1514,6 +1531,7 @@ struct CronRun: Codable, Identifiable {
         try container.encodeIfPresent(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(title, forKey: .title)
         try container.encodeIfPresent(jobID, forKey: .jobID)
+        try container.encodeIfPresent(source, forKey: .source)
     }
 
     /// Whether this is a run of the job (#1707): the job the gateway names,

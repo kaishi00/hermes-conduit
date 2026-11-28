@@ -3526,7 +3526,8 @@ The drawer's Cron list and Tasks › Scheduled identify a job by its name and
 schedule; Tasks also shows its next run. These lines wrap to two lines at
 accessibility text sizes and stay on one line otherwise. A scheduled job's
 sheet lists that job's past runs, newest first, and a tap opens the run's
-chat. A job that hasn't run says so.
+chat. A run with no chat (a script job's fire) shows its output instead, a
+tap showing all of it. A job that hasn't run says so.
 
 **Siblings:** the sheet in both shells (one `CronJobDetailSheet`, from the
 Cron list and from Tasks › Scheduled) · Run now, which reads the history
@@ -3539,11 +3540,13 @@ schedule at accessibility sizes, plus next run in Tasks) · the chat list's
 `V2SessionRow` (done: the existing two-line accessibility rule is copied) ·
 the job's detail sheet for row wrapping (not needed: it scrolls and has no
 Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
+· the desktop's run history for output-only runs (done: desktop#757) · the output row's VoiceOver hint and "No output recorded." (Chat table,
+every shipped language)
 
-**Desktop app:** has it: a scheduled job's run history (`desktop/src/renderer/src/components/ScheduledJobs.tsx`, desktop#19).
+**Desktop app:** has it: a scheduled job's run history (`desktop/src/renderer/src/components/ScheduledJobs.tsx`, desktop#19); a script's run shows its output, not a chat (desktop#757).
 
 **Code**
-- App: `Conduit/Services/AppState+ScheduledJobs.swift` (loadCronRuns, decodeCronRun), `Conduit/Services/BotState.swift` (cronRunsJobID, cronRunsLoaded, read through AppState's forwarders), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
+- App: `Conduit/Services/AppState+ScheduledJobs.swift` (loadCronRuns, decodeCronRun), `Conduit/Services/BotState.swift` (cronRunsJobID, cronRunsLoaded, read through AppState's forwarders), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronRunOutputRow, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
 - Test: `ConduitTests/SidebarLayoutTests+CronRunHistory.swift`
 
 **Rulings**
@@ -3552,12 +3555,13 @@ Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 - The list belongs to one job: opening another job shows a spinner until its answer lands, never the last job's runs or "This job has not run yet." before it knows, and only the newest read's answer is kept. Before the job's first answer, a read that fails, or can't be made offline, says so in the sheet instead; a later refresh that fails keeps the runs shown and reports through the app's error message.
 - Runs that name another profile are left out; a run that names none is kept.
 - At an accessibility text size a job's name and schedule take two lines in both the drawer's Cron list and Tasks › Scheduled, and its next-run line does in Tasks; below those sizes each stays on one line, as a chat's row already does.
+- Only a run with a session opens a chat: `source` "cron", or a row that doesn't say. A `cron_output` row (every fire of a `no_agent` script job, or a fire whose session is gone) has only its output document, so it isn't a tap into a chat: it shows two lines of its `preview`, and a tap shows all of it. A source the app doesn't know is no chat either, so a new kind of row never becomes a tap that fails with "session not found" (issue 3455, 2026-11-28, #PR).
 - A run's row reads its time as a local date and time (its last activity, else its start), never the raw epoch, and is named by its title, else its preview, else its id; a null or blank title is no name. Hermes writes its epochs as floats and a suppressed fire's title as null, and neither costs the run its decode (issue 3373, 2026-11-27, #3374).
 
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-27, #3374 (issue 3373: a run's time as a date, a null title no name, float epochs decoded, in CronRun and decodeCronRun, which reads every dashboard row from the row itself: `name`, `summary`, `lastActive` and `startedAt` aliases, string epochs and `session` nesting, whatever its other fields hold, a name only from a string; the per-job route and `cron.runs` share the decode; the desktop already formats both, not needed); 2026-11-19, #2806 (the Desktop app line on every entry, backfilled from hermes-conduit-desktop main, and the PR's Desktop section and its check); 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2429 (the run history's state moved into BotState, all-live stage 1; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-28, #PR (issue 3455: a `cron_output` run, a script's fire with no session, shows its output instead of opening a chat that isn't there; CronRun and decodeCronRun read `source`, the sheet's CronRunOutputRow; the desktop's run history does the same); 2026-11-27, #3374 (issue 3373: a run's time as a date, a null title no name, float epochs decoded, in CronRun and decodeCronRun, which reads every dashboard row from the row itself: `name`, `summary`, `lastActive` and `startedAt` aliases, string epochs and `session` nesting, whatever its other fields hold, a name only from a string; the per-job route and `cron.runs` share the decode; the desktop already formats both, not needed); 2026-11-19, #2806 (the Desktop app line on every entry, backfilled from hermes-conduit-desktop main, and the PR's Desktop section and its check); 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2429 (the run history's state moved into BotState, all-live stage 1; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
 
 ## A scheduled job's model
 
